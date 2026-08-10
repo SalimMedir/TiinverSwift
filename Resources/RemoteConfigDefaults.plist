@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+Port fidèle de res/xml/remote_config_defaults.xml (Android, jamais lu jusqu'ici — voir
+MIGRATION_PROGRESS.md, décision du 2026-08-10). Toutes les clés/valeurs sont reprises telles
+quelles, aucune valeur par défaut supplémentaire ajoutée. Types choisis d'après le contenu
+littéral du XML source (bool pour "true"/"false", integer pour les nombres entiers, real pour
+"0.0035", string pour le reste) — Firebase Remote Config coerce de toute façon la valeur au type
+demandé par chaque getter typé (`getDouble`/`getBoolean`/`getLong`/`getString`), donc ce choix
+n'a pas d'incidence fonctionnelle, seulement de lisibilité.
+
+Référencé par Settings/FirebaseConfigManager.swift : remoteConfig.setDefaults(fromPlist:
+"RemoteConfigDefaults").
+-->
+<plist version="1.0">
+<dict>
+	<key>welcome_message</key>
+	<string>Bienvenue dans l’app Tiinver !</string>
+	<key>animemes_premium_enabled</key>
+	<true/>
+	<key>ads_reward_as_gems</key>
+	<false/>
+	<key>create_animemes_be_rewarded</key>
+	<false/>
+	<key>animemes_creation_reward</key>
+	<integer>20</integer>
+	<key>new_update_enabled</key>
+	<false/>
+	<key>new_feature_enabled</key>
+	<false/>
+	<key>ads_feed_enabled</key>
+	<true/>
+	<key>allow_gift_commenter</key>
+	<true/>
+	<key>allow_chat_send_receive_sound</key>
+	<true/>
+	<key>ads_rewarded_enabled</key>
+	<true/>
+	<key>ads_rewarded_reward_TD</key>
+	<integer>1</integer>
+	<key>ads_rewarded_reward_CM</key>
+	<integer>1</integer>
+	<key>ads_rewarded_reward_CF</key>
+	<integer>1</integer>
+	<key>ads_rewarded_reward_CG</key>
+	<integer>1</integer>
+	<key>ads_rewarded_reward_GQ</key>
+	<integer>1</integer>
+	<key>ads_rewarded_reward_CU</key>
+	<integer>1</integer>
+	<key>ads_rewarded_reward_GA</key>
+	<integer>1</integer>
+	<key>ads_rewarded_reward_OTHER</key>
+	<integer>1</integer>
+	<key>ads_feed_reward</key>
+	<integer>2</integer>
+	<key>ads_feed_reward_TD</key>
+	<integer>1</integer>
+	<key>ads_feed_reward_CM</key>
+	<integer>1</integer>
+	<key>ads_feed_reward_CF</key>
+	<integer>1</integer>
+	<key>ads_feed_reward_CG</key>
+	<integer>1</integer>
+	<key>ads_feed_reward_GQ</key>
+	<integer>1</integer>
+	<key>ads_feed_reward_CU</key>
+	<integer>1</integer>
+	<key>ads_feed_reward_OTHER</key>
+	<integer>1</integer>
+	<key>ads_feed_reward_GA</key>
+	<integer>1</integer>
+	<key>max_video_duration</key>
+	<integer>30000</integer>
+	<key>transaction_fee_percent</key>
+	<integer>10</integer>
+	<key>coins_value</key>
+	<integer>2</integer>
+	<key>coins_value_dollar</key>
+	<real>0.0035</real>
+	<key>minimum_withdrawal_amount</key>
+	<integer>500</integer>
+	<key>reward_divided_by</key>
+	<integer>1</integer>
+	<key>certification_price</key>
+	<integer>5000</integer>
+	<key>animemes_Mix_Max_Duration</key>
+	<integer>30000</integer>
+	<key>cdn_base_url</key>
+	<string>https://cdn.tiinver.com/</string>
+	<key>stream_base_url</key>
+	<string>https://stream.tiinver.com/</string>
+	<key>app_expire_day</key>
+	<integer>1</integer>
+	<key>app_expire_month</key>
+	<integer>13</integer>
+	<key>app_expire_year</key>
+	<integer>2026</integer>
+	<key>version_code</key>
+	<integer>1</integer>
+</dict>
+</plist>

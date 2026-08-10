@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/helen/AndroidStudioProjects/tiinver/**)",
+      "Read(//c/Users/helen/AndroidStudioProjects/tiinver/app/src/main/java/com/tiinver/db/**)",
+      "Read(//c/Users/helen/AndroidStudioProjects/tiinver/app/src/main/java/com/tiinver/**)",
+      "Read(//c/Users/helen/AndroidStudioProjects/tiinver/app/src/main/java/com/tiinver/db/dao/**)",
+      "Read(//c/Users/helen/AndroidStudioProjects/tiinver/app/src/main/java/com/tiinver/db/entity/**)",
+      "Read(//c/Users/helen/AndroidStudioProjects/tiinver/app/src/main/java/**)",
+      "Read(//c/Users/helen/AndroidStudioProjects/tiinver/app/src/main/java/com/tiinver/Utils/**)",
+      "Read(//c/Users/helen/AndroidStudioProjects/tiinver/app/src/main/java/com/tiinver/service/worker/**)",
+      "Read(//c/Users/helen/AndroidStudioProjects/tiinver/app/src/main/java/com/tiinver/Http/**)",
+      "Read(//c/Users/helen/AndroidStudioProjects/tiinver/app/src/main/java/com/tiinver/back_sync/**)",
+      "Read(//c//**)",
+      "Read(//c/Users/helen/Downloads/**)",
+      "Bash(cp \"C:/Users/helen/Downloads/GoogleService-Info.plist\" \"C:/Users/helen/iOSProjects/TiinverSwift/Resources/GoogleService-Info.plist\" && ls -la \"C:/Users/helen/iOSProjects/TiinverSwift/Resources/\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\helen\\Downloads"
+    ]
+  }
+}

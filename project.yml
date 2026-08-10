@@ -1,0 +1,96 @@
+name: TiinverSwift
+options:
+  bundleIdPrefix: com.tiinver
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  usesTabs: false
+  indentWidth: 4
+
+packages:
+  Alamofire:
+    url: https://github.com/Alamofire/Alamofire.git
+    from: 5.9.0
+  SocketIO:
+    url: https://github.com/socketio/socket.io-client-swift.git
+    from: 16.1.0
+  MetalPetal:
+    url: https://github.com/MetalPetal/MetalPetal.git
+    from: 1.10.0
+  Gifu:
+    url: https://github.com/kaishin/Gifu.git
+    from: 3.4.1
+  GoogleMobileAds:
+    url: https://github.com/googleads/swift-package-manager-google-mobile-ads.git
+    from: 11.0.0
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS.git
+    from: 7.1.0
+  FBSDK:
+    url: https://github.com/facebook/facebook-ios-sdk.git
+    from: 17.0.0
+  WebRTC:
+    url: https://github.com/stasel/WebRTC.git
+    from: 125.0.0
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk.git
+    from: 10.29.0
+
+targets:
+  TiinverSwift:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/TiinverSwift
+    resources:
+      - path: Resources
+    info:
+      path: Resources/Info.plist
+      properties:
+        UILaunchScreen: {}
+        UIBackgroundModes:
+          - audio
+          - voip
+          - remote-notification
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        NSCameraUsageDescription: "Tiinver a besoin de la caméra pour publier des photos et vidéos."
+        NSMicrophoneUsageDescription: "Tiinver a besoin du micro pour les vidéos, messages vocaux et appels."
+        NSPhotoLibraryUsageDescription: "Tiinver a besoin d'accéder à vos photos pour publier du contenu."
+        NSContactsUsageDescription: "Tiinver utilise vos contacts pour vous suggérer des amis."
+    settings:
+      base:
+        # CONFIRMÉ (pas une supposition) par Resources/GoogleService-Info.plist, clé BUNDLE_ID
+        # = "com.tiinver.ios" — fichier réel téléchargé par l'utilisateur depuis la console
+        # Firebase pour l'app iOS du projet "com-tiinver". Corrige la valeur précédente
+        # "com.tiinver.tiinverProject", qui n'était qu'une déduction indirecte depuis
+        # app/google-services.json côté Android (un identifiant d'app invite secondaire, pas le
+        # vrai bundle id de l'app iOS principale) — voir décision "GoogleService-Info.plist
+        # intégré" du 2026-08-10 dans MIGRATION_PROGRESS.md.
+        PRODUCT_BUNDLE_IDENTIFIER: com.tiinver.ios
+        SWIFT_VERSION: 5.9
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_BITCODE: false
+    dependencies:
+      - package: Alamofire
+      - package: SocketIO
+      - package: MetalPetal
+      - package: Gifu
+      - package: GoogleMobileAds
+        product: GoogleMobileAds
+      - package: GoogleSignIn
+      - package: FBSDK
+        product: FacebookLogin
+      - package: FBSDK
+        product: FacebookCore
+      - package: WebRTC
+      - package: Firebase
+        product: FirebaseCore
+      - package: Firebase
+        product: FirebaseMessaging
+      - package: Firebase
+        product: FirebaseAuth
+      - package: Firebase
+        product: FirebaseRemoteConfig
+      - package: Firebase
+        product: FirebaseAnalytics

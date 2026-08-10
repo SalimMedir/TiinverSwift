@@ -1,0 +1,124 @@
+import UIKit
+import UserNotifications
+import FirebaseCore
+import FirebaseMessaging
+import GoogleSignIn
+
+/// Point d'accroche pour l'initialisation des SDK tiers.
+///
+/// Module 4 (Notifications push) : port de l'enregistrement de jeton
+/// (`back_sync/MyFirebaseInstanceIdService.java`) via **Firebase Cloud Messaging** — décision
+/// tranchée par investigation du code source (voir `PushTokenRegistrar.swift` pour les preuves :
+/// dépendances Gradle réelles, `google-services.json` provisionné, usage explicite de
+/// `FirebaseMessaging.getInstance().getToken()` côté Android).
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // `Resources/GoogleService-Info.plist` intégré le 2026-08-10 (fichier réel fourni par
+        // l'utilisateur, BUNDLE_ID confirmé = "com.tiinver.ios", voir `project.yml` et
+        // MIGRATION_PROGRESS.md) — `FirebaseApp.configure()` le lit automatiquement.
+        FirebaseApp.configure()
+
+        Messaging.messaging().delegate = self
+        UNUserNotificationCenter.current().delegate = self
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+            guard granted else { return }
+            DispatchQueue.main.async {
+                application.registerForRemoteNotifications()
+            }
+        }
+        return true
+    }
+
+    /// Port de `MainActivity`/`SplashActivity` gérant le retour du flux Google (Credential
+    /// Manager côté Android n'a pas de callback URL équivalent, mais `GoogleSignIn-iOS` en a un
+    /// standard) — requis par `GIDSignIn` pour compléter le flux OAuth.
+    func application(
+        _ app: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        GIDSignIn.sharedInstance.handle(url)
+    }
+
+    /// L'APNs device token doit être transmis à Firebase pour qu'il puisse dériver/rafraîchir le
+    /// jeton FCM — `Messaging` s'en sert en interne, la valeur exploitable pour le backend arrive
+    /// via `messaging(_:didReceiveRegistrationToken:)` ci-dessous, pas ici directement.
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        Messaging.messaging().apnsToken = deviceToken
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        // Équivalent Android : onNewToken n'est simplement jamais appelé en cas d'échec — aucune
+        // branche d'erreur explicite à reproduire côté MyFirebaseInstanceIdService non plus.
+    }
+
+    /// Port de `MyFirebaseMessagingService.onNewToken` — reçoit le jeton FCM (pas le jeton APNs
+    /// brut) dès qu'il est disponible/rafraîchi.
+    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        guard let fcmToken else { return }
+        PushTokenRegistrar.handleFCMToken(fcmToken)
+        Task { await PushTokenRegistrar.pushTokenToServer() }
+    }
+
+    /// Port de `MyFirebaseMessagingService.onMessageReceived` (branche `remoteMessage.getData()`
+    /// non vide) → `TiinverSyncWorker.visiteServeur` → `MyBackgroundTask.notifyUser(id)` →
+    /// `NotificationRepository.fetchNotifications(id)`. Cette dernière étape est la SEULE
+    /// vraiment pertinente pour le module 4 (Notifications) — le reste de `TiinverSyncWorker`
+    /// (sync des messages de chat privés/groupe, `ChatRepository`) appartient au module 11
+    /// (Messagerie, pas encore atteint) et n'est PAS porté ici. `MyBackgroundTask`/
+    /// `Http/transportDataBackground.java`/`Activity/service/ActivityService.java` (repérés au
+    /// grep initial du module 4) lus et confirmés HORS SUJET : logout/suppression de compte
+    /// (module 17) et upload de média en premier plan (module 6/7), pas des notifications push.
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        guard let userId = UserSession.shared.myId else {
+            completionHandler(.noData)
+            return
+        }
+        Task { @MainActor in
+            let viewModel = NotificationCenterViewModel()
+            await viewModel.fetchNotifications(userId: userId)
+            completionHandler(.newData)
+        }
+    }
+
+    /// Port de l'affichage systématique des notifications même app au premier plan — Android
+    /// n'a pas de distinction premier plan/arrière-plan équivalente à `willPresent` (une
+    /// notification FCM "notification" s'affiche toujours dans la barre système).
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .badge])
+    }
+
+    /// Port du routage par destination de `NotificationUtils.show()`/`activityMap`
+    /// (`Intent` vers `ActivityMsg`/`HomeActivity`/...) — ici, publication sur `DeepLinkCenter`
+    /// (module 5) plutôt qu'un `Intent` direct, `HomeShellView` observant la destination pour
+    /// ouvrir le bon écran. Seules les catégories déjà portées (`missed_call` exclu, VoIP/CallKit
+    /// = module 12) sont routées ; tout le reste ouvre le centre de notifications par défaut,
+    /// comme le fait `activityMap.get("MainActivity")` par défaut côté Android.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        Task { @MainActor in
+            DeepLinkCenter.shared.route(.notifications)
+            completionHandler()
+        }
+    }
+}

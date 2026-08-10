@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23605" systemVersion="24A335" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithSwiftData="YES" userDefinedModelVersionIdentifier="">
+    <!--
+    Réplique le schéma Room de com.tiinver.db.AppDatabase.java (base "tiinver_db", version 3),
+    CONFIRMÉE ACTIVE et INDÉPENDANTE de wenackbdd_@Sm66461027.db/StubProvider (voir
+    TIINVER_IOS_PORT_ANALYSIS.md §2.2 et MIGRATION_PROGRESS.md, décision module 2) — historique de
+    vues (analytics) + chat IA Gemini. Volontairement un DEUXIÈME .xcdatamodeld/pile Core Data
+    séparé de TiinverModel.xcdatamodeld, pas fusionné avec lui.
+    -->
+    <entity name="ViewEventEntity" representedClassName="ViewEventEntity" syncable="YES" codeGenerationType="class">
+        <!-- view_events (db/ViewEvent.java) — tracking de visionnage pour entraînement Vertex AI -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="userId" optional="YES" attributeType="String"/>
+        <attribute name="activityId" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="watchtime" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <!-- 0-100, pourcentage de scroll ; 0 = pas encore de donnée -->
+        <attribute name="scrollPosition" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <!-- nombre de replays/revisites ; additif -->
+        <attribute name="replayCount" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <!-- seconde de sortie ; -1 = non applicable (photo) ou non défini -->
+        <attribute name="exitPoint" optional="YES" attributeType="Integer 32" defaultValueString="-1" usesScalarValueType="YES"/>
+        <attribute name="createdAt" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+    </entity>
+    <entity name="AiConversationEntity" representedClassName="AiConversationEntity" syncable="YES" codeGenerationType="class">
+        <!-- ai_conversations (db/entity/AiConversationEntity.java) — historique chat IA Gemini -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="userId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <!-- "user" ou "assistant" -->
+        <attribute name="role" optional="YES" attributeType="String"/>
+        <!-- "text" ou "image" -->
+        <attribute name="type" optional="YES" attributeType="String"/>
+        <!-- texte du message, ou chemin de l'image locale si type == "image" -->
+        <attribute name="content" optional="YES" attributeType="String"/>
+        <attribute name="stamp" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <!-- expiration : 3 jours après création -->
+        <attribute name="expiresAt" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+    </entity>
+    <elements>
+        <element name="ViewEventEntity" positionX="-63" positionY="-18" width="128" height="30"/>
+        <element name="AiConversationEntity" positionX="-54" positionY="0" width="128" height="30"/>
+    </elements>
+</model>

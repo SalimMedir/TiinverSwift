@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23605" systemVersion="24A335" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithSwiftData="YES" userDefinedModelVersionIdentifier="">
+    <!--
+    Réplique `models/notification/NotiDatabase.java` (Room, base "tiinver_notifications.db",
+    version 2, table "wk_notifications") — TROISIÈME store local indépendant du projet Android,
+    CONFIRMÉ ACTIF et DISTINCT à la fois de `wenackbdd_@Sm66461027.db`/StubProvider (table wk_noti,
+    déjà portée en `NotificationEntity` dans TiinverModel.xcdatamodeld, module 2) et de
+    `tiinver_db`/AppDatabase (module 2 également). wk_noti = cache de notifications reçues en
+    temps réel par socket (voir TransportData.java, insert direct sur infoContract.NOTI_URI) ;
+    wk_notifications = "centre de notifications" paginé, alimenté par l'endpoint REST
+    "notification2/{userId}" (voir NotiLikecmt/NotificationRepository.java, module 4) — deux
+    usages distincts confirmés par des appelants et champs différents, donc deux stores distincts
+    ici aussi, à l'identique de la séparation déjà actée pour AppDatabase au module 2. Ne PAS
+    fusionner avec TiinverModel ni TiinverAnalyticsModel.
+    -->
+    <entity name="NotiEntity" representedClassName="NotiEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <!-- clé primaire côté serveur (@PrimaryKey Room, pas autoGenerate) — dédoublonnage -->
+        <attribute name="id" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="activityId" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="userId" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <!-- video | photo | text | user | wallet -->
+        <attribute name="object" optional="YES" attributeType="String"/>
+        <attribute name="objectUrl" optional="YES" attributeType="String"/>
+        <attribute name="cdnContentId" optional="YES" attributeType="String"/>
+        <attribute name="cdnThumbnailUrl" optional="YES" attributeType="String"/>
+        <attribute name="cdnContentUrl" optional="YES" attributeType="String"/>
+        <!-- comment | like | share | follow | transfer -->
+        <attribute name="verb" optional="YES" attributeType="String"/>
+        <!-- text | photo | video | gif | gift -->
+        <attribute name="payloadType" optional="YES" attributeType="String"/>
+        <attribute name="commentText" optional="YES" attributeType="String"/>
+        <attribute name="firstname" optional="YES" attributeType="String"/>
+        <attribute name="lastname" optional="YES" attributeType="String"/>
+        <attribute name="profile" optional="YES" attributeType="String"/>
+        <!-- 0=non vérifié, 1=vérifié -->
+        <attribute name="verified" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <!-- principal | reply | reply_on_my_post | notification -->
+        <attribute name="type" optional="YES" attributeType="String"/>
+        <attribute name="stamp" optional="YES" attributeType="String"/>
+        <!-- 0=non lu serveur, 1=lu serveur -->
+        <attribute name="status" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <!-- 0=non lu local, 1=affiché -->
+        <attribute name="isRead" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <!-- champs issus de NotiModel (fusion migration 1→2) : suggestions/followers -->
+        <attribute name="username" optional="YES" attributeType="String"/>
+        <attribute name="isFollowed" optional="YES" attributeType="String"/>
+        <attribute name="active" optional="YES" attributeType="String"/>
+        <attribute name="reaction" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="message" optional="YES" attributeType="String"/>
+    </entity>
+    <elements>
+        <element name="NotiEntity" positionX="-63" positionY="-18" width="128" height="30"/>
+    </elements>
+</model>

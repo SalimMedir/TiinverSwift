@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23605" systemVersion="24A335" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithSwiftData="YES" userDefinedModelVersionIdentifier="">
+    <!--
+    Réplique le schéma logique de back_sync/StubProvider.java + Dbase.java (SQLiteOpenHelper,
+    base "wenackbdd_@Sm66461027.db", schéma version 26 — voir TIINVER_IOS_PORT_ANALYSIS.md §2.2,
+    confirmé ACTIF : "magasin de données principal du chat").
+
+    Seul le schéma final de Dbase.onCreate() est repris ici (pas l'historique des 26 migrations
+    onUpgrade) : nouvelle app native, aucune reprise de données Android existante requise
+    (voir TIINVER_IOS_PORT_ANALYSIS.md §6.3, point 6). Vérification faite que onCreate() reflète
+    déjà l'état "actuel" du schéma pour une installation neuve (les ALTER TABLE de onUpgrade sont
+    tous gardés par checkColumnExists et sont des no-op sur une base fraîche, à une exception près
+    documentée dans MIGRATION_PROGRESS.md).
+
+    Renommage documenté : la colonne SQLite "_id" (clé primaire auto-incrémentée Android) est
+    reprise ici sous le nom "localId" — Core Data gère sa propre identité d'objet (NSManagedObjectID)
+    et un attribut préfixé "_" est déconseillé par convention Swift/Core Data. Toutes les AUTRES
+    colonnes gardent leur nom Android exact pour fidélité maximale au modèle de données source.
+
+    wk_setting n'a pas d'entité Core Data : c'est une table de bookkeeping interne (old_version/
+    new_version) jamais exposée via les URI du ContentProvider (StubProvider.java ne la référence
+    dans aucun de ses uriMatcher.addURI), donc sans équivalent fonctionnel à porter.
+    -->
+    <entity name="AccountEntity" representedClassName="AccountEntity" syncable="YES" codeGenerationType="class">
+        <!-- wenack_account — profil du compte local (utilisateur connecté) -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="apiKey" optional="YES" attributeType="String"/>
+        <attribute name="login" optional="YES" attributeType="String"/>
+        <attribute name="email" optional="YES" attributeType="String"/>
+        <attribute name="phone" optional="YES" attributeType="String"/>
+        <attribute name="username" optional="YES" attributeType="String"/>
+        <attribute name="nikname" optional="YES" attributeType="String"/>
+        <attribute name="password" optional="YES" attributeType="String"/>
+        <attribute name="firstname" optional="YES" attributeType="String"/>
+        <attribute name="lastname" optional="YES" attributeType="String"/>
+        <attribute name="gender" optional="YES" attributeType="String"/>
+        <attribute name="profile" optional="YES" attributeType="String"/>
+        <attribute name="certified" optional="YES" attributeType="String"/>
+        <attribute name="emailVerified" optional="YES" attributeType="String"/>
+        <attribute name="location" optional="YES" attributeType="String"/>
+        <attribute name="work" optional="YES" attributeType="String"/>
+        <attribute name="qualification" optional="YES" attributeType="String"/>
+        <attribute name="birthday" optional="YES" attributeType="String"/>
+        <attribute name="school" optional="YES" attributeType="String"/>
+        <attribute name="referralCode" optional="YES" attributeType="String"/>
+        <attribute name="biography" optional="YES" attributeType="String"/>
+        <attribute name="link" optional="YES" attributeType="String"/>
+        <attribute name="subscribe" optional="YES" attributeType="String"/>
+        <attribute name="category" optional="YES" attributeType="String"/>
+        <attribute name="modification" optional="YES" attributeType="String"/>
+        <attribute name="coinsAmount" optional="YES" attributeType="Double" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="gems" optional="YES" attributeType="Double" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="stamp" optional="YES" attributeType="String"/>
+    </entity>
+    <entity name="ActivityEntity" representedClassName="ActivityEntity" syncable="YES" codeGenerationType="class">
+        <!-- wk_activities — flux/feed (posts) -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="token" optional="YES" attributeType="String"/>
+        <attribute name="actor" optional="YES" attributeType="String"/>
+        <attribute name="verb" optional="YES" attributeType="String"/>
+        <attribute name="object" optional="YES" attributeType="String"/>
+        <attribute name="objectUrl" optional="YES" attributeType="String"/>
+        <attribute name="cdnThumbnailUrl" optional="YES" attributeType="String"/>
+        <attribute name="cdnContentId" optional="YES" attributeType="String"/>
+        <attribute name="message" optional="YES" attributeType="String"/>
+        <attribute name="likes" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="comment" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="share" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="isLiked" optional="YES" attributeType="String"/>
+        <attribute name="comments" optional="YES" attributeType="String"/>
+        <attribute name="stamp" optional="YES" attributeType="String"/>
+        <attribute name="userId" optional="YES" attributeType="String"/>
+        <attribute name="username" optional="YES" attributeType="String"/>
+        <attribute name="certified" optional="YES" attributeType="String"/>
+        <attribute name="firstname" optional="YES" attributeType="String"/>
+        <attribute name="lastname" optional="YES" attributeType="String"/>
+        <attribute name="profile" optional="YES" attributeType="String"/>
+        <attribute name="location" optional="YES" attributeType="String"/>
+        <attribute name="followers" optional="YES" attributeType="String"/>
+        <attribute name="following" optional="YES" attributeType="String"/>
+        <attribute name="modify" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="origin" optional="YES" attributeType="String"/>
+        <attribute name="isNew" optional="YES" attributeType="String"/>
+        <attribute name="reactionIsSended" optional="YES" attributeType="String"/>
+        <attribute name="status" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+    </entity>
+    <entity name="ReactionEntity" representedClassName="ReactionEntity" syncable="YES" codeGenerationType="class">
+        <!-- wk_reaction -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="fkActivityId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="fkUserId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="verb" optional="YES" attributeType="String"/>
+        <attribute name="object" optional="YES" attributeType="String"/>
+        <attribute name="stamp" optional="YES" attributeType="String"/>
+    </entity>
+    <entity name="CommentEntity" representedClassName="CommentEntity" syncable="YES" codeGenerationType="class">
+        <!-- wk_comments -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="activityId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="actor" optional="YES" attributeType="String"/>
+        <attribute name="verb" optional="YES" attributeType="String"/>
+        <attribute name="object" optional="YES" attributeType="String"/>
+        <attribute name="objectUrl" optional="YES" attributeType="String"/>
+        <attribute name="commentText" optional="YES" attributeType="String"/>
+        <attribute name="likes" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="comment" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="share" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="isLiked" optional="YES" attributeType="String"/>
+        <attribute name="comments" optional="YES" attributeType="String"/>
+        <attribute name="stamp" optional="YES" attributeType="String"/>
+        <attribute name="userId" optional="YES" attributeType="String"/>
+        <attribute name="firstname" optional="YES" attributeType="String"/>
+        <attribute name="lastname" optional="YES" attributeType="String"/>
+        <attribute name="profile" optional="YES" attributeType="String"/>
+        <attribute name="modify" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+    </entity>
+    <entity name="SuggestEntity" representedClassName="SuggestEntity" syncable="YES" codeGenerationType="class">
+        <!-- wk_suggest — suggestions d'amis -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="firstname" optional="YES" attributeType="String"/>
+        <attribute name="lastname" optional="YES" attributeType="String"/>
+        <attribute name="username" optional="YES" attributeType="String"/>
+        <attribute name="profile" optional="YES" attributeType="String"/>
+        <attribute name="certified" optional="YES" attributeType="String"/>
+        <attribute name="location" optional="YES" attributeType="String"/>
+        <attribute name="followed" optional="YES" attributeType="String"/>
+        <attribute name="followers" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="following" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+    </entity>
+    <entity name="MessageEntity" representedClassName="MessageEntity" syncable="YES" codeGenerationType="class">
+        <!-- wk_messages — chat 1:1, table la plus large du schéma -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="messageId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="type" optional="YES" attributeType="String"/>
+        <attribute name="conversationId" optional="YES" attributeType="String"/>
+        <attribute name="usernameFrom" optional="YES" attributeType="String"/>
+        <attribute name="usernameTo" optional="YES" attributeType="String"/>
+        <attribute name="token" optional="YES" attributeType="String"/>
+        <attribute name="groupType" optional="YES" attributeType="String"/>
+        <attribute name="verb" optional="YES" attributeType="String"/>
+        <attribute name="groupName" optional="YES" attributeType="String"/>
+        <attribute name="nikname" optional="YES" attributeType="String"/>
+        <attribute name="username" optional="YES" attributeType="String"/>
+        <attribute name="groupId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="messageDescription" optional="YES" attributeType="String"/>
+        <attribute name="sender" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="receiver" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="senderFcmId" optional="YES" attributeType="String"/>
+        <attribute name="receiverFcmId" optional="YES" attributeType="String"/>
+        <attribute name="message" optional="YES" attributeType="String"/>
+        <attribute name="giftId" optional="YES" attributeType="String"/>
+        <attribute name="comments" optional="YES" attributeType="String"/>
+        <attribute name="object" optional="YES" attributeType="String"/>
+        <attribute name="objectUrl" optional="YES" attributeType="String"/>
+        <attribute name="localFileDirection" optional="YES" attributeType="String"/>
+        <attribute name="thumbnailUri" optional="YES" attributeType="String"/>
+        <attribute name="regroupage" optional="YES" attributeType="String"/>
+        <attribute name="status" optional="YES" attributeType="String"/>
+        <attribute name="vu" optional="YES" attributeType="String"/>
+        <attribute name="profile" optional="YES" attributeType="String"/>
+        <attribute name="isFileExist" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="isFileUploaded" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="isFileDownloaded" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="resource" optional="YES" attributeType="String"/>
+        <attribute name="versionCode" optional="YES" attributeType="Integer 64" defaultValueString="126" usesScalarValueType="YES"/>
+        <attribute name="share" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="isQuoted" optional="YES" attributeType="String"/>
+        <attribute name="quoteMessage" optional="YES" attributeType="String"/>
+        <attribute name="quoteTitle" optional="YES" attributeType="String"/>
+        <attribute name="quoteObject" optional="YES" attributeType="String"/>
+        <attribute name="deliverTime" optional="YES" attributeType="String"/>
+        <attribute name="duration" optional="YES" attributeType="String"/>
+        <attribute name="quoteDuration" optional="YES" attributeType="String"/>
+        <attribute name="height" optional="YES" attributeType="String"/>
+        <attribute name="width" optional="YES" attributeType="String"/>
+        <attribute name="imageByte" optional="YES" attributeType="String"/>
+        <attribute name="stamp" optional="YES" attributeType="String"/>
+    </entity>
+    <entity name="GroupMessageEntity" representedClassName="GroupMessageEntity" syncable="YES" codeGenerationType="class">
+        <!-- wk_gp_messages — chat de groupe -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="messageId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="type" optional="YES" attributeType="String"/>
+        <attribute name="jid" optional="YES" attributeType="String"/>
+        <attribute name="sender" optional="YES" attributeType="String"/>
+        <attribute name="receiver" optional="YES" attributeType="String"/>
+        <attribute name="username" optional="YES" attributeType="String"/>
+        <attribute name="message" optional="YES" attributeType="String"/>
+        <attribute name="object" optional="YES" attributeType="String"/>
+        <attribute name="objectUrl" optional="YES" attributeType="String"/>
+        <attribute name="verb" optional="YES" attributeType="String"/>
+        <attribute name="groupId" optional="YES" attributeType="String"/>
+        <attribute name="profile" optional="YES" attributeType="String"/>
+        <attribute name="share" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="origin" optional="YES" attributeType="String"/>
+        <attribute name="status" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="stamp" optional="YES" attributeType="String"/>
+    </entity>
+    <entity name="GroupMembershipEntity" representedClassName="GroupMembershipEntity" syncable="YES" codeGenerationType="class">
+        <!-- wk_gp_membership -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="groupId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="user" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="username" optional="YES" attributeType="String"/>
+        <attribute name="joined" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="invited" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="inviter" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="joinDate" optional="YES" attributeType="String"/>
+        <attribute name="invitedDate" optional="YES" attributeType="String"/>
+    </entity>
+    <entity name="NotificationEntity" representedClassName="NotificationEntity" syncable="YES" codeGenerationType="class">
+        <!-- wk_noti -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="activityId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="userId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="objectUrl" optional="YES" attributeType="String"/>
+        <attribute name="object" optional="YES" attributeType="String"/>
+        <attribute name="verb" optional="YES" attributeType="String"/>
+        <attribute name="commentText" optional="YES" attributeType="String"/>
+        <attribute name="firstname" optional="YES" attributeType="String"/>
+        <attribute name="lastname" optional="YES" attributeType="String"/>
+        <attribute name="profile" optional="YES" attributeType="String"/>
+        <attribute name="stamp" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="vu" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="reaction" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+    </entity>
+    <entity name="FCMTokenEntity" representedClassName="FCMTokenEntity" syncable="YES" codeGenerationType="class">
+        <!-- wk_fcmId -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="fcmId" optional="YES" attributeType="String"/>
+        <attribute name="status" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+    </entity>
+    <entity name="GroupMemberEntity" representedClassName="GroupMemberEntity" syncable="YES" codeGenerationType="class">
+        <!--
+        wk_users — MALGRÉ SON NOM SQLite, ce n'est PAS le profil utilisateur global (voir
+        AccountEntity ci-dessus pour ça) : c'est le cache local des membres de groupe, alimenté par
+        TransportData.getGroupMemebers()/updateMember() (déjà lu pour le module Réseau). Renommé
+        "GroupMemberEntity" plutôt que "UserEntity" pour éviter la confusion avec AccountEntity —
+        décision documentée dans MIGRATION_PROGRESS.md.
+        -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="userId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="username" optional="YES" attributeType="String"/>
+        <attribute name="nikname" optional="YES" attributeType="String"/>
+        <attribute name="phone" optional="YES" attributeType="String"/>
+        <attribute name="profile" optional="YES" attributeType="String"/>
+        <attribute name="contact" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="groupId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="pageId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="roles" optional="YES" attributeType="String"/>
+    </entity>
+    <entity name="ContactEntity" representedClassName="ContactEntity" syncable="YES" codeGenerationType="class">
+        <!-- wk_contact — répertoire de contacts locaux -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="userId" optional="YES" attributeType="String"/>
+        <attribute name="nikname" optional="YES" attributeType="String"/>
+        <attribute name="username" optional="YES" attributeType="String"/>
+        <attribute name="phone" optional="YES" attributeType="String"/>
+        <attribute name="groupId" optional="YES" attributeType="String"/>
+        <!-- "pageId" est déclaré SANS type dans le SQL Android d'origine (Dbase.java:37, bug/omission
+             confirmé dans le code source) — typé String ici par défaut SQLite (affinité TEXT/NUMERIC
+             dynamique), reproduit tel quel plutôt que "corrigé" en Integer sans certitude. -->
+        <attribute name="pageId" optional="YES" attributeType="String"/>
+        <attribute name="profile" optional="YES" attributeType="String"/>
+        <attribute name="subscribe" optional="YES" attributeType="String"/>
+        <attribute name="stamp" optional="YES" attributeType="String"/>
+    </entity>
+    <entity name="RosterEntity" representedClassName="RosterEntity" syncable="YES" codeGenerationType="class">
+        <!-- wk_roster — liste des conversations (dernière conversation par contact/groupe) -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="conversationId" optional="YES" attributeType="String"/>
+        <attribute name="messageId" optional="YES" attributeType="String"/>
+        <attribute name="userId" optional="YES" attributeType="String"/>
+        <attribute name="token" optional="YES" attributeType="String"/>
+        <attribute name="rosterDescription" optional="YES" attributeType="String"/>
+        <attribute name="groupType" optional="YES" attributeType="String"/>
+        <attribute name="type" optional="YES" attributeType="String"/>
+        <attribute name="groupName" optional="YES" attributeType="String"/>
+        <attribute name="username" optional="YES" attributeType="String"/>
+        <attribute name="nikname" optional="YES" attributeType="String"/>
+        <attribute name="regroupage" optional="YES" attributeType="String"/>
+        <attribute name="groupId" optional="YES" attributeType="String"/>
+        <attribute name="lastMessage" optional="YES" attributeType="String"/>
+        <attribute name="object" optional="YES" attributeType="String"/>
+        <attribute name="verb" optional="YES" attributeType="String"/>
+        <attribute name="unreadCount" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="status" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="lucrative" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="price" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="profile" optional="YES" attributeType="String"/>
+        <attribute name="belongsToCurrentUser" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="stamp" optional="YES" attributeType="String"/>
+        <attribute name="versionCode" optional="YES" attributeType="Integer 64" defaultValueString="126" usesScalarValueType="YES"/>
+    </entity>
+    <entity name="FileTransferEntity" representedClassName="FileTransferEntity" syncable="YES" codeGenerationType="class">
+        <!-- wk_file_transfers -->
+        <attribute name="localId" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="source" optional="YES" attributeType="String"/>
+        <attribute name="token" optional="YES" attributeType="String"/>
+        <attribute name="actor" optional="YES" attributeType="String"/>
+        <attribute name="verb" optional="YES" attributeType="String"/>
+        <attribute name="category" optional="YES" attributeType="String"/>
+        <attribute name="object" optional="YES" attributeType="String"/>
+        <attribute name="objectUrl" optional="YES" attributeType="String"/>
+        <attribute name="filePath" optional="YES" attributeType="String"/>
+        <attribute name="videoDuration" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="width" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="height" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="message" optional="YES" attributeType="String"/>
+        <attribute name="hashtag" optional="YES" attributeType="String"/>
+        <attribute name="cdnContentId" optional="YES" attributeType="String"/>
+        <attribute name="cdnContentUrl" optional="YES" attributeType="String"/>
+        <attribute name="cdnThumbnailUrl" optional="YES" attributeType="String"/>
+        <attribute name="consentAi" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="templateId" optional="YES" attributeType="String"/>
+        <attribute name="soundId" optional="YES" attributeType="String"/>
+        <attribute name="metadata" optional="YES" attributeType="String"/>
+        <attribute name="progress" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="status" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="updatedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+    </entity>
+    <elements>
+        <element name="AccountEntity" positionX="-63" positionY="-18" width="128" height="30"/>
+        <element name="ActivityEntity" positionX="-54" positionY="0" width="128" height="30"/>
+        <element name="ReactionEntity" positionX="-45" positionY="18" width="128" height="30"/>
+        <element name="CommentEntity" positionX="-36" positionY="36" width="128" height="30"/>
+        <element name="SuggestEntity" positionX="-27" positionY="54" width="128" height="30"/>
+        <element name="MessageEntity" positionX="-18" positionY="72" width="128" height="30"/>
+        <element name="GroupMessageEntity" positionX="-9" positionY="90" width="128" height="30"/>
+        <element name="GroupMembershipEntity" positionX="0" positionY="108" width="128" height="30"/>
+        <element name="NotificationEntity" positionX="9" positionY="126" width="128" height="30"/>
+        <element name="FCMTokenEntity" positionX="18" positionY="144" width="128" height="30"/>
+        <element name="GroupMemberEntity" positionX="27" positionY="162" width="128" height="30"/>
+        <element name="ContactEntity" positionX="36" positionY="180" width="128" height="30"/>
+        <element name="RosterEntity" positionX="45" positionY="198" width="128" height="30"/>
+        <element name="FileTransferEntity" positionX="54" positionY="216" width="128" height="30"/>
+    </elements>
+</model>

@@ -221,6 +221,13 @@ au fil de l'eau.
 - 2026-08-10 : Une commande `mkdir` initiale a été rejetée par l'environnement (prompt de permission). Résolue en relançant la même commande — aucun blocage réel, juste une confirmation d'outil à repasser.
 - 2026-08-10 : `JSONValue.rawData` référencé (`AuthEndpoints.decodeUser`, module 1) mais jamais défini — trouvé en écrivant `FeedRepository.fetchTimeline` (module 6). Résolu en ajoutant la propriété manquante à `JSONValue.swift` (voir décision correspondante ci-dessus). Ce n'est pas une erreur d'outil comme la précédente : c'est un vrai bug de code qui n'aurait été détecté qu'à la compilation sans cette relecture croisée.
 - 2026-08-10 : `.gitignore` était encodé en UTF-16 avec BOM plutôt qu'en texte brut — confirmé avec `git check-ignore -v` que ses règles n'étaient jamais appliquées (`Resources/GoogleService-Info.plist` et `plist_base64.txt` tous deux INTROUVABLES par git avant correction, alors qu'ils auraient dû matcher). Résolu en réécrivant le fichier en ASCII pur (le premier essai en français avec accents a reproduit le même problème d'encodage — contrainte de cet environnement Windows, pas corrigée à la source, contournée en évitant les caractères non-ASCII dans ce fichier précis). Vérifié après coup que `git check-ignore -v` reconnaît maintenant bien les deux fichiers.
+- **2026-08-10 : Premier build Codemagic réel du Checkpoint 1 — ÉCHEC à l'étape de build (pas à la résolution SPM, qui a réussi).** Message d'erreur exact, apparu deux fois :
+  ```
+  /Users/builder/clone/TiinverSwift.xcodeproj: error: Missing package product 'FirebaseCore' (in target 'TiinverSwift' from project 'TiinverSwift')
+  ```
+  **Cause identifiée (vérifiée contre le vrai `Package.swift` de `firebase-ios-sdk`, pas supposée) :** `project.yml` déclarait `Firebase: from: 10.29.0` et une dépendance `product: FirebaseCore`. Or `FirebaseCore` n'est PAS exposé comme "product" SPM (`.library(name: "FirebaseCore", ...)`) dans `Package.swift` à la version 10.29.0 — c'est uniquement une target interne (`.target(name: "FirebaseCore", ...)`, ligne 202 du fichier réel à ce tag), consommée en interne par les autres SDKs (`FirebaseAuth`, `FirebaseMessaging`, etc.) mais non "publiée" comme dépendance directement adressable depuis un projet consommateur. Vérifié en récupérant et en lisant directement `https://raw.githubusercontent.com/firebase/firebase-ios-sdk/10.29.0/Package.swift` : la liste `products:` (lignes 27-144) ne contient aucune entrée `FirebaseCore`. Confirmé par ailleurs (bisection sur plusieurs tags) que ce product n'a été ajouté à `firebase-ios-sdk` qu'à partir de la branche 11.3.x (absent en 11.0.0/11.1.0, présent dès 11.3.0) — la résolution SPM avait donc réussi (le package et sa version existent bien), mais le linkage du product demandé échouait au moment du build, d'où l'erreur qui n'apparaît qu'à cette étape et pas à la résolution des dépendances.
+  **Correction appliquée :** version du package `Firebase` relevée dans `project.yml` de `from: 10.29.0` à `from: 11.15.0` (version où `FirebaseCore` est confirmé exposé comme product, vérifié directement dans son `Package.swift` réel à ce tag — `.iOS(.v12)` minimum, compatible avec notre `deploymentTarget.iOS = "16.0"`). Vérifié à ce tag que TOUS les products Firebase actuellement déclarés dans `project.yml` (`FirebaseCore`, `FirebaseAuth`, `FirebaseMessaging`, `FirebaseRemoteConfig`, `FirebaseAnalytics`) existent bien sous ces noms EXACTS dans `products:` — aucun autre renommage nécessaire. Recoupé aussi avec le code Swift déjà écrit (`grep "import Firebase" sur Sources/`) : `FirebaseCore` (`AppDelegate.swift`), `FirebaseMessaging` (`AppDelegate.swift`, `PushTokenRegistrar.swift`), `FirebaseAuth` (`GoogleSignInCoordinator.swift`), `FirebaseRemoteConfig` (`FirebaseConfigManager.swift`) — les 4 imports utilisés correspondent bien à des products désormais valides à la version choisie. `FirebaseAnalytics` reste déclaré sans être importé nulle part dans le code : normal, ce product s'active par simple présence du lien (commentaire explicite en ce sens dans le `Package.swift` de Firebase), pas une anomalie.
+  **⚠️ NON VÉRIFIÉ, à confirmer au prochain build réel :** cette correction n'a pas encore été testée par une compilation macOS réelle — seule une lecture attentive du `Package.swift` réel de Firebase à plusieurs tags a permis de la formuler avec certitude (pas une supposition). Le build s'arrêtant à la première erreur de liaison, il n'est pas exclu qu'une AUTRE dépendance (Firebase ou non) échoue de la même façon une fois celle-ci corrigée — le Checkpoint 1 reste NON VALIDÉ tant qu'un nouveau build complet n'a pas été relancé et n'a montré aucune erreur.
 
 ## Points bloquants actuels
 
@@ -307,12 +314,17 @@ tableau "Détail par module") :**
 **3. Versions de packages SPM non vérifiées** (`project.yml`, choisies à la date du rapport de
 faisabilité sans accès réseau pour vérifier leur existence réelle) : `Alamofire` 5.9+,
 `Socket.IO-Client-Swift` 16.1+, `MetalPetal` 1.10+, `Gifu` 3.4+, `GoogleMobileAds` 11.0+,
-`GoogleSignIn-iOS` 7.1+, `facebook-ios-sdk` 17.0+, `WebRTC` (stasel/WebRTC) 125.0+,
-`firebase-ios-sdk` 10.29+ — la résolution de dépendances SPM au premier `xcodegen generate` +
-ouverture Xcode est le premier signal si une version n'existe pas/plus.
+`GoogleSignIn-iOS` 7.1+, `facebook-ios-sdk` 17.0+, `WebRTC` (stasel/WebRTC) 125.0+ — la résolution
+de dépendances SPM au premier `xcodegen generate` + ouverture Xcode est le premier signal si une
+version n'existe pas/plus. `firebase-ios-sdk` relevé à 11.15+ (voir "Erreurs rencontrées et
+résolues" — `10.29+` causait `Missing package product 'FirebaseCore'` au build, cette fois
+vérifié contre le `Package.swift` réel du SDK, pas juste une supposition de version disponible).
 
 **4. Erreurs de compilation déjà connues et corrigées PENDANT le portage** (pour référence, éviter
 de les re-signaler comme nouvelles) : `JSONValue.rawData` manquant (corrigé, voir journal).
+`Missing package product 'FirebaseCore'` au premier build Codemagic (corrigé en relevant
+`firebase-ios-sdk` à 11.15+, voir "Erreurs rencontrées et résolues" — CORRECTION NON ENCORE
+VÉRIFIÉE PAR UN BUILD RÉEL).
 
 **5. Ce qui N'A PAS besoin d'être vérifié en priorité** (portées réduites déjà assumées et
 documentées, pas des bugs à chercher) : absence d'interactions like/commentaire/partage sur le

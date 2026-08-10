@@ -34,7 +34,7 @@ packages:
     from: 125.0.0
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk.git
-    from: 10.29.0
+    from: 11.15.0
 
 targets:
   TiinverSwift:

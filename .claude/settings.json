@@ -13,7 +13,9 @@
       "Read(//c/Users/helen/AndroidStudioProjects/tiinver/app/src/main/java/com/tiinver/back_sync/**)",
       "Read(//c//**)",
       "Read(//c/Users/helen/Downloads/**)",
-      "Bash(cp \"C:/Users/helen/Downloads/GoogleService-Info.plist\" \"C:/Users/helen/iOSProjects/TiinverSwift/Resources/GoogleService-Info.plist\" && ls -la \"C:/Users/helen/iOSProjects/TiinverSwift/Resources/\")"
+      "Bash(cp \"C:/Users/helen/Downloads/GoogleService-Info.plist\" \"C:/Users/helen/iOSProjects/TiinverSwift/Resources/GoogleService-Info.plist\" && ls -la \"C:/Users/helen/iOSProjects/TiinverSwift/Resources/\")",
+      "Bash(curl -s https://raw.githubusercontent.com/firebase/firebase-ios-sdk/main/Package.swift -o /c/Users/helen/AppData/Local/Temp/claude/c--Users-helen-iOSProjects-TiinverSwift/9c72a9e3-f626-4f1e-b8ee-04dc02002f86/scratchpad/fb_package_main.swift)",
+      "Read(//c/Users/helen/AppData/Local/Temp/claude/c--Users-helen-iOSProjects-TiinverSwift/9c72a9e3-f626-4f1e-b8ee-04dc02002f86/scratchpad/**)"
     ],
     "additionalDirectories": [
       "C:\\Users\\helen\\Downloads"

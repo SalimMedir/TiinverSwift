@@ -22,7 +22,7 @@ extension NotiCoreDataStack: CoreDataContextProviding {}
 /// `UNREAD_MESSAGE_COUNT`). Pour toutes les autres tables, un seul type générique suffit plutôt
 /// que 14 repositories quasi identiques — décision prise après avoir vérifié que StubProvider
 /// lui-même ne fait rien de plus que ce dispatch générique pour elles (voir StubProvider.java).
-final class CoreDataRepository<Entity: CoreDataFetchable> {
+final class CoreDataRepository<Entity: CoreDataFetchable> where Entity.FetchResult == Entity {
     private let stack: CoreDataContextProviding
 
     init(stack: CoreDataContextProviding = CoreDataStack.shared) {

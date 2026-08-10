@@ -1,0 +1,61 @@
+name: iOS build (compilation seule — Checkpoint)
+
+# Déclenchement MANUEL uniquement — pas à chaque push. Ce workflow sert à valider le
+# Checkpoint 1 (voir MIGRATION_PROGRESS.md, "Règle de compilation par checkpoint") : vérifier
+# que les fichiers Swift écrits sur cette machine Windows (jamais compilés localement, faute
+# de macOS/Xcode) compilent réellement. Pas de signature, pas de déploiement — équivalent
+# fonctionnel de codemagic.yaml (à la racine), lequel des deux utiliser dépend des crédits CI
+# disponibles côté utilisateur (voir MIGRATION_PROGRESS.md).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: xcodegen generate + build simulateur (sans signature)
+    runs-on: macos-14
+    env:
+      XCODE_PROJECT: TiinverSwift.xcodeproj
+      XCODE_SCHEME: TiinverSwift
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer XcodeGen
+        run: brew list xcodegen &>/dev/null || brew install xcodegen
+
+      - name: Décoder GoogleService-Info.plist depuis le secret GitHub
+        # GOOGLE_SERVICE_INFO_PLIST_BASE64 à créer dans Settings > Secrets and variables >
+        # Actions > New repository secret — contenu = `Resources/GoogleService-Info.plist`
+        # encodé en base64 (ex. `base64 -i Resources/GoogleService-Info.plist | pbcopy` sur
+        # macOS, ou `certutil -encode Resources\GoogleService-Info.plist -` sur Windows en
+        # retirant les lignes BEGIN/END CERTIFICATE). Le fichier réel n'est PAS committé
+        # (voir .gitignore) — c'est un secret projet Firebase.
+        env:
+          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          if [ -z "$GOOGLE_SERVICE_INFO_PLIST_BASE64" ]; then
+            echo "ERREUR : le secret GOOGLE_SERVICE_INFO_PLIST_BASE64 n'est pas défini pour ce dépôt."
+            echo "À configurer dans Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          mkdir -p Resources
+          echo "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > Resources/GoogleService-Info.plist
+          plutil -lint Resources/GoogleService-Info.plist
+
+      - name: xcodegen generate
+        run: xcodegen generate
+
+      - name: Résoudre les dépendances Swift Package Manager
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME"
+
+      - name: Build simulateur — vérification de compilation uniquement, sans signature
+        run: |
+          xcodebuild build \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO

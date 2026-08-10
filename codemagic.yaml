@@ -1,0 +1,60 @@
+definitions:
+  environment_vars: &checkpoint_env
+    vars:
+      XCODE_PROJECT: "TiinverSwift.xcodeproj"
+      XCODE_SCHEME: "TiinverSwift"
+    xcode: latest
+
+workflows:
+  checkpoint-build:
+    name: Checkpoint — compilation seule (pas de signature, pas de déploiement)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      <<: *checkpoint_env
+      groups:
+        # Groupe de variables d'environnement à créer dans Codemagic (Team settings →
+        # Environment variables) : GOOGLE_SERVICE_INFO_PLIST_BASE64 doit y être défini,
+        # marqué "Secure", et provient de `certutil -encode Resources/GoogleService-Info.plist -`
+        # (ou `base64 -i Resources/GoogleService-Info.plist`) — voir MIGRATION_PROGRESS.md,
+        # Checkpoint 1. Le fichier réel n'est PAS committé (voir .gitignore).
+        - firebase_ios_secrets
+    scripts:
+      - name: Installer XcodeGen
+        script: |
+          brew list xcodegen &>/dev/null || brew install xcodegen
+
+      - name: Décoder GoogleService-Info.plist depuis le secret d'environnement
+        script: |
+          if [ -z "${GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" ]; then
+            echo "ERREUR : la variable d'environnement GOOGLE_SERVICE_INFO_PLIST_BASE64 n'est pas définie."
+            echo "À configurer dans Codemagic : Team settings > Environment variables > groupe 'firebase_ios_secrets'."
+            exit 1
+          fi
+          mkdir -p Resources
+          echo "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > Resources/GoogleService-Info.plist
+          plutil -lint Resources/GoogleService-Info.plist
+
+      - name: xcodegen generate
+        script: |
+          xcodegen generate
+
+      - name: Résoudre les dépendances Swift Package Manager
+        script: |
+          xcodebuild -resolvePackageDependencies \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME"
+
+      - name: Build simulateur — vérification de compilation uniquement, sans signature
+        script: |
+          xcodebuild build \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO
+
+    # Volontairement AUCUNE section `publishing:` ni `artifacts:` — ce workflow sert uniquement
+    # à valider le Checkpoint 1 (MIGRATION_PROGRESS.md) : "les ~50 fichiers Swift écrits
+    # compilent-ils réellement ?". Pas de signature, pas d'archive, pas d'envoi TestFlight/App
+    # Store Connect à ce stade du portage — voir la "Règle de compilation par checkpoint" dans
+    # MIGRATION_PROGRESS.md pour la suite (Checkpoint 2 après les modules 7-12, etc.).

@@ -196,7 +196,9 @@ final class AnimemesGestureController {
         obj.transforms[obj.transforms.count - 1] = tfm
 
         guard let bmp = obj.currentBitmap else { return }
-        let localBound = CGRect(x: obj.offsetX, y: obj.offsetY, width: CGFloat(bmp.width), height: CGFloat(bmp.height))
+        let localBound = CGRect(
+            x: CGFloat(obj.offsetX), y: CGFloat(obj.offsetY),
+            width: CGFloat(bmp.width), height: CGFloat(bmp.height))
         obj.bound = localBound.applying(scaled)
     }
 

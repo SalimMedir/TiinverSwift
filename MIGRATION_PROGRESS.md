@@ -1,6 +1,6 @@
 # Suivi de migration Tiinver Android → iOS Swift
 
-Dernière mise à jour : 2026-08-11 08:00
+Dernière mise à jour : 2026-08-11 09:00
 Statut global : CHECKPOINT 1 VALIDÉ — build Codemagic réussi (2026-08-10, build
 #6a7a2aabd5ae67eb2a755de2). MODULE 7 (Caméra) FERMÉ (2026-08-10). MODULE 8 (Moteur Animems)
 FERMÉ (2026-08-11) — chemin bout-en-bout écrit : modèle (`core/`+`model/`) → gestes tactiles
@@ -8,15 +8,16 @@ FERMÉ (2026-08-11) — chemin bout-en-bout écrit : modèle (`core/`+`model/`) 
 export (`AnimemesExporter.swift`, `AVAssetWriter`) → fusion GIF (`AnimemesRecompose.swift`) →
 logique d'état des ~14 vues custom d'édition (timeline, panneaux masque/forme/calque/texte,
 dessin animé, zoom canvas). PATH/LINE/CLIP/ERASE restent différés (liés au geste tactile,
-maintenant conçu mais pas branché à ces 4 types). **Checkpoint 2 (7+8) PAS ENCORE VALIDÉ** — 2
-builds Codemagic jusqu'ici : le 1er a échoué sur l'infrastructure CI (Metal Toolchain manquant,
-corrigé) ; le 2e a confirmé le Metal Toolchain opérationnel et les ~22 shaders caméra compilant
-SANS ERREUR, mais a révélé UNE erreur de compilation Swift réelle (`MaskPreviewEditorPanelState`
-— struct auto-référent, corrigée) — voir "Erreurs rencontrées et résolues". **Un nouveau build est
-nécessaire pour confirmer que c'était la seule erreur restante.** ARRÊT TOUJOURS EN VIGUEUR — NE
-PAS commencer le module 9 avant confirmation de build réussi ou nouvelle liste d'erreurs à
-corriger. Voir "Points à vérifier en priorité au prochain build — Module 8" et "Prochaine action à
-faire".
+maintenant conçu mais pas branché à ces 4 types). **Checkpoint 2 (7+8) PAS ENCORE VALIDÉ** — 3
+builds Codemagic jusqu'ici, chacun révélant UN problème distinct puis confirmant sa correction au
+build suivant : (1) infrastructure CI (Metal Toolchain manquant, corrigé) ; (2) `Mask
+PreviewEditorPanelState` struct auto-référent (corrigé, confirmé résolu au build 3) ; (3)
+`AnimemesGestureController.swift:199` conversion `Int`→`CGFloat` manquante sur un `CGRect`
+(corrigée) — voir "Erreurs rencontrées et résolues" pour le détail de chacune. Les ~22 shaders
+caméra ont compilé SANS ERREUR dès le build 2. **Un nouveau build est nécessaire pour confirmer
+que l'erreur (3) était la dernière.** ARRÊT TOUJOURS EN VIGUEUR — NE PAS commencer le module 9
+avant confirmation de build réussi ou nouvelle liste d'erreurs à corriger. Voir "Points à vérifier
+en priorité au prochain build — Module 8" et "Prochaine action à faire".
 
 ## ⚠️ Contrainte d'environnement (lire avant toute reprise de session)
 
@@ -722,7 +723,16 @@ au fil de l'eau.
   **Cause :** `MaskPreviewEditorPanelState` est un `struct` (valeur) contenant une propriété stockée de son PROPRE type (`original: MaskPreviewEditorPanelState?`, snapshot pour `onCancelClicked`) — un `struct` Swift doit avoir une taille en mémoire connue et fixe à la compilation, ce qu'une propriété auto-référente rend impossible (contrairement à une classe, où seul un pointeur de taille fixe serait stocké). Cette limitation n'existe pas côté Java/Android (`original*` y sont des champs primitifs indépendants, jamais un objet `MaskPreviewEditorPanel` complet imbriqué) — le premier jet Swift avait introduit cette auto-référence en modélisant `original` comme "tout l'état" plutôt que comme les seules valeurs réellement restaurées.
   **Correction appliquée (option 1 du choix proposé, la plus fidèle au comportement Android) :** extraction d'un type `MaskPreviewEditorPanelState.Snapshot` dédié (les 8 champs comparables/restaurables — `maskType`/`inverted`/`opacity`/`feather`/`offsetX`/`offsetY`/`scale`/`mirrorGap` — SANS `original` lui-même), remplaçant `original: MaskPreviewEditorPanelState?` par `original: Snapshot?`. `cancel()` (port de `onCancelClicked`) réassigne maintenant les 8 champs individuellement depuis `original` plutôt que `self = original` — effet de bord positif : le hack de sauvegarde/restauration de `self.original` autour de l'ancien `self = original` (nécessaire uniquement à cause de l'auto-référence) disparaît, `original` n'étant plus jamais écrasé par `cancel()`. Pas d'alternative "passer en classe" retenue : rien dans `MaskPreviewEditorPanel.java` ne dépend d'une identité de référence pour ce panneau (contrairement à `AnimationObjectData`, muté en place et partagé par de nombreux appelants) — un struct reste fidèle et plus simple.
   **Vérifié par grep** qu'aucun autre fichier Swift n'utilise `MaskPreviewEditorPanelState` au-delà de références en commentaire (`ShapePreviewEditorPanelState.swift`, `MaskEditController.swift`) — aucune signature publique consommée ailleurs, correction locale au fichier uniquement.
-  **PAS ENCORE VÉRIFIÉE PAR BUILD RÉEL** — nécessite un nouveau build pour confirmer que c'était bien la SEULE erreur restante sur l'ensemble modules 1-8.
+  **✅ VÉRIFIÉE PAR BUILD RÉEL (2026-08-11) :** le build Codemagic suivant confirme que cette correction est passée — l'erreur `MaskPreviewEditorPanelState` n'apparaît plus, remplacée par une nouvelle erreur distincte (entrée suivante).
+- **2026-08-11 : Troisième build Codemagic couvrant les modules 7+8 — la correction `MaskPreviewEditorPanelState` confirmée résolue, UNE NOUVELLE erreur de compilation Swift révélée.** Message d'erreur exact :
+  ```
+  /Users/builder/clone/Sources/TiinverSwift/Animems/AnimemesGestureController.swift:199:72: error: cannot convert value of type 'CGFloat' to expected argument type 'Int'
+  /Users/builder/clone/Sources/TiinverSwift/Animems/AnimemesGestureController.swift:199:100: error: cannot convert value of type 'CGFloat' to expected argument type 'Int'
+  ```
+  **Cause :** dans `scale(factor:focus:objectIndex:composer:)` (port de `safePostScale`), la ligne construisait `CGRect(x: obj.offsetX, y: obj.offsetY, width: CGFloat(bmp.width), height: CGFloat(bmp.height))` — `AnimationObjectData.offsetX`/`.offsetY` sont des `Int` (fidèle à `int offsetX`/`int offsetY` côté `AnimationObjectData.java`, décision déjà actée et documentée au portage de ce fichier), mais `CGRect.init(x:y:width:height:)` n'accepte QUE des `CGFloat` pour ses 4 paramètres — il manquait un `CGFloat(...)` autour de `obj.offsetX`/`obj.offsetY`. **Note sur les colonnes rapportées par le compilateur (72/100, qui pointent vers `width:`/`height:` et non vers `x:`/`y:` où se trouve le vrai problème)** : comportement de diagnostic Swift connu — face à un unique candidat d'initialiseur avec DEUX arguments mal typés simultanément (`x`/`y`), le solveur de contraintes du compilateur peut mal attribuer l'échec de résolution aux arguments syntaxiquement voisins plutôt qu'aux véritables coupables ; vérifié en confirmant que `width`/`height` étaient déjà correctement enveloppés en `CGFloat(...)`, seuls `x`/`y` (accès direct à des `Int`) manquaient la conversion. Ce même motif `CGFloat(obj.offsetX)`/`CGFloat(obj.offsetY)` était déjà utilisé correctement dans `AnimemesRecompose.swift` (`computeBounds`, écrit à la même session) — bug local à ce seul site d'appel, pas une erreur de conception répétée.
+  **Correction appliquée :** `CGRect(x: CGFloat(obj.offsetX), y: CGFloat(obj.offsetY), width: CGFloat(bmp.width), height: CGFloat(bmp.height))`. Pas de changement de type à la source (`offsetX`/`offsetY` restent `Int`, fidèles à Android) — c'est bien une coordonnée à convertir au point d'usage, pas un index/compteur mal typé en amont.
+  **Vérifié par grep** qu'aucune autre occurrence de ce motif (`CGRect(x: obj.offsetX...)` ou équivalent) n'existe ailleurs dans `Animems/`, et que le reste du fichier `AnimemesGestureController.swift` n'a pas d'autre usage direct non converti de `offsetX`/`offsetY`.
+  **PAS ENCORE VÉRIFIÉE PAR BUILD RÉEL** — nécessite un nouveau build pour confirmer que c'était la seule erreur restante sur l'ensemble modules 1-8.
 
 ## Points bloquants actuels
 

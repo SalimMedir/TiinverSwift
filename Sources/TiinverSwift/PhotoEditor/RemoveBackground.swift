@@ -151,7 +151,11 @@ enum RemoveBackground {
             }
         }
 
-        return image(fromRGBAPixels: pixels, width: w, height: h)
+        // `Self.` requis : le paramètre `image: CGImage` de cette fonction masque le nom de la
+        // méthode statique `image(fromRGBAPixels:width:height:)` dans cette portée (Checkpoint 3 —
+        // "cannot call value of non-function type 'CGImage'", l'appel sans préfixe résolvait vers
+        // le paramètre local, pas la méthode).
+        return Self.image(fromRGBAPixels: pixels, width: w, height: h)
     }
 
     // MARK: - Helpers pixels bruts

@@ -1,20 +1,22 @@
 # Suivi de migration Tiinver Android → iOS Swift
 
-Dernière mise à jour : 2026-08-11 07:00
+Dernière mise à jour : 2026-08-11 08:00
 Statut global : CHECKPOINT 1 VALIDÉ — build Codemagic réussi (2026-08-10, build
-#6a7a2aabd5ae67eb2a755de2). MODULE 7 (Caméra) FERMÉ (2026-08-10). **MODULE 8 (Moteur Animems)
-FERMÉ (2026-08-11)** — chemin bout-en-bout écrit : modèle (`core/`+`model/`) → gestes tactiles
+#6a7a2aabd5ae67eb2a755de2). MODULE 7 (Caméra) FERMÉ (2026-08-10). MODULE 8 (Moteur Animems)
+FERMÉ (2026-08-11) — chemin bout-en-bout écrit : modèle (`core/`+`model/`) → gestes tactiles
 (`AnimemesGestureController.swift`) → rendu (`LayerRenderer.swift`, BITMAP/SHAPE/TEXT/STICKER) →
 export (`AnimemesExporter.swift`, `AVAssetWriter`) → fusion GIF (`AnimemesRecompose.swift`) →
 logique d'état des ~14 vues custom d'édition (timeline, panneaux masque/forme/calque/texte,
 dessin animé, zoom canvas). PATH/LINE/CLIP/ERASE restent différés (liés au geste tactile,
-maintenant conçu mais pas branché à ces 4 types). **Premier build Codemagic couvrant 7+8 ÉCHOUÉ
-(2026-08-11) sur un problème d'INFRASTRUCTURE CI (Metal Toolchain manquant, PAS une erreur de
-code Swift/Metal) — corrigé dans `codemagic.yaml`/`ios-build.yml`, voir "Erreurs rencontrées et
-résolues". Le code lui-même (modules 1-8) reste NON VÉRIFIÉ PAR COMPILATION RÉELLE.** ARRÊT
-TOUJOURS EN VIGUEUR — NE PAS commencer le module 9 avant confirmation de build réussi ou liste
-d'erreurs à corriger. Voir "Points à vérifier en priorité au prochain build — Module 8" et
-"Prochaine action à faire".
+maintenant conçu mais pas branché à ces 4 types). **Checkpoint 2 (7+8) PAS ENCORE VALIDÉ** — 2
+builds Codemagic jusqu'ici : le 1er a échoué sur l'infrastructure CI (Metal Toolchain manquant,
+corrigé) ; le 2e a confirmé le Metal Toolchain opérationnel et les ~22 shaders caméra compilant
+SANS ERREUR, mais a révélé UNE erreur de compilation Swift réelle (`MaskPreviewEditorPanelState`
+— struct auto-référent, corrigée) — voir "Erreurs rencontrées et résolues". **Un nouveau build est
+nécessaire pour confirmer que c'était la seule erreur restante.** ARRÊT TOUJOURS EN VIGUEUR — NE
+PAS commencer le module 9 avant confirmation de build réussi ou nouvelle liste d'erreurs à
+corriger. Voir "Points à vérifier en priorité au prochain build — Module 8" et "Prochaine action à
+faire".
 
 ## ⚠️ Contrainte d'environnement (lire avant toute reprise de session)
 
@@ -712,6 +714,15 @@ au fil de l'eau.
   **Cause : composant Xcode manquant sur la machine de build CI, pas un problème dans le code écrit.** Depuis Xcode 16, le compilateur `metal` (nécessaire pour compiler `Camera/Filters/TiinverCameraShaders.metal`, module 7) n'est plus embarqué automatiquement dans l'installation Xcode de base — c'est un composant téléchargeable séparément (`MetalToolchain`), absent par défaut sur les images CI qui n'en ont pas explicitement besoin. Le build a échoué à l'étape de compilation du `.metal` AVANT même de tenter de compiler le reste du code Swift — **aucune information sur la validité réelle des ~22 filtres GPU du module 7 ni du reste du code (modules 1-8) n'a donc été obtenue par ce build**, ni positive ni négative.
   **Correction appliquée :** ajout d'une étape "Install Metal Toolchain" (`xcodebuild -downloadComponent MetalToolchain`) dans `codemagic.yaml` (workflow `checkpoint-build`) ET `.github/workflows/ios-build.yml`, placée après `xcodegen generate` et avant "Résoudre les dépendances Swift Package Manager"/"Build simulateur" dans les deux fichiers (le composant doit être présent avant que `xcodebuild build` tente d'invoquer `metal`).
   **PAS ENCORE VÉRIFIÉE PAR BUILD RÉEL** — nécessite un nouveau build Codemagic/GitHub Actions pour confirmer que le téléchargement du composant réussit ET que la compilation Swift/Metal proprement dite passe derrière. Les ~22 filtres GPU du module 7 (`TiinverCameraFilters.swift`/`TiinverCameraShaders.metal`) restent donc le point de risque de compilation le plus élevé non vérifié de tout le portage, exactement comme avant ce build (voir "Points à ne pas oublier" plus bas) — cette correction lève un blocage d'infrastructure CI, elle ne dit rien sur la validité du code lui-même.
+- **2026-08-11 : Deuxième build Codemagic couvrant les modules 7+8 (après correction Metal Toolchain ci-dessus) — Metal Toolchain confirmé opérationnel, UNE SEULE erreur de compilation Swift réelle sur tout le reste du code testé.** Bonne nouvelle à documenter explicitement : **les ~22 shaders GPU du module 7 (`TiinverCameraShaders.metal`) ont compilé SANS ERREUR** — c'était le point de risque de compilation le plus élevé identifié dans "Points à ne pas oublier"/"Points à vérifier en priorité", maintenant levé. Message d'erreur exact de l'unique échec :
+  ```
+  /Users/builder/clone/Sources/TiinverSwift/Animems/MaskPreviewEditorPanelState.swift:34:22: error: value type 'MaskPreviewEditorPanelState' cannot have a stored property that recursively contains it
+      private(set) var original: MaskPreviewEditorPanelState?
+  ```
+  **Cause :** `MaskPreviewEditorPanelState` est un `struct` (valeur) contenant une propriété stockée de son PROPRE type (`original: MaskPreviewEditorPanelState?`, snapshot pour `onCancelClicked`) — un `struct` Swift doit avoir une taille en mémoire connue et fixe à la compilation, ce qu'une propriété auto-référente rend impossible (contrairement à une classe, où seul un pointeur de taille fixe serait stocké). Cette limitation n'existe pas côté Java/Android (`original*` y sont des champs primitifs indépendants, jamais un objet `MaskPreviewEditorPanel` complet imbriqué) — le premier jet Swift avait introduit cette auto-référence en modélisant `original` comme "tout l'état" plutôt que comme les seules valeurs réellement restaurées.
+  **Correction appliquée (option 1 du choix proposé, la plus fidèle au comportement Android) :** extraction d'un type `MaskPreviewEditorPanelState.Snapshot` dédié (les 8 champs comparables/restaurables — `maskType`/`inverted`/`opacity`/`feather`/`offsetX`/`offsetY`/`scale`/`mirrorGap` — SANS `original` lui-même), remplaçant `original: MaskPreviewEditorPanelState?` par `original: Snapshot?`. `cancel()` (port de `onCancelClicked`) réassigne maintenant les 8 champs individuellement depuis `original` plutôt que `self = original` — effet de bord positif : le hack de sauvegarde/restauration de `self.original` autour de l'ancien `self = original` (nécessaire uniquement à cause de l'auto-référence) disparaît, `original` n'étant plus jamais écrasé par `cancel()`. Pas d'alternative "passer en classe" retenue : rien dans `MaskPreviewEditorPanel.java` ne dépend d'une identité de référence pour ce panneau (contrairement à `AnimationObjectData`, muté en place et partagé par de nombreux appelants) — un struct reste fidèle et plus simple.
+  **Vérifié par grep** qu'aucun autre fichier Swift n'utilise `MaskPreviewEditorPanelState` au-delà de références en commentaire (`ShapePreviewEditorPanelState.swift`, `MaskEditController.swift`) — aucune signature publique consommée ailleurs, correction locale au fichier uniquement.
+  **PAS ENCORE VÉRIFIÉE PAR BUILD RÉEL** — nécessite un nouveau build pour confirmer que c'était bien la SEULE erreur restante sur l'ensemble modules 1-8.
 
 ## Points bloquants actuels
 

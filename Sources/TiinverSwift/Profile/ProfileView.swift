@@ -1,82 +1,178 @@
 import SwiftUI
 
-/// Port PARTIEL de `uploadPerfilPhoto/AddPerfilFoto.java` (1164 lignes) — remplace le placeholder
-/// `sheet` "Profil" de `HomeShellView.swift`.
-///
-/// **Portée volontairement réduite**, comme pour `Feed/FeedView.swift` (module 6) et
-/// `Notifications/NotificationsListView.swift` (module 5) : `AddPerfilFoto.java` est en réalité
-/// l'écran "Profil / Réglages" complet de l'app (photo de profil, grille de publications,
-/// followers/following, portefeuille, monétisation) — or "Profil / Réglages" est le MODULE 17 de
-/// l'ordre de portage, pas un sujet du module 5 (UI Shell). Ce fichier fournit donc un écran de
-/// profil minimal mais RÉEL (pas un simple texte "pas encore porté"), affichant les informations
-/// déjà disponibles localement (`UserSession`/`AccountEntity`, modules 1-2) — la grille de
-/// publications (`ProfileAdapter2`), l'upload de photo, le portefeuille (`WalletActivity`, module
-/// 15), la monétisation (`MonetizationActivity`, pas lu) et l'édition (`EditProfile.java`, pas lu)
-/// sont explicitement différés au module 17.
+/// Port consolidé de `UserProfile.java` (1198, sections chrome Android non pertinentes ignorées —
+/// immersion plein écran, gestion manuelle barre de statut) + `AddPerfilFoto.java` (1164, sections
+/// upload photo NON portées, voir avertissement `ProfileRepository.uploadProfilePicture`) — voir
+/// `ProfileViewModel.swift` pour la justification de la fusion en un seul écran.
 struct ProfileView: View {
-    @State private var account: AccountEntity?
+    @StateObject private var viewModel: ProfileViewModel
+    @State private var showBlockConfirm = false
+    @State private var showEditProfile = false
+    @State private var showReport = false
+
+    private let columns = [GridItem(.flexible(), spacing: 2), GridItem(.flexible(), spacing: 2), GridItem(.flexible(), spacing: 2)]
+
+    init(userId: String, isCurrentUser: Bool) {
+        _viewModel = StateObject(wrappedValue: ProfileViewModel(userId: userId, isCurrentUser: isCurrentUser))
+    }
+
+    /// Port du point d'entrée `navigation_profile` (`HomeShellView`, bouton barre du haut) —
+    /// lance `AddPerfilFoto` (SON PROPRE profil) côté Android, jamais `UserProfile` (profil
+    /// d'autrui) depuis ce bouton précis.
+    init() {
+        self.init(userId: UserSession.shared.myId ?? "", isCurrentUser: true)
+    }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    AsyncImage(url: (account?.profile ?? UserSession.shared.profile).flatMap(URL.init)) {
-                        $0.resizable()
-                    } placeholder: {
-                        Circle().fill(Color.gray.opacity(0.3))
-                    }
-                    .frame(width: 96, height: 96)
-                    .clipShape(Circle())
-
-                    Text(displayName)
-                        .font(.title2.bold())
-                    if let username = account?.username ?? UserSession.shared.username {
-                        Text("@\(username)").foregroundStyle(.secondary)
-                    }
-                    if let bio = account?.biography, !bio.isEmpty {
-                        Text(bio).font(.footnote).multilineTextAlignment(.center)
-                    }
-
-                    // Port de `EditProfileBut`/`container_wallet`/`container_monetization` —
-                    // écrans cibles pas encore lus (`EditProfile.java`, `WalletActivity.java`,
-                    // `MonetizationActivity.java`), boutons désactivés plutôt qu'un lien mort.
-                    HStack {
-                        Button("Modifier le profil") {}.disabled(true)
-                        Button("Portefeuille") {}.disabled(true) // module 15
-                    }
-                    .font(.footnote)
-
-                    // Port de `follower`/`following` (compteurs) — nécessite un endpoint profil
-                    // pas encore identifié/lu ; `AccountEntity` (Core Data) ne les stocke pas.
-                    Text("Abonnés / Abonnements — pas encore câblés (endpoint profil non identifié)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-
-                    Divider()
-
-                    // Port de `ProfileAdapter2`/la grille de publications — différé au module 17.
-                    Text("Grille de publications — différée au module 17 (Profil / Réglages)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding()
+        ScrollView {
+            header
+            LazyVGrid(columns: columns, spacing: 2) {
+                ForEach(viewModel.posts, id: \.id) { post in
+                    postCell(post)
+                        .onAppear {
+                            if post.id == viewModel.posts.last?.id { Task { await viewModel.loadMorePosts() } }
+                        }
                 }
-                .padding()
             }
-            .navigationTitle("Profil")
-            .task { await loadAccount() }
+        }
+        .navigationTitle(viewModel.profile.map { "@\($0.username ?? "")" } ?? "")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { toolbarContent }
+        .task {
+            await viewModel.loadProfile()
+            await viewModel.loadInitialPosts()
+        }
+        .confirmationDialog(
+            viewModel.isBlocked ? "Débloquer cet utilisateur ?" : "Bloquer cet utilisateur ?", // R.string.unblock / block_info
+            isPresented: $showBlockConfirm, titleVisibility: .visible
+        ) {
+            Button(viewModel.isBlocked ? "Débloquer" : "Bloquer", role: .destructive) { Task { await viewModel.toggleBlock() } }
+        }
+        .sheet(isPresented: $showEditProfile) { EditProfileView() }
+        .navigationDestination(isPresented: $showReport) {
+            ReportView(targetId: viewModel.userId, username: viewModel.profile?.username ?? "", reportType: "user")
         }
     }
 
-    private var displayName: String {
-        let first = account?.firstname ?? UserSession.shared.firstname ?? ""
-        let last = account?.lastname ?? UserSession.shared.lastname ?? ""
-        let full = "\(first) \(last)".trimmingCharacters(in: .whitespaces)
-        return full.isEmpty ? (UserSession.shared.username ?? "") : full
+    @ViewBuilder
+    private var header: some View {
+        if let profile = viewModel.profile {
+            VStack(spacing: 8) {
+                AsyncImage(url: URL(string: profile.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+                    Color(.secondarySystemBackground)
+                }
+                .frame(width: 84, height: 84).clipShape(Circle())
+
+                HStack(spacing: 4) {
+                    Text(profile.firstname ?? "").font(.headline)
+                    Text(profile.displayLastname).font(.headline)
+                    if profile.certified == "1" { Image(systemName: "checkmark.seal.fill").foregroundStyle(.blue) }
+                }
+                if let warning = profile.warning, !warning.isEmpty {
+                    Text(warning).font(.caption).foregroundStyle(.orange) // R.id.warning
+                }
+
+                HStack(spacing: 32) {
+                    NavigationLink { FollowListView(userId: viewModel.userId, type: .followers) } label: { // R.id.follower
+                        stat(profile.followers ?? "0", "Abonnés")
+                    }
+                    NavigationLink { FollowListView(userId: viewModel.userId, type: .following) } label: { // R.id.following
+                        stat(profile.following ?? "0", "Abonnements")
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if let bio = profile.biography, !bio.isEmpty { Text(bio).font(.subheadline).multilineTextAlignment(.center) }
+                if let link = profile.link, !link.isEmpty {
+                    Link(link, destination: URL(string: link.hasPrefix("http") ? link : "https://\(link)") ?? URL(string: "https://tiinver.com")!)
+                        .font(.caption)
+                }
+
+                actionRow
+            }
+            .padding()
+        } else if viewModel.isLoadingProfile {
+            ProgressView().padding()
+        }
     }
 
-    private func loadAccount() async {
-        guard let myId = UserSession.shared.myId, let id = Int64(myId) else { return }
-        let accounts = CoreDataRepository<AccountEntity>()
-        account = try? await accounts.first(predicate: NSPredicate(format: "id == %lld", id))
+    @ViewBuilder
+    private var actionRow: some View {
+        if viewModel.isCurrentUser {
+            HStack {
+                Button("Modifier le profil") { showEditProfile = true } // R.id.EditProfileBut
+                NavigationLink("Portefeuille") { WalletView() } // R.id.container_wallet
+            }
+            .buttonStyle(.bordered)
+        } else {
+            HStack {
+                Button(viewModel.isFollowing ? "Abonné" : "Suivre") { Task { await viewModel.follow() } } // R.id.butSeguir
+                    .disabled(viewModel.isFollowing)
+                if let target = messageTarget {
+                    NavigationLink("Message") { ChatView(target: target) } // R.id.message, port de `openConversation`
+                }
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+
+    /// Port de `openConversation(User)` — construit le `RosterModel` avec les mêmes champs que
+    /// l'original (`type`/`nikname`/`username`/`to`/`from`/`currentUsername`/`currentUserId`/
+    /// `userId`/`title`/`subTitle`/`profile`), visible uniquement pour les profils publics
+    /// (`metas.getType().equals(PUBLIC)`, `message.setVisibility(VISIBLE)` conditionnel).
+    private var messageTarget: RosterModel? {
+        guard let profile = viewModel.profile, profile.type == "public", let username = profile.username else { return nil }
+        var target = RosterModel()
+        target.type = ChatType.chat.wireValue
+        target.nikname = "\(profile.firstname ?? "") \(profile.displayLastname)"
+        target.username = username
+        target.to = username
+        target.from = UserSession.shared.username
+        target.currentUsername = UserSession.shared.username
+        target.currentUserId = UserSession.shared.myId
+        target.userId = viewModel.userId
+        target.title = target.nikname
+        target.subTitle = username
+        target.profile = profile.profile
+        return target
+    }
+
+    private func stat(_ value: String, _ label: String) -> some View {
+        VStack {
+            Text(value).font(.headline)
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func postCell(_ post: FeedActivity) -> some View {
+        ZStack(alignment: .topTrailing) {
+            if let thumb = post.thumbnailURL {
+                AsyncImage(url: thumb) { $0.resizable().aspectRatio(1, contentMode: .fill).clipped() } placeholder: {
+                    Color(.secondarySystemBackground).aspectRatio(1, contentMode: .fill)
+                }
+            } else {
+                Color(.secondarySystemBackground).aspectRatio(1, contentMode: .fill)
+            }
+            if post.isVideo { Image(systemName: "play.fill").foregroundStyle(.white).padding(4) }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        if viewModel.isCurrentUser {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                NavigationLink { SettingsView() } label: { Image(systemName: "gearshape") } // R.id.action_setting
+            }
+        } else {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button("Signaler", systemImage: "flag") { showReport = true } // R.id.report
+                    Button(viewModel.isBlocked ? "Débloquer" : "Bloquer", systemImage: "hand.raised", role: .destructive) {
+                        showBlockConfirm = true
+                    } // R.id.block
+                } label: { Image(systemName: "ellipsis.circle") } // R.id.moreShow
+            }
+        }
     }
 }

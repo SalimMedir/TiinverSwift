@@ -21,6 +21,20 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         // MIGRATION_PROGRESS.md) — `FirebaseApp.configure()` le lit automatiquement.
         FirebaseApp.configure()
 
+        // Port de `TiinverConfig.init(Context)` (module 15, Wallet) — zone tarifaire dérivée du
+        // pays, conditionne l'affichage FCFA/mobile money vs USDC/crypto dans tout le Wallet.
+        TiinverConfig.configure()
+
+        // Port de `MobileAds.initialize` (module 16, AdMob) — **écart délibéré avec Android** :
+        // le SDK Android correspondant appelle cette initialisation dans un bloc ENTIÈREMENT
+        // COMMENTÉ côté source (`EarnCoinsActivity.java`, code mort côté Android lui-même,
+        // vraisemblablement une auto-initialisation via les métadonnées du manifeste suffit sur
+        // cette plateforme) — côté iOS, `MobileAds.shared.start(completionHandler:)` est une étape
+        // de configuration EXPLICITEMENT REQUISE par Google (pas d'auto-initialisation
+        // équivalente), documentée de façon stable et non ambiguë dans tous les guides
+        // d'intégration officiels — appelée ici plutôt que reproduire le no-op Android.
+        configureAdMob()
+
         Messaging.messaging().delegate = self
         UNUserNotificationCenter.current().delegate = self
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
@@ -29,6 +43,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                 application.registerForRemoteNotifications()
             }
         }
+
+        // Module 12 (Appels WebRTC/CallKit) — port du point d'enregistrement de `CallService`
+        // (Android le démarre à la demande, `startForegroundService` — iOS a besoin d'un
+        // enregistrement PushKit précoce, dès le lancement, pour pouvoir réveiller l'app tuée).
+        Task { @MainActor in CallCoordinator.shared.start() }
+
         return true
     }
 

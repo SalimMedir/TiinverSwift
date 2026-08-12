@@ -73,11 +73,16 @@ final class CoreDataRepository<Entity: CoreDataFetchable> where Entity.FetchResu
         }
     }
 
-    /// Équivalent de `ContentResolver.query(uri, projection, selection, args, sortOrder)`.
+    /// Équivalent de `ContentResolver.query(uri, projection, selection, args, sortOrder)` —
+    /// `sortOrder` Android porte parfois un suffixe `"LIMIT n OFFSET m"` concaténé dans la chaîne
+    /// elle-même (ex. `ChatFragmentTest.onCreateLoader`) ; `offset` reproduit ce `OFFSET` via
+    /// `NSFetchRequest.fetchOffset` (ajouté au module 11, pas utilisé par les repositories
+    /// précédents qui ne paginaient pas).
     func query(
         predicate: NSPredicate? = nil,
         sortDescriptors: [NSSortDescriptor] = [],
-        limit: Int? = nil
+        limit: Int? = nil,
+        offset: Int = 0
     ) async throws -> [Entity] {
         let context = stack.newBackgroundContext()
         return try await context.perform {
@@ -85,6 +90,7 @@ final class CoreDataRepository<Entity: CoreDataFetchable> where Entity.FetchResu
             request.predicate = predicate
             request.sortDescriptors = sortDescriptors
             if let limit { request.fetchLimit = limit }
+            request.fetchOffset = offset
             return try context.fetch(request)
         }
     }

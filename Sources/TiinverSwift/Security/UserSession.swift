@@ -21,6 +21,10 @@ final class UserSession {
         static let firstname = "firstname"
         static let lastname = "lastname"
         static let referralCode = "referralCode"
+        static let coinsAmount = "coinsAmount"
+        static let gemsAmount = "gemsAmount"
+        static let pendingCoinsAmount = "pendingCoinsAmount"
+        static let pendingGemsAmount = "pendingGemsAmount"
     }
 
     private init() {}
@@ -73,6 +77,32 @@ final class UserSession {
 
     var isLoggedIn: Bool {
         apiKey != nil && myId != nil
+    }
+
+    /// Port de `Settings.getFloatPreference(COINS_AMOUNT)`/`setFloatPreference` (module 15, Wallet)
+    /// — cache local rapide du solde, lu par TOUS les écrans wallet avant tout appel réseau,
+    /// mis à jour de façon optimiste après achat/retrait/transfert/conversion/récompense.
+    var coinsAmount: Double {
+        get { defaults.double(forKey: Keys.coinsAmount) }
+        set { defaults.set(newValue, forKey: Keys.coinsAmount) }
+    }
+
+    var gemsAmount: Double {
+        get { defaults.double(forKey: Keys.gemsAmount) }
+        set { defaults.set(newValue, forKey: Keys.gemsAmount) }
+    }
+
+    /// Port de `PENDING_COINS_AMOUNT`/`PENDING_GEMS_AMOUNT` — solde de récompense (pub rewarded)
+    /// pas encore confirmé par le serveur (`WalletRepository.updateToServer`, réessayé au prochain
+    /// gain si la requête précédente a échoué).
+    var pendingCoinsAmount: Int {
+        get { defaults.integer(forKey: Keys.pendingCoinsAmount) }
+        set { defaults.set(newValue, forKey: Keys.pendingCoinsAmount) }
+    }
+
+    var pendingGemsAmount: Int {
+        get { defaults.integer(forKey: Keys.pendingGemsAmount) }
+        set { defaults.set(newValue, forKey: Keys.pendingGemsAmount) }
     }
 
     /// Port de `SessionManager.getUser(context)` — reconstruit un `User` minimal depuis les

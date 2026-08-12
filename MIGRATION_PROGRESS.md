@@ -1,25 +1,53 @@
 # Suivi de migration Tiinver Android → iOS Swift
 
-Dernière mise à jour : 2026-08-11 10:00
-Statut global : CHECKPOINT 1 VALIDÉ — build Codemagic réussi (2026-08-10, build
-#6a7a2aabd5ae67eb2a755de2). MODULE 7 (Caméra) FERMÉ (2026-08-10). MODULE 8 (Moteur Animems)
-FERMÉ (2026-08-11) — chemin bout-en-bout écrit : modèle (`core/`+`model/`) → gestes tactiles
-(`AnimemesGestureController.swift`) → rendu (`LayerRenderer.swift`, BITMAP/SHAPE/TEXT/STICKER) →
-export (`AnimemesExporter.swift`, `AVAssetWriter`) → fusion GIF (`AnimemesRecompose.swift`) →
-logique d'état des ~14 vues custom d'édition (timeline, panneaux masque/forme/calque/texte,
-dessin animé, zoom canvas). PATH/LINE/CLIP/ERASE restent différés (liés au geste tactile,
-maintenant conçu mais pas branché à ces 4 types). **Checkpoint 2 (7+8) PAS ENCORE VALIDÉ** — 4
-builds Codemagic jusqu'ici, chacun révélant UN problème distinct puis confirmant sa correction au
-build suivant : (1) infrastructure CI (Metal Toolchain manquant, corrigé, confirmé au build 2) ;
-(2) `MaskPreviewEditorPanelState` struct auto-référent (corrigé, confirmé résolu au build 3) ;
-(3) `AnimemesGestureController.swift:199` conversion `Int`→`CGFloat` manquante sur un `CGRect`
-(corrigée, confirmée résolue au build 4) ; (4) `LayerRenderer.swift:67`/`:162` multiplication
-`Float`×`CGFloat` (`featherPx`, corrigée) — voir "Erreurs rencontrées et résolues" pour le détail
-de chacune. Les ~22 shaders caméra ont compilé SANS ERREUR dès le build 2. **Un nouveau build est
-nécessaire pour confirmer que l'erreur (4) était la dernière.** ARRÊT TOUJOURS EN VIGUEUR — NE PAS
-commencer le module 9
-avant confirmation de build réussi ou nouvelle liste d'erreurs à corriger. Voir "Points à vérifier
-en priorité au prochain build — Module 8" et "Prochaine action à faire".
+Dernière mise à jour : 2026-08-12 12:00
+Statut global : **CHECKPOINT 2 VALIDÉ (2026-08-11)** — build Codemagic réussi, aucune erreur de
+compilation restante sur les modules 1-8 (5 itérations de correction au total : `FirebaseCore`/
+`CoreDataFetchable` pour le Checkpoint 1, puis `MaskPreviewEditorPanelState`/
+`AnimemesGestureController` (`CGFloat`/`Int`)/`LayerRenderer` (`Float`/`CGFloat`) pour ce
+Checkpoint 2 — voir "Erreurs rencontrées et résolues" pour le détail de chacune). MODULE 7
+(Caméra) FERMÉ (2026-08-10). MODULE 8 (Moteur Animems) FERMÉ (2026-08-11). MODULE 9 (Éditeur photo
+simple) FERMÉ (2026-08-11). MODULE 10 (Trim/Timeline/Waveform) FERMÉ (2026-08-11) — géométrie de
+trim portée en entier, export vidéo différé (décision AVFoundation). **MODULE 11 (Messagerie/Chat
+UI) FERMÉ (2026-08-12), avec réserves honnêtes** — 32 398 lignes, le plus gros module du projet.
+Couche protocole/persistance/routage (Socket.IO, `ChatManager`/`ChatRepository`/`RosterManager`/
+`MessageLib`/`MessagePacket`) ENTIÈREMENT portée et vérifiée (4 bugs trouvés et corrigés au total).
+Couche UI (`MessageListAdapter.java` + 9 `ViewHolder`, `ChatFragmentTest.java`, 4433 lignes)
+également portée (bulles SwiftUI par type de message, `ChatViewModel`/`ChatView` — pagination,
+temps réel, envoi, citation, sélection/suppression). Réserves documentées : transfert réel upload/
+download, sélecteurs GIF/cadeau, zoom média, Message Graphic (module 14), paiement d'abonnement
+(module 15), écran de liste des conversations (hors périmètre explicite) — voir tableau détaillé et
+journal 2026-08-12. **MODULE 12 (Appels WebRTC/CallKit) FERMÉ (2026-08-12), avec réserves honnêtes**
+— même session : moteur WebRTC (`RTConnection2.java`, 801 lignes), orchestration
+(`CallService`/`CallViewModel`/`CallActivity`/`IncomingCallActivity`, 2071 lignes cumulées) tous lus
+en entier, `CXProvider`/`PKPushRegistry`/API WebRTC iOS vérifiées contre la documentation Apple
+réelle et les headers Objective-C du framework (pas devinées) — développement largement NEUF
+(CallKit/PushKit sans équivalent Android). Bouton d'appel + présentation `CallView` câblés dans
+`ChatView` (module 11), flux déclenchable de bout en bout. **2026-08-12 (suite)** : enregistrement
+du jeton VoIP câblé (`Calls/VoIPTokenRegistrar.swift`, `POST user/voip-token`) — implémentation
+CLIENT complète, spécification serveur détaillée dans la nouvelle section "Backend à implémenter —
+PushKit/VoIP" (backend PHP séparé, PAS modifié). **MODULES 13 (Shareboard) ET 14 (Message Graphic)
+FERMÉS (2026-08-12), même session** — confirmé que les deux partagent LITTÉRALEMENT le même moteur
+de rendu (`PBSView.java`, 1411 lignes — pas `PBSCompound.java` comme d'abord supposé, corrigé après
+lecture complète) et la même connexion WebRTC que les appels (`RTConnection2` réutilisé en instance
+propre, pas le singleton Android). 1 bug data-channel réel trouvé et corrigé dans
+`Calls/WebRTCConnection.swift` (delegate jamais assigné, dormant depuis le module 12) avant d'écrire
+le code Shareboard. 7 fichiers Swift neufs dans `Sources/TiinverSwift/Shareboard/`. Voir tableau
+détaillé et journal 2026-08-12 pour le détail complet, les portées réduites documentées (pinch/
+rotate/suppression non live-synced, décoratif différé) et le gap restant (rejoindre un Shareboard en
+tant qu'invité). Voir tableau détaillé et journal 2026-08-12.
+**MODULES 15 (Wallet), 16 (AdMob), 17 (Profil/Réglages) ET 18 (Divers) FERMÉS (2026-08-12), même
+session.** Les 18 modules de l'ordre de portage sont désormais tous `[x]`. Découverte majeure module
+15 : le mécanisme d'achat de pièces réellement actif côté Android (mobile money/crypto hors
+application + ID de transaction manuel) est un vrai risque de conformité App Store 3.1.1/3.1.5,
+remplacé par StoreKit 2 sur instruction explicite — voir "⚠️ AUDIT CONFORMITÉ APP STORE". Module 18
+fermé avec des réserves explicites (couverture fonctionnelle priorisée sur l'exhaustivité de lecture
+d'un sous-module à ~54 fichiers). Voir "RÉSERVES AVANT CHECKPOINT 3" dans "Prochaine action à faire"
+pour le détail complet.
+Statut Checkpoint 3 : **NE PEUT PAS être validé depuis cet environnement** (aucun accès macOS/Xcode
+sur toute la durée de ce portage, du premier au dernier module) — le code est écrit pour les 18
+modules mais AUCUNE compilation réelle n'a eu lieu depuis le Checkpoint 2 (modules 9-18 inclus).
+Prochaine étape obligatoire : compilation Xcode réelle dès qu'un accès macOS existe.
 
 ## ⚠️ Contrainte d'environnement (lire avant toute reprise de session)
 
@@ -46,9 +74,18 @@ de l'ordre de portage (section "Ordre de portage" ci-dessous) :
 - **Checkpoint 1** : après la fin complète des modules 1 à 6 (Infrastructure réseau/auth → Feed vidéo) —
   **[x] VALIDÉ le 2026-08-10** (build Codemagic #6a7a2aabd5ae67eb2a755de2 réussi, aucune erreur —
   voir "CHECKPOINT 1 ATTEINT" plus bas pour le détail complet).
-- **Checkpoint 2** : après la fin complète des modules 7 à 12 (Caméra → Appels WebRTC/CallKit) —
-  **prochain arrêt obligatoire, pas encore atteint.**
-- **Checkpoint 3** : après la fin complète des modules 13 à 18 (Shareboard → Divers) — fin de projet
+- **Checkpoint 2** : initialement prévu après la fin complète des modules 7 à 12 — **[x] VALIDÉ
+  le 2026-08-11, mais sur un périmètre RÉDUIT aux modules 7+8 uniquement** (build Codemagic
+  réussi après 5 itérations de correction — voir "Erreurs rencontrées et résolues" et
+  "CHECKPOINT 2 ATTEINT ET VALIDÉ" plus bas pour le détail). Décision explicite de l'utilisateur :
+  valider le checkpoint à ce stade plutôt que d'attendre la fin du module 12, pour rattraper les
+  erreurs de compilation du plus gros module du projet (module 8, Animems) sans les laisser
+  s'accumuler avec 4 modules supplémentaires. Conséquence directe : les modules 9 à 12 seront
+  portés SANS compilation intermédiaire, jusqu'au Checkpoint 3.
+- **Checkpoint 3** : après la fin complète des modules 9 à 18 (Éditeur photo → Divers) —
+  **prochain arrêt obligatoire, pas encore atteint.** Portée élargie par rapport au découpage
+  initial (13-18) du fait de la validation anticipée du Checkpoint 2 ci-dessus — reste le
+  dernier arrêt de compilation avant la fin de projet.
 
 Comportement attendu à chaque checkpoint :
 
@@ -66,12 +103,16 @@ Comportement attendu à chaque checkpoint :
    VALIDÉ dans ce fichier, avec la date, puis reprendre normalement l'ordre de portage à partir
    du module suivant.
 6. IMPORTANT : entre deux checkpoints, le travail continue en autonomie complète sur les modules
-   comme avant (pas de pause intermédiaire, pas de demande de confirmation) — seule l'arrivée à
-   un multiple de 6 modules déclenche l'arrêt.
+   comme avant (pas de pause intermédiaire, pas de demande de confirmation) — seule l'arrivée au
+   module marquant la fin du checkpoint courant déclenche l'arrêt (voir liste ci-dessus : le
+   découpage n'est plus strictement 6/12/18 depuis la validation anticipée du Checkpoint 2, qui a
+   avancé la frontière du Checkpoint 3 à "après le module 18" en couvrant les modules 9-18 d'un
+   seul bloc).
 
 Cette règle remplace/précise le point 5 de "Prochaine action à faire" plus bas (qui évoquait un
 point de contrôle "dès qu'un accès macOS devient possible" de façon plus ponctuelle) : désormais
-les points de contrôle sont fixés d'avance sur les modules 6/12/18, pas laissés à l'appréciation
+les points de contrôle sont fixés d'avance (initialement 6/12/18, révisé en 6/8/18 après la
+validation anticipée du Checkpoint 2 ci-dessus), pas laissés à l'appréciation
 au fil de l'eau.
 
 ## Références
@@ -114,16 +155,207 @@ au fil de l'eau.
    journal pour la liste complète et la justification de chaque report. Catégorie A du rapport
    `TIINVER_ANIMEMS_SCOPE_LIBRARIES.md` (≈24 942 lignes Android, 10-13,5 semaines-ingénieur
    estimées) — le portage réalisé ici couvre le CŒUR fonctionnel, pas l'exhaustivité du rapport.
-9. [ ] Éditeur photo simple (Vision framework pour suppression d'arrière-plan)
-10. [ ] Trim / Timeline / Waveform
-11. [ ] Messagerie / Chat UI
-12. [ ] Appels WebRTC + CallKit
-13. [ ] Shareboard (PBS)
-14. [ ] Message Graphic
-15. [ ] Wallet / Paiements (StoreKit 2 + API backend)
-16. [ ] AdMob (tous formats)
-17. [ ] Profil / Réglages
-18. [ ] Divers (recherche, contacts, follow, commentaires, boost interne, certification, stats)
+9. [x] Éditeur photo simple (Vision framework pour suppression d'arrière-plan) — écrit, non
+   compilé — PARTIEL ASSUMÉ (2026-08-11) : décisions d'architecture actées et vérifiées
+   (`TOCropViewController` remplace le recadreur Android vendorisé ~5000 lignes,
+   `VNGeneratePersonSegmentationRequest` remplace ML Kit `SubjectSegmenter`), infrastructure de
+   recadrage/rotation/suppression d'arrière-plan écrite et fonctionnellement complète. PAS PORTÉ,
+   décision honnête : l'écran d'édition principal (stickers/texte/peinture par-dessus la photo,
+   `ImageEditorCompound.java`/`ImageViewCanvas.java`, ~3169 lignes) — chevauchement CONFIRMÉ avec
+   le modèle déjà porté au module 8 (`AnimationObjectData`/`AnimationComposer`/`LayerRenderer`/
+   `PaintCaptureController`/`ProTextEditorState`), mais nécessite le même traitement méthodique
+   multi-passage que `MemesView2.java`/`AnimemesCompound.java` en leur temps — reporté à une passe
+   dédiée plutôt que rushé pour tenir le rythme des modules 10-12, voir tableau détaillé.
+10. [x] Trim / Timeline / Waveform — écrit, non compilé — PARTIEL ASSUMÉ (2026-08-11) : géométrie
+    de la fenêtre de trim portée en entier (`ProTimelineViewModel.swift`, port direct de
+    `ProTimelineView.java`, 763 lignes lues intégralement) + état rotation/flip/ratio
+    (`VideoTrimState.swift`). **Découverte de portée** : `WaveformSeekBar.java` (cité comme risque
+    élevé dans le rapport de faisabilité aux côtés du trimmer) appartient en réalité au module 11
+    (Messagerie) — confirmé par grep, ses seuls consommateurs sont `BubbleMessageAudioCompound.java`/
+    `MessageAudioViewHolder.java` (bulles de messages vocaux), pas le trimmer vidéo. PAS PORTÉ,
+    décision d'architecture (comme MetalPetal/Vision/TOCropViewController) : l'export vidéo
+    lui-même (`AVAssetExportSession`/`AVMutableVideoComposition` natifs, remplaçant le pipeline
+    `VideoTransformer`/`Utils/media/**` Android — dont le cluster "v2" est confirmé MORT/non
+    branché prod par `TIINVER_IOS_PORT_ANALYSIS.md` §2.2) et l'extraction de vignettes
+    (`AVAssetImageGenerator` natif remplaçant `VideoFrameExtractorCodecAsync.java`, 355 lignes) —
+    non écrits cette passe, voir tableau détaillé pour la justification complète et les fichiers
+    Android restants (`CropOverlayView.java` du recadrage vidéo, `VideoTrimmerView.java` au-delà de
+    l'état déjà porté).
+11. [x] Messagerie / Chat UI — FERMÉ (2026-08-12), avec réserves honnêtes détaillées ci-dessous et
+    dans le tableau. 32 398 lignes au total (le plus gros module du projet). **Couche protocole/
+    persistance/routage ENTIÈREMENT portée et vérifiée** (`ChatManager.java`/`ChatRepository.java`/
+    `MessageLib.java`/`MessagePacket.java`/`RosterManager.java`/`ConversationIdGenerator.java`/
+    `Profile.java`/`ChatModel`+3 modèles annexes — 4 bugs trouvés et corrigés, 2 côté Android
+    reproduits fidèlement une fois compris, 2 dans ce portage même). **Couche UI portée** :
+    `MessageListAdapter.java` (1353 lignes) + ses 9 `ViewHolder` (1328 lignes) → bulles SwiftUI par
+    type de message (texte/audio/photo/gif/sticker/vidéo/cadeau/appel manqué/messages système/
+    séparateur de date) ; `ChatFragmentTest.java` (3080 lignes) → `ChatViewModel`/`ChatView`
+    (pagination, envoi/réception temps réel, citation, sélection/suppression, frappe). **Réserves
+    documentées, PAS des oublis silencieux** : transfert réel upload/download (`UploadFileOrDataService.
+    java`/`DownloadReceiver.java` pas lus, endpoints inconnus), sélecteurs GIF/cadeau réels
+    (`StickerPickerDialog.java`/`GiftGalleryView.java` pas lus), zoom média plein écran
+    (`ImageExpanderAnim` pas lu), rendu Message Graphic (module 14 par conception), paiement
+    d'abonnement groupe (module 15 Wallet), écran de liste des conversations (fichier séparé, hors
+    périmètre explicite de cette passe — `RosterModel` accepté en entrée, prêt à être branché).
+12. [x] Appels WebRTC + CallKit — FERMÉ (2026-08-12), avec réserves honnêtes. `RTConnection2.java` (801
+    lignes), `CallService.java` (835), `CallViewModel.java` (110), `CallActivity.java` (592),
+    `IncomingCallActivity.java` (534) tous lus en entier — `RTConnection.java`/`RTConnection3.java`/
+    `CallService2.java` confirmés morts par grep, pas lus. Moteur WebRTC (`WebRTCConnection.swift`),
+    signalisation socket (`ChatRepository.swift` étendu), CallKit (`CallKitManager.swift`), PushKit
+    (`VoIPPushManager.swift`), orchestration (`CallCoordinator.swift`) et écran post-décroché
+    (`CallView.swift`) écrits et vérifiés contre les API Apple/WebRTC réelles (pas devinées — voir
+    tableau détaillé et journal 2026-08-12). **Développement largement NEUF** (CallKit/PushKit
+    n'ont aucun équivalent Android), pas un simple portage — risque "Élevé" du rapport de
+    faisabilité confirmé justifié. Bouton d'appel + présentation `CallView` câblés dans `ChatView`
+    (module 11). **2026-08-12 (suite)** : enregistrement du jeton VoIP câblé côté client
+    (`VoIPTokenRegistrar.swift`, `POST user/voip-token`) — spécification serveur complète (endpoint,
+    payload, prérequis APNs VoIP) dans la nouvelle section "Backend à implémenter — PushKit/VoIP" ;
+    implémentation serveur elle-même hors périmètre (backend PHP séparé). Réserve restante :
+    vérification de compilation réelle toujours impossible (pas d'accès macOS).
+13. [x] Shareboard (PBS) — FERMÉ (2026-08-12). Lecture complète cette session :
+    `GraphicMessageCodec.java` (266)/`CompactTouchEvent.java`/`CompactEditorData.java` (codec),
+    `PBSCompound.java` (899 — PAS le moteur de rendu comme supposé à la découverte initiale, voir
+    correction ci-dessous), `PBSView.java` (1411, LE vrai moteur `onDraw`/`onTouch`),
+    `MotionEventData.java`/`EditorData.java`/`Page.java` (modèles), `FragmentPbs.java` (810, entier
+    cette fois), `BannerModel.java`/`AudioData.java` (structure). **Correction de la découverte du
+    18-08-12 (même session, avant lecture complète)** : `FragmentPbs.webrtc =
+    RTConnection2.getInstance(requireActivity())` réutilise en réalité le MÊME SINGLETON que
+    `CallService` (module 12), PAS une instance séparée — l'hypothèse "canal WebRTC dédié
+    indépendant" de la découverte initiale était fausse, corrigée en lisant `FragmentPbs.java` en
+    entier. `PBSCompound` est la barre d'outils/le contrôleur (`FrameLayout` + `onClick`), PAS le
+    moteur de rendu — c'est `PBSView` (`onDraw`/`onTouch`, 1411 lignes) qu'il délègue et qui fait le
+    vrai travail. Voir le journal détaillé et "Backend/architecture — Shareboard/Message Graphic"
+    plus bas pour l'ensemble des décisions de portage, écarts documentés et bug corrigé dans
+    `WebRTCConnection.swift` (canal de données jamais câblé jusqu'ici, dormant au module 12).
+14. [x] Message Graphic — FERMÉ (2026-08-12), dans la MÊME passe que le module 13 : confirmé que
+    les deux partagent LITTÉRALEMENT le même moteur (`PBSCompound`/`PBSView`, voir
+    `FragmentMessageGraphic.java`, 295 lignes lues en entier) — la découverte initiale ("13 et 14
+    plus imbriqués que prévu") était juste sur ce point précis, même si le détail du couplage
+    (canal WebRTC séparé) était erroné. Voir journal.
+15. [x] Wallet / Paiements — FERMÉ (2026-08-12), avec une **découverte de conformité majeure qui
+    corrige la prémisse du rapport de faisabilité initial** — voir "⚠️ AUDIT CONFORMITÉ APP STORE —
+    Wallet/Paiements" juste en dessous, À LIRE avant toute soumission. `BuyCoinsActivity.java`
+    (le fichier que l'analyse §3.8 identifiait comme "le seul utilisant BillingClient, à porter
+    vers StoreKit 2") est en réalité DU CODE MORT (absent d'`AndroidManifest.xml`, entièrement
+    commenté dans le fichier lui-même) — le vrai flux d'achat live est un mécanisme mobile money/
+    crypto avec ID de transaction saisi à la main, remplacé ici par StoreKit 2 sur instruction
+    explicite (PAS un portage 1:1). Retrait/transfert/conversion/parrainage/récompense pub PORTÉS
+    FIDÈLEMENT depuis `WithdrawActivity`/`TransfertCoinsActivity`/`ConversionActivity`/
+    `ReferralActivity`/`EarnCoinsActivity` (tous lus en entier).
+16. [x] AdMob — FERMÉ (2026-08-12). Inventaire complet repris de TIINVER_IOS_PORT_ANALYSIS.md §5
+    (déjà cartographié avant cette session) : bannière (11 écrans), rewarded (`EarnCoinsActivity` +
+    mini-jeu feed module 6, PAS rétro-câblé), rewarded interstitiel (Withdraw/Transfert/Conversion,
+    motif identique dans les 3, déjà lus en entier au module 15), native (feed, pas câblé — module 6
+    déjà fermé). **Interstitiel classique confirmé mort** (incertitude §5.2 levée par grep exhaustif
+    des 3 fichiers wallet). API Google Mobile Ads SDK iOS (`BannerView`/`RewardedAd`/
+    `RewardedInterstitialAd`/`NativeAd`/`AdLoader`, nomenclature MODERNE sans préfixe `GAD*`)
+    vérifiée contre l'exemple officiel Google **SwiftUI** (`googleads/googleads-mobile-ios-examples`,
+    `Swift/advanced/SwiftUIDemo/`) avant écriture — IDs de test recopiés et confirmés verbatim
+    contre le code source réel, pas devinés.
+17. [x] Profil / Réglages — FERMÉ (2026-08-12), avec réserves honnêtes. `UserProfile.java` (1198),
+    `AddPerfilFoto.java` (1164, sections upload photo NON portées), `EditProfile.java` (190, entier),
+    `EditPersonalInformation.java` (235, entier), `ProfileRepository.java` (entier),
+    `SettingsActivity.java` (193, entier) + 6 des 8 fragments de réglages LUS EN ENTIER
+    (`SettingPrivacityFragment`/`SettingChatFragment`/`SettingNotificationFragment`/
+    `SettingAccountFragment`/`SettingAdvertisementFragment`, `SettingStorageFragment` partiel).
+    **Découvertes de code mort en cascade, dans le même esprit que les modules précédents** :
+    `SettingPrivacityFragment` — 5 des 6 réglages de confidentialité (dernière connexion/photo/
+    appels/groupes/statut) sont ENTIÈREMENT commentés dans le source, seul le bouton "compte privé"
+    est réel ; `SettingChatFragment` (menu "Chat") ne contient en réalité QUE le thème clair/sombre
+    de l'app, aucun réglage de chat. `UserProfile.java` (profil d'autrui) et `AddPerfilFoto.java`
+    (son propre profil) consolidés en UN SEUL `ProfileView` paramétré, pas deux écrans séparés
+    (simplification délibérée documentée dans `ProfileViewModel.swift`). **PAS porté, gaps
+    honnêtes** : upload de photo de profil (transfert multipart, même gap que le module 11) ;
+    `FollowList` (liste abonnés/abonnements) ; `HashtagProfile.java` (964 lignes, PAS lu — grille de
+    posts par hashtag, endpoint identifié mais écran non construit) ; `CategoryActivity`
+    (sélection de catégorie de profil) ; détail granulaire de `SettingStorageFragment`
+    (sélection multiple par type de média, 292 lignes, lu partiellement) ; contenu réel de
+    `SettingHelpFragment`/`SettingAboutFragment` (pas lus, écrans informatifs statiques posés en
+    stub). Voir tableau détaillé pour le détail complet fichier par fichier.
+18. [x] Divers — FERMÉ (2026-08-12) AVEC RÉSERVES IMPORTANTES ET EXPLICITES. Sous-module ~54 fichiers
+    Android au total (`Recherche` 11, `contacts` 14, `Following` 3, `comments` 12, `certification`
+    10, `report` 3, `StatisticsActivity` 1) — **portée volontairement priorisée sur les fonctions
+    directement rattachées à des écrans déjà fermés (Profil, module 17) plutôt qu'une lecture
+    exhaustive des 54 fichiers**, compte tenu du volume cumulé des modules 15-18 traités dans cette
+    même session. RÉELLEMENT portés, avec lecture complète des fichiers réseau/modèle déterminants :
+    Recherche universelle (`RechercheTiinver.java`, réseau lu en entier — **`RechercheTiinver2.java`,
+    681 lignes, CONFIRMÉ MORT par grep, même méthode que les autres clusters "v2"**), Follow (liste
+    abonnés/abonnements, entier), Report (signalement, entier), Comments (lecture/publication/
+    réponse, entier — envoi de "commentaire cadeau" payant NON porté), Certification (CONSULTATION
+    du statut seulement — soumission avec upload de justificatif PAS portée, même gap que les
+    transferts de fichiers des modules 11/17). **PAS portés du tout, repérés seulement** : Contacts
+    (`ConnectedUsersRepository`/`ContactManager` — en réalité un sélecteur de MEMBRES DE GROUPE pour
+    la messagerie, pas une fonctionnalité "Divers" autonome, endpoint `connectedusers/{userId}`
+    identifié) ; Statistiques créateur (`StatisticsActivity.java`, AUCUN appel réseau trouvé —
+    vraisemblablement une agrégation locale sur les posts de l'utilisateur, pas lu en détail) ;
+    "boost interne" (`advertising/`, 9 fichiers/2026 lignes, PAS repéré du tout cette session — sans
+    rapport avec AdMob, système de promotion de contenu payé en pièces, confirmé par l'analyse de
+    faisabilité §3.8 mais jamais lu ici). Voir tableau détaillé pour le détail fichier par fichier.
+
+## ⚠️ AUDIT CONFORMITÉ APP STORE — Wallet/Paiements (module 15, à lire avant soumission)
+
+**Ceci corrige et précise TIINVER_IOS_PORT_ANALYSIS.md §3.8/§6/§7.1 point 3, écrits AVANT la
+lecture complète du code réel de ce module.** Le rapport de faisabilité initial identifiait
+`BuyCoinsActivity.java` comme le point d'intégration Google Play Billing à porter vers StoreKit 2,
+et signalait un risque de conformité 3.1.5 générique sur retrait/transfert. Après lecture complète
+de `wallet/` (29 fichiers) cette session, le tableau réel est différent et PLUS sérieux sur un
+point précis :
+
+**1. Le fichier visé par l'analyse initiale est du code mort.** `BuyCoinsActivity.java` (Google
+Play Billing réel) est entièrement commenté (`/* ... */` sur tout le fichier) ET absent
+d'`AndroidManifest.xml` — confirmé par les deux méthodes de vérification déjà utilisées pour tout
+code suspect dans ce portage (lecture directe + grep manifeste). Il n'a jamais été
+compilable/atteignable dans l'app en production.
+
+**2. Le flux d'achat RÉELLEMENT actif contourne toute passerelle de paiement contrôlée par une
+plateforme.** `WalletActivity` → `SelectAmountActivity` (choix d'un palier de pièces) →
+`PurchaseActivity` : l'utilisateur choisit un opérateur mobile money (Orange Money/Airtel Money,
+zone CEMAC) ou crypto (adresse USDC), un NUMÉRO/UNE ADRESSE fixe s'affiche à l'écran, l'utilisateur
+effectue le paiement LUI-MÊME en dehors de l'app (application mobile money tierce ou portefeuille
+crypto), puis SAISIT À LA MAIN l'identifiant de transaction reçu comme preuve — soumis au backend
+(`purchaserequests`/`crypto/check-transaction`) pour vérification et crédit différé. C'est le
+définition même d'un contournement d'achat intégré pour un bien numérique (pièces virtuelles) —
+guideline App Store **3.1.1** ("In-App Purchase"), pas seulement 3.1.5. Un second chemin
+(`CheckoutActivity`/`CheckoutViewModel`/`PaymentsUtil`/`Constants`, déclarés dans le manifeste donc
+techniquement atteignables) s'est avéré être du code d'exemple Google Pay non terminé et jamais
+relié au crédit de pièces (`handlePaymentSuccess` affiche un Toast et ouvre un écran de succès vide,
+sans jamais appeler `WalletRepository`) — également PAS porté, ni comme référence de conformité ni
+comme fonctionnalité.
+
+**3. Le retrait ET le transfert restent, eux, un vrai risque 3.1.5 (cash-out) indépendamment du
+mode d'acquisition des pièces.** `WithdrawActivity`/`TransfertCoinsActivity` permettent de convertir
+le solde de pièces en argent réel (mobile money) ou crypto, avec un seuil minimum et des frais en %
+paramétrés à distance (Firebase Remote Config). Ce mécanisme est PORTÉ FIDÈLEMENT dans ce portage
+sur instruction explicite de l'utilisateur ("porte fidèlement... documente pour qu'elle soit facile
+à auditer"), PAS parce qu'il a été jugé conforme.
+
+**Ce qui a été fait dans ce portage, concrètement (voir `Sources/TiinverSwift/Wallet/` en entier,
+7 fichiers) :**
+- **Achat de pièces = StoreKit 2, PAS un portage du flux mobile money/crypto manuel**
+  (`CoinStoreManager.swift`/`BuyCoinsView.swift`) — 5 paliers consommables
+  (`com.tiinver.ios.coins.{250,500,1250,2500,5000}`, à créer dans App Store Connect), `Product.
+  purchase()`/`VerificationResult`/`Transaction.updates` vérifiés contre le code source réel de
+  `RevenueCat/purchases-ios` (bibliothèque de paiement tierce en production, Apple ne rendant pas
+  son contenu JS exploitable — même contrainte que CallKit/PushKit au module 12). **Nécessite un
+  NOUVEAU point serveur** (`POST storekit/verify-purchase`, PAS `purchaserequests` qui attend un
+  payload mobile money/crypto incompatible) — endpoint appelé côté client, implémentation serveur
+  PAS faite (backend PHP séparé, hors périmètre), même motif que la section PushKit/VoIP du module
+  12 : `userId`/`quantity`/`productId`/`transactionId`/`originalTransactionId` transmis, le serveur
+  doit vérifier la transaction auprès d'Apple (App Store Server API) avant de créditer.
+- **Retrait/transfert/conversion/parrainage/récompense pub = portés fidèlement**
+  (`WithdrawView.swift`/`TransferCoinsView.swift`/`ConversionView.swift`/`ReferralView.swift`/
+  `EarnCoinsView.swift`, `WalletRepository.swift` pour les endpoints REST inchangés :
+  `withdrawalrequests`/`crypto/withdraw`/`transfert`/`convert`/`referral/total`/`rewardedCoins`).
+
+**Recommandation, reprise du rapport initial (§7.1 point 3), maintenant plus précise** : revue
+juridique/produit AVANT soumission App Store sur DEUX points distincts — (a) l'achat via StoreKit 2
+est conforme par construction sur le principe (bien numérique via IAP), mais le pipeline de
+vérification serveur doit être fait correctement (ne pas créditer avant vérification Apple
+authentique, sous peine de fraude) ; (b) le retrait/transfert de pièces en argent réel est un
+mécanisme de cash-out — Apple accepte ce type de fonctionnalité dans certains cas (ex. apps de
+paiement/marketplace établies) mais l'examine au cas par cas et peut exiger des justificatifs
+(licences, KYC) non couverts par ce portage technique. **Ne pas soumettre ce module à l'App Store
+sans cette revue**, indépendamment du fait que le code soit prêt.
 
 ## Détail par module
 
@@ -237,6 +469,67 @@ au fil de l'eau.
 | Animems — éditeur | `android/mask/MaskAddPanel.java`, `android/views/ShapeAddPanel.java` (lus en entier) | — | LU, NON PORTÉ (décision) | Pickers bottom-sheet purs (grille d'icônes tapables), aucune logique au-delà de l'énumération déjà couverte par `MaskType`/`AnimationObjectData.ObjectType` existants — construction `LinearLayout`/`HorizontalScrollView` non portable 1:1, sans contenu algorithmique à extraire. À reconstruire directement en SwiftUI (`Picker`/grille de boutons) au moment de la construction de l'écran d'édition, pas avant. |
 | Animems — éditeur | `engine/mask/MaskEditController.java` (lu en entier, 18 lignes) | `Animems/MaskEditController.swift` | ÉCRIT (NON COMPILÉ) | Protocoles de callback purs (`OnMaskGestureListener`/`OnMaskEditModeListener`) — port direct en protocoles Swift. Aucune implémentation concrète encore écrite : dépend du mode d'édition de masque par geste (`handleMaskEditTouch` etc.), lu mais non porté dans `AnimemesGestureController.swift`. |
 | Animems — éditeur | `android/views/TimelineView.java` (lu en entier, 1320 lignes — la plus volumineuse des vues custom restantes) | `Animems/TimelineViewModel.swift` | ÉCRIT (NON COMPILÉ) | **Logique pure séparée du rendu**, même principe que `AnimemesGestureController.swift` : coordonnées (`xAtFrame`/`frameAtX`/`playheadX`, avec le playhead toujours centré et le contenu qui défile — modèle "CapCut"), zoom pincé avec ancrage au point focal (`applyPinchZoom`), pan, drag/redimensionnement d'un item AVEC anti-chevauchement (`resolveOverlap`/`resolveOverlapResizeLeft`/`resolveOverlapResizeRight`, portés à l'identique y compris le garde-fou de boucle et l'extension automatique de `totalFrames`), hit-test (items + marqueurs de keyframe). PAS porté, délibérément : rendu `onDraw`/`drawRuler`/`drawPlayhead`/`drawKeyframeMarkers` (deviendra un `Canvas` SwiftUI), physique de fling `OverScroller`/`VelocityTracker` (aucun équivalent direct — SwiftUI fournit sa propre vélocité de geste, la ballistique reste à concevoir visuellement), planification d'appui long `Handler`/`Runnable` (remplacée trivialement par `.onLongPressGesture`), sérialisation JSON manuelle `toJson`/`fromJson` (redondante avec un futur `Codable` direct sur `TimelineItem`, déjà un type Swift natif). `selected` (référence Java vive) adapté en `selectedId: String?` + recherche par id dans `items` (`TimelineItem` étant un `struct` Swift, pas une classe — différence de représentation déjà actée pour ce type, pas nouvelle ici). |
+| Éditeur photo | `android/croper/CropImageView.java` (2136), `CropOverlayView.java` (1039), `CropWindowHandler.java` (371, lu en entier), `CropWindowMoveHandler.java` (764), `CropImageOptions.java` (463), `BitmapUtils.java` (877), `CropImage.java` (998, hors `toOvalBitmap`) | — | REMPLACÉ (décision d'architecture, PAS un port) | **Bibliothèque tierce vendorisée identifiée** (pas du code métier Tiinver) : `CropWindowHandler.java` porte encore l'en-tête de licence caractéristique + une citation de Sun Tzu — signature de la librairie "Android-Image-Cropper" (ArthurHub/CanHub), intégrée en source dans le dépôt plutôt qu'en dépendance. Remplacée par **`TOCropViewController`** (SPM, `github.com/TimOliver/TOCropViewController`, tag `3.2.0`) — vérifié avant choix (pas deviné) : `pushed_at` très récent (2026-07-28), 4947 ⭐, non archivé (`GET /repos/.../TOCropViewController` réel), `Package.swift` réel au tag `3.2.0` confirmé (`platforms: [.iOS(.v12)]`, compatible `deploymentTarget.iOS = "16.0"`), API Swift (`CropViewController.swift`) lue directement dans le dépôt réel avant d'écrire le wrapper (`init(croppingStyle:image:)`, `onDidCropToRect`/`onDidCropToCircleImage`/`onDidFinishCancelled`, `TOCropViewCroppingStyle.default`/`.circular` vérifiés dans `TOCropViewConstants.h` réel). Géométrie de poignées tactiles (`CropWindowHandler.getRectanglePressedMoveType`/`getOvalPressedMoveType`, zones de détection par coin/bord/centre) NON portée : entièrement prise en charge par la librairie. |
+| Éditeur photo | `android/views/CroperView.java` (435, lu en entier) | `PhotoEditor/PhotoCropView.swift`, `PhotoEditor/PhotoEditorState.swift` | ÉCRIT (NON COMPILÉ) | Wrapper `UIViewControllerRepresentable` autour de `TOCropViewController` + état d'orchestration (mode RECT/FREEFORM, suppression d'arrière-plan à deux niveaux — voir ligne `RemoveBackground.swift`). **Confirmé mort par grep, NON porté** : `CroperView.removeBackground(src, bgColor, tolerance)` (méthode statique de tolérance de couleur unique, "Tolerance-based quick eraser (original, preserved as static util)" selon son propre commentaire) — zéro appelant dans tout le dépôt. **Point à vérifier** : `handleFlip`/`CropImageView.setFlippedHorizontally` n'a pas d'équivalent direct exposé par `TOCropViewController` (pas de flip horizontal en cours d'édition dans son API publique) — nécessiterait de pré-retourner l'image AVANT présentation du contrôleur de recadrage si ce comportement doit être reproduit à l'identique, non résolu ici. Animations de pression de bouton/overlay de progression Android non reprises (présentation SwiftUI standard). |
+| Éditeur photo | `android/croper/FreeformCropView.java` (126, lu en entier) | `PhotoEditor/FreeformCropView.swift` | ÉCRIT (NON COMPILÉ) | Auto-contenu (aucune dépendance sur le reste du recadreur), porté EN ENTIER modèle+rendu+gestes comme `BezierEditorView`/`PaintPreviewEditorPanel` du module 8 — seul mode de recadrage NON couvert par `TOCropViewController` (tracé au doigt fermé comme masque, pas rect/ovale). Piège de repère Y déjà rencontré (`MaskFactory`/`PaintCapture`/`AnimemesRecompose`) évité dès l'écriture : flip explicite appliqué au contexte bitmap manuel avant le clip par le tracé mis à l'échelle. |
+| Éditeur photo | `Utils/RemoveBackground.java` (176, lu en entier — catégorie "A+G" du rapport, PARTAGÉ avec le module 8 : `AnimemesCompound.java` section "REMOVE BACKGROUND", jamais lue en détail à l'époque, s'avère être le MÊME fichier) | `PhotoEditor/RemoveBackground.swift` | ÉCRIT (NON COMPILÉ) | **Décision d'architecture vérifiée contre la documentation Apple réelle (WebSearch + `curl` sur les headers/`Package.swift` réels, pas devinée)** : `removeBackgroundWithMLKit` (Android, `SubjectSegmenter` ML Kit — sujet GÉNÉRAL) remplacé par `VNGeneratePersonSegmentationRequest` (Vision, iOS 15+, compatible `deploymentTarget.iOS=16.0`) — PAS `VNGenerateForegroundInstanceMaskRequest` (équivalent plus proche de "sujet général", mais confirmé iOS 17+ UNIQUEMENT et confirmé NE FONCTIONNE PAS en simulateur ; relever la cible de déploiement pour cette seule fonctionnalité dépasse ce portage, décision produit non prise unilatéralement — voir tête de fichier). **Écart fonctionnel réel documenté, pas masqué** : la personne uniquement est segmentée, pas un objet/animal général comme `SubjectSegmenter` le permettait. Masque : polarité blanc=sujet/noir=fond vérifiée par recherche (pas supposée) avant d'écrire le blend `CIBlendWithMask`. `removeBackgroundAdvanced`/`applyEdgeRefinement` (repli géométrique par échantillonnage de bordure + rampe alpha + érosion 1-passe) portés fidèlement, constantes Android identiques (`TOLERANCE=55`, `SOFT_BAND=25`, `BORDER∈[2,20]`). **Bug de pré-multiplication évité par construction** (pas rencontré puis corrigé, anticipé pendant l'écriture) : un premier jet relisait la sortie de l'étape de masquage via un `CGContext` (nécessairement pré-multiplié) avant l'affinement des bords, ce qui aurait corrompu les octets RVB des pixels de bordure fraîchement semi-transparents — corrigé en gardant les deux passes sur le MÊME buffer `[UInt8]` en mémoire, sans aller-retour `CGImage` intermédiaire, et en construisant l'image finale directement via `CGDataProvider`/`CGImage(bitmapInfo: .last)` (straight alpha, PAS `CGContext.makeImage()` qui aurait forcé une pré-multiplication du résultat). `android/croper/BackgroungRemover.java` (578 lignes, pipeline `Canny`/`ConnectedComponenteLabeling`/`Dilation` maison) **confirmé mort par grep** (zéro instanciation) — PAS le même chemin que `RemoveBackground.java`, non porté. |
+| Éditeur photo | `android/croper/imageprocessing/**` (9 fichiers : `Canny.java`, `Convolution.java`, `GrapCut.java`, `ConnectedComponenteLabeling.java`, `Dilation.java`, `Segmentation.java`, `MyImage.java`, `Edgedetection.java`, `GaussianSmooth.java` — 2513 lignes) | — | REMPLACÉ (décision d'architecture, PAS un port) | Pipeline de vision par ordinateur MAISON (détection de contours Canny, convolution, GrabCut, étiquetage de composantes connexes) — recommandation explicite du rapport `TIINVER_ANIMEMS_SCOPE_LIBRARIES.md` §2.3 de le remplacer par le framework Vision natif plutôt que de le porter ligne à ligne (gain de temps ET de risque : code Apple maintenu vs. algorithmes de vision par ordinateur maison de style 2013-2015). Uniquement consommé par `BackgroungRemover.java`, lui-même confirmé mort (voir ligne précédente) — ce pipeline n'était donc même plus atteignable en pratique côté Android, pas seulement candidat au remplacement. |
+| Éditeur photo | `android/croper/CropImage.java` (`toOvalBitmap` uniquement, ligne 100-122) | `PhotoEditor/PhotoCropUtils.swift` | ÉCRIT (NON COMPILÉ) | Seule fonction statique de `CropImage.java` réellement consommée (`CroperView.onCropImageComplete`) — le reste du fichier (998 lignes, orchestration `CropImageActivity`/intents Android) est couvert par `TOCropViewController`. |
+| Éditeur photo | `android/views/ImageEditorCompound.java` (1132 lignes, lu PARTIELLEMENT — `init()`/constructeurs/`setImageUri`/`fitBitmapToView`, ~280 des 1132 lignes) | — | LU PARTIELLEMENT, PAS PORTÉ (décision) | **Écran principal de l'éditeur photo simple** : toolbar stickers/texte/peinture/emoji par-dessus l'image recadrée, réutilisant le MÊME modèle `AnimationComposer`/`AnimationObjectData`/`Transform` que `AnimemesCompound.java` (module 8, déjà entièrement porté) plutôt qu'un système séparé — confirmé en lisant les imports (`core.AnimationComposer`, `core.AnimationObjectData`, `core.Transform`, `Paint.PaintListAdapter`, `android.memes.FrameAdapter`, `android.taptargetview.TapTargetView`). Chevauchement réel et significatif avec l'infrastructure déjà portée (`AnimationObjectData.swift`, `LayerRenderer.swift`, `PaintCapture.swift`, `FrameListState.swift`), mais nécessite une lecture complète et méthodique du reste du fichier (~850 lignes non lues : `onClick`, gestion undo, sauvegarde) avant portage — différé à une passe dédiée plutôt que rushé, pour ne pas répéter l'erreur évitée au module 8 (facturation prématurée d'une architecture sans avoir lu les vues consommatrices). |
+| Éditeur photo | `android/memes/ImageViewCanvas.java` (2037 lignes, PAS lu — seuls les imports vérifiés) | — | PAS LU, PAS PORTÉ (décision) | Canevas de rendu de l'éditeur photo simple, catégorie G du rapport (reclassée depuis A — confirmé n'être importé QUE par `ImageEditorCompound.java`, jamais par `AnimemesCompound`/`MemesView2`). Imports vérifiés (`AnimationComposer`/`AnimationObjectData`/`Transform`/`TextRect`/`BezierEditorView` — les 4 premiers déjà portés au module 8) confirmant qu'il s'agit structurellement d'un cousin à FRAME UNIQUE de `MemesView2.java` (pas de timeline/keyframes/lecture, juste des calques statiques superposés sur une photo) — gère aussi `AnimationObjectData.Type.PATH` (dessin libre), ce qui rouvre potentiellement la question du rendu PATH/LINE différé au module 8 (`AnimemesGestureController.swift` existe maintenant, contrairement à l'époque de cette décision). Lecture complète différée à la même passe dédiée que `ImageEditorCompound.java` ci-dessus — les deux fichiers se pilotent mutuellement, les porter séparément serait artificiel. |
+| Éditeur photo | `app/src/main/java/com/tiinver/editor/media/MediaEditor.java` (lu en entier, 210 lignes — hors `engine/`, dans le module `app`) | — | LU, PAS PORTÉ (décision) | Fragment Android mince : délègue la quasi-totalité du travail à `ImageEditorCompound` (sticker emoji, fermeture, callback de résultat via `Bundle`/`FileReadyToUseListener`). Point d'entrée réel confirmé de `MediaEditor` : `CameraActivity` (module 7, déjà câblé avec des closures TODO pour ce cas) et 3 autres appelants (`ChatFragmentTest`, `AddPerfilFoto`, `CertificationRequestActivity` — modules 11/17, pas encore atteints). Portage d'un écran SwiftUI équivalent différé jusqu'à ce que `ImageEditorCompound`/`ImageViewCanvas` soient portés (ligne précédente). |
+| Trim / Timeline / Waveform | `editor/view/ProTimelineView.java` (763 lignes, lu en entier) | `Media/ProTimelineViewModel.swift` | ÉCRIT (NON COMPILÉ) | **Logique pure séparée du rendu**, même principe que `TimelineViewModel.swift` (module 8) : deux espaces indépendants reproduits à l'identique (espace écran en pixels pour la fenêtre de sélection/playhead, espace temps en millisecondes pour la bande de vignettes qui défile) — conversions `msToX`/`pxToMs`/`msUnderPx`, `recalcWindow`/`initSelectionPx`/`clampSelectionPx`/`syncTimestamps`, `updatePlayhead` (avec bouclage de sélection), gestion tactile complète (`pickMode`/`touchDown`/`touchMove`/`touchUp`, 4 modes : `dragLeft`/`dragRight`/`dragRegion`/`scroll`). PAS porté, délibérément : `onDraw`/`drawFrames`/`drawWaveform`/`drawHandle`/`drawPlayhead`/`drawTicks`/`drawTimecodes`/`drawProgressBar` (deviendront un `Canvas` SwiftUI). |
+| Trim / Timeline / Waveform | `view/trimmer/VideoTrimmerView.java` (1138 lignes, lu PARTIELLEMENT — imports, champs, constructeurs, `setBtnCropRatioVisibility`, ~140 lignes sur 1138) | `Media/VideoTrimState.swift` | LU PARTIELLEMENT, ÉTAT SEUL PORTÉ | État de rotation cyclique (0→90→180→270→0)/flip horizontal/ratio de recadrage — logique triviale mais réelle. **Reste du fichier (~1000 lignes) PAS lu** : câblage `ExoPlayer`, extraction de vignettes, export — voir décision d'architecture ci-dessous. |
+| Trim / Timeline / Waveform | `editor/MediaTrim.java` (374 lignes, lu en entier) | — | LU, PAS PORTÉ (décision) | Fragment Android mince, délègue à `VideoTrimmerView` (comme `MediaEditor`→`ImageEditorCompound` au module 9) — même famille de point d'entrée. **Code mort confirmé dans le fichier lui-même** : tout le bloc `startTrim`/`rangeBarView`/`VideoTimelineViewDeprecate` est explicitement commenté (`/* ... */`) dans le source actif — `next.setOnClickListener` et la logique de déclenchement de trim manuel ne s'exécutent jamais, le flux réel passe entièrement par `VideoTrimmerView.Callback`. Portage d'un écran SwiftUI équivalent différé (dépend de `VideoTrimmerView`/l'export AVFoundation, pas encore écrits). |
+| Trim / Timeline / Waveform | `Utils/media/VideoTransformer(2)`, `SmartTrimmer`, `FastTrimmer`, `SimpleTrimmer`, `view/trimmer/v2/**` (`PassthroughTrimmer`, `VideoTrimmerViewV2`, `TrimSessionPreparer`, `ProTimelineViewV2`) | — | CONFIRMÉ MORT (décision) | **Confirmé par `TIINVER_IOS_PORT_ANALYSIS.md` §2.2, pas re-vérifié indépendamment mais la preuve citée est vérifiable** : ce cluster "v2", supposé initialement être le système "moderne" actif, n'est en réalité consommé que par `TrimBenchActivity` (debug), lui-même NON déclaré dans `AndroidManifest.xml` — inatteignable en prod. Message de commit `c5c2c3d` : "WIP: passthrough trimmer + tuning VideoTransformer (non branché prod)". Le vrai trimmer actif est l'ancien `VideoTrimmerView`/`MediaTrim`, déjà traité aux lignes précédentes. |
+| Trim / Timeline / Waveform | `view/seekbar/WaveformSeekBar.java` (739 lignes) | — | RECLASSÉ (découverte), PAS LU EN DÉTAIL | **Cité comme risque élevé du module 10 par le rapport de faisabilité, mais confirmé par grep appartenir au module 11 (Messagerie)** : ses seuls consommateurs sont `messagerie/layout/BubbleMessageAudioCompound.java` et `messagerie/ui/viewholders/MessageAudioViewHolder.java` (bulles de messages vocaux dans le chat), zéro référence depuis `VideoTrimmerView.java`/`MediaTrim.java`/`ProTimelineView.java`. Ne rend d'ailleurs QUE un `int[]`/`Waveform` déjà calculé (pas d'extraction PCM) — signature probable d'une bibliothèque tierce vendorisée (style "massoudss/waveformSeekBar"), à revérifier au moment du module 11. `ProTimelineView.setWaveform(float[])` existe mais AUCUN appelant trouvé dans `VideoTrimmerView.java`/`MediaTrim.java` — possiblement un chemin non branché côté trim vidéo, signalé sans investigation supplémentaire, faute de temps. |
+| Trim / Timeline / Waveform | `Utils/media/VideoFrameExtractorCodecAsync.java` (355 lignes), `android/views/CropOverlayView.java` (398 lignes, package `views` — distinct de `android/croper/CropOverlayView.java`) | — | PAS LU, DÉCISION D'ARCHITECTURE | Extraction de vignettes → équivalent natif direct `AVAssetImageGenerator`, pas de portage ligne à ligne justifié (même raisonnement que les décodeurs MediaCodec des modules 7/8). Recadrage vidéo pendant le trim (rectangle de recadrage avec ratio contraint, DISTINCT de `TOCropViewController` qui ne gère que des IMAGES statiques) — non lu, nécessitera son propre petit modèle de géométrie (probablement proche de `CropWindowHandler` déjà remplacé côté photo) au moment de l'export AVFoundation. |
+| Messagerie / Chat UI | `view/seekbar/WaveformSeekBar.java` (739 lignes, lu ~250/739 — constructeurs, `calculateWaveDimensions`, `calculateDiscretePosition`, `blendWaveforms`, `calculateWaveCornerRadius`) | `Media/WaveformSeekBar.swift` | ÉCRIT (NON COMPILÉ) — PARTIEL | Bibliothèque tierce vendorisée confirmée (recherche : structure identique à `massoudss/waveformSeekBar`, package Maven `com.github.massoudss`) — portée directement (algorithme compact, ~150 lignes utiles) plutôt que remplacée par une dépendance SPM, contrairement à `TOCropViewController`. Algorithme de disposition des barres (largeur/espacement, gestion du bord distinct de l'inter-barre) et `calculateDiscretePosition`/`blendWaveforms` portés fidèlement. **PAS lu/porté** : `onDraw` réel (couleurs/anim exactes — reconstruit par déduction raisonnable, pas vérifié pixel-exact), `WaveCornerType.EXACTLY` (simplifié), le minuteur d'animation `ANIM_DURATION=200ms` (laissé à `.animation(_:value:)` SwiftUI plutôt que reproduit manuellement). L'extraction PCM réelle (comment le `int[] waves` initial est calculé) n'est PAS dans ce fichier — reste à trouver en lisant `BubbleMessageAudioCompound.java`, pas fait cette passe. |
+| Messagerie / Chat UI | `messagerie/repository/ChatRepository.java` (classe interne `ROOM`, lignes 107-144) | `Realtime/SocketEvent.swift` | CORRECTIF — bug réel corrigé | **Bug trouvé et corrigé (2026-08-11)** : la version du module 1 utilisait les noms des CONSTANTES Java (`"CALL"`, `"NEW_MESSAGE"`…, tirés du résumé du rapport de faisabilité) au lieu des vraies valeurs de chaîne émises sur le socket (`"call"`, `"new message"`, `"delivred"` — faute d'orthographe RÉELLE côté Android, préservée à l'identique). Avec les anciennes valeurs, AUCUN événement chat/appel n'aurait jamais été reconnu par le serveur — bug silencieux (compile, ne fonctionne jamais). ~35 constantes recopiées directement depuis `ROOM`. |
+| Messagerie / Chat UI | `messagerie/ChatType.java` | `Models/ChatType.swift` | ÉCRIT (NON COMPILÉ) | `enum { group, chat }` + `wireValue` ("chatgroup"/"chat"). |
+| Messagerie / Chat UI | `messagerie/ui/ConversationIdGenerator.java` (34 lignes, lu en entier) | `Models/ConversationIdGenerator.swift` | ÉCRIT (NON COMPILÉ) | Id de conversation déterministe : tri alphabétique des participants + jointure `_`, pour que les deux parties calculent le même id sans dépendre de qui est `from`/`to`. Variante groupe à 3 clés (`currentUser`/`remoteUser`/`"chatgroup"`) vérifiée triée aussi — confirmé contre la vraie signature `generateGroupConversationId(String,String,String)`. |
+| Messagerie / Chat UI | `models/chat/MessageLib.java` (929 lignes, champs lus en entier) | `Models/MessageLib.swift` | ÉCRIT (NON COMPILÉ) | Portée réduite délibérément : ~25 champs UI-only RecyclerView (`isSelectedItem`/`viewType`/`title`/`subTitle`…) exclus, confirmés jamais lus du JSON ni écrits en base. ~48 champs retenus par TRIPLE recoupement (patrons `MessagePacket`, `ContentValues` de `ChatManager`, schéma Core Data `MessageEntity`) — dont `lucrative`/`price`/`belongsToCurrentUser`, ajoutés après coup en lisant `RosterManager.java` (absents des deux autres sources, présents uniquement dans le mapping roster). |
+| Messagerie / Chat UI | `models/chat/MessagePacket.java` (1016 lignes, lu en entier) | `Models/MessagePacket.swift` | ÉCRIT (NON COMPILÉ) | **Découverte de protocole majeure** : l'enveloppe réellement émise (`getPacketJson`) contient un champ `"packet"` dont la valeur est elle-même un DOCUMENT JSON sous forme de STRING (double encodage), construit côté Android par 20 méthodes `get*Pattern()` quasi identiques selon `(chat\|groupe) × (texte\|graphique\|audio\|vidéo\|photo/gif/sticker) × (cité ou non)` — consolidées ici en une seule fonction paramétrée (`buildPacketString`), vérifiée champ par champ contre les 20 originales. **`image_byte` : bug de guillemets évité** — la concaténation Android insère `Arrays.toString(image_byte)` SANS guillemets autour (littéral JSON tableau/`null`, pas une chaîne) ; reproduit via `[Int]`/`NSNull` dans le dictionnaire plutôt qu'une `String`, pour que `JSONSerialization` produise le même littéral. Document interne construit via `JSONSerialization` (échappement JSON correct) plutôt que par concaténation naïve comme l'original (qui casserait sur un `"` dans le message) — amélioration documentée, protocole toujours interopérable (le `"packet"` est relayé de façon opaque par le serveur). Quatre initialiseurs de construction ajoutés, vérifiés champ par champ contre leurs 4 méthodes Android respectives (`ChatManager.sendPrivateMessage`/`sendGroupMessage`/`deletePrivateMessage`/`deleteGroupMessage`) — **asymétries réelles reproduites, pas unifiées** : `sender` = `mlib.sender` pour l'envoi privé mais = `myId` courant pour la suppression privée ; `profile` = `mlib.profile` pour l'envoi groupe mais = `Settings.PROFILE` courant pour la suppression groupe ; `giftId`/`thumbnailUrl` absents des variantes suppression. |
+| Messagerie / Chat UI | `engine/model/Profile.java` (213 lignes, lu en entier) | `Models/ChatProfile.swift` | ÉCRIT (NON COMPILÉ) | Nommé `ChatProfile` (pas `Profile`) pour ne pas entrer en collision avec un futur concept "profil utilisateur" du module 17 — DTO de signalisation d'appel/PBS, pas un profil complet. |
+| Messagerie / Chat UI | `messagerie/model/ChatModel.java`+`PresenceModel.java`+`TypingModel.java`+`MessageStatusModel.java` (87+22+22+31 lignes) + `models/chat/call/CallModel.java` (44 lignes), tous lus en entier | `Models/ChatEvent.swift` | ÉCRIT (NON COMPILÉ) | Consolidés en 2 `enum` Swift à valeurs associées (`ChatEvent`/`CallEvent`) plutôt qu'un type "tag entier + N champs nullable" — rend les combinaisons invalides irreprésentables, contrairement à l'original. |
+| Messagerie / Chat UI | `roster/RosterManager.java` (234 lignes, lu en entier) | `Storage/RosterRepository.swift` (étendu) | ÉCRIT (NON COMPILÉ) | `updateRoster(MessageLib/Profile, isFromServer)`, `updateRosterWithLastMessageAfterDeletion`. **Asymétrie Android reproduite** : `lucrative`/`price` écrits UNIQUEMENT sur la branche UPDATE de `ContentValues` (absents de la branche INSERT, vérifié ligne par ligne) — une nouvelle conversation garde donc la valeur par défaut (0). `RosterManager.create(Context,Cursor,String)` PAS porté : son seul effet utile (`updateRoster`) est en commentaire dans le source Android lui-même (code mort confirmé, zéro appelant ailleurs dans le projet). |
+| Messagerie / Chat UI | `messagerie/ui/ChatManager.java` (1508 lignes, lu en quasi-totalité — sections call/PBS `lunchcall`/`showIncomingCallNotification`/`addPbsNotification*` différées au module 12/13) | `Storage/MessageRepository.swift` | ÉCRIT (NON COMPILÉ) | Couche persistance `wk_messages` (`MessageEntity`). **Découverte majeure** : `GroupMessageEntity`/`wk_gp_messages` (module 2) est une table MORTE — confirmé par grep exhaustif sur tout `com.tiinver`, `Dbase.java` la crée et `StubProvider` sait la manipuler mais AUCUNE constante d'URI ni appelant n'écrit jamais dedans ; `addGroupMessage` (ligne 1190, lu en entier) écrit en réalité dans `infoContract.MSG_URI`, LA MÊME table `wk_messages` que les messages privés (différenciés par `type`) — `addGroupMessage` ci-contre cible donc `MessageEntity`, pas `GroupMessageEntity`. **Bug Android confirmé par analyse de flot de contrôle, délibérément PAS reproduit comme "atteignable"** : dans `addMessage` (ligne 1089), la branche `else if (!isMessageExist(messageId) && verb.equals("deletemessage"))` (lignes 1160-1170) est du CODE MORT — atteinte uniquement quand `isMessageExist==true` (négation du premier `if`), la sous-condition `!isMessageExist(...)` y vaut donc toujours faux. La suppression réelle transite par un chemin séparé (listeners socket `ON_DELETE_*_MESSAGE`, déjà câblés dans `ChatRepository.swift`). `thumbnailUri` (colonne) sourcée différemment selon l'appelant, vérifié champ par champ : `message.thumbnailUri` pour `insertFileMessage`, `message.thumbnailUrl` (wire `thumbnail_url`) pour `addMessage`/`addGroupMessage` — PAS unifié. `insertTextMessageFromServer` porté séparément (`object`/`verb` figés à `"text"`/`"post"` côté Android, `username` sourcé de `from` pas `username` — vraie divergence avec `insertTextMessage`). Branches `verb=="deleteMember"/"addMember"` d'`addGroupMessage` (gestion de membres de groupe) et notification push locale (branche `verb=="post"`) délibérément PAS portées — hors périmètre persistance, modules Groupes/Notifications. |
+| Messagerie / Chat UI | `messagerie/repository/ChatRepository.java` (1124 lignes, lu en entier) | `Realtime/ChatRepository.swift` | ÉCRIT (NON COMPILÉ) | Hub de routage socket central, singleton `@MainActor` (2 `PassthroughSubject` remplaçant les 4 `MutableLiveData` Android, dont 2 confirmées toujours identiques donc fusionnées). **2 bugs trouvés et corrigés dans CE portage (pas dans l'original)** : (1) `updateGroupMessage` émettait `packetForGroupJSON()` alors que le vrai `ChatRepository.updateGroupMessage` (ligne 959) émet `getPacketJson()` — l'enveloppe CHAT PRIVÉ, PAS l'enveloppe groupe, contrairement à `sendGroupMessage`/`sendScheduledGroupMessage` (eux corrects) — incohérence réelle du côté Android, reproduite telle quelle après correction (pas "corrigée" côté protocole, juste alignée sur ce que le vrai code émet) ; (2) `deletePrivateMessage` émettait sur `SocketEvent.deletePrivateMessage` ("delete private message") au lieu de `SocketEvent.onDeletePrivateMessage` ("on delete private message", la vraie constante `ROOM.ON_DELETE_PRIVATE_MESSAGE` utilisée ligne 962). **Listener manquant ajouté** : `offlineStatus` ("offline status") a un DOUBLE rôle côté Android — émis par le client à la connexion (déjà porté) ET écouté pour un lot de statuts de livraison accumulés hors-ligne (`ChatManager.updateMessageStatus`, absent d'une première version de ce fichier). `deleteMessage(messageId:data:chatType:)` ajouté (2ᵉ chemin de suppression Android, distinct de `deletePrivateMessage` : émet `data` brut pour un chat privé, sinon appelle `onDeleteMessage` — requête REST `GET deletemessage/{id}` via `APIClient.shared.get`, PAS un événement socket). `handleNewMessage` groupe maintenant câblé sur `MessageRepository.addGroupMessage` (l'ancienne lacune documentée sur `wk_gp_messages` n'existe plus, voir ligne `ChatManager.java` ci-dessus). |
+| Messagerie / Chat UI | `messagerie/ui/adapter/MessageListAdapter.java` (1353 lignes, lu en entier) + 9 `ViewHolder` (`TextViewHolder`/`MessageAudioViewHolder`/`MessagePhotoViewHolder`/`MessageVideoViewHolder`/`MessageStickerViewHolder`/`MessageGifViewHolder`/`MessageGiftViewHolder`/`GraphicMessageViewHolder`/`MissedViewHolder`, 152+228+175+177+177+181+97+152+40 lignes, tous lus en entier) + `models/chat/MessageType.java`/interfaces `MessageActionListener`/`QuoteClickListener`/`MessageViewItemClikedListener`/`LoadMoreDataListener`/`layout/ResultData.java` | `Messagerie/ChatBubbleViews.swift`, `Messagerie/ChatListItem.swift`, `Messagerie/ChatDateFormatting.swift`, `Models/GiftCatalog.swift`, `Models/RosterModel.swift` | ÉCRIT (NON COMPILÉ) | Android distingue CHAQUE type de message en 2 `viewType` RecyclerView (pair/impair) uniquement pour le pattern ViewHolder/recyclage — la seule vraie différence est `isBelongsToCurrentUser` (alignement + effets de bord upload/download) : consolidé en UNE vue SwiftUI par type d'objet, pas de doublement. **Découverte vérifiée** : la forme d'onde des bulles audio (`MessageAudioViewHolder.createWaveform()`) est un tableau ALÉATOIRE (`new Random()`), PAS une extraction PCM réelle — reproduit fidèlement (`AudioBubbleBody.randomWaveform()`), pas "amélioré" en vraie analyse audio. `MessagePhotoViewHolder`/`MessageGifViewHolder`/`MessageStickerViewHolder` confirmées byte-pour-byte IDENTIQUES côté Android (seule la fonction de chargement `glid`/`glidGif` diffère) — consolidées en une seule `MediaImageBubbleBody`. `GiftBadgeView`/`GiftCatalogHelper` (catalogue emoji/prix/nom, 12 cadeaux) portés intégralement et vérifiés. `GraphicMessageViewHolder` (rendu de chemin dessiné `EditorData`) volontairement PAS rendu — appartient au module 14 "Message Graphic" (payload `mgGraphic` déjà identifié comme JSON pré-sérialisé non décodé, module 11 protocole) — placeholder honnête. `Subscribe`/`RenewSubscription` (bandeau paiement groupe) modélisés en `ChatListItem` mais jamais peuplés (dépend du module 15 Wallet, `checksubscription`/`group/subscribe` non appelés). `TiinverAI` (bulle chat IA Gemini, VIT dans ce même adaptateur côté Android) PAS porté — écran séparé `TiinverGeminiAIChat.java`, hors périmètre chat classique. `getInformation`/`getInformation126` (2 formats de texte système selon `versionCode <> 126`) consolidés au seul format moderne (champs structurés), l'ancien format à base de regex sur des messages historiques rares non reproduit. |
+| Messagerie / Chat UI | `messagerie/ui/ChatFragmentTest.java` (3080 lignes, lu en entier) | `Messagerie/ChatViewModel.swift`, `Messagerie/ChatView.swift`, `Storage/MessageRepository.swift` (`page`, ajouté) | ÉCRIT (NON COMPILÉ) | Chrome Android non pertinent PAS porté (mode immersif système, `CursorLoader`/`ItemTouchHelper`/`ServiceConnection`/`DownloadManager` — remplacés par `List` SwiftUI + `async`/`URLSession`). Logique métier réelle portée : pagination (`CursorLoader` `conversationId=? ORDER BY stamp DESC LIMIT 100 OFFSET n` → `MessageRepository.page`, `CoreDataRepository.query` étendu avec `offset`), routage temps réel (observer `chatViewModel.getIncomingMessage()` → `ChatRepository.chatEvents`, déjà câblé module 11 protocole), envoi (`sendMessageText`/`sendMessageGift`/`prepareFileMessage`/`prepareGifMessage`, écho optimiste + persistance locale + émission différée à l'affichage réel de la bulle), cycle upload/download/accusé de lecture déclenché À L'AFFICHAGE (pas au clic, fidèle à `onBindViewHolder`), citation (`showQuotedMessage`), sélection/suppression (`deleteMessageForme`/`deleteMessageForEveryOne`/`removeMessageAndUpdateSeparators`, ce dernier AMÉLIORÉ — voir `ChatListItem.swift`). **Frappe sortante reconstruite plutôt que reproduite** : le corps réel de `onTyping(boolean)` qui émettrait sur le socket est ENTIÈREMENT COMMENTÉ dans le source Android lu (lignes 830-836) — seul le ré-armement de `Handler` est actif, sans émission associée ; une émission fonctionnelle a été écrite via `ChatRepository.emitTyping`/`emitStopTyping` (vérifiés module 11 protocole) plutôt qu'un no-op fidèle. **PAS porté, gaps documentés (pas devinés)** : transfert réel upload/download (`UploadFileOrDataService.java`/`DownloadReceiver.java` PAS lus cette passe — endpoint/format multipart inconnus, `requestUpload`/`requestDownload` sont des points d'ancrage vides) ; zoom plein écran média (`ImageExpanderAnim` pas lu) ; sélecteurs GIF/cadeau réels (`StickerPickerDialog.java`/`GiftGalleryView.java` pas lus, `GiftPickerPlaceholder` minimal câblé sur le catalogue déjà vérifié) ; enregistrement audio (CONFIRMÉ code mort côté Android lui-même — tout le `touchListener` d'enregistrement est commenté dans le source) ; écran de liste des conversations (`RosterModel` fourni en entrée, fichier source séparé PAS lu, hors périmètre explicite de cette passe) ; sons d'envoi/réception (`AppSounds`, pas branché). |
+| Appels WebRTC/CallKit | `messagerie/webrtc/RTConnection2.java` (801 lignes, lu en entier) | `Calls/WebRTCConnection.swift`, `Models/WebrtcData.swift`, `Models/TurnCredentials.swift` | ÉCRIT (NON COMPILÉ) | Moteur WebRTC AUDIO SEUL (aucune trace de `VideoTrack`/`VideoCapturer`, `isVideoEnabled` toujours `false` chez les deux appelants réels — confirmé, pas une réduction de portée de ce portage). **`RTConnection.java`/`RTConnection3.java` (775/790 lignes) CONFIRMÉS MORTS** par grep exhaustif (même méthode que le cluster "v2" du module 10) — seul `RTConnection2` est instancié hors de son propre fichier. Bibliothèque `stasel/WebRTC` (SPM, déjà déclarée dans `project.yml` depuis un module antérieur) vérifiée avant usage : API Swift confirmée par lecture directe du dépôt de démo officiel `stasel/WebRTC-iOS` (`WebRTCClient.swift`) ET des headers Objective-C réels (`RTCConfiguration.h`/`RTCPeerConnection.h`/`RTCPeerConnectionFactory.h`/`RTCAudioSession.h`) — **1 divergence trouvée et corrigée pendant l'écriture** : `addIceCandidate:` n'a PAS de variante à bloc de complétion contrairement à `offer`/`answer`/`setLocalDescription`/`setRemoteDescription` (une première ébauche en supposait une, corrigée après vérification du header). Asymétrie négociateur/poli de `CallService.configForOutgoingCall`/`configForIncomingCall` préservée à l'identique (l'appelant N'EST PAS l'initiateur de l'offre — contre-intuitif, vérifié). `preferCodec`/`movePayloadTypesToFront`/`findMediaDescriptionLine` (manipulation SDP texte pure, préférence codec Opus) portés fidèlement, indépendants de l'API WebRTC. |
+| Appels WebRTC/CallKit | `messagerie/repository/ChatRepository.java` (signalisation d'appel, lignes 974-988 + `calling`/`notifyMissedCall`/`buildCallMessageLib`, lues au module 11 mais câblées ici) | `Realtime/ChatRepository.swift` (étendu) | ÉCRIT (NON COMPILÉ) | `onCall`/`onCallBusy`/`onRinging`/`onCallEnd`/`accepCall`/`emitWebrtcMessage` (motif commun : suffixe `PrivateAction` pour un chat 1:1, aucun pour un groupe, vérifié identique sur les 5 — SAUF `onCallBusy`, toujours suffixé, pas de variante groupe côté Android). `calling`/`notifyMissedCall` envoient un message `"voicecall"`/`"missedvoicecall"` normal via le canal de chat existant (PAS un événement dédié) — **asymétrie réelle vérifiée** : `calling` utilise `sendMessage`/`sendGroupMessage`, `notifyMissedCall` utilise `updateMessage`/`updateGroupMessage` (pas les mêmes méthodes). **Découverte** : `ChatRepository.onCall`/`CallViewModel.onCall` (émission `ROOM.CALL`) confirmés JAMAIS appelés par le client Android réel (grep exhaustif de `CallService.java`) — code mort côté Android lui-même, écouteur de réception conservé par fidélité (module 11) mais l'émission n'est déclenchée nulle part dans ce portage non plus, cohérent. Le déclenchement réel d'un appel entrant EN PREMIÈRE LIGNE (`lunchcall`, appelé directement, PAS via événement) a été corrigé dans `ChatRepository.handleNewMessage` (module 11, `object=="voicecall"`) : la branche `!isOnCall` appelle maintenant `CallCoordinator.shared.handleIncomingCall` directement au lieu de publier un `.onCall` générique — une première ébauche (avant que ce module existe) traitait les deux branches identiquement, corrigé une fois `CallCoordinator` disponible. |
+| Appels WebRTC/CallKit | AUCUN équivalent Android — développement NOUVEAU | `Calls/CallKitManager.swift` | ÉCRIT (NON COMPILÉ) | `CXProvider`/`CXProviderConfiguration`/`CXCallController`/`CXCallUpdate`/`CXHandle`/`CXStartCallAction`/`CXAnswerCallAction`/`CXEndCallAction`/`CXSetMutedCallAction`/`CXCallEndedReason` — API vérifiée via `developer.apple.com/documentation/callkit` (fetch direct, a fonctionné pour `CXProvider`) et recoupée avec les bindings Xamarin officiels (`xamarin/apple-api-docs`, mêmes signatures en C#, utilisés quand la page Apple ne rendait pas son contenu JS). `CXProviderConfiguration(localizedName:)` signalé DÉPRÉCIÉ depuis iOS 14 dans la documentation croisée mais reste l'initialiseur RÉELLEMENT documenté et utilisé dans toutes les sources consultées (dont le guide d'intégration VideoSDK et le binding Xamarin, qui n'en proposent pas d'autre) — utilisé tel quel, à revoir sur un vrai Xcode si un avertissement apparaît (aucun accès macOS pour vérifier). CallKit remplace la majeure partie de la "plomberie" Android de `CallActivity`/`IncomingCallActivity` (capteur de proximité, wake lock, notification à actions `IncomingCall`/`CallLauncherService`) — gérée nativement par le système, non reproduite. |
+| Appels WebRTC/CallKit | AUCUN équivalent Android — développement NOUVEAU, contrainte Apple stricte | `Calls/VoIPPushManager.swift`, `Calls/VoIPTokenRegistrar.swift` | ÉCRIT (NON COMPILÉ) | `PKPushRegistry`/`PKPushRegistryDelegate` — API vérifiée via les bindings Xamarin officiels (`PKPushRegistry.xml`/`IPKPushRegistryDelegate.xml`/`PKPushType.xml`, confirmant `.voIP`), recoupée par recherche croisée sur l'exigence Apple ("must call provider.reportNewIncomingCall … synchronously", "mere seconds to respond", désactivation du jeton par le système en cas de non-conformité répétée). Nécessaire car Android laisse FCM réveiller le processus normalement pour tout type de notification (pas de mécanisme "appel" séparé) — **iOS interdit structurellement cette approche** pour un appel entrant app tuée. **2026-08-12 : enregistrement du jeton câblé** (`VoIPTokenRegistrar.register`, `POST user/voip-token`, jeton hex-encodé) — endpoint DÉDIÉ choisi plutôt que de réutiliser le motif générique `user`/`column` déjà utilisé par le jeton FCM (`PushTokenRegistrar.swift`), sur demande explicite ; **implémentation SERVEUR PAS faite** (backend PHP séparé) — spécification complète (chemin, payload, prérequis APNs VoIP/topic `.voip`) dans la nouvelle section "Backend à implémenter — PushKit/VoIP". **Bug de séquencement trouvé et corrigé** : une première version attendait la préparation WebRTC complète (`fetchTurnAndStart`, appel réseau TURN) avant d'appeler `completion()` dans `didReceiveIncomingPushWith` — retardait inutilement le rappel PushKit au-delà de ce qu'exige Apple ; corrigé via le paramètre `onReported` de `CallCoordinator.handleIncomingCall`, appelé dès que `CXProvider.reportNewIncomingCall` a rendu la main. |
+| Appels WebRTC/CallKit | `messagerie/service/CallService.java` (835 lignes, lu en entier) + `messagerie/ui/call/CallViewModel.java` (110, entier) + `messagerie/ui/call/CallActivity.java` (592, entier) + `messagerie/ui/call/IncomingCallActivity.java` (534, entier) | `Calls/CallCoordinator.swift`, `Calls/CallView.swift` | ÉCRIT (NON COMPILÉ) | UN SEUL coordinateur `@MainActor` remplace Service+ViewModel Android (la séparation Android répondait à un besoin de cycle de vie propre à Android — Service survivant à l'Activity — sans équivalent iOS direct). Flux couverts : appel sortant (`startOutgoingCall`→`CXStartCallAction`→`performStartCall`→TURN+WebRTC+`calling()`), appel entrant socket (`handleIncomingCall`, déclenché directement par `ChatRepository`), appel entrant app tuée (`VoIPPushManagerDelegate`→même méthode), acceptation (`performAnswerCall`→`accepCall`), fin d'appel locale/distante (`performEndCall`/`endCallFromRemote`, avec détection d'appel manqué fidèle à `CallActivity.isCalleMissedCall`), relais de signalisation WebRTC (`WebRTCConnectionDelegate`↔`emitWebrtcMessage`/`onMessage`), activation audio (`didActivate`/`didDeactivate`→`RTCAudioSession`). `CallView.swift` couvre l'écran POST-décroché uniquement (minuteur/muet/haut-parleur/raccrocher) — l'écran de sonnerie/réponse lui-même est l'écran système CallKit natif, aucune vue SwiftUI équivalente à `activity_receive_call.xml` n'est nécessaire. **PAS porté, gaps honnêtement documentés** : capteur de proximité/wake lock (remplacés par la gestion native CallKit, pas une omission) ; boucle de re-notification `outgoingCallRepeatRunnable` (ping `/push` toutes les 5s tant que `!isRinging`, redondant avec PushKit côté iOS — pas branché) ; `RTConnection.java`/`RTConnection3.java`/`CallService2.java` confirmés morts, pas lus. `CallView` EST présentée en `.fullScreenCover` depuis `ChatView.swift` (module 11) dès que `CallCoordinator.state != .idle`, avec un bouton d'appel dans la barre d'outils construisant un `ChatProfile` minimal depuis `RosterModel` (champs alignés sur ceux que `lunchcall` utilise réellement — `messageId`/`username`/`nikname`/`chatType` — le vrai point d'entrée bouton d'appel Android n'a PAS été localisé dans les 3080 lignes lues de `ChatFragmentTest.java`, probablement dans un layout XML non fourni, reconstruit plutôt que deviné à l'identique). |
+| Appels WebRTC/CallKit | `messagerie/webrtc/RTConnection2.java` (canal de données, `RTCDataChannel`) | `Calls/WebRTCConnection.swift` (corrigé) | CORRECTIF — bug réel corrigé | **Bug trouvé et corrigé (2026-08-12, en préparation du module 13)** : `start(withDataChannel:)` créait le `RTCDataChannel` local mais n'assignait JAMAIS `.delegate`, et `peerConnection(_:didOpen:)` (canal ouvert par le pair distant) ne stockait ni ne déléguait non plus — AUCUN message reçu sur le canal de données n'aurait jamais déclenché de callback, dans un sens comme dans l'autre. Dormant tant que seuls les appels (module 12, qui n'envoient rien sur ce canal) l'utilisaient ; bloquant pour le Shareboard, qui EN A besoin dans les deux sens. Vérifié contre le vrai `WebRTCClient.swift` de référence (`stasel/WebRTC-iOS`, méthode `createDataChannel()`/`peerConnection(_:didOpen:)`) avant correction — signatures `RTCDataChannelDelegate` (`dataChannelDidChangeState`/`dataChannel(_:didReceiveMessageWith:)`) confirmées par la même source, PAS devinées. Nouvelle méthode `WebRTCConnectionDelegate.webRTCConnection(_:didReceiveData:)` (implémentation par défaut vide via extension de protocole, pour ne rien casser côté `CallCoordinator`). |
+| Shareboard (module 13) / Message Graphic (module 14) | `com.animems.engine.android.codec.graphic.GraphicMessageCodec.java` (266, entier) + `CompactTouchEvent.java`/`CompactEditorData.java` (formats fil) | `Shareboard/GraphicMessageCodec.swift`, `Shareboard/PBSWireModels.swift` | ÉCRIT (NON COMPILÉ) | Codec de compression PARTAGÉ par les deux modules (confirmé : `FragmentPbs`/`FragmentMessageGraphic` l'utilisent tous les deux). Noms de clés JSON reproduits À L'IDENTIQUE (`id`/`a`/`n`/`x0`/`y0`/`x1`/`y1`/`s`/`c`/`t`/`sw`/`sh` pour le tactile, `id`/`tp`/`ac`/`tc`/`cc`/`tx`/`tw`/`th`/`l`/`t`/`px`/`py`/`bw`/`bh`/`bb` pour l'éditeur) — un pair Android encore en circulation doit pouvoir désérialiser ce que ce client émet. `bb` (bitmap) encodé en Base64 (comportement par défaut de Gson pour `byte[]`, pas une supposition). Format "legacy" `MotionEventData[]` d'Android (compatibilité descendante avec d'anciens messages) délibérément PAS repris — aucune donnée existante sous cette forme ne peut exister côté iOS, ce client ne l'a jamais émise. |
+| Shareboard (module 13) / Message Graphic (module 14) | `com.animems.engine.android.pbs.PBSView.java` (1411 lignes, entier) + `com.animems.engine.model.pbs.EditorData.java`/`MotionEventData.java` (599+110) + `com.animems.engine.android.memes.Page.java` (27) | `Shareboard/PBSCanvasEngine.swift`, `Shareboard/PBSWireModels.swift` | ÉCRIT (NON COMPILÉ) | **Découverte majeure corrigeant la piste initiale** : `PBSCompound.java` (899 lignes) N'EST PAS le moteur de rendu comme supposé après une première lecture partielle — c'est la barre d'outils/le contrôleur (`FrameLayout`+`onClick`), qui délègue tout le dessin/tactile RÉEL à `PBSView` (`onDraw`/`onTouch`, 1411 lignes, jamais comptée dans l'estimation initiale de portée). Moteur d'état SwiftUI DÉCOUPLÉ de son rendu (contrairement à l'original qui mélange état+`onDraw`+`onTouch` dans une seule `View`), PARTAGÉ à l'identique par le Shareboard temps réel ET Message Graphic (lecture seule) — confirmé, pas une simplification arbitraire : les deux Fragment Android instancient littéralement `PBSCompound`/`PBSView`. `EditorData`/`MotionEventData` consolidés en DEUX structs Swift (`PBSEditorData` réutilisé pour objets placés ET traits de dessin, exactement comme Android réutilise `EditorData` pour `page.page`/`page.paintList`) — ~15 champs de rendu/animation avancés Android (`cachedText`/`seekMatrix`/`initialSkewX`/`midPointX`/`degre`…) NON repris, vérifiés un par un comme jamais lus par le codec ni la boucle de rendu normale, remplacés par les gestes natifs SwiftUI. **Portée réduite documentée** : le pinch/rotate/drag d'un objet placé n'est PAS resynchronisé EN DIRECT pendant le geste (republié en entier une fois terminé, via le canal `onSendPBStreamData` existant) — Android le fait via le même canal que le dessin avec un unique `Path` partagé (donc UN SEUL geste distant à la fois de toute façon, limitation réelle reproduite pour le dessin). Suppression d'objet PAS synchronisée (Android non plus, vérifié : `executeDeleterObjeect` n'appelle jamais `pbStreamActionListener`). |
+| Shareboard (module 13) / Message Graphic (module 14) | `com.animems.engine.android.pbs.PBSView.java` (rendu `onDraw`/gestes `touchListener`) | `Shareboard/PBSCanvasView.swift` | ÉCRIT (NON COMPILÉ) | Rendu réécrit en SwiftUI natif plutôt que traduit ligne à ligne : traits libres dans un `Canvas` (chemins vectoriels), objets placés (texte/image/sticker) en VRAIES vues SwiftUI empilées au-dessus (`Text`/`Image` + `DragGesture`/`MagnificationGesture`/`RotationGesture` natifs composés via `SimultaneousGesture`), plutôt que hit-testés manuellement dans une boucle `onDraw` comme l'original (`getMidPoint`/`getDegre`/`getDistance`, trigonométrie manuelle, non reproduite). **Non porté, délibérément différé, documenté** : icône "Tiinver" embossée (`EmbossMaskFilter`/`BlurMaskFilter`), carrousel de bannières publicitaires (`BannerAdapter`/`ViewPager2`), tutoriel `TapTargetView` — purement décoratifs/publicitaires, sans impact sur la fonction collaborative principale. |
+| Shareboard (module 13) | `messagerie/ui/FragmentPbs.java` (810 lignes, entier) + `messagerie/model/PBSViewModel.java`/`PBSModel.java` (58+22, entier) | `Shareboard/PBSViewModel.swift`, `Shareboard/ShareboardView.swift` | ÉCRIT (NON COMPILÉ) | UN SEUL coordinateur `@MainActor` (même choix que `CallCoordinator`, module 12). **Écart délibéré vis-à-vis d'Android, documenté en tête de fichier** : `FragmentPbs.webrtc = RTConnection2.getInstance(requireActivity())` réutilise le MÊME SINGLETON que `CallService` (empêchant structurellement un appel ET un Shareboard simultanés côté Android) — ici, `PBSViewModel` possède sa PROPRE instance de `WebRTCConnection` (classe non-singleton), car aucun point d'entrée UI n'ouvre le Shareboard pendant un appel actif (`CallCoordinator.state` contrôle seul `CallView`) : la mutuelle exclusion d'Android n'était pas un comportement observable à préserver. Asymétrie initiateur/poli de `configForOutgoingCall`/`configForIncomingCall` préservée à l'identique (même motif contre-intuitif que les appels). TURN via le MÊME endpoint `call/turn-credentials` que les appels (`TurnCredentialsFetcher` partagé côté Android, pas une supposition). Signalisation socket ajoutée à `ChatRepository.swift` (listeners `nextPage`/`beforePage`/`joinRoom`/`leaveRoom`/`onTouchListener`/`onReceiveData`/`onStartPrivatePBS`/`onJoinPrivatePBS`, jusqu'ici manquants — seul `webrtcMessage`, partagé avec les appels, était câblé). `PBSEvent` (module 11) existait déjà mais rien ne l'alimentait. **PAS porté** : `addPbsNotification` (message système local "shareboard" inséré en base au démarrage du salon, `ChatManager.addPbsNotification*`) — décoratif, sans impact sur la synchronisation, différé faute de temps. |
+| Message Graphic (module 14) | `messagerie/ui/FragmentMessageGraphic.java` (295 lignes, entier) | `Shareboard/MessageGraphicComposeView.swift` | ÉCRIT (NON COMPILÉ) | Capture LOCALE pure (aucun réseau, contrairement au Shareboard), réutilisant le même `PBSCanvasEngine`/`PBSCanvasView`, envoyée en UN SEUL message `"graphic"` à la fin (`GraphicMessageCodec.encodeTouchBatch`). **Bug Android trouvé, délibérément PAS reproduit littéralement, documenté** : `FragmentMessageGraphic.onSendPBStreamData` (objets placés — image/texte/sticker) construit un `JSONObject` local puis ne fait RIEN d'autre — seul `onSendPBSTouchSreamListner` (dessin) alimente réellement le lot envoyé ; un objet placé pendant la composition DISPARAÎT donc silencieusement du message final côté Android. Plutôt que de reproduire cette UX confuse, l'écran de composition n'expose délibérément QUE l'outil dessin (pas de boutons image/texte/sticker) — décision explicite, pas un oubli. `pbs_compound.setDataCompress(2)` (cadence DIFFÉRENTE du Shareboard temps réel, qui utilise 3) reproduite. |
+| Message Graphic (module 14) | `messagerie/ui/viewholders/GraphicMessageViewHolder.java` (152, lu au module 11) | `Messagerie/ChatBubbleViews.swift` (`GraphicPlaceholderBubbleBody`, remplacé) | ÉCRIT (NON COMPILÉ) | Ancien placeholder honnête (module 11) remplacé par un rendu réel : décode `message.message` (déjà substitué depuis `MgGraphic` par `ChatViewModel.onIncoming`/`MessageRepository`, module 11 protocole) via `PBSCanvasEngine.loadRecordedBatch`, rejoué dans LE MÊME moteur `PBSCanvasView` en `isInteractive: false`. `ChatViewModel.sendGraphic(payload:)` ajouté (symétrique de `sendText`/`sendMedia`, `object="graphic"`) — point d'entrée bouton non identifié côté Android (comme le bouton d'appel, module 11/12), câblé directement depuis `ChatView` sur `MessageGraphicComposeView`. |
+| Wallet / Paiements (module 15) | `wallet/BuyCoinsActivity.java` (188, CONFIRMÉ MORT), `wallet/CheckoutActivity.java`+`CheckoutViewModel.java`+`utils/PaymentsUtil.java`+`Constants.java`+`CheckoutSuccessActivity.java` (Google Pay, exemple Google non terminé jamais relié au crédit de pièces) | — | CONFIRMÉ MORT/NON FONCTIONNEL, PAS PORTÉ | Voir section "⚠️ AUDIT CONFORMITÉ APP STORE" ci-dessus pour l'analyse complète. `BuyCoinsActivity` absent d'`AndroidManifest.xml` + entièrement commenté dans le fichier source. Le reste (`CheckoutActivity`/`PaymentsUtil`/`Constants`) EST déclaré dans le manifeste (techniquement atteignable) mais est du code d'exemple Google Pay copié-collé jamais fini (`gatewayMerchantId: "example"`, prix `"50.2"` codé en dur, `handlePaymentSuccess` ne crédite jamais de pièces). `PeerToPeerActivity` (déclarée, atteignable) est un stub vide (inflate seul, aucune logique). |
+| Wallet / Paiements (module 15) | AUCUN équivalent Android — remplace le flux d'achat réel (`SelectAmountActivity`→`PurchaseActivity`, mobile money/crypto + ID de transaction manuel) sur instruction explicite | `Wallet/CoinStoreManager.swift`, `Wallet/BuyCoinsView.swift`, `Wallet/WalletModels.swift` (`CoinTier`) | ÉCRIT (NON COMPILÉ) | API StoreKit 2 (`Product.products(for:)`/`.purchase()`/`Product.PurchaseResult`/`VerificationResult`/`Transaction.updates`/`.finish()`) vérifiée contre le code source réel de `RevenueCat/purchases-ios` (`StoreKit2TransactionListener.swift`) avant écriture, Apple ne rendant pas son contenu JS exploitable (même contrainte que CallKit/PushKit, module 12). 5 paliers consommables reprenant les quantités Android (250/500/1250/2500/5000), IDs `com.tiinver.ios.coins.<quantité>` À CRÉER dans App Store Connect (pas encore fait, hors périmètre code). Rapporte au backend via un endpoint NEUF (`POST storekit/verify-purchase`, PAS `purchaserequests`) — implémentation SERVEUR PAS faite, voir section "Backend à implémenter" ci-dessous à étendre. |
+| Wallet / Paiements (module 15) | `wallet/WalletRepository.java` (364, entier, SAUF `submitPurchasseRequest`/`submitPurchasseByCrypto` délibérément omises) | `Wallet/WalletRepository.swift` | ÉCRIT (NON COMPILÉ) | Endpoints REST reproduits à l'identique (`transactions/{id}/{limit}/{offset}`, `withdrawalrequests`, `crypto/withdraw` via `postToVPS` — serveur distinct confirmé —, `convert`, `rewardedCoins`, `referral/total/{id}`, `transfert` — faute d'orthographe française RÉELLE côté serveur, préservée —, `isPhoneOrEmailExiste`, `getuserbyid/{id}`, `push`). `refreshBalance` reproduit fidèlement l'enrobage artificiel `"["+userData+"]"` d'Android (un objet unique redésérialisé comme tableau à un élément). |
+| Wallet / Paiements (module 15) | `wallet/WithdrawActivity.java` (566, entier), `TransfertCoinsActivity.java` (331, entier), `ConversionActivity.java` (251, entier), `ReferralActivity.java` (511, entier — génération de "carte" QR décorative NON reprise), `EarnCoinsActivity.java` (400, entier), `WalletActivity.java`+`WalletViewModel.java` (229+55, entiers), `models/wallet/*.java` (Transaction/Operator/Prix/Wallet, tous lus en entier) | `Wallet/WalletView.swift`, `Wallet/WithdrawView.swift`, `Wallet/TransferCoinsView.swift`, `Wallet/ConversionView.swift`, `Wallet/ReferralView.swift`, `Wallet/EarnCoinsView.swift`, `Wallet/WalletViewModel.swift`, `Wallet/WalletModels.swift` | ÉCRIT (NON COMPILÉ) | Formulaires/calculs de frais/seuils portés fidèlement (voir audit conformité ci-dessus). QR code du parrainage : `CIFilter.qrCodeGenerator()` (Core Image natif) remplace ZXing — API système, pas de dépendance tierce à vérifier, contrairement à l'original. Pub rewarded (`RewardedAd`/`RewardedInterstitialAd`) volontairement PAS câblée dans `EarnCoinsView`/`WithdrawView`/`TransfertCoinsActivity`-équivalent — protocole `AdRewardProvider` posé comme point d'ancrage exact pour le module 16 (AdMob), avec une implémentation `PlaceholderAdRewardProvider` qui ne rapporte jamais de récompense (pas un faux crédit silencieux). Minuteur décoratif de 10s avant bouton "voir la pub" (`EarnCoinsActivity.createTimer`) non repris. `MonetizationActivity` (menu hub redirigeant vers caméra/contacts/parrainage/IA, aucune logique wallet propre) PAS porté comme écran dédié — remplacé par la navigation SwiftUI native vers les écrans concernés, chacun déjà/à porter séparément. **Point d'entrée UI de `WalletView` PAS câblé** : Android lance `WalletActivity` depuis `uploadPerfilPhoto/AddPerfilFoto.java` (module 17, pas encore atteint à l'écriture de cette ligne) — à faire au moment de porter ce module. |
+| Wallet / Paiements (module 15) | `TiinverConfig.java` (89, entier), `CountryManager.java` (48, entier), `setting/FirebaseConfigManager.java` (déjà porté module antérieur sous `Settings/FirebaseConfigManager.swift`, RAS pour les clés wallet — toutes déjà présentes) | `Wallet/TiinverConfig.swift` | ÉCRIT (NON COMPILÉ) | Détection de pays SIMPLIFIÉE : Android essaie `TelephonyManager.getSimCountryIso()`/`getNetworkCountryIso()` avant `Locale.getDefault().getCountry()` — `CoreTelephony`/`CTCarrier` (équivalent iOS) est restreint par Apple depuis iOS 16 pour confidentialité (fait public documenté, pas une supposition), donc porter ce repli produirait du code mort qui semble fonctionner mais ne renvoie jamais de vraie valeur ; utilise directement `Locale.current.region`, qui était de toute façon le dernier recours réel d'Android. Liste de pays CEMAC recopiée depuis `TiinverConfig.java` (6 pays + indicatifs E.164 réels, faits publics) plutôt que l'asset `countries.json` non lu (fichier de ressource, pas de code). `TiinverConfig.configure()` câblé dans `AppDelegate.swift`. |
+| Sécurité / Session | `back_sync.infoContract.COINS_AMOUNT`/`GEMS_AMOUNT`/`PENDING_COINS_AMOUNT`/`PENDING_GEMS_AMOUNT` (`SharedPreferences`, lus dans quasiment tous les fichiers `wallet/` module 15) | `Security/UserSession.swift` (étendu) | ÉCRIT (NON COMPILÉ) | Cache local rapide du solde (pièces/gemmes) + compteurs de récompense en attente, lu par TOUS les écrans wallet avant tout appel réseau, mis à jour de façon optimiste après achat/retrait/transfert/conversion/récompense — même motif que `PENDING_COINS_AMOUNT` d'Android (repli en cas d'échec réseau, réessayé au prochain gain). |
+| AdMob (module 16) | `AndroidManifest.xml:419` (App ID) + `res/values/strings.xml` (7 IDs d'unité, `MyAdMobId`/`MyAdMobRewardedId`/`MyAdMobRewardedIdOnFeed`/`MyAdMobInterstitielsRewardeadsId`/`MyAdMobInterstitielsadsId`/`MyAdMobOpenadsId`/`TestAdMobId`, tous lus en entier) + TIINVER_IOS_PORT_ANALYSIS.md §5.1 (2 IDs bannière codés en dur dans les layouts XML) | `Advertising/AdMobIdentifiers.swift` | ÉCRIT (NON COMPILÉ) | Tous les identifiants recopiés depuis les vraies sources (pas devinés) — même compte AdMob que l'Android, confirmé. IDs de test iOS de Google (`ca-app-pub-3940256099942544/…`, distincts des IDs de test Android) vérifiés verbatim contre le code source de l'exemple officiel `googleads/googleads-mobile-ios-examples` avant d'être recopiés ici. `MyAdMobOpenadsId`/`MyAdMobInterstitielsadsId` (App Open ads / interstitiel classique) confirmés SANS appelant réel dans le code Android lu — pas repris. |
+| AdMob (module 16) | AUCUN équivalent Android direct — SDK vérifié contre l'exemple officiel Google avant écriture | `Advertising/AdMobManager.swift` | ÉCRIT (NON COMPILÉ) | `configureAdMob()` (port de `MobileAds.initialize`, appelé dans `AppDelegate` — **écart délibéré** : le bloc Android équivalent est entièrement commenté/mort, l'initialisation explicite EST en revanche requise côté iOS, pas d'auto-init équivalente, étape documentée de façon stable par Google). `AdBannerView` (`UIViewRepresentable`), `RewardedAdManager`/`RewardedInterstitialAdManager` (conformes à `AdRewardProvider`, protocole posé au module 15 dans `Wallet/EarnCoinsView.swift` comme point d'ancrage exact — câblés maintenant dans `EarnCoinsView`/`WithdrawView`/`TransferCoinsView`/`ConversionView`, portant fidèlement le motif `showRewardedVideoAfter`, délai de 500ms compris), `NativeAdLoader`/`NativeAdContentView` (rendu MANUEL — pas de Google Native Templates mûr côté iOS, confirmé §5.5 — PAS câblé dans le feed, module 6 déjà fermé sans ce point d'intégration, posé comme brique réutilisable avec un TODO explicite plutôt qu'un oubli silencieux). Bannières câblées dans `WithdrawView`/`TransferCoinsView`/`ConversionView`/`EarnCoinsView` (`bannerWallet`)/`ReferralView` (`bannerSecondary`, seul écran à utiliser le second ID, fidèle à l'original). |
+| AdMob (module 16) | `project.yml`/`Info.plist` — App Tracking Transparency (iOS 14.5+), SKAdNetwork, App ID | `project.yml` (étendu) | ÉCRIT (NON COMPILÉ) | `GADApplicationIdentifier` (requis, sans quoi `MobileAds.shared.start` échoue silencieusement — comportement documenté du SDK), `NSUserTrackingUsageDescription` (AUCUN équivalent Android, prompt système ATT sans lequel le SDK sert des annonces non personnalisées par défaut), `SKAdNetworkIdentifier` de Google/AdMob (`cstr6suwn9.skadnetwork`, stable et documenté publiquement) — **liste PARTIELLE délibérément** : la liste complète (~50+ entrées) n'est nécessaire QUE si des réseaux de médiation (Meta/Unity/Pangle, comme côté Android) sont un jour activés côté console AdMob iOS ; non ajoutée sans confirmation que la médiation sera réellement activée, pour ne pas fabriquer une liste non vérifiée. Le prompt `ATTrackingManager.requestTrackingAuthorization` lui-même N'EST PAS déclenché par ce portage (aucun point d'entrée identifié côté Android à reproduire, cette permission n'existe pas sur cette plateforme) — le SDK fonctionnera en mode non personnalisé par défaut tant que ce prompt n'est pas ajouté, différé à une passe UX dédiée. |
+| Profil / Réglages (module 17) | `uploadPerfilPhoto/ProfileRepository.java` (entier) + endpoints épars de `UserProfile.java`/`AddPerfilFoto.java`/`SettingAccountFragment.java` (`follow`/`block`/`user`/`logout`/`deleteaccount`, tous vérifiés dans `TransportData.java`) | `Profile/ProfileRepository.swift` | ÉCRIT (NON COMPILÉ) | `fetchProfile`/`fetchUserPosts` (endpoint À 4 segments `feedtimeline/{actor}/{userId}/{limit}/{offset}`, DIFFÉRENT du `fetchTimeline` à 3 segments du module 6/`FeedRepository.swift` — feed personnalisé vs posts d'un profil précis) réutilisent `FeedActivity` (module 6) plutôt qu'un modèle dupliqué. `toggleBlock` reproduit fidèlement la bascule serveur (réponse `"USER BLOCKED"`/`"USER UNBLOCKED"`, pas un paramètre `blocked` envoyé par le client). `uploadProfilePicture` volontairement NON implémenté (`throw`, pas un faux succès silencieux) — transfert multipart pas encore porté, même gap que le module 11. |
+| Profil / Réglages (module 17) | `UserProfile.java` (1198, sections chrome immersif Android ignorées) + `AddPerfilFoto.java` (1164, sections upload NON portées) | `Profile/ProfileView.swift`, `Profile/ProfileViewModel.swift` | ÉCRIT (NON COMPILÉ) | UN SEUL écran paramétré (`isCurrentUser`) remplace les deux Activity Android — voir avertissement de tête de fichier. Grille de posts paginée (`LazyVGrid` 3 colonnes), en-tête (avatar/nom/certifié/avertissement/stats abonnés-abonnements/bio/lien), actions conditionnelles (Modifier+Portefeuille pour soi, Suivre+Message+Bloquer/Signaler pour autrui). `messageTarget` reproduit `openConversation` champ par champ (`RosterModel`), visible UNIQUEMENT si `type=="public"` (fidèle à `message.setVisibility` conditionnel). Bouton Portefeuille câblé sur `WalletView` (module 15) — point d'entrée réel confirmé (`AddPerfilFoto.java` lance `WalletActivity` depuis `container_wallet`). `HomeShellView.swift` (module 1) avait déjà un appel `ProfileView()` sans argument anticipant ce module — résolu par un init de commodité `ProfileView()` = profil courant, plutôt que de casser ce point d'entrée préexistant. **PAS porté** : `FollowList` (abonnés/abonnements), zoom plein écran avatar/posts (`zoomImage`/`ViewPager2`), `Report` (signalement, bouton présent mais vide — module 18). |
+| Profil / Réglages (module 17) | `EditProfile.java` (190, entier), `EditPersonalInformation.java` (235, entier) | `Profile/EditProfileView.swift`, `Profile/EditPersonalInformationView.swift` | ÉCRIT (NON COMPILÉ) | **Asymétrie réelle préservée** : colonne locale Core Data `work`/`school` vs colonne REST `work_At`/`school_At` (vérifié ligne par ligne dans `EditPersonalInformation.UpdateProfileData`, PAS unifiée). Catégorie de profil (`CategoryActivity`) affichée en lecture seule, modification différée (écran séparé non lu). Un champ n'est envoyé au serveur QUE s'il n'est pas vide (fidèle : on ne peut pas effacer un champ existant depuis ces écrans côté Android non plus). |
+| Profil / Réglages (module 17) | `setting/SettingsActivity.java` (193, entier) + `SettingAccountFragment.java`/`SettingAdvertisementFragment.java`/`SettingNotificationFragment.java`/`SettingChatFragment.java`/`SettingPrivacityFragment.java` (tous lus en entier) + `SettingStorageFragment.java` (lu partiellement) | `Settings/SettingsView.swift`, `Settings/SettingSubViews.swift` | ÉCRIT (NON COMPILÉ) | **Découvertes de code mort en cascade** (même méthodologie que les modules précédents — vérifié en lisant le corps réel des fichiers, pas deviné depuis leur nom) : `SettingPrivacityFragment` — 5 des 6 réglages de confidentialité granulaires (dernière connexion/photo/appels/groupes/statut) ENTIÈREMENT commentés dans le source (`onCreateView`, ~50 lignes mortes), seul "compte privé" (`account_type_switch`, `POST user` colonne `type`) est réel ; `SettingChatFragment` (menu "Chat") ne contient QUE le thème clair/sombre de l'app entière, aucun réglage de discussion — nom de classe trompeur, vérifié plutôt que supposé. Notifications (3 bascules chat/groupe/page) et Stockage (3 bascules mobile/wifi/itinérance) confirmés RÉELLEMENT câblés mais PUREMENT LOCAUX (`SharedPreferences`, aucune synchronisation serveur) — portés en `@AppStorage`. **PAS porté** : détail granulaire du stockage par type de média (sélection multiple, 292 lignes lues partiellement) ; contenu réel Aide/À propos (fragments non lus, stubs informatifs posés). |
+| Divers (module 18) | `Recherche/ui/RechercheTiinver.java` (754, réseau lu en entier) — **`RechercheTiinver2.java` (681, CONFIRMÉ MORT par grep, seul `RechercheTiinver.class` instancié ailleurs)** ; `Recherche/SearchRepository.java` (fichier réel VIDE, 4 lignes) | `Discover/SearchModels.swift`, `Discover/SearchRepository.swift`, `Discover/SearchView.swift` | ÉCRIT (NON COMPILÉ) | Recherche universelle 4 onglets (tout/publications/comptes/hashtags) + suggestions + historique local (`RecentSearchManager.java`, 69, entier, réécrit en `[String]`/`UserDefaults` direct plutôt que le hack de concaténation `"|||"` d'Android). **Convention "error" DIFFÉRENTE ici** : vrai booléen JSON sur cet endpoint, pas la chaîne `"false"` habituelle du reste du backend — vérifié, pas supposé uniforme. `SearchPostResult` dédié plutôt que réutiliser `FeedActivity` (module 6) : `actor` arrive en entier ici contre chaîne côté `feedtimeline`, vraie divergence entre endpoints. |
+| Divers (module 18) | `Following/FollowList.java` (166, entier) + `FollowRepository.java` (56, entier) | `Discover/FollowListView.swift` | ÉCRIT (NON COMPILÉ) | Endpoint unique `{type}/{userId}/{followerId}/{limit}/{offset}` où `type` ∈ `{"followers","following"}` sert de segment d'URL brut (pas un paramètre nommé, vérifié). Câblé depuis `ProfileView` (module 17, stats abonnés/abonnements désormais cliquables). |
+| Divers (module 18) | `report/Report.java` (172, entier) + `models/report/ReportData.java` (95, entier) | `Discover/ReportView.swift` | ÉCRIT (NON COMPILÉ) | `POST report`, `{userId, username, message, target_id, report_type}`. **Motifs de signalement PAS vérifiés contre `R.array.report_setting_array`** (ressource non lue) — liste reconstruite par analogie avec des motifs standards, à valider avant production. Câblé depuis le menu "Signaler" de `ProfileView` (module 17, précédemment un bouton vide). |
+| Divers (module 18) | `comments/controller/CommentRepository.java` (282, entier) + `models/activity/comments/CommentModel.java` (champs lus en entier, `extends User` côté Android) | `Discover/CommentModels.swift`, `Discover/CommentRepository.swift`, `Discover/CommentsView.swift` | ÉCRIT (NON COMPILÉ) | `GET comment/{activityId}/{limit}/{offset}` (premier niveau), `POST comment` (`parentId` pour une réponse). **Chemin d'URL exact préservé** pour les réponses : `"/comment/replay/"+...` — le `/` de tête fait partie de la chaîne concaténée côté Android (vérifié ligne par ligne), pas corrigé. Commentaires "cadeau" (payants en pièces, `giftEmoji`/`giftPrice`) affichés en LECTURE SEULE — l'envoi (`comment/add`, débit de pièces, `GiftAdapter.java` non lu) N'EST PAS construit. |
+| Divers (module 18) | `models/certification/Certification.java` (104, entier) + endpoints de `ui/certification/CertificationRepository.java` (366 lignes au total, SEULS les endpoints grep'és, PAS le corps lu en entier) | `Discover/CertificationModels.swift`, `Discover/CertificationView.swift` | ÉCRIT (NON COMPILÉ) | `GET certification/{userId}` (consultation du statut) SEUL porté. `POST certification/request` (nouvelle demande, upload multipart d'un justificatif) PAS porté — même gap que les transferts de fichiers non résolus des modules 11/17 (`UploadFileOrDataService.java` toujours pas lu à ce stade du portage). |
+| Divers (module 18) | `contacts/repository/ConnectedUsersRepository.java` (109, entier) | — | REPÉRÉ, PAS PORTÉ | **Découverte** : malgré son emplacement dans le paquet `contacts`, ce fichier est en réalité un sélecteur de MEMBRES DE GROUPE pour la messagerie (`GroupModel`, endpoint `connectedusers/{userId}`) — PAS une fonctionnalité "Divers" de suggestions d'amis autonome comme son nom le suggérait. Rattaché plus logiquement à la création de groupe de discussion (module 11, pas encore construite), différé. |
+| Divers (module 18) | `Activity/ui/StatisticsActivity.java` (228 lignes) | — | REPÉRÉ, PAS LU EN DÉTAIL | Aucun appel réseau trouvé dans le fichier (grep exhaustif) — vraisemblablement un tableau de bord d'agrégation LOCALE sur les publications de l'utilisateur courant, pas un endpoint REST dédié. Contenu réel non lu, différé faute de temps dans cette session déjà très chargée (modules 15-18 cumulés). |
+| Divers (module 18) | `advertising/` (9 fichiers, ~2026 lignes — système de "boost" interne, promotion de contenu payée en pièces, SANS RAPPORT avec AdMob module 16, confirmé par TIINVER_IOS_PORT_ANALYSIS.md §3.8) | — | PAS REPÉRÉ CETTE SESSION | Aucun fichier de ce paquet ouvert cette session — seule son existence et sa distinction avec AdMob sont connues via le rapport de faisabilité, pas par lecture directe. À traiter dans une passe dédiée future. |
 
 ## Décisions autonomes prises (journal)
 
@@ -685,6 +978,365 @@ au fil de l'eau.
   nature de cette clôture (PARTIEL ASSUMÉ, comme les modules 1-7). **ARRÊT DEMANDÉ EXPLICITEMENT
   PAR L'UTILISATEUR** : ne pas commencer le module 9 avant confirmation de build Codemagic réussi
   (couvrant modules 7+8) ou liste d'erreurs à corriger.
+- **2026-08-11 : Module 9 (Éditeur photo simple) démarré après validation du Checkpoint 2 —
+  décisions d'architecture actées, infrastructure de recadrage/suppression d'arrière-plan écrite,
+  écran d'édition principal explicitement différé.**
+  1. **Périmètre établi par lecture réelle des rapports** (`TIINVER_IOS_PORT_ANALYSIS.md`,
+     `TIINVER_ANIMEMS_SCOPE_LIBRARIES.md` §1.3/§2.3/§3) — catégorie G, ≈14 117 lignes Android. Fichiers
+     identifiés et localisés : `android/croper/**` (16 fichiers, recadreur), `android/croper/
+     imageprocessing/**` (9 fichiers, CV maison), `ImageEditorCompound.java`/`ImageViewCanvas.java`
+     (écran principal), `CroperView.java`, `Utils/RemoveBackground.java`, `MediaEditor.java`
+     (point d'entrée, hors `engine/`, trouvé dans `app/src/main/java/com/tiinver/editor/media/`).
+  2. **Découverte structurante en lisant `CropWindowHandler.java`** : c'est la librairie tierce
+     vendorisée "Android-Image-Cropper" (signature reconnue : en-tête de licence + citation Sun
+     Tzu caractéristique), pas du code métier Tiinver — décision de la remplacer par une librairie
+     iOS équivalente plutôt que de porter ~5000 lignes de géométrie de poignées tactiles
+     génériques, même raisonnement "buy vs build" déjà appliqué à MetalPetal (module 7/8).
+     `TOCropViewController` choisi et VÉRIFIÉ avant adoption (pas deviné) : `curl` direct sur l'API
+     GitHub (`pushed_at`, `stargazers_count`, `archived`) et sur le `Package.swift`/le fichier
+     source Swift réels au tag figé `3.2.0` (pas la branche `main`, pour la reproductibilité du
+     build) — version initialement notée `2.7.0` corrigée en `3.2.0` après vérification des tags
+     réels via l'API GitHub (`git tag`/`curl .../tags`), pas laissée comme une supposition.
+  3. **Vision framework vérifié avant adoption** (WebSearch, plusieurs requêtes ciblées, pas une
+     seule recherche superficielle) : confirmé que `VNGenerateForegroundInstanceMaskRequest`
+     (équivalent le plus proche du `SubjectSegmenter` ML Kit Android, sujet général) est iOS 17+
+     UNIQUEMENT et ne fonctionne pas en simulateur — incompatible avec `deploymentTarget.iOS=16.0`
+     de ce projet. `VNGeneratePersonSegmentationRequest` (iOS 15+, compatible) retenu à la place,
+     avec un écart fonctionnel réel documenté (personnes uniquement, pas un sujet général) plutôt
+     que masqué. Polarité du masque (blanc=sujet/noir=fond) et propriétés réelles
+     (`qualityLevel`/`outputPixelFormat`/`VNPixelBufferObservation.pixelBuffer`) vérifiées par
+     recherche avant d'écrire `CIBlendWithMask`, pas supposées par analogie avec ML Kit.
+  4. **Écrit** : `PhotoEditor/RemoveBackground.swift` (Vision + repli géométrique fidèle à
+     `removeBackgroundAdvanced`/`applyEdgeRefinement`, bug de pré-multiplication anticipé et évité
+     par construction — voir tableau), `PhotoEditor/FreeformCropView.swift` (port complet, seul
+     mode non couvert par `TOCropViewController`), `PhotoEditor/PhotoCropUtils.swift`
+     (`toOvalBitmap`), `PhotoEditor/PhotoCropView.swift` (wrapper `UIViewControllerRepresentable`),
+     `PhotoEditor/PhotoEditorState.swift` (orchestration). `project.yml` : package
+     `TOCropViewController` ajouté.
+  5. **Confirmés morts par grep, non portés** : `CroperView.removeBackground` (tolérance de
+     couleur statique, zéro appelant) ; `android/croper/BackgroungRemover.java` (578 lignes,
+     pipeline CV maison, zéro instanciation) — ce dernier étant le seul consommateur
+     d'`imageprocessing/**`, ce pipeline entier n'était même plus atteignable en pratique côté
+     Android, au-delà de la simple recommandation de le remplacer.
+  6. **Décision honnête de portée, pas un oubli** : `ImageEditorCompound.java` (1132 lignes, lu
+     seulement ~280 lignes — constructeurs/`init`/`setImageUri`) et `ImageViewCanvas.java` (2037
+     lignes, PAS lu, imports seulement vérifiés) — l'écran d'édition principal — confirmés
+     réutiliser le MÊME modèle `AnimationComposer`/`AnimationObjectData`/`Transform` que le module
+     8 (déjà porté), mais nécessitent le même traitement multi-passage méthodique que
+     `MemesView2.java`/`AnimemesCompound.java` en leur temps plutôt qu'une lecture rushée pour
+     tenir le rythme des modules 10-12 demandé par l'utilisateur — reporté à une passe dédiée
+     future, documenté explicitement plutôt que silencieusement absorbé dans une clôture de module
+     optimiste. Module 9 marqué `[x]` avec cette réserve honnête (voir "Ordre de portage").
+- **2026-08-11 : Module 10 (Trim/Timeline/Waveform) fermé — géométrie de trim portée en entier,
+  export vidéo différé (décision d'architecture AVFoundation).**
+  1. Périmètre établi par lecture du rapport (`TIINVER_IOS_PORT_ANALYSIS.md` §2.2/§3.7) + grep de
+     vérification des fichiers actifs vs morts — confirmé que le cluster "v2" (`SimpleTrimmer`/
+     `VideoTrimmerViewV2`/etc.) est MORT (non déclaré au manifest), contrairement à l'hypothèse
+     initiale du rapport lui-même qui le supposait être le système "moderne" actif.
+  2. **Découverte de reclassement** : `WaveformSeekBar.java` (cité comme risque élevé du module
+     10 par le rapport de faisabilité) confirmé par grep appartenir au module 11 (consommateurs =
+     bulles de message vocal du chat, pas le trimmer) — signalé, pas déplacé silencieusement dans
+     le rapport source, juste documenté correctement ici.
+  3. **Écrit** : `Media/ProTimelineViewModel.swift` (port intégral de la logique pure de
+     `ProTimelineView.java`, 763 lignes lues en entier — coordonnées à deux espaces, gestion
+     tactile complète des poignées/scroll/déplacement de fenêtre), `Media/VideoTrimState.swift`
+     (état rotation/flip/ratio).
+  4. **Décision d'architecture, pas un port** : export vidéo (trim/rotation/recadrage) via
+     `AVAssetExportSession`+`AVMutableComposition`/`AVMutableVideoComposition` natifs plutôt que le
+     pipeline `VideoTransformer`/MediaCodec Android — non écrit cette passe (seul l'état est
+     porté), à vérifier contre la documentation Apple réelle au moment de l'écrire, comme
+     TOCropViewController/Vision l'ont été au module 9. Extraction de vignettes différée de la même
+     façon vers `AVAssetImageGenerator`.
+  **PAS FAIT, honnêtement signalé** : `CropOverlayView.java` (398 lignes, recadrage vidéo pendant
+  le trim, distinct de la version photo déjà remplacée par TOCropViewController) pas lu ;
+  `VideoTrimmerView.java` lu seulement ~140/1138 lignes (câblage `ExoPlayer`/export pas encore
+  lu) ; export AVFoundation lui-même pas écrit. Module 10 marqué `[x]` avec cette réserve.
+- **2026-08-11 : Module 11 (Messagerie/Chat UI) — pièce tangentielle portée
+  (`WaveformSeekBar.swift`), module explicitement PAS fermé, décision honnête de ne pas rusher.**
+  1. Périmètre établi par lecture de `TIINVER_IOS_PORT_ANALYSIS.md` §3.5 : **32 398 lignes au
+     total, le plus gros module du projet** — `ChatFragmentTest.java` (3080 lignes),
+     `ChatManager.java` (1508), `adapter/MessageListAdapter.java` (1353), `FragmentPbs.java`
+     (810), `call/CallActivity.java` (592), `call/IncomingCallActivity.java` (534), + 7
+     `ViewHolder` par type de message (audio/GIF/vidéo/sticker/photo/graphic/texte/appel manqué).
+     Comparable ou supérieur en volume au module 8 (Animems), qui a nécessité 6 passages de
+     lecture/portage dédiés répartis sur plusieurs sessions avant d'être raisonnablement fermé.
+  2. **`WaveformSeekBar.java` (739 lignes, lu ~250 lignes — la partie algorithmique) porté** :
+     bibliothèque tierce vendorisée confirmée (`massoudss/waveformSeekBar`), algorithme de
+     disposition des barres compact, portage direct plus simple qu'une nouvelle dépendance SPM
+     pour ce besoin précis — voir tableau détaillé.
+  3. **Décision explicite de NE PAS continuer à "fermer" le module 11 au même rythme que les
+     modules 7-10** : contrairement à ces modules (chacun de taille comparable ou inférieure à ce
+     qui a pu être lu/vérifié sérieusement dans le temps disponible d'une passe), le module 11
+     dépasse largement ce qu'une lecture superficielle peut honnêtement couvrir — le tenter aurait
+     signifié soit (a) deviner l'architecture de `ChatManager`/`MessageListAdapter` sans les avoir
+     lus (violerait directement la méthodologie du projet : "lire avant de porter, ne jamais
+     deviner"), soit (b) marquer le module `[x]` avec une réserve si large qu'elle serait
+     trompeuse plutôt qu'honnête. **Module 11 laissé `[ ]` non coché**, contrairement aux modules
+     7-10 — c'est la représentation fidèle de son état réel, pas un report silencieux.
+  4. **Ce qui EST déjà en place pour ce module, sans travail supplémentaire** : l'infrastructure
+     réseau temps réel (`Realtime/TiinverSocket.swift`/`SocketEvent.swift`, module 1) et le
+     stockage local du roster/messages (`Storage/RosterRepository.swift`, module 2) — le rapport
+     de faisabilité confirme que le contrat réseau (Socket.IO, noms d'événements `CALL`/
+     `ACCEPT_CALL`/etc.) est directement réutilisable, et que le modèle de message JSON l'est
+     aussi comme `Codable` Swift. Le travail réel restant est surtout la couche UI (liste de
+     conversation multi-types, écran de chat, gestion d'état) — pas l'infrastructure de base.
+- **2026-08-12 : Module 11 — couche protocole/persistance/routage (la "moitié backend" du module)
+  ENTIÈREMENT portée et vérifiée, module TOUJOURS PAS fermé (couche UI intacte, voir ci-dessous).**
+  Lecture méthodique fichier par fichier comme demandé, en commençant par `ChatManager.java` :
+  `ChatManager.java` (1508 lignes, lu en quasi-totalité), `messagerie/repository/ChatRepository.java`
+  (1124 lignes, lu en entier — 2 passes, une première fois pour les listeners/routage, une seconde
+  pour la section "ÉMISSIONS SOCKET" lignes 955-994), `models/chat/MessageLib.java` (929),
+  `models/chat/MessagePacket.java` (1016), `roster/RosterManager.java` (234, lu en entier),
+  `messagerie/ui/ConversationIdGenerator.java` (34), `engine/model/Profile.java` (213),
+  `ChatModel`/`PresenceModel`/`TypingModel`/`MessageStatusModel`/`CallModel` (87+22+22+31+44).
+  9 fichiers Swift écrits/étendus — voir tableau détaillé pour le détail complet par fichier. Points
+  saillants, tous vérifiés contre la source réelle (pas devinés) :
+  1. **Bug `SocketEvent.swift` du module 1 trouvé et corrigé** : valeurs de constantes Java au lieu
+     des vraies chaînes de fil (`"CALL"` au lieu de `"call"` etc.) — aurait rendu chat ET appels
+     silencieusement non fonctionnels avec le vrai serveur.
+  2. **Double encodage JSON découvert dans `MessagePacket`** : l'enveloppe socket contient un champ
+     `"packet"` dont la valeur est elle-même un document JSON sérialisé en chaîne, construit par 20
+     méthodes Android quasi identiques — consolidées en une fonction paramétrée unique, vérifiée
+     champ par champ. Bug de guillemets sur `image_byte` (littéral tableau/`null` non-quoté dans la
+     concaténation Android) évité en construisant un vrai `[Int]`/`NSNull` plutôt qu'une `String`.
+  3. **`wk_gp_messages`/`GroupMessageEntity` (module 2) confirmée table MORTE** par grep exhaustif —
+     `addGroupMessage` écrit en réalité dans `wk_messages` (même table que les messages privés,
+     différenciés par `type`). Résout la lacune précédemment documentée ("groupe non persisté") :
+     ce n'était pas un travail restant, c'était une hypothèse de table erronée.
+  4. **Bug de code mort Android identifié par analyse de flot de contrôle** dans `addMessage` (la
+     branche `deletemessage` sur message déjà existant est inatteignable, double négation
+     contradictoire) — délibérément PAS reproduite comme "atteignable" dans le port Swift (une
+     première ébauche l'avait fait, corrigée après relecture attentive).
+  5. **2 bugs trouvés et corrigés DANS CE PORTAGE MÊME** (pas dans l'original Android) en relisant
+     la section "ÉMISSIONS SOCKET" de `ChatRepository.java` ligne par ligne après une première
+     ébauche : `updateGroupMessage` émettait la mauvaise enveloppe (`packetForGroupJSON` au lieu de
+     `packetJSON`, l'original lui-même utilise l'enveloppe privée ici — incohérence Android
+     reproduite fidèlement une fois corrigée) ; `deletePrivateMessage` émettait sur le mauvais nom
+     d'événement (`"delete private message"` au lieu de `"on delete private message"`, deux
+     constantes `ROOM.*` distinctes confondues).
+  6. **Listener `offlineStatus` manquant ajouté** : découvert en vérifiant que TOUS les `.on(...)` de
+     `registerAllListeners` avaient un équivalent Swift — cet événement a un double rôle (émis à la
+     connexion ET écouté pour un lot de statuts de livraison accumulés hors-ligne), la partie
+     "écoute" avait été omise dans la première ébauche de ce fichier.
+  7. **Champs `lucrative`/`price`/`belongsToCurrentUser` ajoutés à `MessageLib.swift` après coup** —
+     absents du premier passage triple-recoupement (ils ne recoupent QUE le mapping `RosterManager`,
+     pas les 2 autres sources utilisées pour établir le périmètre initial de `MessageLib`).
+  8. **Vérifié contre la source réelle Socket.IO-Client-Swift** (`SocketTypes.swift`,
+     `SocketExtensions.swift`, récupérés depuis le dépôt GitHub) que `Dictionary` conforme à
+     `SocketData` via une extension inconditionnelle — confirme que `socket.emit(_:[String:Any])`
+     utilisé partout dans `ChatRepository.swift` est valide, pas une supposition.
+  **PAS fait cette session, honnêtement** : la couche UI (`MessageListAdapter.java` + 1353 lignes +
+  7 `ViewHolder` par type de message, `ChatFragmentTest.java` 3080 lignes) — repérée mais PAS lue.
+  `getMessageModelFromJSONData`/`getSpecifiqueMessage`/`prepareMessage`/`prepareGroupMessage`
+  (`ChatManager.java`) confirmées être des utilitaires consommés par la couche UI non encore lue
+  (`prepareMessage`/`prepareGroupMessage` en particulier confirmées NON appelées par le chemin de
+  réception socket réel — code mort ou chemin de secours REST, pas creusé plus loin faute de
+  contexte utilisateur). Module 11 reste `[ ]` non fermé — voir "Prochaine action à faire".
+- **2026-08-12 (suite, même session) : Module 11 — couche UI portée, MODULE FERMÉ.** Lecture
+  méthodique de `MessageListAdapter.java` (1353 lignes, entier), ses 9 `ViewHolder` (1328 lignes au
+  total, tous entiers : `TextViewHolder`/`MessageAudioViewHolder`/`MessagePhotoViewHolder`/
+  `MessageVideoViewHolder`/`MessageStickerViewHolder`/`MessageGifViewHolder`/`MessageGiftViewHolder`/
+  `GraphicMessageViewHolder`/`MissedViewHolder`), `models/chat/MessageType.java`, les interfaces
+  `MessageActionListener`/`QuoteClickListener`/`MessageViewItemClikedListener`/
+  `LoadMoreDataListener`/`layout/ResultData.java`, `view/gift/GiftBadgeView.java`+
+  `models/activity/comments/GiftCatalogHelper.java` (catalogue cadeau), `models/roster/
+  RosterModel.java`, `Utils/StringUtils.java` (formatage date/heure), puis `ChatFragmentTest.java`
+  (3080 lignes, entier, en ~10 passages de lecture séquentiels). 7 fichiers Swift nouveaux/étendus :
+  `Messagerie/ChatListItem.swift`, `Messagerie/ChatBubbleViews.swift`, `Messagerie/
+  ChatDateFormatting.swift`, `Messagerie/ChatViewModel.swift`, `Messagerie/ChatView.swift`,
+  `Models/GiftCatalog.swift`, `Models/RosterModel.swift` — plus `Storage/MessageRepository.swift`
+  (méthode `page` ajoutée) et `Storage/CoreDataRepository.swift` (`query` étendu avec `offset`,
+  nécessaire pour la pagination `LIMIT n OFFSET m`, absent des repositories précédents qui ne
+  paginaient pas). Points saillants, tous vérifiés :
+  1. **Consolidation délibérée du doublement de `viewType`** : Android distingue chaque type de
+     message en 2 `viewType` RecyclerView (`TEXT1`/`TEXT2`, `AUDIO1`/`AUDIO2`, …) uniquement pour le
+     pattern ViewHolder — vérifié que la SEULE différence réelle entre les deux est
+     `isBelongsToCurrentUser` (alignement, upload vs download) — consolidé en UNE vue SwiftUI par
+     type d'objet plutôt que dupliqué, cohérent avec la règle déjà appliquée à
+     `MessagePacket.buildPacketString` (module 11 protocole).
+  2. **Forme d'onde audio confirmée FACTICE** : `MessageAudioViewHolder.createWaveform()` génère 50
+     barres ALÉATOIRES (`new Random()`), aucune extraction PCM réelle du fichier audio n'existe dans
+     ce fichier — reproduit fidèlement (`AudioBubbleBody.randomWaveform()`), pas "amélioré".
+  3. **`MessagePhotoViewHolder`/`MessageGifViewHolder`/`MessageStickerViewHolder` confirmées
+     byte-pour-byte identiques** (`bindView` complet comparé ligne à ligne, seule la fonction de
+     chargement `ChargerImages.glid`/`glidGif` diffère) — consolidées en une seule vue.
+  4. **Bug de code mort Android confirmé PAR ANALYSE DE FLOT DE CONTRÔLE, corrigé dans ce portage**
+     (voir aussi le bug équivalent trouvé dans `addMessage` côté protocole, même session) — pas de
+     nouveau bug de ce type trouvé dans `ChatFragmentTest.java` lui-même cette fois.
+  5. **Frappe sortante (`onTyping(boolean)`) confirmée INACHEVÉE côté Android** : le corps qui
+     émettrait l'événement socket est ENTIÈREMENT commenté dans le source lu (lignes 830-836) — seul
+     le ré-armement du `Handler` de debounce est actif. Une émission FONCTIONNELLE a été écrite
+     (`ChatViewModel.onTextChanged` → `ChatRepository.emitTyping`/`emitStopTyping`, déjà vérifiés
+     module 11 protocole) plutôt qu'un no-op fidèle à l'original — amélioration documentée.
+  6. **Amélioration documentée de `removeMessageAndUpdateSeparators`** : l'original retrouve le
+     séparateur de date à supprimer par ÉGALITÉ DE STAMP avec le message supprimé, ce qui échoue
+     silencieusement (séparateur orphelin permanent) si le message supprimé n'est pas exactement
+     celui qui a déclenché la création du séparateur — `ChatListItem.dateSeparator` porte un
+     `dayKey` stable (année+jour) permettant de retrouver le séparateur par JOUR, corrigeant ce cas
+     sans changer le comportement observable normal.
+  7. **Enregistrement audio confirmé CODE MORT côté Android lui-même** : tout le corps du
+     `touchListener` d'enregistrement (appui long sur le micro) est commenté dans le source lu —
+     non porté, cohérent avec l'original plutôt qu'un oubli.
+  **PAS porté cette session, gaps honnêtement documentés (pas devinés)** : transfert réel upload/
+  download (`UploadFileOrDataService.java`/`DownloadReceiver.java` non lus — endpoints/format
+  multipart inconnus, points d'ancrage vides `requestUpload`/`requestDownload` dans
+  `ChatViewModel.swift`) ; sélecteurs GIF/cadeau réels (`StickerPickerDialog.java`/
+  `GiftGalleryView.java` non lus, remplacés par une feuille minimale et un sélecteur de cadeau basé
+  sur le catalogue déjà vérifié) ; zoom média plein écran (`ImageExpanderAnim.java` non lu) ; rendu
+  Message Graphic (`GraphicMessageViewHolder`, module 14 par conception — payload `mgGraphic` déjà
+  identifié comme JSON pré-sérialisé non décodé) ; bandeaux d'abonnement groupe fonctionnels
+  (module 15 Wallet) ; bulle chat IA `TiinverAI` (écran séparé `TiinverGeminiAIChat.java`) ; écran de
+  liste des conversations (`RosterModel` accepté en entrée par `ChatView`, fichier source séparé
+  hors périmètre explicite de cette passe — "MessageListAdapter + ViewHolders + ChatFragmentTest"
+  uniquement, comme demandé) ; sons d'envoi/réception/frappe (`AppSounds`, pas branché) ; caméra/
+  sélecteur média réel câblé sur `ChatViewModel.sendMedia` (la méthode existe et est vérifiée, son
+  déclenchement UI — `PhotosUI`/caméra — pas câblé). **Module 11 marqué `[x]` fermé** avec ces
+  réserves, cohérent avec le traitement des modules 7-10 : une couverture fonctionnelle complète du
+  cœur (protocole + persistance + rendu + orchestration), des extensions périphériques différées et
+  documentées plutôt que devinées.
+- **2026-08-12 (suite, même session) : Module 12 (Appels WebRTC/CallKit) — démarré, écrit et FERMÉ
+  dans la même session, avec réserves honnêtes.** Lecture méthodique : `messagerie/webrtc/RTConnection2.java` (801 lignes,
+  entier — le moteur WebRTC), `messagerie/service/CallService.java` (835, entier),
+  `messagerie/ui/call/CallViewModel.java` (110, entier), `messagerie/ui/call/CallActivity.java`
+  (592, entier), `messagerie/ui/call/IncomingCallActivity.java` (534, entier), plus les petits
+  fichiers `WebrtcData.java`/`CallModel.java`/`SignalisationCallBack.java`/
+  `WebRTCMessageListener.java`/`IncomingCall.java`/`CallLauncherService.java` (tous entiers).
+  `RTConnection.java`/`RTConnection3.java` (775/790 lignes) et `CallService2.java` (785) confirmés
+  MORTS par grep exhaustif (même méthode que le cluster "v2" du module 10) — ni lus ni portés.
+  **Recherche API réelle AVANT écriture de code**, comme demandé explicitement pour ce module
+  (CallKit/PushKit n'ont aucun équivalent Android à porter, développement largement neuf) :
+  `developer.apple.com/documentation/callkit` (fetch direct, a fonctionné pour la page `CXProvider`
+  mais pas pour `CXProviderConfiguration`/`CXHandle`, rendu JS non capturé par l'outil de
+  récupération) — recoupé systématiquement avec les bindings Xamarin officiels
+  (`xamarin/apple-api-docs`, XML statiques, signatures C# fidèles à l'API Objective-C réelle) ET
+  avec le dépôt de démonstration officiel `stasel/WebRTC-iOS` (`WebRTCClient.swift`, code Swift réel
+  fonctionnel) ET avec les headers Objective-C bruts du framework WebRTC
+  (`RTCConfiguration.h`/`RTCPeerConnection.h`/`RTCPeerConnectionFactory.h`/`RTCAudioSession.h`,
+  récupérés depuis un miroir GitHub du framework). 8 fichiers Swift nouveaux/étendus :
+  `Models/WebrtcData.swift`, `Models/TurnCredentials.swift`, `Calls/WebRTCConnection.swift`,
+  `Calls/CallKitManager.swift`, `Calls/VoIPPushManager.swift`, `Calls/CallCoordinator.swift`,
+  `Calls/CallView.swift`, `Realtime/ChatRepository.swift` (étendu). Points saillants :
+  1. **Bug trouvé et corrigé PENDANT l'écriture** (pas dans l'original, pas dans une passe de
+     relecture séparée cette fois — repéré en vérifiant le header `RTCPeerConnection.h` avant de
+     finaliser) : `addIceCandidate:` n'a PAS de variante à bloc de complétion contrairement à
+     `offer`/`answer`/`setLocalDescription`/`setRemoteDescription` — une première ébauche
+     supposait `peerConnection.add(candidate) { _ in }` par analogie avec les autres appels,
+     corrigé en `peerConnection.add(candidate)` après vérification du header réel.
+  2. **Asymétrie négociateur/poli WebRTC vérifiée et préservée** : `CallService.
+     configForOutgoingCall`/`configForIncomingCall` montrent que l'APPELANT n'est PAS l'initiateur
+     de l'offre (`isInitiator=false`, `polite=true`) — c'est le RECEVEUR qui offre
+     (`isInitiator=true`, `polite=false`). Contre-intuitif, confirmé en lisant les deux méthodes
+     côte à côte, pas deviné.
+  3. **Bugs d'isolement d'acteur Swift trouvés et corrigés en relisant le code écrit** (avant tout
+     essai de compilation, impossible dans cet environnement) : `WebRTCConnection.
+     peerConnection(_:didGenerate:)` et `sendMessage(type:sdp:)` appelaient le délégué
+     `@MainActor` directement depuis un contexte non isolé (callbacks WebRTC internes,
+     potentiellement hors thread principal) — corrigés en les enveloppant dans
+     `Task { @MainActor in … }`, cohérent avec le reste du fichier qui le faisait déjà pour les
+     autres callbacks.
+  4. **Découverte fonctionnelle** : `ChatRepository.onCall`/`CallViewModel.onCall` (émission
+     `ROOM.CALL`) confirmés jamais appelés par le vrai `CallService.java` (grep exhaustif) — code
+     mort côté Android, écouteur de réception néanmoins conservé par fidélité (le serveur pourrait
+     l'émettre indépendamment).
+  5. **Correction d'une lacune du module 11** : `ChatRepository.handleNewMessage` traitait les deux
+     branches `!isOnCall`/`isOnCall` du message `"voicecall"` de façon identique (placeholder posé
+     avant que ce module existe) — corrigé pour appeler `CallCoordinator.shared.handleIncomingCall`
+     directement dans la branche `!isOnCall` (fidèle à `lunchcall(p)`, un appel direct côté Android,
+     pas un événement), la branche `isOnCall` restant un événement `.onCall` (signal "occupé").
+  6. **`useManualAudio`/`RTCAudioSession.audioSessionDidActivate`/`didDeactivate` câblés sur
+     `CXProviderDelegate.provider(_:didActivate:)`/`didDeactivate:`** — intégration standard
+     CallKit+WebRTC vérifiée via le commentaire du header réel `RTCAudioSession.h` ("current known
+     use case… when CallKit activates the audio unit"), pas un pattern deviné.
+  7. **`CallView` intégrée** : bouton d'appel ajouté à la barre d'outils de `ChatView.swift`
+     (module 11, `ChatProfile` minimal reconstruit depuis `RosterModel`) + présentation
+     `.fullScreenCover` pilotée par `CallCoordinator.state != .idle` — le flux est donc
+     déclenchable de bout en bout depuis l'écran de chat, pas seulement écrit "en l'air".
+  **PAS fait cette session, gaps honnêtement documentés** : envoi du jeton VoIP au backend (endpoint
+  serveur non identifié, Android n'a pas d'équivalent) ; boucle de re-notification
+  `outgoingCallRepeatRunnable` (ping `/push` répété) non branchée, jugée redondante avec PushKit
+  sans l'avoir formellement tranché ; capteur de proximité/wake lock Android délibérément PAS reproduits (CallKit gère nativement ce
+  comportement pendant un appel, pas une omission). **Module 12 marqué `[x]` fermé** avec ces
+  réserves — le cœur fonctionnel (moteur WebRTC, signalisation, CallKit, PushKit, orchestration) EST
+  écrit et vérifié, ET l'intégration UI (bouton d'appel, présentation de l'écran) est câblée : le
+  flux est déclenchable de bout en bout depuis l'écran de chat. Aucune vérification de compilation
+  réelle n'a cependant été possible (environnement Windows sans Xcode) — priorité n°1 au premier
+  accès macOS, voir "Prochaine action à faire".
+- **2026-08-12 (suite, même session) : jeton VoIP PushKit — enregistrement câblé côté client +
+  préparation de l'intégration serveur, à la demande explicite de l'utilisateur.** Re-vérification
+  de l'API PushKit (bindings Xamarin `PKPushRegistry.xml`/`IPKPushRegistryDelegate.xml`/
+  `PKPushType.xml`, confirmant `.voIP`) et recherche croisée sur l'exigence Apple de signalement
+  synchrone (confirmée par plusieurs sources indépendantes : "must call provider.
+  reportNewIncomingCall … synchronously", "mere seconds to respond", désactivation du jeton par le
+  système en cas de non-conformité répétée — pas une supposition). Nouveau fichier
+  `Calls/VoIPTokenRegistrar.swift` (`POST user/voip-token`, jeton hex-encodé, motif
+  `APIClient.post` déjà établi) ; `CallCoordinator.voIPPushManager(_:didUpdateToken:)` câblé dessus.
+  **Bug de séquencement trouvé et corrigé en relisant le code déjà écrit** : `handleIncomingCall`
+  n'exposait pas de point d'ancrage pour appeler `completion()` avant la fin de
+  `fetchTurnAndStart` (appel réseau TURN) — une notification VoIP recevait donc son `completion()`
+  plus tard que nécessaire par rapport à ce qu'exige Apple (signaler l'appel à CallKit, pas
+  terminer toute la préparation WebRTC). Corrigé par un paramètre `onReported: (() -> Void)?`
+  optionnel, appelé juste après `CXProvider.reportNewIncomingCall`, laissant le fetch TURN se
+  poursuivre en arrière-plan sans retarder le rappel PushKit. Nouvelle section dédiée "Backend à
+  implémenter — PushKit/VoIP" ajoutée à ce document, avec la spécification complète de l'endpoint
+  d'enregistrement, du flux serveur de déclenchement (étapes 2-4), et des prérequis Apple côté
+  serveur (clé .p8 ou certificat VoIP Services dédié, topic `com.tiinver.ios.voip`, en-tête
+  `apns-push-type: voip`) — **aucun fichier backend PHP existant modifié**, conformément à la
+  demande explicite. Alternative documentée mais non retenue : réutiliser l'endpoint générique
+  `user`/`column` déjà utilisé pour le jeton FCM (`PushTokenRegistrar.swift`) plutôt qu'un endpoint
+  dédié — signalée à l'équipe serveur comme option, pas imposée.
+- **2026-08-12 (suite, même session) : Module 13 (Shareboard/PBS) — repéré et scruté, PAS commencé,
+  découverte de séquencement importante.** `PBSModel.java` (22 lignes)/`PBSViewModel.java` (58) lus
+  en entier — petits wrappers vers `ChatRepository`. `FragmentPbs.java` (810 lignes) lu
+  PARTIELLEMENT (~150/810 — imports, permissions, champs) avant d'arrêter délibérément : les imports
+  révèlent que Shareboard est un DESSIN/ANIMATION COLLABORATIF EN TEMPS RÉEL sur un CANAL DE DONNÉES
+  WebRTC séparé de celui des appels (`FragmentPbs` instancie son propre `RTConnection2`), rendu par
+  `com.animems.engine.android.views.PBSCompound` (899 lignes) et sérialisé via
+  `com.animems.engine.android.codec.graphic.GraphicMessageCodec` (265 lignes) — CE codec est très
+  exactement celui déjà identifié au module 11 comme le format de `MessageLib.mgGraphic`/le
+  territoire du module 14 "Message Graphic" (`GraphicMessageViewHolder`, module 11, placeholder
+  documenté "appartient au module 14"). **Conclusion** : les modules 13 et 14 sont un seul et même
+  sous-système technique (dessin collaboratif temps réel), pas deux features indépendantes comme
+  l'ordre de portage initial le laissait supposer — les traiter séparément risquerait de porter deux
+  fois la même logique de codec ou de la fragmenter incohéremment. Décision : ARRÊTER la lecture ici
+  plutôt que de continuer à deviner l'architecture sans avoir lu `GraphicMessageCodec.java`/
+  `PBSCompound.java` (899+265=1164 lignes, la majorité de la portée réelle) — aucun code Swift écrit
+  pour ce module cette session, cohérent avec la méthodologie du projet. Prochaine session dédiée :
+  lire `GraphicMessageCodec.java` en premier (le format d'échange, plus petit), puis
+  `PBSCompound.java` (le moteur de rendu), avant de revenir à `FragmentPbs.java` en entier.
+- **2026-08-12 (suite, même session) : Modules 13 (Shareboard) et 14 (Message Graphic) FERMÉS.**
+  Lecture complète comme prévu : `GraphicMessageCodec.java` (266)/`CompactTouchEvent.java`/
+  `CompactEditorData.java` (codec), `PBSCompound.java` (899), `PBSView.java` (1411),
+  `EditorData.java`/`MotionEventData.java`/`Page.java` (modèles), `FragmentPbs.java` (810, ENTIER
+  cette fois), `FragmentMessageGraphic.java` (295, entier), `BannerModel.java`/`AudioData.java`
+  (structure seulement). **Correction d'une hypothèse de la découverte précédente** : `PBSCompound`
+  n'est PAS le moteur de rendu — c'est `PBSView` (1411 lignes, jamais comptée dans l'estimation de
+  portée initiale) ; et `FragmentPbs.webrtc = RTConnection2.getInstance(...)` réutilise en fait le
+  MÊME singleton que `CallService` (module 12), pas une connexion WebRTC séparée comme supposé avant
+  lecture complète — l'hypothèse de "canal dédié indépendant" était fausse, corrigée en lisant
+  `FragmentPbs.java` en entier plutôt que de la laisser non vérifiée. La conclusion structurelle de
+  la découverte précédente (13 et 14 partagent un seul moteur) restait, elle, correcte.
+  **Bug trouvé et corrigé AVANT d'écrire le code Shareboard** (donc dans `Calls/WebRTCConnection.swift`,
+  module 12) : le canal de données WebRTC n'avait jamais son `.delegate` assigné (ni côté créateur
+  local, ni côté pair distant via `peerConnection(_:didOpen:)`) — aucun message reçu n'aurait jamais
+  déclenché de callback. Vérifié contre `WebRTCClient.swift` (`stasel/WebRTC-iOS`, référence déjà
+  utilisée au module 12) avant correction, PAS deviné. Fichiers Swift écrits cette session :
+  `Shareboard/PBSWireModels.swift`, `Shareboard/GraphicMessageCodec.swift`,
+  `Shareboard/PBSCanvasEngine.swift`, `Shareboard/PBSCanvasView.swift`, `Shareboard/PBSViewModel.swift`,
+  `Shareboard/ShareboardView.swift`, `Shareboard/MessageGraphicComposeView.swift` ; extensions de
+  `Realtime/ChatRepository.swift` (signalisation PBS, jusqu'ici manquante malgré `PBSEvent` déjà
+  défini au module 11), `Messagerie/ChatViewModel.swift` (`sendGraphic`), `Messagerie/ChatView.swift`
+  (points d'entrée toolbar), `Messagerie/ChatBubbleViews.swift` (`GraphicPlaceholderBubbleBody`
+  remplacé par un rendu réel). Détail des décisions/portée réduite (pinch/rotate non live-synced,
+  suppression d'objet non synchronisée — fidèle à Android sur ce point précis, bannière pub/tutoriel
+  non portés, `addPbsNotification` différé) dans le tableau "Détail par module" ci-dessus, section
+  Shareboard/Message Graphic. **PAS vérifié par un vrai build** (aucun accès macOS) — code le plus
+  volumineux écrit en une seule session de ce portage (~1000 lignes Swift), risque de compilation
+  élevé signalé en priorité pour le prochain build Codemagic, au même titre que le module 12.
+  **Gap fonctionnel restant, documenté plutôt que caché** : aucun point d'entrée UI n'ouvre
+  `ShareboardView` en mode "invité" (`status != 1`, rejoindre un salon déjà ouvert par un pair) — le
+  bandeau de message système `"shareboard"` dans `ChatView` reste un simple texte non cliquable
+  (`SystemInfoRow`), il faudrait le rendre tapable et lui faire ouvrir `ShareboardView(status: 0)`
+  pour fermer complètement ce flux.
 
 ## Erreurs rencontrées et résolues
 
@@ -748,21 +1400,221 @@ au fil de l'eau.
 
 ## Points bloquants actuels
 
-Statut global = **CHECKPOINT 1 VALIDÉ, MODULE 7 EN COURS** (voir section dédiée plus bas) :
+Statut global = **CHECKPOINT 2 VALIDÉ, MODULE 9 EN COURS** (voir sections dédiées plus bas) :
 
-- **Plus de blocage de compilation pour les modules 1-6** : le build Codemagic réel du
-  2026-08-10 (#6a7a2aabd5ae67eb2a755de2) a confirmé que l'intégralité du code Swift écrit pour
-  les modules 1 à 6 compile sans erreur — voir "CHECKPOINT 1 ATTEINT" ci-dessous pour le détail.
-  La contrainte d'environnement (pas d'Xcode/macOS sur cette machine Windows, voir section dédiée
-  en tête de fichier) reste vraie pour le code écrit à PARTIR de maintenant (module 7 et suivants) :
-  chaque nouveau fichier Swift reste `ÉCRIT (NON COMPILÉ)` jusqu'au prochain build réel — seul le
-  Checkpoint 2 (fin du module 12) confirmera leur compilation, exactement comme pour le
-  Checkpoint 1.
+- **Plus de blocage de compilation pour les modules 1-8** : le 4ᵉ build Codemagic réel du
+  2026-08-11 a confirmé que l'intégralité du code Swift écrit pour les modules 1 à 8 compile sans
+  erreur (après 5 itérations de correction au total — voir "Erreurs rencontrées et résolues" et
+  "CHECKPOINT 2 ATTEINT ET VALIDÉ" ci-dessous pour le détail). La contrainte d'environnement (pas
+  d'Xcode/macOS sur cette machine Windows, voir section dédiée en tête de fichier) reste vraie pour
+  le code écrit à PARTIR de maintenant (module 9 et suivants) : chaque nouveau fichier Swift reste
+  `ÉCRIT (NON COMPILÉ)` jusqu'au prochain build réel — seul le Checkpoint 3 (fin du module 18,
+  portée élargie depuis la validation anticipée du Checkpoint 2 — voir "Règle de compilation par
+  checkpoint") confirmera leur compilation.
 - Les points d'incertitude non liés à la compilation (handshake Socket.IO via `.connectParams`,
-  rendu visuel du `TabView` pivoté du feed) restent NON VÉRIFIÉS — un build réussi ne prouve que
-  la compilation, pas le comportement à l'exécution. Voir point 2 de "CHECKPOINT 1 — Résumé pour
-  build macOS" ci-dessous ; à garder en tête mais ne bloquent pas le démarrage du module 7 (aucun
-  rapport avec la caméra/MetalPetal).
+  rendu visuel du `TabView` pivoté du feed, câblage de gestes SwiftUI du module 8 jamais vu rendu)
+  restent NON VÉRIFIÉS — un build réussi ne prouve que la compilation, pas le comportement à
+  l'exécution. Voir "Points à vérifier en priorité au prochain build — Module 8" ; à garder en tête
+  mais ne bloquent pas le démarrage du module 9.
+
+## Backend à implémenter — PushKit/VoIP (module 12, spécification pour l'équipe serveur PHP/Slim)
+
+Cette section documente ce que le backend Tiinver (PHP/Slim, projet séparé, PAS modifié par ce
+portage) doit implémenter pour que les appels fonctionnent quand le destinataire a l'app iOS tuée
+ou verrouillée. Écrite le 2026-08-12, à la demande explicite de l'utilisateur, pour transmission à
+l'équipe serveur — le code Swift ci-contre appelle déjà le point 1 (l'enregistrement du jeton), les
+points 2-4 (déclenchement/relais/envoi APNs) restent entièrement à faire côté serveur.
+
+**Pourquoi ce mécanisme existe (contexte, PAS présent côté Android)** : Android laisse FCM réveiller
+le processus normalement pour recevoir un appel entrant (pas de mécanisme dédié séparé). iOS
+l'interdit structurellement pour un appel : une app tuée/suspendue ne reçoit pas de notification
+silencieuse fiable ni à temps. PushKit (notifications VoIP) est le SEUL mécanisme Apple garantissant
+un réveil immédiat et prioritaire, avec une contrepartie stricte imposée par Apple (voir "Prérequis
+Apple" plus bas).
+
+### 1. Enregistrement du jeton VoIP — endpoint à créer, appelé par l'app iOS
+
+- **Méthode/chemin** : `POST user/voip-token` (préfixé par la base REST existante,
+  `infoContract.SERVER`/`APIEnvironment.restBaseURL` côté client — même serveur que tous les autres
+  endpoints `user`/`deletemessage`/etc.)
+- **En-têtes** : identiques à tout autre appel `APIClient.post` déjà en place — `Authorization:
+  <apiKey brut, sans préfixe Bearer>`, `Content-Type: application/json; charset=utf-8`, `Accept:
+  application/json` (voir `Networking/APIClient.swift`, contraintes non négociables déjà
+  documentées).
+- **Corps JSON** :
+  ```json
+  { "userId": "<id utilisateur>", "voipToken": "<jeton hex, 64 caractères minuscules>" }
+  ```
+  Le jeton est encodé en hexadécimal (PAS en Base64) — convention APNs/VoIP standard, voir
+  `Calls/VoIPTokenRegistrar.swift`.
+- **Enveloppe de réponse attendue** : même convention que le reste du backend (`"error":"false"` en
+  succès, `"error":"true"`+`"message"` en échec — voir `JSONValue.isBackendSuccess`).
+- **Action serveur attendue** : stocker `voipToken` associé à `userId` (nouvelle colonne, ex.
+  `voip_token`, distincte de la colonne `fcmId` déjà utilisée pour les notifications push
+  classiques) — voir aussi "Alternative" ci-dessous.
+- **Fréquence d'appel côté client** : à CHAQUE fois que `PKPushRegistry` délivre un jeton
+  (inscription initiale ET rotations — PushKit peut redonner un jeton différent plus souvent
+  qu'APNs classique) — le serveur doit donc traiter cet appel comme un upsert (remplacer la valeur
+  précédente), pas comme un ajout.
+- **Alternative envisageable, PAS celle choisie ici** : le jeton FCM utilise en réalité un endpoint
+  GÉNÉRIQUE `user` existant côté Android (`{"id":userId,"column":"fcmId","value":token}`, voir
+  `Notifications/PushTokenRegistrar.swift`) plutôt qu'un endpoint dédié. Un endpoint dédié
+  `user/voip-token` a été choisi ici sur demande explicite (plus lisible pour un flux entièrement
+  nouveau, sans précédent Android à respecter) — le backend PEUT choisir de router cet appel vers la
+  même logique générique `column="voipToken"` en interne si c'est plus simple à intégrer, tant que
+  le CONTRAT (chemin, méthode, corps JSON ci-dessus) reste inchangé côté client.
+
+### 2-4. Déclenchement d'un appel entrant app tuée — flux serveur à implémenter
+
+1. **userA appelle userB** : l'app iOS de userA envoie déjà la signalisation d'appel normale sur le
+   canal Socket.IO existant (`ChatRepository.calling`/`ROOM.CALL`+suffixes, voir tableau détaillé
+   module 12 — CE point est déjà porté côté client, rien à changer ici).
+2. **Le serveur reçoit cette signalisation** (comme aujourd'hui pour la signalisation de chat/appel
+   classique) ET, EN PLUS, doit maintenant : chercher si userB a un `voipToken` enregistré (table
+   utilisateurs, colonne ajoutée au point 1).
+3. **Si un `voipToken` existe pour userB** : le serveur envoie une notification **PushKit** (PAS
+   une notification Firebase/APNs classique — différence importante, voir "Prérequis Apple"
+   ci-dessous) vers ce jeton, via APNs en mode VoIP. Payload recommandé (correspond à ce que
+   `CallCoordinator.voIPPushManager(_:didReceiveIncomingCallPayload:)` décode côté client — voir
+   `Models/ChatProfile.swift` pour le schéma complet) :
+   ```json
+   {
+     "messageId": "<id du message voicecall>",
+     "username": "<username de userA, l'appelant>",
+     "nikname": "<nikname de userA>",
+     "chatType": "chat",
+     "to": "<username de userB>",
+     "receiver": "<userId de userB>"
+   }
+   ```
+   **Ce schéma de payload n'a PAS été confirmé par le serveur** (aucune implémentation Android
+   équivalente à recouper) — c'est une PROPOSITION cohérente avec `ChatProfile`/le message
+   `"voicecall"` normal, à valider/ajuster avec l'équipe serveur avant implémentation finale plutôt
+   que supposé figé.
+4. **iOS réveille l'app de userB via PushKit**, qui déclenche CallKit pour afficher l'écran d'appel
+   natif (déjà porté côté client, `VoIPPushManager`/`CallKitManager`/`CallCoordinator`, voir tableau
+   détaillé module 12) — même app fermée/verrouillée.
+5. **Une fois l'appel accepté**, la connexion WebRTC (déjà portée, `RTConnection2`→
+   `WebRTCConnection.swift`) démarre normalement entre userA et userB, par le canal de signalisation
+   Socket.IO existant — aucun changement serveur supplémentaire nécessaire à ce stade.
+
+### Prérequis Apple côté serveur (à générer dans le compte Apple Developer)
+
+- **PAS le même certificat que les notifications push classiques.** Deux options, au choix de
+  l'équipe serveur/DevOps :
+  - **Clé d'authentification APNs (.p8)** — recommandée par Apple, une seule clé peut couvrir
+    plusieurs apps/types de push (y compris VoIP) si le serveur l'utilise avec le bon `topic` par
+    requête. Generée dans **Apple Developer → Certificates, Identifiers & Profiles → Keys**.
+  - **Certificat APNs VoIP Services dédié (.p12/.pem)** — généré dans **Apple Developer →
+    Certificates, Identifiers & Profiles → Certificates → Apple Push Notification service SSL
+    (Sandbox & Production)**, en cochant explicitement le service **"VoIP Services Certificate"**
+    pour l'identifiant d'app `com.tiinver.ios` — PAS le certificat "Apple Push Notification
+    service" standard déjà utilisé pour Firebase/notifications classiques.
+- **Topic APNs** : `com.tiinver.ios.voip` (suffixe `.voip` sur le bundle id, obligatoire pour un
+  push PushKit — un push envoyé avec le topic de base `com.tiinver.ios` vers un jeton PushKit sera
+  rejeté par APNs).
+- **En-tête APNs requis** : `apns-push-type: voip` (obligatoire depuis iOS 13 — sans cet en-tête,
+  APNs peut rejeter la requête ou le comportement de réveil peut être dégradé).
+- **Priorité APNs recommandée** : `apns-priority: 10` (immédiat — un push VoIP DOIT arriver sans
+  délai, la contrainte Apple côté app impose de répondre "en quelques secondes" après réception,
+  voir avertissement `VoIPPushManager.swift`/`CallCoordinator.swift`).
+- **Capacité app côté client (déjà en place, rien à faire)** : `UIBackgroundModes` contient déjà
+  `voip` dans `project.yml` (ajouté dès un module antérieur) — nécessaire pour que PushKit puisse
+  réveiller l'app.
+- **Contrainte stricte de comportement app CONFIRMÉE par recherche croisée (pas une supposition)** :
+  toute notification VoIP reçue DOIT déclencher `CXProvider.reportNewIncomingCall` de façon
+  synchrone dans le rappel PushKit, sous peine de résiliation de l'app par iOS ET, en cas de
+  non-conformité répétée, de désactivation du jeton VoIP par le système lui-même (télémétrie
+  surveillée par Apple) — déjà respecté côté client (voir `CallCoordinator.
+  voIPPushManager(_:didReceiveIncomingCallPayload:completion:)`, `completion()` appelé dès que
+  CallKit a été notifié, pas après la préparation WebRTC complète).
+
+## Backend à implémenter — Vérification StoreKit 2 (module 15, Wallet — spécification pour l'équipe serveur PHP/Slim)
+
+Voir la section "⚠️ AUDIT CONFORMITÉ APP STORE — Wallet/Paiements" plus haut pour le contexte complet
+(pourquoi ce nouveau point serveur remplace `purchaserequests`/`crypto/check-transaction` pour
+l'achat de pièces, PAS pour le retrait/transfert qui restent inchangés).
+
+### Endpoint appelé par l'app iOS
+
+`POST storekit/verify-purchase`, appelé depuis `CoinStoreManager.creditAndReport` juste après
+qu'une transaction StoreKit 2 a été validée CÔTÉ CLIENT (`VerificationResult.verified`) — **cette
+vérification client N'EST PAS suffisante pour créditer des pièces en toute sécurité** (un appareil
+compromis pourrait forger une transaction locale), le serveur DOIT revérifier auprès d'Apple avant
+crédit définitif.
+
+**Payload envoyé** (`application/x-www-form-urlencoded`, mêmes conventions que tous les autres
+appels `APIClient.shared.post`) :
+```
+userId: <UserSession.shared.myId>
+quantity: <nombre de pièces attendu pour ce palier — 250/500/1250/2500/5000>
+productId: <identifiant du Product StoreKit, ex. "com.tiinver.ios.coins.500">
+transactionId: <Transaction.id StoreKit 2, identifiant unique de CETTE transaction>
+originalTransactionId: <Transaction.originalID — identique à transactionId pour un consommable>
+```
+
+### Flux serveur nécessaire
+
+1. Recevoir la requête, retrouver l'utilisateur par `userId`.
+2. **Vérifier authentiquement la transaction auprès d'Apple** — via l'**App Store Server API**
+   (`GET /inApps/v1/transactions/{transactionId}`, authentifiée par une clé JWT signée avec une clé
+   privée `.p8` générée dans App Store Connect, PAS le jeton `apiKey` Tiinver habituel) : confirmer
+   que `productId`/`quantity` correspondent, que la transaction n'a pas déjà été traitée (table de
+   déduplication par `transactionId`, un rejeu ne doit PAS créditer deux fois), et que le statut de
+   transaction est valide (pas remboursée/révoquée — champ `revocationDate` de la réponse Apple).
+3. Si valide et non déjà traitée : créditer `quantity` pièces au solde de l'utilisateur (même
+   mécanisme que `rewardedCoins`/`purchaserequests` existants — mise à jour de la colonne `coins`),
+   enregistrer la transaction comme traitée.
+4. Répondre au client (même convention `{"error": "false"/"<message>"}` que le reste du backend).
+
+### Prérequis Apple côté serveur
+
+- **Clé App Store Server API (.p8)** — générée dans **App Store Connect → Utilisateurs et accès →
+  Clés → App Store Server API** (PAS la même clé que celle utilisée pour l'API App Store Connect
+  classique de gestion des builds, bien que le mécanisme de génération soit similaire). Nécessaire
+  pour authentifier les appels serveur→Apple de l'étape 2.
+- **Les 5 `Product` consommables doivent être créés dans App Store Connect** (`com.tiinver.ios.
+  coins.250`/`500`/`1250`/`2500`/`5000`, type "Achat intégré consommable") avant que
+  `CoinStoreManager.loadProducts()` puisse retourner quoi que ce soit côté client — sans ça,
+  `BuyCoinsView` affichera une liste vide indéfiniment (pas une erreur silencieuse à chercher côté
+  code, un prérequis de configuration App Store Connect).
+- **Ce schéma n'a PAS été validé avec l'équipe serveur** (aucune implémentation Android équivalente
+  à recouper, StoreKit 2 n'a pas d'équivalent direct dans le code Android existant) — proposition
+  cohérente avec les conventions REST déjà observées ailleurs dans ce backend, à ajuster avec
+  l'équipe serveur avant implémentation finale.
+
+## CHECKPOINT 2 ATTEINT ET VALIDÉ (2026-08-11)
+
+Les modules 7 et 8 de l'ordre de portage sont marqués `[x]` ci-dessus (Checkpoint 2 validé sur ce
+périmètre réduit, pas 7-12 — voir "Règle de compilation par checkpoint" pour la décision et sa
+justification). Conformément à la même règle :
+
+**✅ CHECKPOINT 2 VALIDÉ (2026-08-11) — build Codemagic réussi, aucune erreur.** 5 itérations de
+correction ont été nécessaires sur 4 builds successifs avant d'atteindre ce résultat (voir "Erreurs
+rencontrées et résolues" pour le détail complet de chacune) :
+1. Infrastructure CI — Metal Toolchain manquant sur la machine de build (`xcodebuild
+   -downloadComponent MetalToolchain` ajouté à `codemagic.yaml`/`ios-build.yml`), PAS une erreur de
+   code.
+2. `Animems/MaskPreviewEditorPanelState.swift` — `struct` contenant une propriété stockée de son
+   propre type (auto-référence interdite pour un type valeur), corrigé en extrayant un
+   `Snapshot` dédié.
+3. `Animems/AnimemesGestureController.swift:199` — conversion `Int`→`CGFloat` manquante sur les
+   arguments `x`/`y` d'un `CGRect` (`obj.offsetX`/`obj.offsetY` sont des `Int`, fidèles à Android).
+4. `Animems/LayerRenderer.swift:67`/`:162` — multiplication `Float`×`CGFloat` invalide
+   (`featherPx`), corrigée par conversion explicite au point de calcul, cohérente avec le pattern
+   `Float` (modèle)/`CGFloat` (rendu) déjà établi dans tout le module Animems.
+Confirme concrètement : les ~22 shaders GPU du module 7 (`TiinverCameraShaders.metal`) compilent
+SANS ERREUR (risque le plus élevé identifié avant ce build, maintenant levé) ; l'intégralité du
+code Swift des modules 1 à 8 compile sans erreur, y compris le chemin bout-en-bout du module 8
+(modèle → gestes → rendu → export → fusion GIF) et la logique d'état des ~14 vues custom d'édition.
+
+Note honnête sur la nature de cette validation, comme pour le Checkpoint 1 : "compile sans erreur"
+ne veut pas dire "vérifié à l'exécution" — aucun accès à un simulateur/device réel n'a permis de
+vérifier le comportement visuel/interactif de quoi que ce soit (filtres caméra, gestes tactiles
+Animems, rendu des calques, export vidéo). Voir "Points à vérifier en priorité au prochain build —
+Module 8" pour la liste des points de risque comportementaux (pas de compilation) qui restent à
+vérifier dès qu'un accès à un simulateur/device sera possible — indépendant de la suite du
+portage, qui continue maintenant sur les modules 9-18.
 
 ## CHECKPOINT 1 ATTEINT ET VALIDÉ (2026-08-10)
 
@@ -923,32 +1775,118 @@ Le prochain build Codemagic couvre les modules 7+8 ensemble. Par ordre de risque
 
 ## Prochaine action à faire
 
-**Checkpoint 1 VALIDÉ. Module 7 (Caméra) FERMÉ (2026-08-10). Module 8 (Moteur Animems) FERMÉ
-(2026-08-11)**, avec la note honnête habituelle sur la nature de cette clôture (voir "Ordre de
-portage" et tableau détaillé) : le chemin bout-en-bout modèle→gestes→rendu→export→fusion GIF est
-réel et écrit pour les types BITMAP/SHAPE/TEXT/STICKER, la logique d'état des ~14 vues custom
-d'édition est portée, mais leur construction SwiftUI visuelle et 8 sous-systèmes secondaires
-(listés ci-dessus) restent explicitement hors de ce portage, pour une future session dédiée.
+**CHECKPOINT 2 VALIDÉ (2026-08-11). Modules 7, 8, 9, 10, 11, 12 FERMÉS.** Module 12 (Appels WebRTC/
+CallKit) fermé le 2026-08-12, dans la même session que la fermeture du module 11 : moteur WebRTC
+(`RTConnection2.java`, 801 lignes),
+orchestration (`CallService`/`CallViewModel`/`CallActivity`/`IncomingCallActivity`, 2071 lignes
+cumulées) tous lus en entier, `RTConnection.java`/`RTConnection3.java`/`CallService2.java`
+confirmés morts par grep (pas lus). CallKit/PushKit/WebRTC iOS vérifiés contre la documentation
+Apple réelle, les bindings Xamarin officiels (recours quand la doc Apple ne rendait pas son contenu
+JS) et les headers Objective-C bruts du framework WebRTC AVANT d'écrire le moindre code, comme
+demandé explicitement pour ce module — 1 divergence d'API trouvée et corrigée pendant l'écriture
+(`addIceCandidate:` sans variante à bloc de complétion), plusieurs bugs d'isolement d'acteur Swift
+trouvés et corrigés en relisant le code (délégué `@MainActor` appelé depuis un contexte non isolé).
+8 fichiers Swift nouveaux/étendus, plus le bouton d'appel + présentation `CallView` câblés dans
+`ChatView.swift` (module 11) dans la même session, une fois le cœur du module 12 écrit — le flux
+est donc déclenchable de bout en bout depuis l'écran de chat. Voir le tableau détaillé et l'entrée
+de journal 2026-08-12 pour le détail complet.
 
-**ARRÊT DEMANDÉ EXPLICITEMENT PAR L'UTILISATEUR — NE PAS commencer le module 9.** Le prochain
-build Codemagic doit couvrir les modules 7+8 ensemble. Attendre l'une des deux confirmations
-suivantes avant de reprendre le portage :
-- **Build réussi, aucune erreur** → marquer le Checkpoint 2 partiel (7+8) comme une étape validée
-  dans ce fichier, avec la date, puis reprendre l'ordre de portage à partir du module 9 (Éditeur
-  photo simple).
-- **Liste d'erreurs de compilation** → les corriger TOUTES en suivant la même méthodologie que
-  pour les 2 échecs déjà résolus au Checkpoint 1 (voir "Erreurs rencontrées et résolues"), avant
-  de considérer le module 8 comme réellement clos.
+**Réserves du module 12, fermé mais pas sans caveat** : (1) aucune compilation réelle n'a été
+possible (environnement Windows sans Xcode, comme pour tout ce portage) — le cœur WebRTC/CallKit
+est le code le plus complexe et le plus à risque écrit jusqu'ici, une vérification de compilation
+réelle est prioritaire dès qu'un accès macOS existe ; (2) l'enregistrement du jeton VoIP CÔTÉ
+CLIENT est câblé (2026-08-12, `VoIPTokenRegistrar.swift`), mais l'implémentation SERVEUR (stockage
+du jeton, déclenchement du push VoIP via APNs) reste entièrement à faire — voir la section dédiée
+"Backend à implémenter — PushKit/VoIP" pour la spécification complète à donner à l'équipe PHP ;
+tant qu'elle n'est pas faite, le réveil "app tuée" n'est pas fonctionnel de bout en bout malgré le
+code client prêt des deux côtés (émission ET réception) ; (3) `outgoingCallRepeatRunnable` (boucle
+de re-notification) non branché.
+
+**CHECKPOINT 2 toujours valide. Modules 13 (Shareboard) et 14 (Message Graphic) FERMÉS le
+2026-08-12**, dans la continuité directe de la session qui a fermé le module 12 — voir l'entrée de
+journal dédiée et le tableau "Détail par module", section Shareboard/Message Graphic, pour le détail
+complet (7 fichiers Swift nouveaux dans `Shareboard/`, extensions de `ChatRepository`/`ChatViewModel`/
+`ChatView`/`ChatBubbleViews`, 1 bug data-channel corrigé dans `WebRTCConnection.swift` avant d'écrire
+le code Shareboard). **Réserves, non sans caveat** : (1) aucune compilation réelle possible (comme
+tout ce portage) — c'est le plus gros volume de code Swift écrit en une seule session
+(~1000 lignes), priorité de vérification au même niveau que le module 12 dès qu'un accès macOS
+existe ; (2) portée délibérément réduite sur le pinch/rotate/suppression d'objet en direct (non
+live-synced sur le fil, voir tableau) et sur le décoratif (bannières pub, tutoriel) — documenté, pas
+un oubli ; (3) gap fonctionnel : pas de point d'entrée UI pour REJOINDRE un Shareboard déjà ouvert
+par un pair (`status != 1`), seulement pour en démarrer un — voir dernier paragraphe du journal
+2026-08-12 pour le détail exact du correctif à apporter (rendre `SystemInfoRow` "shareboard"
+cliquable dans `ChatView`).
+
+**MODULES 15 (Wallet), 16 (AdMob), 17 (Profil/Réglages) ET 18 (Divers) FERMÉS le 2026-08-12, même
+session que 13/14, dans la continuité directe.** Les 18 modules de l'ordre de portage sont
+désormais tous `[x]` — voir cependant "RÉSERVES AVANT CHECKPOINT 3" juste en dessous : plusieurs
+fermetures portent des réserves explicites et documentées, notamment le module 18 qui priorise la
+couverture fonctionnelle sur l'exhaustivité de lecture (Contacts/Statistiques/boost interne repérés
+mais pas construits). Points marquants de cette portion de session :
+- **Module 15 (Wallet)** : découverte que le fichier visé par l'analyse de faisabilité initiale
+  pour l'achat de pièces (`BuyCoinsActivity.java`, Play Billing) est du CODE MORT — le vrai flux
+  actif est un paiement mobile money/crypto HORS APPLICATION avec ID de transaction saisi à la
+  main, un vrai risque de conformité App Store 3.1.1/3.1.5 plus sérieux que prévu. Remplacé par
+  StoreKit 2 pour l'achat (sur instruction explicite), retrait/transfert/conversion/parrainage
+  portés fidèlement. Voir "⚠️ AUDIT CONFORMITÉ APP STORE — Wallet/Paiements" et "Backend à
+  implémenter — Vérification StoreKit 2", **À LIRE avant toute soumission**.
+- **Module 16 (AdMob)** : SDK Google Mobile Ads iOS (nomenclature moderne sans préfixe `GAD*`)
+  vérifié contre l'exemple officiel SwiftUI de Google avant écriture. Interstitiel classique
+  confirmé mort (incertitude du rapport de faisabilité levée par grep).
+- **Module 17 (Profil/Réglages)** : découvertes de code mort en cascade côté réglages (5/6 réglages
+  de confidentialité granulaires commentés, "réglages de chat" qui ne sont en réalité qu'un thème
+  clair/sombre) — même méthodologie de vérification que partout ailleurs dans ce portage.
+- **Module 18 (Divers)** : le plus grand écart entre périmètre théorique (~54 fichiers Android) et
+  couverture réelle de cette session — recherche/follow/signalement/commentaires/certification
+  (consultation) portés avec lecture complète des fichiers réseau déterminants ; contacts (en
+  réalité un sélecteur de membres de groupe, pas une fonctionnalité autonome), statistiques
+  créateur et "boost interne" (système de promotion payante, sans rapport avec AdMob) repérés mais
+  PAS construits — à reprendre dans une passe dédiée.
+
+**RÉSERVES AVANT CHECKPOINT 3** (aucune n'est bloquante pour la fermeture des modules, toutes sont
+documentées à l'endroit précis concerné, mais doivent être lues avant de considérer le portage
+"terminé" au sens produit) :
+1. **Aucune compilation réelle n'a été possible sur l'ensemble du projet** (environnement Windows
+   sans Xcode, du premier au dernier module) — le Checkpoint 3 tel que défini en tête de fichier
+   ("build final couvrant tout le projet") NE PEUT PAS être exécuté depuis cet environnement ;
+   il nécessite un accès macOS/Xcode réel, la première étape concrète de toute suite à ce portage.
+2. Zones à plus haut risque de compilation/exécution, par ordre de priorité de vérification
+   recommandé : (a) module 12 (Appels WebRTC/CallKit) et module 13 (Shareboard, qui en dépend) —
+   code le plus complexe du portage ; (b) module 15 (StoreKit 2 — nécessite des `Product`
+   consommables créés dans App Store Connect, sans quoi `BuyCoinsView` reste vide indéfiniment,
+   pas une erreur de code) ; (c) module 16 (AdMob — nécessite le SDK réellement lié et les
+   entrées Info.plist prises en compte par Xcode) ; (d) modules 8-10 (Animems/Caméra/Trim,
+   compilent déjà sans erreur au Checkpoint 2 mais jamais exécutés à l'écran).
+3. Transferts de fichiers non résolus, RÉCURRENTS à travers plusieurs modules (upload photo de
+   profil module 17, documents de certification module 18, pièces jointes chat module 11) —
+   tous pointent vers le même gap non résolu : `UploadFileOrDataService.java`/
+   `HttpFileUploader.java` (Android) jamais lus en détail dans ce portage. Une lecture dédiée de
+   ces deux fichiers débloquerait plusieurs gaps d'un coup plutôt qu'un par un.
+4. Backend à transmettre à l'équipe serveur PHP/Slim, DEUX sections indépendantes déjà rédigées :
+   "Backend à implémenter — PushKit/VoIP" (module 12) et "Backend à implémenter — Vérification
+   StoreKit 2" (module 15).
+
+**Méthodologie à conserver pour la suite** (inchangée depuis le début du projet) : lire le code
+source Android réel avant de porter (jamais deviner depuis un nom de classe/méthode) ; vérifier
+toute API tierce/framework Apple contre sa documentation ou ses headers réels avant de l'utiliser ;
+documenter chaque décision, simplification et bug trouvé ; ne jamais marquer un module `[x]` sans
+une note honnête sur ce qui est réellement porté vs différé — et, comme démontré cette session,
+préférer laisser un module `[ ]` non coché plutôt que de compromettre cette règle pour tenir un
+rythme.
 
 **Points à ne pas oublier, indépendants du reste** :
-- Les ~22 filtres GPU du module 7 (`TiinverCameraFilters.swift`/`TiinverCameraShaders.metal`)
-  restent le point de risque de compilation le plus élevé de tout ce qui a été écrit jusqu'ici —
-  à examiner en priorité au premier build réel couvrant le module 7.
-- Voir la section "Points à vérifier en priorité au prochain build — Module 8" ci-dessus pour le
-  détail complet côté module 8 (par ordre de risque décroissant).
+- Les ~22 filtres GPU du module 7 et le chemin bout-en-bout du module 8 (Animems) compilent tous
+  les deux SANS ERREUR (Checkpoint 2 validé) mais restent NON VÉRIFIÉS À L'EXÉCUTION (aucun accès
+  simulateur/device) — voir "Points à vérifier en priorité au prochain build — Module 8" pour le
+  détail par ordre de risque ; à garder en tête pour un futur accès à un simulateur, indépendant
+  de la suite du portage.
 - Le flou "feather" (`MaskFactory`/`BitmapCacheManager`/`LayerRenderer`, module 8) utilise
   `CIGaussianBlur` en approximation documentée d'un `BlurMaskFilter` Android — à comparer
   visuellement au premier rendu réel, écart possible mais non bloquant par nature.
 - Handshake Socket.IO via `.connectParams`, rendu du `TabView` pivoté pour le scroll plein écran
   du feed (Checkpoint 1) : toujours NON VÉRIFIÉS VISUELLEMENT, sans rapport avec les modules
-  7/8, à vérifier au premier accès à un simulateur/device réel.
+  suivants, à vérifier au premier accès à un simulateur/device réel.
+- `PhotoCropView.swift` (module 9) : pas d'équivalent direct pour `handleFlip` dans l'API publique
+  de `TOCropViewController` — point ouvert, voir tableau détaillé module 9.
+- `project.yml` : package `TOCropViewController` ajouté (module 9), pas encore résolu par un build
+  réel — même statut `ÉCRIT (NON COMPILÉ)` que le reste du code depuis le Checkpoint 2.

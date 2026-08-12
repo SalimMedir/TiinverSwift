@@ -36,6 +36,7 @@ struct HomeShellView: View {
     @State private var chatUnreadCount = 0
     @State private var showNotifications = false
     @State private var showProfile = false
+    @State private var showSearch = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -55,6 +56,13 @@ struct HomeShellView: View {
                 .tag(2)
         }
         .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                // Port du point d'entrée `RechercheTiinver` (module 18, `MainFragment`/
+                // `FeedFragment`/`Roster` ouvrent tous cette même Activity) — bouton de recherche
+                // ajouté ici plutôt qu'un onglet dédié, aucun onglet "recherche" identifié dans la
+                // barre de navigation à 3 onglets d'origine (`NavigationCompound.java`).
+                Button { showSearch = true } label: { Image(systemName: "magnifyingglass") }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     showNotifications = true
@@ -86,7 +94,10 @@ struct HomeShellView: View {
             NotificationsListView()
         }
         .sheet(isPresented: $showProfile) {
-            ProfileView()
+            NavigationStack { ProfileView() }
+        }
+        .sheet(isPresented: $showSearch) {
+            NavigationStack { SearchView() }
         }
         .task {
             await notificationsViewModel.refresh()

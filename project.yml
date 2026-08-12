@@ -35,6 +35,15 @@ packages:
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk.git
     from: 11.15.0
+  TOCropViewController:
+    # Module 9 (Éditeur photo simple) — remplace le recadreur vendorisé Android
+    # (`android/croper/CropImageView.java`+`CropOverlayView.java`+`CropWindowHandler.java`+
+    # `CropWindowMoveHandler.java`, ~5000 lignes de géométrie de poignées tactiles) par une
+    # bibliothèque iOS native équivalente. Vérifié avant choix (pas deviné) : `pushed_at` très
+    # récent, non archivé, `Package.swift` réel confirme `platforms: [.iOS(.v12)]` (compatible
+    # `deploymentTarget.iOS = "16.0"`) — voir MIGRATION_PROGRESS.md, décision module 9.
+    url: https://github.com/TimOliver/TOCropViewController.git
+    from: 3.2.0
 
 targets:
   TiinverSwift:
@@ -58,6 +67,30 @@ targets:
         NSMicrophoneUsageDescription: "Tiinver a besoin du micro pour les vidéos, messages vocaux et appels."
         NSPhotoLibraryUsageDescription: "Tiinver a besoin d'accéder à vos photos pour publier du contenu."
         NSContactsUsageDescription: "Tiinver utilise vos contacts pour vous suggérer des amis."
+        # Module 16 (AdMob) — App ID CONFIRMÉ (pas deviné) : `AndroidManifest.xml:419`,
+        # `ca-app-pub-2461482190230201~9045103625`, identique quelle que soit la plateforme (un
+        # même compte AdMob héberge les unités pub Android ET iOS de la même app, confirmé par
+        # TIINVER_IOS_PORT_ANALYSIS.md §5). Requis par le SDK au démarrage (`MobileAds.shared.
+        # start()` échoue silencieusement sans cette clé, comportement documenté du SDK).
+        GADApplicationIdentifier: "ca-app-pub-2461482190230201~9045103625"
+        # Requis depuis iOS 14.5 pour toute app utilisant AdMob (App Tracking Transparency) —
+        # AUCUN équivalent Android (permission runtime standard côté Android, pas de prompt système
+        # dédié à la publicité). Le prompt réel (`ATTrackingManager.requestTrackingAuthorization`)
+        # N'EST PAS câblé dans ce portage (voir tableau détaillé module 16) — cette clé Info.plist
+        # est nécessaire même sans l'appel explicite, le SDK AdMob la lit pour son propre
+        # fonctionnement en mode "non personnalisé" par défaut si l'app ne demande jamais la
+        # permission.
+        NSUserTrackingUsageDescription: "Cette identification sera utilisée pour vous proposer des publicités plus pertinentes."
+        # Identifiant SKAdNetwork Google/AdMob PROPRE (documenté publiquement, stable, pas une
+        # supposition) — SUFFISANT tant qu'AUCUN réseau de médiation n'est configuré côté console
+        # AdMob (confirmé §5.6 : médiation = configuration console uniquement, zéro code
+        # applicatif). **Si des réseaux de médiation sont activés plus tard côté console (Meta
+        # Audience Network/Unity Ads/Pangle, comme sur Android), la liste COMPLÈTE des identifiants
+        # SKAdNetwork de ces réseaux (publiée par Google, ~50+ entrées) devra être ajoutée ici —
+        # PAS ajoutée par ce portage sans confirmation que la médiation sera réellement activée
+        # côté iOS, pour ne pas fabriquer une liste non vérifiée.
+        SKAdNetworkItems:
+          - SKAdNetworkIdentifier: cstr6suwn9.skadnetwork
     settings:
       base:
         # CONFIRMÉ (pas une supposition) par Resources/GoogleService-Info.plist, clé BUNDLE_ID
@@ -94,3 +127,5 @@ targets:
         product: FirebaseRemoteConfig
       - package: Firebase
         product: FirebaseAnalytics
+      - package: TOCropViewController
+        product: CropViewController

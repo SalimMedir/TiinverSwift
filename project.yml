@@ -21,6 +21,7 @@ packages:
     url: https://github.com/kaishin/Gifu.git
     from: 3.4.1
   GoogleMobileAds:
+    url: https://github.com/googleads/swift-package-manager-google-mobile-ads.git
     # Checkpoint 3 : `from: 11.0.0` provoquait 11 erreurs "cannot find type in scope"
     # (BannerView/RewardedAd/RewardedInterstitialAd/NativeAd/AdLoader/NativeAdLoaderDelegate).
     # Cause CONFIRMÉE (pas supposée) par lecture des notes de version Google ET du

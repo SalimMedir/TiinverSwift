@@ -46,6 +46,9 @@ jobs:
       - name: xcodegen generate
         run: xcodegen generate
 
+      - name: Install Metal Toolchain
+        run: xcodebuild -downloadComponent MetalToolchain
+
       - name: Résoudre les dépendances Swift Package Manager
         run: |
           xcodebuild -resolvePackageDependencies \

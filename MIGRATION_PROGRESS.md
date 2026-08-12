@@ -1,6 +1,6 @@
 # Suivi de migration Tiinver Android → iOS Swift
 
-Dernière mise à jour : 2026-08-11 06:00
+Dernière mise à jour : 2026-08-11 07:00
 Statut global : CHECKPOINT 1 VALIDÉ — build Codemagic réussi (2026-08-10, build
 #6a7a2aabd5ae67eb2a755de2). MODULE 7 (Caméra) FERMÉ (2026-08-10). **MODULE 8 (Moteur Animems)
 FERMÉ (2026-08-11)** — chemin bout-en-bout écrit : modèle (`core/`+`model/`) → gestes tactiles
@@ -8,10 +8,13 @@ FERMÉ (2026-08-11)** — chemin bout-en-bout écrit : modèle (`core/`+`model/`
 export (`AnimemesExporter.swift`, `AVAssetWriter`) → fusion GIF (`AnimemesRecompose.swift`) →
 logique d'état des ~14 vues custom d'édition (timeline, panneaux masque/forme/calque/texte,
 dessin animé, zoom canvas). PATH/LINE/CLIP/ERASE restent différés (liés au geste tactile,
-maintenant conçu mais pas branché à ces 4 types). **ARRÊT DEMANDÉ PAR L'UTILISATEUR — build
-Codemagic suivant doit couvrir modules 7+8 ensemble ; NE PAS commencer le module 9 avant
-confirmation de build réussi ou liste d'erreurs à corriger.** Voir "Points à vérifier en priorité
-au prochain build — Module 8" et "Prochaine action à faire".
+maintenant conçu mais pas branché à ces 4 types). **Premier build Codemagic couvrant 7+8 ÉCHOUÉ
+(2026-08-11) sur un problème d'INFRASTRUCTURE CI (Metal Toolchain manquant, PAS une erreur de
+code Swift/Metal) — corrigé dans `codemagic.yaml`/`ios-build.yml`, voir "Erreurs rencontrées et
+résolues". Le code lui-même (modules 1-8) reste NON VÉRIFIÉ PAR COMPILATION RÉELLE.** ARRÊT
+TOUJOURS EN VIGUEUR — NE PAS commencer le module 9 avant confirmation de build réussi ou liste
+d'erreurs à corriger. Voir "Points à vérifier en priorité au prochain build — Module 8" et
+"Prochaine action à faire".
 
 ## ⚠️ Contrainte d'environnement (lire avant toute reprise de session)
 
@@ -702,6 +705,13 @@ au fil de l'eau.
   - Vérifié qu'aucun fichier hors `CoreDataRepository.swift` ne s'appuie sur le protocole `CoreDataFetchable` : `RosterRepository.swift`/`NotiRepository.swift` appellent `fetchRequest()` directement sur les classes concrètes (`RosterEntity.fetchRequest()`, `MessageEntity.fetchRequest()`, `NotiEntity.fetchRequest()`) — ces appels passent par la méthode générée par Xcode sur la classe elle-même, pas par le protocole générique, donc non affectés par ce changement (grep confirmé, voir liste complète des occurrences de `fetchRequest()` dans `Sources/`).
   Changement appliqué à `Storage/CoreDataFetchable.swift` : `associatedtype FetchResult: NSManagedObject = Self` + `static func fetchRequest() -> NSFetchRequest<FetchResult>` (au lieu de `NSFetchRequest<Self>` directement). Swift déduit `FetchResult` automatiquement pour chaque entité depuis sa méthode `fetchRequest()` déjà générée par Xcode (qui retourne toujours `NSFetchRequest<TypeConcret>`) — aucune des 16 lignes `extension XxxEntity: CoreDataFetchable {}` n'a dû être modifiée. `Storage/CoreDataRepository.swift` : ajout de la contrainte `where Entity.FetchResult == Entity` sur `CoreDataRepository<Entity: CoreDataFetchable>`, nécessaire pour que `query`/`first` continuent de retourner `[Entity]` (et pas `[Entity.FetchResult]`) sans changer aucune signature publique du repository générique — satisfaite automatiquement par toutes les entités existantes puisqu'aucune ne surcharge le `= Self` par défaut. Vérifié par grep que les 8 usages de `CoreDataRepository<...>` dans `Sources/` (`AuthSessionPersistence.swift`, `ProfileView.swift`, `FeedRepository.swift`, `AiConversationRepository.swift`, `NotiRepository.swift`, `RosterRepository.swift` ×2, `ViewEventRepository.swift`) n'ont besoin d'aucune modification — le générique reste utilisable exactement comme avant pour les 3 stores Core Data indépendants.
   **✅ VÉRIFIÉE PAR BUILD RÉEL (2026-08-10, build #6a7a2aabd5ae67eb2a755de2) :** troisième build Codemagic réussi sans aucune erreur — confirme concrètement que la reformulation `associatedtype` compile bien pour les 16 entités et que la contrainte `where Entity.FetchResult == Entity` n'a cassé aucun des 8 usages de `CoreDataRepository<...>`. Voir "CHECKPOINT 1 ATTEINT ET VALIDÉ" plus bas — **Checkpoint 1 VALIDÉ**, plus aucune erreur en attente.
+- **2026-08-11 : Premier build Codemagic couvrant les modules 7+8 (post-clôture module 8) — ÉCHEC, mais PAS une erreur de compilation Swift/Metal.** Message d'erreur exact :
+  ```
+  error: cannot execute tool 'metal' due to missing Metal Toolchain; use: xcodebuild -downloadComponent MetalToolchain
+  ```
+  **Cause : composant Xcode manquant sur la machine de build CI, pas un problème dans le code écrit.** Depuis Xcode 16, le compilateur `metal` (nécessaire pour compiler `Camera/Filters/TiinverCameraShaders.metal`, module 7) n'est plus embarqué automatiquement dans l'installation Xcode de base — c'est un composant téléchargeable séparément (`MetalToolchain`), absent par défaut sur les images CI qui n'en ont pas explicitement besoin. Le build a échoué à l'étape de compilation du `.metal` AVANT même de tenter de compiler le reste du code Swift — **aucune information sur la validité réelle des ~22 filtres GPU du module 7 ni du reste du code (modules 1-8) n'a donc été obtenue par ce build**, ni positive ni négative.
+  **Correction appliquée :** ajout d'une étape "Install Metal Toolchain" (`xcodebuild -downloadComponent MetalToolchain`) dans `codemagic.yaml` (workflow `checkpoint-build`) ET `.github/workflows/ios-build.yml`, placée après `xcodegen generate` et avant "Résoudre les dépendances Swift Package Manager"/"Build simulateur" dans les deux fichiers (le composant doit être présent avant que `xcodebuild build` tente d'invoquer `metal`).
+  **PAS ENCORE VÉRIFIÉE PAR BUILD RÉEL** — nécessite un nouveau build Codemagic/GitHub Actions pour confirmer que le téléchargement du composant réussit ET que la compilation Swift/Metal proprement dite passe derrière. Les ~22 filtres GPU du module 7 (`TiinverCameraFilters.swift`/`TiinverCameraShaders.metal`) restent donc le point de risque de compilation le plus élevé non vérifié de tout le portage, exactement comme avant ce build (voir "Points à ne pas oublier" plus bas) — cette correction lève un blocage d'infrastructure CI, elle ne dit rien sur la validité du code lui-même.
 
 ## Points bloquants actuels
 

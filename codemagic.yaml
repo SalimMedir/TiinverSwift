@@ -39,6 +39,10 @@ workflows:
         script: |
           xcodegen generate
 
+      - name: Install Metal Toolchain
+        script: |
+          xcodebuild -downloadComponent MetalToolchain
+
       - name: Résoudre les dépendances Swift Package Manager
         script: |
           xcodebuild -resolvePackageDependencies \

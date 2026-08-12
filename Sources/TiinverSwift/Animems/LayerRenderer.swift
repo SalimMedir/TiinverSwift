@@ -64,7 +64,7 @@ enum LayerRenderer {
         let (opacity, color, cornerRadius, feather) = resolveVisualProperties(
             obj, transform: tfm, currentNs: currentNs, isSliderPreview: isSliderPreview
         )
-        let featherPx = feather * feather * maxFeatherPx
+        let featherPx = CGFloat(feather) * CGFloat(feather) * maxFeatherPx
 
         let bmpToDraw = bitmapCache.cachedFeatheredImage(source: bmp, featherPx: featherPx)
         let featherApplied = bmpToDraw !== bmp
@@ -159,7 +159,7 @@ enum LayerRenderer {
         let (opacity, color, cornerRadius, feather) = resolveVisualProperties(
             obj, transform: tfm, currentNs: currentNs, isSliderPreview: false
         )
-        let featherPx = feather * feather * maxFeatherPx
+        let featherPx = CGFloat(feather) * CGFloat(feather) * maxFeatherPx
         let bmpToDraw = BitmapCacheManager.applyFeather(bmp, featherPx: featherPx) ?? bmp
         let featherApplied = bmpToDraw !== bmp
 

@@ -1,6 +1,6 @@
 # Suivi de migration Tiinver Android → iOS Swift
 
-Dernière mise à jour : 2026-08-11 09:00
+Dernière mise à jour : 2026-08-11 10:00
 Statut global : CHECKPOINT 1 VALIDÉ — build Codemagic réussi (2026-08-10, build
 #6a7a2aabd5ae67eb2a755de2). MODULE 7 (Caméra) FERMÉ (2026-08-10). MODULE 8 (Moteur Animems)
 FERMÉ (2026-08-11) — chemin bout-en-bout écrit : modèle (`core/`+`model/`) → gestes tactiles
@@ -8,14 +8,16 @@ FERMÉ (2026-08-11) — chemin bout-en-bout écrit : modèle (`core/`+`model/`) 
 export (`AnimemesExporter.swift`, `AVAssetWriter`) → fusion GIF (`AnimemesRecompose.swift`) →
 logique d'état des ~14 vues custom d'édition (timeline, panneaux masque/forme/calque/texte,
 dessin animé, zoom canvas). PATH/LINE/CLIP/ERASE restent différés (liés au geste tactile,
-maintenant conçu mais pas branché à ces 4 types). **Checkpoint 2 (7+8) PAS ENCORE VALIDÉ** — 3
+maintenant conçu mais pas branché à ces 4 types). **Checkpoint 2 (7+8) PAS ENCORE VALIDÉ** — 4
 builds Codemagic jusqu'ici, chacun révélant UN problème distinct puis confirmant sa correction au
-build suivant : (1) infrastructure CI (Metal Toolchain manquant, corrigé) ; (2) `Mask
-PreviewEditorPanelState` struct auto-référent (corrigé, confirmé résolu au build 3) ; (3)
-`AnimemesGestureController.swift:199` conversion `Int`→`CGFloat` manquante sur un `CGRect`
-(corrigée) — voir "Erreurs rencontrées et résolues" pour le détail de chacune. Les ~22 shaders
-caméra ont compilé SANS ERREUR dès le build 2. **Un nouveau build est nécessaire pour confirmer
-que l'erreur (3) était la dernière.** ARRÊT TOUJOURS EN VIGUEUR — NE PAS commencer le module 9
+build suivant : (1) infrastructure CI (Metal Toolchain manquant, corrigé, confirmé au build 2) ;
+(2) `MaskPreviewEditorPanelState` struct auto-référent (corrigé, confirmé résolu au build 3) ;
+(3) `AnimemesGestureController.swift:199` conversion `Int`→`CGFloat` manquante sur un `CGRect`
+(corrigée, confirmée résolue au build 4) ; (4) `LayerRenderer.swift:67`/`:162` multiplication
+`Float`×`CGFloat` (`featherPx`, corrigée) — voir "Erreurs rencontrées et résolues" pour le détail
+de chacune. Les ~22 shaders caméra ont compilé SANS ERREUR dès le build 2. **Un nouveau build est
+nécessaire pour confirmer que l'erreur (4) était la dernière.** ARRÊT TOUJOURS EN VIGUEUR — NE PAS
+commencer le module 9
 avant confirmation de build réussi ou nouvelle liste d'erreurs à corriger. Voir "Points à vérifier
 en priorité au prochain build — Module 8" et "Prochaine action à faire".
 
@@ -732,6 +734,16 @@ au fil de l'eau.
   **Cause :** dans `scale(factor:focus:objectIndex:composer:)` (port de `safePostScale`), la ligne construisait `CGRect(x: obj.offsetX, y: obj.offsetY, width: CGFloat(bmp.width), height: CGFloat(bmp.height))` — `AnimationObjectData.offsetX`/`.offsetY` sont des `Int` (fidèle à `int offsetX`/`int offsetY` côté `AnimationObjectData.java`, décision déjà actée et documentée au portage de ce fichier), mais `CGRect.init(x:y:width:height:)` n'accepte QUE des `CGFloat` pour ses 4 paramètres — il manquait un `CGFloat(...)` autour de `obj.offsetX`/`obj.offsetY`. **Note sur les colonnes rapportées par le compilateur (72/100, qui pointent vers `width:`/`height:` et non vers `x:`/`y:` où se trouve le vrai problème)** : comportement de diagnostic Swift connu — face à un unique candidat d'initialiseur avec DEUX arguments mal typés simultanément (`x`/`y`), le solveur de contraintes du compilateur peut mal attribuer l'échec de résolution aux arguments syntaxiquement voisins plutôt qu'aux véritables coupables ; vérifié en confirmant que `width`/`height` étaient déjà correctement enveloppés en `CGFloat(...)`, seuls `x`/`y` (accès direct à des `Int`) manquaient la conversion. Ce même motif `CGFloat(obj.offsetX)`/`CGFloat(obj.offsetY)` était déjà utilisé correctement dans `AnimemesRecompose.swift` (`computeBounds`, écrit à la même session) — bug local à ce seul site d'appel, pas une erreur de conception répétée.
   **Correction appliquée :** `CGRect(x: CGFloat(obj.offsetX), y: CGFloat(obj.offsetY), width: CGFloat(bmp.width), height: CGFloat(bmp.height))`. Pas de changement de type à la source (`offsetX`/`offsetY` restent `Int`, fidèles à Android) — c'est bien une coordonnée à convertir au point d'usage, pas un index/compteur mal typé en amont.
   **Vérifié par grep** qu'aucune autre occurrence de ce motif (`CGRect(x: obj.offsetX...)` ou équivalent) n'existe ailleurs dans `Animems/`, et que le reste du fichier `AnimemesGestureController.swift` n'a pas d'autre usage direct non converti de `offsetX`/`offsetY`.
+  **✅ VÉRIFIÉE PAR BUILD RÉEL (2026-08-11) :** le build Codemagic suivant confirme que cette correction est passée — l'erreur `AnimemesGestureController.swift:199` n'apparaît plus, remplacée par deux nouvelles erreurs distinctes, même fichier source (entrée suivante).
+- **2026-08-11 : Quatrième build Codemagic couvrant les modules 7+8 — la correction `AnimemesGestureController.swift` confirmée résolue, 2 NOUVELLES erreurs de compilation Swift révélées, même fichier, même pattern.** Messages d'erreur exacts :
+  ```
+  /Users/builder/clone/Sources/TiinverSwift/Animems/LayerRenderer.swift:67:43: error: binary operator '*' cannot be applied to operands of type 'Float' and 'CGFloat'
+  /Users/builder/clone/Sources/TiinverSwift/Animems/LayerRenderer.swift:162:43: error: binary operator '*' cannot be applied to operands of type 'Float' and 'CGFloat'
+  ```
+  **Cause :** `let featherPx = feather * feather * maxFeatherPx` (dans `drawLastTransform` ligne 67 ET `drawObjectFrame` ligne 162, sites structurellement jumeaux — voir tête de fichier sur la factorisation partielle des deux méthodes). `feather` vient de `resolveVisualProperties(...)`, dont le type de retour est `(opacity: Float, color: UInt32, cornerRadius: Float, feather: Float)` — délibérément `Float` partout dans ce tuple pour rester fidèle au `float` Java d'origine (`Transform.getFeather()`/`AnimationObjectData.interpolatedFeather`, déjà `Float` côté Swift). `maxFeatherPx` est `static let maxFeatherPx: CGFloat = 250` — `CGFloat` car c'est une constante de rendu consommée uniquement par des API Core Graphics. `Float * Float` fonctionne (donne `Float`), mais `Float * CGFloat` n'a pas de surcharge d'opérateur — Swift n'effectue jamais de conversion numérique implicite entre types concrets distincts, même tous deux "à virgule flottante".
+  **Vérification du pattern dominant AVANT de corriger** (comme demandé) : `grep -c ": Float"`/`": CGFloat"` sur tout `Animems/` confirme une séparation nette et déjà cohérente dans tout le module — les types de la couche modèle/moteur (`AnimationObjectData.swift`, `Transform.swift`, `Keyframe.swift`, `KeyframeTrack.swift`, `AnimationUtils.swift`, propriétés `shape*`) restent en `Float` (fidèles au `float` Android), tandis que la couche rendu/géométrie Core Graphics (`LayerRenderer.swift`, `MaskFactory.swift`, `BitmapCacheManager.swift`, `TimelineViewModel.swift`, `AnimemesGestureController.swift`, etc.) utilise `CGFloat`, converti explicitement au POINT DE CONTACT avec les API CG (`CGFloat(obj.maskFeather) * maxFeatherPx` déjà présent correctement ailleurs dans CE MÊME fichier, lignes 93-94/178, sans jamais avoir déclaré `feather`/`opacity`/`cornerRadius` en `CGFloat` à la source). Confirme que la correction doit se faire AU POINT DE CALCUL (convertir `feather`), PAS en changeant le type déclaré de `resolveVisualProperties`/`Transform.feather`/`AnimationObjectData.interpolatedFeather` — cela casserait la cohérence de tout le reste du module et la fidélité au `float` Android.
+  **Correction appliquée** (identique aux 2 sites) : `let featherPx = CGFloat(feather) * CGFloat(feather) * maxFeatherPx`.
+  **Relecture complète et ciblée de tout `LayerRenderer.swift` (438 lignes) pour des erreurs sœurs non encore révélées par ce build** (le compilateur peut s'arrêter avant d'atteindre tous les fichiers) : chaque usage de `opacity`/`cornerRadius`/`feather` (les 3 champs `Float` du tuple `resolveVisualProperties`) vérifié individuellement — TOUS déjà correctement enveloppés en `CGFloat(...)` avant toute arithmétique avec une valeur `CGFloat` (`CGFloat(cornerRadius)` lignes 106/111/189/194, `CGFloat(opacity)` ligne 384) ; aucune autre occurrence du motif `Float × CGFloat` trouvée dans ce fichier. `AnimationEngine.swift`/`Transform.swift`/`Keyframe.swift` non concernés par cette erreur (aucune arithmétique CG directe dans ces fichiers modèle).
   **PAS ENCORE VÉRIFIÉE PAR BUILD RÉEL** — nécessite un nouveau build pour confirmer que c'était la seule erreur restante sur l'ensemble modules 1-8.
 
 ## Points bloquants actuels

@@ -1,0 +1,91 @@
+import PhotosUI
+import SwiftUI
+import UniformTypeIdentifiers
+
+/// Port de `BaseCameraFragment.pickImageOrVideo`/`pickMedia` — lu en entier avant d'écrire ce
+/// fichier : `ActivityResultContracts.PickVisualMedia` avec le filtre `ImageAndVideo`
+/// (`PickVisualMediaRequest.Builder().setMediaType(PickVisualMedia.ImageAndVideo.INSTANCE)`),
+/// sélection UNIQUE (aucun appel à un `setMaxItems`, donc 1 par défaut côté Android aussi — pas
+/// une limitation ajoutée côté iOS). Après sélection, Android détermine image vs vidéo via le
+/// MIME type (`ContentResolver.getType`) puis route séparément.
+///
+/// `PHPickerViewController` (UIKit, via `UIViewControllerRepresentable`) choisi plutôt que
+/// `PhotosPicker` SwiftUI natif — vérifié disponible dès iOS 16.0 (introduit à WWDC22 avec
+/// `PhotosUI`, donc compatible avec la cible du projet), mais écarté ici : la sélection
+/// image+vidéo mélangée avec accès direct à un fichier local (équivalent de `Utils.getPath`, qui
+/// résout un vrai chemin de fichier, pas juste des octets) est plus directe via
+/// `NSItemProvider.loadFileRepresentation` que via `Transferable`, qui exigerait un type `Movie`
+/// custom pour les vidéos sans bénéfice supplémentaire ici.
+struct GalleryPickerView: UIViewControllerRepresentable {
+    var onImagePicked: (URL) -> Void
+    var onVideoPicked: (URL) -> Void
+    var onCancel: () -> Void
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var configuration = PHPickerConfiguration()
+        configuration.filter = .any(of: [.images, .videos])
+        configuration.selectionLimit = 1
+        let picker = PHPickerViewController(configuration: configuration)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: GalleryPickerView
+
+        init(_ parent: GalleryPickerView) {
+            self.parent = parent
+        }
+
+        /// Port du callback de `registerForActivityResult(PickVisualMedia())` — `uri == null`
+        /// (annulation Android) correspond ici à `results.isEmpty`.
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            guard let result = results.first else {
+                parent.onCancel()
+                return
+            }
+            let provider = result.itemProvider
+
+            if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+                provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, _ in
+                    // `loadFileRepresentation` supprime le fichier temporaire dès que ce handler
+                    // retourne — copie SYNCHRONE obligatoire avant de repasser sur le main thread
+                    // (piège connu de cette API, pas un oubli).
+                    guard let url else { return }
+                    let localCopy = Self.copyToTemporaryFile(url)
+                    DispatchQueue.main.async {
+                        if let localCopy { self.parent.onVideoPicked(localCopy) } else { self.parent.onCancel() }
+                    }
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, _ in
+                    guard let url else { return }
+                    let localCopy = Self.copyToTemporaryFile(url)
+                    DispatchQueue.main.async {
+                        if let localCopy { self.parent.onImagePicked(localCopy) } else { self.parent.onCancel() }
+                    }
+                }
+            } else {
+                parent.onCancel()
+            }
+        }
+
+        private static func copyToTemporaryFile(_ sourceURL: URL) -> URL? {
+            let destination = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension(sourceURL.pathExtension)
+            do {
+                try FileManager.default.copyItem(at: sourceURL, to: destination)
+                return destination
+            } catch {
+                return nil
+            }
+        }
+    }
+}

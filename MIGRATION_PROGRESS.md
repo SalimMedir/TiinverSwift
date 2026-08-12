@@ -1,8 +1,17 @@
 # Suivi de migration Tiinver Android → iOS Swift
 
-Dernière mise à jour : 2026-08-10 22:30
-Statut global : CHECKPOINT 1 ATTEINT — EN ATTENTE DE BUILD MACOS (CI Codemagic/GitHub Actions
-configurés ; voir section dédiée avant "Prochaine action à faire")
+Dernière mise à jour : 2026-08-11 06:00
+Statut global : CHECKPOINT 1 VALIDÉ — build Codemagic réussi (2026-08-10, build
+#6a7a2aabd5ae67eb2a755de2). MODULE 7 (Caméra) FERMÉ (2026-08-10). **MODULE 8 (Moteur Animems)
+FERMÉ (2026-08-11)** — chemin bout-en-bout écrit : modèle (`core/`+`model/`) → gestes tactiles
+(`AnimemesGestureController.swift`) → rendu (`LayerRenderer.swift`, BITMAP/SHAPE/TEXT/STICKER) →
+export (`AnimemesExporter.swift`, `AVAssetWriter`) → fusion GIF (`AnimemesRecompose.swift`) →
+logique d'état des ~14 vues custom d'édition (timeline, panneaux masque/forme/calque/texte,
+dessin animé, zoom canvas). PATH/LINE/CLIP/ERASE restent différés (liés au geste tactile,
+maintenant conçu mais pas branché à ces 4 types). **ARRÊT DEMANDÉ PAR L'UTILISATEUR — build
+Codemagic suivant doit couvrir modules 7+8 ensemble ; NE PAS commencer le module 9 avant
+confirmation de build réussi ou liste d'erreurs à corriger.** Voir "Points à vérifier en priorité
+au prochain build — Module 8" et "Prochaine action à faire".
 
 ## ⚠️ Contrainte d'environnement (lire avant toute reprise de session)
 
@@ -26,8 +35,11 @@ Conséquences directes sur la méthodologie :
 La migration est découpée en 3 checkpoints de compilation obligatoires, basés sur les modules
 de l'ordre de portage (section "Ordre de portage" ci-dessous) :
 
-- **Checkpoint 1** : après la fin complète des modules 1 à 6 (Infrastructure réseau/auth → Feed vidéo)
-- **Checkpoint 2** : après la fin complète des modules 7 à 12 (Caméra → Appels WebRTC/CallKit)
+- **Checkpoint 1** : après la fin complète des modules 1 à 6 (Infrastructure réseau/auth → Feed vidéo) —
+  **[x] VALIDÉ le 2026-08-10** (build Codemagic #6a7a2aabd5ae67eb2a755de2 réussi, aucune erreur —
+  voir "CHECKPOINT 1 ATTEINT" plus bas pour le détail complet).
+- **Checkpoint 2** : après la fin complète des modules 7 à 12 (Caméra → Appels WebRTC/CallKit) —
+  **prochain arrêt obligatoire, pas encore atteint.**
 - **Checkpoint 3** : après la fin complète des modules 13 à 18 (Shareboard → Divers) — fin de projet
 
 Comportement attendu à chaque checkpoint :
@@ -70,8 +82,30 @@ au fil de l'eau.
 4. [x] Notifications push — écrit, non compilé (fichiers de synchro en arrière-plan lus et confirmés hors-sujet, voir décisions)
 5. [x] UI Shell / navigation — écrit, non compilé (écrans notifications/profil réels ; onglets Chat/Créateurs restent des placeholders, hors périmètre modules 1-6)
 6. [x] Feed vidéo (AVPlayer + cache/preload) — écrit, non compilé — PARTIEL ASSUMÉ (lecteur/cache/préchargement par fenêtre faits ; interactions like/commentaire/partage explicitement différées, `ActivityAdapter.java` 956 lignes confirmé hors périmètre du Checkpoint 1, voir décision)
-7. [ ] Caméra + pipeline filtres GPU (MetalPetal)
-8. [ ] Moteur Animems — cœur éditeur (MetalPetal + AVVideoCompositing/AVAssetWriter)
+7. [x] Caméra + pipeline filtres GPU (MetalPetal) — écrit, non compilé — FERMÉ (2026-08-10) : capture
+   `AVCaptureSession`, pipeline de filtres MetalPetal (22 filtres actifs portés), enregistrement
+   `AVAssetWriter` (relu en entier, 2 lacunes corrigées), bouton de capture reconstitué PUIS
+   vérifié contre `CircleCaptureButton.java` (seuil 1s corrigé), sélecteur galerie réel
+   (`PHPickerViewController`), branchement navigation réel retrouvé et câblé (`FeedView.swift`
+   FAB → `CameraActivity`, pas une position `HomeActivity` supposée). PARTIEL ASSUMÉ comme les
+   modules précédents : écrans consommateurs post-capture (édition photo/trim vidéo/Animems)
+   laissés en closures TODO, ces modules n'existent pas encore — voir tableau détaillé.
+8. [x] Moteur Animems — cœur éditeur (Core Graphics, PAS Metal — voir décision d'architecture) —
+   écrit, non compilé — **FERMÉ (2026-08-11)**. Note honnête sur la nature de ce "fermé", comme
+   pour les modules 1-7 : chemin bout-en-bout RÉEL existe (modèle → gestes → rendu → export →
+   fusion GIF) pour les types BITMAP/SHAPE_RECT/SHAPE_CIRCLE/SHAPE_LINE/TEXT/STICKER — la majorité
+   observable de ce qu'un utilisateur crée avec l'éditeur. PARTIEL ASSUMÉ, comme les modules
+   précédents : PATH/LINE/CLIP/ERASE non branchés au geste tactile (conçu mais pas relié aux 4
+   types dessin-libre) ; SwiftUI de rendu/interaction des ~14 vues custom d'édition PAS construite
+   (seule leur logique d'état/géométrie/math est portée — `TimelineViewModel`,
+   `LayerEditorPanelState`, etc. — la construction visuelle proprement dite nécessite un
+   simulateur pour être vérifiée, comme documenté pour chaque fichier concerné) ; 6 sous-systèmes
+   secondaires découverts en finissant la lecture d'`AnimemesCompound.java` (Motion Templates,
+   persistance disque du recompose, tutoriel, génération procédurale de mouvement, génération IA,
+   suppression d'arrière-plan ML Kit) explicitement NON lus ni portés — voir tableau détaillé et
+   journal pour la liste complète et la justification de chaque report. Catégorie A du rapport
+   `TIINVER_ANIMEMS_SCOPE_LIBRARIES.md` (≈24 942 lignes Android, 10-13,5 semaines-ingénieur
+   estimées) — le portage réalisé ici couvre le CŒUR fonctionnel, pas l'exhaustivité du rapport.
 9. [ ] Éditeur photo simple (Vision framework pour suppression d'arrière-plan)
 10. [ ] Trim / Timeline / Waveform
 11. [ ] Messagerie / Chat UI
@@ -147,6 +181,54 @@ au fil de l'eau.
 | UI Shell / navigation | `BaseActivity.java` | — | VÉRIFIÉ, RIEN À PORTER | Confirmé purement visuel (thème + insets edge-to-edge) — SwiftUI gère nativement les zones sûres et le mode sombre, aucun équivalent nécessaire. |
 | Feed vidéo | `Activity/service/PreloadScheduler.java`, `LoadControlUtils.java`, `Preloader.java`, `MyTargetPreloadStatusControl.java`, `Utils/CacheCompat.java` | `Media/VideoPlayerManager.swift` (`preload`, `preferredForwardBufferDuration`), `Feed/FeedView.swift` (`preloadAround`) | LU, PARTIELLEMENT PORTÉ | Les 5 fichiers référencés par `ExoPlayerManager.java` mais pas encore lus individuellement (voir "Prochaine action" précédente) — maintenant lus en entier. Portée : fenêtre de préchargement `currentIndex ± 2` (`PreloadScheduler`, filtrant les posts non-vidéo comme l'original) ; `AVPlayerItem.preferredForwardBufferDuration` en meilleur équivalent de `LoadControlUtils.createFastStartLoadControl`. PAS porté, confirmé sans équivalent AVFoundation atteignable : les états de préchargement étagés de `MyTargetPreloadStatusControl`/`DefaultPreloadManager` (architecture interne Media3) et le polling de buffer de `Preloader.checkBuffered` (`getBufferedPosition()` jusqu'à 4s) — `CacheCompat` (ratio de cache partiel) déjà couvert par l'équivalent binaire `VideoCacheManager.isCached`, suffisant pour l'usage actuel. |
 | Feed vidéo | `Activity/adapter/ActivityAdapter.java` (956 lignes) | — | LU (PARTIELLEMENT), PAS PORTÉ | Confirme la décision déjà prise de différer like/commentaire/partage/double-tap : c'est le fichier qui contient cette logique, et sa taille (956 lignes, view-holder binding + gestionnaires de clic denses) confirme que ce n'est pas un ajout rapide. `ActivityDiffCallback.java` (RecyclerView `DiffUtil`) non porté — `List`/`ForEach` SwiftUI diffe automatiquement, aucun équivalent nécessaire. `BiographyAdapter.java`/`StatisticsAdapter.java` repérés mais pas lus — probablement module 17 (profil), pas module 6. |
+| Caméra | `editor/filter/FilterType.java` | `Camera/LensFacing.swift`, `Camera/CameraFilterType.swift` | ÉCRIT (NON COMPILÉ) | **Découverte importante en lisant le fichier réel** : sur les 43 valeurs de l'enum `FilterType`, seules 23 sont réellement atteignables dans `createGlFilter()` — les 20 restantes sont à l'intérieur d'un bloc de commentaire Java `/* ... */` (lignes ~158-219), donc retombent systématiquement sur `default: return new GlMonochromeFilter();`. Reproduit à l'identique (pas "corrigé") : `CameraFilterType.makeFilter()` retourne `TiinverMonochromeFilter` pour ces 20 cas. |
+| Caméra | `engine/.../gpuv/egl/filter/Gl*.java` (22 sous-classes `GlFilter` réellement utilisées + `BeautyFilter.java`) | `Camera/Filters/TiinverCameraShaders.metal`, `Camera/Filters/TiinverCameraFilters.swift` | ÉCRIT (NON COMPILÉ) | Réécriture manuelle GLSL→MSL des 22 filtres actifs (Brightness, Contrast, Saturation, GrayScale, Sepia, Vignette, Gamma, Monochrome, Opacity, Posterize, RGB, Hue, Exposure, Luminance, Haze, HighlightShadow, Pixelation, BulgeDistortion, Sharpen, Tone, Vibrance, BeautyFilter), aucun convertisseur automatique disponible — confirmé impossible dans `TIINVER_ANIMEMS_SCOPE_LIBRARIES.md` §2.2. Architecture : sous-classes `MTIUnaryImageRenderingFilter` (MetalPetal, recommandation actée du même rapport §2.1/§3.1) — pattern vérifié directement dans les en-têtes RÉELS du SDK MetalPetal 1.10.0 téléchargés depuis GitHub avant d'écrire ce fichier (`MTIColorMatrixFilter.h/.m`, `MTIBulgeDistortionFilter.h/.m`, `MTIUnaryImageRenderingFilter.h/.m`), pas deviné par analogie. Valeurs par défaut de chaque filtre reprises EXACTEMENT de `FilterType.createGlFilter` (ex. `contrast=2.5`, `sharpness=4`, `vibrance=3`, `gamma=2`), y compris les cas où Android n'appelle aucun setter et laisse la valeur par défaut interne de la classe `Gl*Filter` (ex. `saturation=1.0` = no-op, `opacity=1.0` = no-op, `pixel=1.0` = quasi no-op) — ce sont des filtres "no-op" côté Android RÉEL, pas des oublis de portage. **Bug d'unité Android reproduit tel quel dans `GlHueFilter`/`tiinverHue`** : le commentaire Java suggère une plage 0-360° pour `hue`, mais le shader ajoute `hueAdjust` directement à une valeur d'angle en RADIANS sans conversion — documenté en commentaire, pas corrigé. `GlSharpenFilter`/`GlThreex3TextureSamplingFilter` (`GlToneFilter`)/`BeautyFilter` calculaient les offsets de texels voisins dans le VERTEX shader Android (varyings) ; recalculés directement dans le FRAGMENT shader ici — équivalence mathématique exacte sur un quad plein écran (offset additif constant, commute avec l'interpolation bilinéaire), documentée comme telle, pas une approximation. |
+| Caméra | `editor/camera/BaseCameraFragment.java` (711 lignes), `engine/.../gpuv/camerarecorder/GPUCameraRecorder.java`, `CameraHandler.java`, `GPUCameraRecorderBuilder.java` | `Camera/CameraCaptureController.swift` | ÉCRIT (NON COMPILÉ) | `Camera2`+`EGL`/`GLES20` (session caméra bas niveau, thread `CameraThread` dédié) → `AVCaptureSession` natif (pas de thread dédié à gérer à la main, `AVCaptureSession` le fait déjà en interne) — risque jugé "Faible-Moyen" dans `TIINVER_IOS_PORT_ANALYSIS.md` §3.3, confirmé à la lecture : portage direct sans architecture de repli nécessaire. Gestion des permissions caméra/micro ajoutée explicitement (`AVCaptureDevice.requestAccess`) — Android le fait aussi explicitement (`onRequestPermissionsResult`), pas un ajout arbitraire côté iOS. |
+| Caméra | `MediaVideoEncoder.java`, `MediaAudioEncoder.java`, `MediaMuxerCaptureWrapper.java`, `EncodeRenderHandler.java` | `Camera/CameraRecordingWriter.swift`, `Camera/CameraRecorder.swift` | ÉCRIT (NON COMPILÉ) — RELU EN ENTIER (2026-08-10) | `MediaCodec` H.264/AAC séparés + `MediaMuxer` → `AVAssetWriter` (mux+encode unifié, "plus simple côté iOS" — décision déjà actée dans `TIINVER_ANIMEMS_SCOPE_LIBRARIES.md` §2.1). Constantes d'encodage reprises à l'identique : vidéo H.264 30fps bitRate=BPP(0.25)×30×largeur×hauteur, audio AAC-LC 44100Hz mono 64kbps. **Relecture intégrale (pas seulement les constantes) des 3 fichiers, 2 lacunes trouvées et corrigées** : (1) `KEY_I_FRAME_INTERVAL=3` (keyframe/3s) manquait — ajouté via `AVVideoMaxKeyFrameIntervalDurationKey`. (2) `MediaMuxerCaptureWrapper.preventAudioPresentationTimeUs` (garde de monotonicité des horodatages audio) non reproduite — ajoutée (`lastAudioPresentationTime`) par prudence, bien que le mécanisme source du problème (PTS calculé manuellement par `MediaAudioEncoder.getPTSUs()` sur un thread `AudioRecord` séparé) n'ait pas d'équivalent direct côté iOS (`CMSampleBuffer` horodaté par l'horloge matérielle via `AVCaptureAudioDataOutput`, normalement déjà monotone). La synchronisation à deux compteurs `encoderCount`/`startedCount` de `MediaMuxerCaptureWrapper.start()`/`stop()` CONFIRMÉE sans équivalent nécessaire : elle résout un problème spécifique à l'API bas niveau `MediaCodec`/`MediaMuxer` (le `MediaFormat` de chaque piste n'est connu qu'après un callback asynchrone `INFO_OUTPUT_FORMAT_CHANGED`), alors que `AVAssetWriterInput` reçoit ses `outputSettings` de façon synchrone dès sa construction — absence de portage documentée, pas un oubli. `CameraRecorder.swift` unifie le rendu aperçu ET export en un seul passage MetalPetal par frame — contrairement à Android qui maintient deux pipelines GL séparés (`GlPreviewRenderer` aperçu / `EncodeRenderHandler` export) devant rester synchronisés à la main ; élimine par construction ce risque de divergence. |
+| Caméra | `SampleCameraGLView.java` | `Camera/CameraPreviewView.swift` | ÉCRIT (NON COMPILÉ) | `GLSurfaceView` custom + `GlPreviewRenderer` → `MTIImageView` (vue prête à l'emploi du SDK MetalPetal, PAS un pipeline `MTKView`/cache de texture Metal écrit à la main) — API réelle vérifiée dans `Frameworks/MetalPetal/UI/MTIImageView.h` du SDK 1.10.0 avant d'écrire ce fichier. |
+| Caméra | `editor/CircleCaptureButton.java` (lu en entier, 520 lignes) | `Camera/CameraView.swift` (`captureGesture`) | ÉCRIT (NON COMPILÉ) — CORRECTIF (2026-08-10) | **Corrige le premier jet** (qui reconstituait le comportement sans avoir lu ce fichier) : le vrai seuil tap/appui-long est de **1000 ms exactement** (`mHandler.postDelayed(action, 1000)`), pas une estimation. `.onLongPressGesture(minimumDuration:pressing:)` utilisé au premier jet était en réalité INCORRECT dans son principe même : son paramètre `pressing` se déclenche IMMÉDIATEMENT au toucher (pas après `minimumDuration`), ce qui aurait démarré un enregistrement dès le premier contact. Remplacé par `DragGesture(minimumDistance: 0)` + un `DispatchWorkItem` programmé à 1 s et annulé au relâchement anticipé — équivalent direct de `postDelayed`/`removeCallbacks`. **Confirmé par analyse de flux, non porté à raison** : `MINIMUM_VIDEO_DURATION_MILLIS`/`actionListener.onDurationTooShortError`/`onEndRecord` — `actionListener` n'est jamais assigné (toujours `null`) ET `onLongPressEnd()` remet `isRecording=false` AVANT le test `else if (isRecording)` qui aurait appelé `onEndRecord()` — ce test est donc TOUJOURS faux à cet endroit précis, rendant toute cette branche morte des deux côtés (ni crash `NullPointerException`, ni effet observable). Rien à porter, confirmé plutôt que supposé. |
+| Caméra | `editor/CameraActivity.java` (lu en entier) + `Activity/ui/MainFragment.java` (`R.id.fab`/`requestPermission()`) | `Feed/FeedView.swift` (`cameraFAB`, `.fullScreenCover`) | ÉCRIT (NON COMPILÉ) — CORRECTIF (2026-08-10) | **Point d'entrée réel du module 7, retrouvé par grep de `CameraActivity.class` dans tout le dépôt (7 lanceurs)** : `CameraActivity` est une **Activity Android à part entière** (implémente elle-même `FragmentConnectionListener`, switch à 13 cas routant vers `BaseCameraFragment`/`MemesFragment`/`MediaEditor`/`CropFragment`/`MediaTrim`/`MediasDisplay`/`Gallery`/`PublishFragment`), PAS une position `HomeActivity.onArticleSelected` comme le supposait une note du premier jet. Le lanceur pertinent pour ce portage est `MainFragment.java:777` (`R.id.fab`, déjà porté en `FeedView.swift`/module 6) → `requestPermission()` (vérifie `Manifest.permission.CAMERA`, demande si besoin) → `startActivity(CameraActivity.class)`. Câblé en conséquence : un FAB (`cameraFAB`) ajouté à `FeedView.swift`, vérification `AVCaptureDevice.authorizationStatus`/`requestAccess` AVANT présentation (même intention que `requestPermission()`), `.fullScreenCover` comme équivalent le plus proche de `startActivity` (nouvel écran plein écran). Les 6 AUTRES lanceurs de `CameraActivity` (`FeedFragment`, `TiinverGeminiAIChat`, `ShareActivity`, `ReferralActivity`, `MonetizationActivity`) appartiennent à des modules pas encore portés — non câblés, à rattacher au moment venu. Sous-flux de `CameraActivity` correspondant à la capture (cases 0/2/5/7/8/10 du switch : `BaseCameraFragment`→`MediaEditor`(photo)/`MemesFragment`(Animems)/`MediasDisplay`(vidéo)/`Gallery`/`MediaTrim`(galerie vidéo)) reproduits comme des TODO explicites en closures (`onPhotoCaptured`/`onVideoRecorded`/`onImagePickedFromGallery`/`onVideoPickedFromGallery`/`onOpenAnimems` referment simplement l'écran caméra) — ces écrans consommateurs (modules 8/9/10, Divers) n'existent pas encore. |
+| Caméra | `BaseCameraFragment.pickImageOrVideo`/`pickMedia` (branche Android R+ de `doSelection(layoutPosition==0)`) | `Camera/GalleryPickerView.swift` | ÉCRIT (NON COMPILÉ) | `ActivityResultContracts.PickVisualMedia` (filtre `ImageAndVideo`, sélection unique — aucun `setMaxItems` appelé) → `PHPickerViewController` (`UIViewControllerRepresentable`), PAS `PhotosPicker` SwiftUI (disponible dès iOS 16, vérifié, mais écarté : l'accès à un vrai fichier local pour une vidéo est plus direct via `NSItemProvider.loadFileRepresentation` que via `Transferable`, qui exigerait un type `Movie` custom sans bénéfice ici). Routage post-sélection (image → `onImagePickedFromGallery` ↔ `onArticleSelected(2,...)`→`MediaEditor` ; vidéo → `onVideoPickedFromGallery` ↔ `onArticleSelected(10,...)`→`MediaTrim`) reproduit à l'identique, écrans consommateurs pas encore portés (closures TODO, voir ligne `CameraActivity` ci-dessus). Branche Android < R (`requestStoragePermission()` + fragment `Gallery` interne) SANS équivalent nécessaire : `PHPickerViewController` ne demande aucune permission bibliothèque (design privacy-first Apple), simplification légitime par différence de plateforme, pas un oubli. |
+| Caméra | `editor/camera/BaseCameraFragment.java` (portion UI/écran) | `Camera/CameraView.swift` | ÉCRIT (NON COMPILÉ) — PARTIEL ASSUMÉ, module 7 refermé (voir décision de clôture ci-dessous) | Capture photo/vidéo avec filtre en direct (seuil 1s vérifié, voir ligne `CircleCaptureButton.java`), bascule caméra, mise au point tactile, flash, carrousel de filtres au swipe (43 valeurs, dont 20 "mortes" affichant Monochrome — bug reproduit, voir tableau filtres), sélecteur galerie réel (voir ligne `GalleryPickerView.swift`), branchement navigation réel (voir ligne `CameraActivity.java`/`FeedView.swift`). Restent des TODO explicites, PAS des oublis silencieux (les écrans consommateurs n'existent pas encore) : édition photo post-capture (module 9), affichage/trim vidéo post-capture (module non identifié), ouverture Animems (module 8, commence juste après ce tableau). |
+| Animems — éditeur | `engine/keyframe/Keyframe.java` | `Animems/Keyframe.swift` | ÉCRIT (NON COMPILÉ) | Port direct — `struct` Swift (valeur) plutôt que classe (référence) comme l'original Java : rien dans le code lu jusqu'ici ne dépend d'une identité de référence persistante hors de `KeyframeTrack` (mutation toujours via recherche par `id`/`timestampNs`), un `struct` est donc fidèle au comportement observable et plus idiomatique. Représentation `[Float]` brute conservée telle quelle (pas de `enum` de propriété typé "plus propre") : le contrat avec `KeyframeTrack`/le futur `AnimationObjectData` dépend de cette forme exacte (`color`=4 éléments ARGB Android-style bits 24/16/8/0, PAS le format `UIColor`). |
+| Animems — éditeur | `engine/keyframe/KeyframeTrack.java` | `Animems/KeyframeTrack.swift` | ÉCRIT (NON COMPILÉ) | Port direct, y compris les constantes `PROP_*` (noms de propriété EXACTS, réutilisés tels quels par le futur port d'`AnimationObjectData` — pas de renommage) et les couleurs `MARKER_COLOR_*` (ARGB packé 32 bits, pas converti en `Color` SwiftUI ici — l'écran de timeline qui les consommera n'existe pas encore). Formules d'easing (`t*t`, `t*(2-t)`, formule cubique de `EASE_IN_OUT`) et `lerp` (s'arrête à `min(a.count, b.count)` comme l'original) reproduites à l'identique, aucune simplification. |
+| Animems — éditeur | `engine/android/memes/MemesView2.java` (grep ciblé, PAS lu en entier — juste les usages de `PorterDuff.Mode`) | `Animems/Transform.swift` (commentaire d'architecture) | DÉCISION D'ARCHITECTURE | **Décision structurante pour tout le module 8** : grep de `PorterDuff.Mode` dans `MemesView2.java` (1978 lignes) confirme que la compositing des calques n'utilise QUE 3 modes de fusion — `DST_IN` (masquage), `SRC_ATOP` via `PorterDuffColorFilter` (teinte), `CLEAR` (reset) — tous portables 1:1 en `CGBlendMode` (`.destinationIn`/`.sourceAtop`/`.clear`). **Conclusion : Core Graphics (`CGContext`) suffit pour la compositing des calques, aperçu ET export**, PAS besoin d'un pipeline Metal/MetalPetal pour cette partie — plus direct que la recommandation `AVVideoCompositing`+MetalPetal du rapport `TIINVER_ANIMEMS_SCOPE_LIBRARIES.md` §2.1 (qui supposait Metal nécessaire ; MetalPetal reste pertinent ailleurs — filtres caméra module 7 — mais pas prouvé indispensable ici). Conséquence directe : `Transform.glMatrix`/`AnimationEngine.androidToGL_Matrix2` (conversion Android `Matrix`→OpenGL 4×4) NE SONT PAS portés, décision assumée et documentée, pas un oubli — voir ces deux fichiers. À reconsidérer SEULEMENT si l'export choisit finalement un pipeline Metal pour d'autres raisons (performance, effets GPU) — pas exclu, juste pas prouvé nécessaire à ce stade. |
+| Animems — éditeur | `core/Transform.java` | `Animems/Transform.swift` | ÉCRIT (NON COMPILÉ) | `matrixValues: [Float]` (9 éléments, ordre `Matrix.getValues()` Android) conservé comme représentation brute — cohérent avec `Keyframe`/`KeyframeTrack` (`PROP_MATRIX`). `cgAffineTransform` (calculé) + `matrixValues(from:)` (sens inverse) ajoutés pour le pont vers Core Graphics — mapping d'ordre de champs vérifié explicitement (Android `[a,c,tx,b,d,ty,…]` vs `CGAffineTransform(a,b,c,d,tx,ty)`, PAS le même ordre malgré la ressemblance). `glMatrix` NON porté (voir décision d'architecture ci-dessus). Clamps `opacity∈[0,1]`/`cornerRadius≥0` reproduits via propriétés calculées avec stockage privé. |
+| Animems — éditeur | `core/AnimationObjectData.java` (618 lignes, lu en entier) | `Animems/AnimationObjectData.swift` | ÉCRIT (NON COMPILÉ) | Port quasi complet de l'objet "calque" central : propriétés de masque (clamps identiques), `maskTransforms`, système de keyframes complet (tous les `add*Keyframe`/`getInterpolated*`, y compris masque et transform décomposé), `bakeKeyframesToTransforms`, bitmaps/textures avec horodatages (`CGImage` + `[Int64]`, unité "ns" déduite du nom de paramètre Android `getCurrentBitmapForTime(long ns)` — pas documentée explicitement dans le Java d'origine, signalé comme déduction), accumulateurs de vitesse de défilement par-objet, `duplicate`/`duplicate2` (copie profonde vs copie légère partageant transforms/bitmaps — reproduit tel quel, PAS harmonisé). `final class` (référence) plutôt que `struct`, contrairement à `Keyframe` : cet objet est muté en place par de nombreux appelants qui s'attendent à voir la même instance partagée dans `AnimationComposer.layers`, fidèle à la sémantique de référence Java. **Bug de nommage trouvé et corrigé avant tout build** (relecture propre) : une méthode `track(_:)` (accesseur de piste de keyframes) entrait en collision avec le champ existant `track: Int` (index de calque Android) — Swift ne peut pas résoudre `obj.track(x)` entre une propriété stockée et une méthode de même nom. Renommée `keyframeTrack(_:)`. |
+| Animems — éditeur | `core/AnimationComposer.java` | `Animems/AnimationComposer.swift` | ÉCRIT (NON COMPILÉ) | Port direct. **Incohérence trouvée dans le commentaire Android lui-même, signalée** : le commentaire dit "on utilise la valeur brute 0xFF1A1A1A (noir foncé)" mais le champ réel vaut `0xFF0062A4` (bleu) — reproduit la VALEUR RÉELLE du champ, pas celle citée dans le commentaire obsolète. |
+| Animems — éditeur | `core/AnimationUtils.java` | `Animems/AnimationUtils.swift` | ÉCRIT (NON COMPILÉ) | Port direct des 3 fonctions pures (`isAnimation`/`isAutoCreatableTrack`/`updateMaskLabel`) et de la conversion RGB→HSV→RGB de `makeMessengerLikeBackground`, formule par formule. Conversion finale vers octets `UInt32` sécurisée par un clamp AVANT conversion (pas après, comme un premier réflexe aurait pu le faire) : `UInt32(valeurNégative)` provoque un CRASH en Swift (contrairement à un `int` Java hors-borne, qui "wrap" silencieusement) — bug potentiel évité par construction, pas rencontré puis corrigé. |
+| Animems — éditeur | `engine/mask/MaskType.java` | `Animems/MaskType.swift` | ÉCRIT (NON COMPILÉ) | Port direct, 7 cas. |
+| Animems — éditeur | `engine/android/mask/MaskFactory.java` (230 lignes, lu en entier) | `Animems/MaskFactory.swift` | ÉCRIT (NON COMPILÉ) | **Piège de portage identifié et évité** : `android.graphics.Canvas` a son origine en haut-à-gauche (Y vers le bas) ; un `CGContext` bitmap créé manuellement (`CGContext(data:...)`) a son origine en BAS-à-gauche par défaut (Y vers le haut, convention PDF de Core Graphics — PAS celle de `UIView.draw`, qui inverse déjà). Sans un flip explicite (`translateBy`+`scaleBy(y:-1)`, ajouté une seule fois après la création du contexte), tout le tracé aurait été vertical-miroir par rapport à Android. Tous les tracés de formes (cercle/carré/rectangle/miroir/cœur/étoile, `CGMutablePath`) portés tels quels une fois ce flip en place, sans reconversion de coordonnées ligne à ligne. Flou de bord (`BlurMaskFilter` Android, algorithme Skia propriétaire) reproduit via `CIGaussianBlur` (Core Image) — bord adouci similaire, PAS un flou bit-identique, documenté comme approximation comportementale (même principe que `VideoCacheManager` module 6). Inversion alpha (`invertAlpha`) portée par manipulation directe du buffer de pixels RGBA pour un contrôle exact, plutôt que via un filtre Core Image générique. |
+| Animems — éditeur | `core/BitmapCacheManager.java` | `Animems/BitmapCacheManager.swift` | ÉCRIT (NON COMPILÉ) | Cache feather/mask reproduit à l'identique (mêmes seuils `CACHE_DELTA_THRESHOLD`/0.01). `System.identityHashCode(src)` → `ObjectIdentifier(source)` (`CGImage` est un type `CF`, référence stable). `applyFeather` : même approximation `CIGaussianBlur` documentée que `MaskFactory` (Android floute uniquement le masque alpha du `Paint`, `CIGaussianBlur` floute RGB+alpha ensemble — effet de bord adouci proche, pas pixel-exact). |
+| Animems — éditeur | `core/AnimationEngine.java` (398 lignes, lu en entier) | `Animems/AnimationEngine.swift` | ÉCRIT (NON COMPILÉ) | Table de frames (`transformationArray`, quel `Transform` local afficher par calque/frame) reproduite à l'identique. Lecture (`play`/`pause`/`stop`) : `android.animation.TimeAnimator` → `CADisplayLink` (via un `NSObject` proxy privé, `CADisplayLink` n'ayant pas d'initialiseur à fermeture native) — `deltaTime` Android reconstitué depuis les horodatages `CADisplayLink` successifs. `bakeTransformKeyframesToGL`/`androidToGL_Matrix2`/`smoothObjectTransforms` portés SANS leur étape de conversion GL finale (voir décision d'architecture Core Graphics ci-dessus) — renommé `bakeMatrixKeyframesToTransforms` pour refléter ce périmètre réduit assumé. Algorithme de lissage Chaikin (`chaikin`, moyenne 1-2-1 glissante) porté à l'identique. |
+| Animems — éditeur | `model/TimelineItem.java` | `Animems/TimelineItem.swift` | ÉCRIT (NON COMPILÉ) | Port direct, `struct` (la méthode `copy()` Android n'a plus d'objet — copie-à-l'assignation déjà le comportement par défaut d'un `struct`). |
+| Animems — éditeur | `model/StickerData.java`, `model/PlaylistEntry.java`, `model/DrawPathFrameData.java` | `Animems/StickerData.swift`, `Animems/PlaylistEntry.swift`, `Animems/DrawPathFrameData.swift` | ÉCRIT (NON COMPILÉ) | Ports triviaux. `DrawPathFrameData` : `recycle()` Android non porté (ARC gère la libération mémoire de `CGImage`, `nil` suffit). |
+| Animems — éditeur | `model/SerializableAnimationObject.java` | `Animems/SerializableAnimationObject.swift` | ÉCRIT (NON COMPILÉ) | Sérialisation base64 PNG confirmée en lisant `Utils/BitmapUtils.bitmapToBase64`/`base64ToBitmap` (`Bitmap.CompressFormat.PNG`, qualité 100, PAS JPEG — vérifié, pas supposé) → `UIImage(cgImage:).pngData()`. **`AnimationObjectData.Type` (11 cas) revérifié directement contre sa déclaration réelle** (`core/AnimationObjectData.java:21-23`) pour que `ObjectType: String` (Swift) porte des `rawValue` IDENTIQUES aux noms Android (`Type.name()`/`Type.valueOf()`) — nécessaire pour un round-trip de sérialisation correct, pas pour l'usage interne seul (où le nom exact n'aurait pas eu d'importance). Champs mask/keyframes/shape NON repris : confirmé que la classe Android elle-même ne les sérialise pas (périmètre réel de la classe, pas une lacune de portage). |
+| Animems — éditeur | `AnimemesCompound.testTimeLine().resampleTransforms`/`resampleMaskTransforms` (méthodes privées imbriquées, lues en lisant `AnimemesCompound.java` par tranches) | `Animems/AnimationObjectData.swift` (`resampleTransforms`/`resampleMaskTransforms`) | ÉCRIT (NON COMPILÉ) | Remontées de méthodes privées d'un listener UI vers des méthodes de l'objet lui-même (aucune dépendance sur `TimelineView`/`MemesView2` dans leur corps, vérifié) — ré-échantillonnage linéaire d'un tableau de `Transform` vers un nombre de frames cible (redimensionnement d'un bloc de timeline en mode capture automatique). **Écart de représentation signalé, pas masqué** : la boucle Android cherche en scannant à rebours la dernière `Transform` dont `matrix` n'est PAS `null` (repli) — `Transform.matrixValues` (Swift) ne peut représenter cet état "sans matrice" (toujours 9 valeurs, identité par défaut) ; dans tous les chemins de construction lus jusqu'ici cette situation ne semble jamais survenir en pratique, mais `MemesView2.java` (capture tactile, pas lu en entier) pourrait révéler un chemin où elle se produit — repli simplifié sur la dernière entrée du tableau, à corriger si besoin. `glMatrix`/`androidToGL_Matrix2` non recalculés (décision d'architecture Core Graphics déjà actée). |
+| Animems — éditeur | `AnimemesCompound.fitBitmapIntoSize` | `Animems/BitmapGeometry.swift` | ÉCRIT (NON COMPILÉ) | Fonction pure autonome (aucune dépendance `View`/`Context`), portée telle quelle — redimensionnement "aspect fit" centré dans un canevas transparent. |
+| Animems — éditeur | `engine/android/memes/MemesView2.java` — `onDraw`/`drawBitmapLastTransform`/`drawObjectFrame` (lus en détail, ~350 lignes ciblées sur le rendu BITMAP/SHAPE, sur 1978 lignes au total) | `Animems/LayerRenderer.swift` | ÉCRIT (NON COMPILÉ) | **Cœur du rendu des calques BITMAP/SHAPE_RECT/SHAPE_CIRCLE/SHAPE_LINE, la pièce la plus déterminante du module 8 pour qu'un aperçu réel soit un jour possible.** Deux méthodes Android quasi-identiques (aperçu statique avec cache vs lecture/scrubbing sans cache) factorisées en un `composite(...)` interne commun — **UNE vraie différence de comportement entre les deux préservée explicitement** (repli de rayon de bulle à 10 si `cornerRadius<=0` pour l'aperçu statique SEULEMENT, pas pour la lecture) après qu'un premier jet l'ait accidentellement effacée en factorisant trop vite — corrigé avant tout build par relecture. Teinte `PorterDuffColorFilter(color, SRC_ATOP)` reproduite via `beginTransparencyLayer`+remplissage `.sourceAtop` (isolation du bitmap comme "destination" pour l'opération atop, équivalent exact) ; masque `DST_IN` via `.destinationIn`. **Risque de double-application d'opacité identifié et neutralisé par construction** (pas rencontré puis corrigé, anticipé) : `context.setAlpha` s'applique à la fermeture de CHAQUE couche de transparence imbriquée traversée — sans précaution, l'opacité du calque aurait pu s'appliquer deux fois (une fois pour la couche de teinte imbriquée, une fois pour la couche de masque extérieure) ; neutralisé en réinitialisant l'alpha à 1 juste après l'ouverture de la couche extérieure. **Non vérifié visuellement** (aucun accès à un simulateur), signalé comme les autres zones à risque de ce portage. `TEXT`/`STICKER` portés dans une passe suivante (voir lignes `TextLayoutEngine.swift`/`drawShap` ci-dessous). `PATH`/`LINE`/`CLIP`/`ERASE` NON portés, décision motivée (voir ligne suivante). `recomposeObjects`/`computeRecomposeBounds` (fusion en séquence GIF) PAS encore lus ni portés. |
+| Animems — éditeur | `MemesView2.drawPath`/`drawLine`/`clipPath`/`erase` (lus) | — | NON PORTÉ (décision) | Confirmé, PAS un oubli de lecture : ce sont les rendus du GESTE DE DESSIN LIBRE EN COURS (champs classe `path`/`inicialX/Y`/`finalX/Y`, un seul geste actif, pas liés à un `AnimationObjectData` précis) — pas des calques avec état persistant comme les autres types. `clipPath` a un corps VIDE côté Android (`{}`), confirmé mort. Porter le rendu du geste avant que la capture tactile elle-même soit conçue serait prématuré — reporté après la conception des gestes (pas encore abordée). |
+| Animems — éditeur | `Utils/TextLayoutEngine.java` (lu en entier) | `Animems/TextLayoutEngine.swift` | ÉCRIT (NON COMPILÉ) | Moteur de découpage de texte en lignes, 100% pur côté Android ("compatible KMP à terme" — commentaire du fichier source). Port fidèle EN UNITÉS UTF-16 (`[UInt16]`), PAS `String.Index` Swift : l'algorithme Java indexe caractère par caractère (`charAt`/`substring`/`indexOf`/`lastIndexOf`), et un `String.Index` Swift (délimité par grapheme cluster) romprait cette correspondance terme à terme — un texte avec emoji serait démembré à la MÊME limite qu'en Java (paire de substituts UTF-16 coupée), comportement identique, pas une régression. Sentinelle `-1` (pas `Int?`) conservée pour `indexOf`/`lastIndexOf` : le code Java compare directement `blank > start` avec `-1` dans son arithmétique, un `Optional` aurait exigé une reformulation avec risque de dévier subtilement. |
+| Animems — éditeur | `android/renderer/TextRect.java` (lu en entier) | `Animems/TextRect.swift` | ÉCRIT (NON COMPILÉ) | Rendu du texte découpé par `TextLayoutEngine` dans un `CGContext`. **Approximation documentée, pas pixel-exacte** : métriques via `UIFont.ascender`/`.descender`/`.leading` (police système iOS) plutôt que `Paint.FontMetricsInt` (police système Android) — aucune tentative de faire correspondre visuellement les deux systèmes de polices, seul le comportement (retour à la ligne, troncature "...") est reproduit. **Piège de signe évité** : `UIFont.descender` est NÉGATIF (sous la baseline) alors qu'Android `metrics.descent` est POSITIF pour la même grandeur physique — `-font.descender` restaure la convention positive attendue. Ancrage à la BASELINE (comme `Canvas.drawText`) reproduit en compensant `NSString.draw(at:)` (qui ancre au coin haut-gauche par défaut) de `-font.ascender`. |
+| Animems — éditeur | `MemesView2.writeText` (TEXT) | `Animems/LayerRenderer.swift` (`drawText`) | ÉCRIT (NON COMPILÉ) | `outerPadding`/`bubblePadding` Android (`round(16*dp)`/`round(8*dp)`, mise à l'échelle densité manuelle) simplifiés en constantes fixes `16`/`8` POINTS — un point iOS étant déjà indépendant de la densité, simplification légitime par différence de plateforme. **Effet de bord "baking" reproduit** : si le calque n'a pas encore de bitmap figée, une bitmap bulle+texte est générée et stockée — pas consommée par le rendu live (qui redessine toujours via `TextRect`), mais par de futurs consommateurs (export, `recomposeObjects`) qui attendent un bitmap classique. **Curiosité Android reproduite telle quelle, signalée, pas corrigée** : `bmpH = h + bound.height()` additionne `textHeight` deux fois (`bound.height` le contient déjà) — bitmap "figée" plus haute que nécessaire, comportement observable préservé sans le "corriger" silencieusement. |
+| Animems — éditeur | `MemesView2.drawShap` (STICKER) | `Animems/LayerRenderer.swift` (`drawSticker`) | ÉCRIT (NON COMPILÉ) | Le plus simple des types de calque : ni teinte, ni masque, ni feather, ni bulle — juste le bitmap courant dessiné à la position du calque avec sa matrice. `canvas.setMatrix()` Android (remplace tout le CTM) traité comme équivalent à `concatenate` ici, sur la même hypothèse de CTM de base identité déjà posée pour les autres méthodes de rendu de ce fichier. |
+| Animems — éditeur | `android/codec/MP4Encoder.java` + `Encoder.java` (structure complète lue — constantes, `onAddFrame`, init GL, chaîne d'appel réelle confirmée dans `AnimemesCompound.createVideosFromBitmap` — MAIS PAS le détail des ~1400 lignes GLSL/`MediaCodec` bas niveau, décision motivée dans le fichier Swift) | `Animems/AnimemesExporter.swift` | ÉCRIT (NON COMPILÉ) | **Export MP4 via `AVAssetWriter`, réutilisant `AnimationEngine`+`LayerRenderer` déjà portés** — exactement le chemin de rendu partagé aperçu/export rendu possible par la décision d'architecture Core Graphics. Chemin RÉEL confirmé par lecture (pas supposé) : `onSurfaceStartEncode()`→`addFrame(composer)`→`startFrameEncoding()`→`onAddFrame`, PAS les autres modes de l'`Encoder` de base (`onEncodeMp4FomBitmap`/bitmap queue, byte queue) — confirmés non exercés par ce flux, non portés. Boucle de frames (`totalFramesMinus1`/bouclage `MODE_LOOP` si l'audio dépasse la durée de l'animation) reproduite fidèlement depuis `onAddFrame`. **Simplification légitime par capacité de plateforme, documentée en tête de fichier, pas une lacune** : les ~250 lignes de `transcodeToM4A`/normalisation audio manuelle (BUG 1/2/3 documentés dans les commentaires Android, sample rate HE-AAC réel vs déclaré...) n'ont pas de contrepartie nécessaire — `AVAssetReader`/`AVAssetWriterInput` gèrent nativement la plupart des formats audio courants sans transcodage manuel préalable. **Bug trouvé et corrigé avant tout build** : le compteur de frame `f` était initialement local à la closure passée à `requestMediaDataWhenReady` — puisque cette closure est RAPPELÉE par `AVAssetWriterInput` à chaque fois qu'il redevient prêt (pas un seul appel), `f` aurait été réinitialisé à 0 à chaque reprise au lieu de continuer où l'écriture s'était arrêtée. Corrigé en déclarant `f` dans la portée englobante (capturé par référence par la closure). **TODO explicite non porté à ce stade** : flou d'arrière-plan (`blurEnabled`), effet `FRAGMENT_EFFECT`, vidéo "outro" (`OUTRO_DURATION_SEC`) — confirmés non branchés dans le flux réellement exercé par `AnimemesCompound.java`, pas des oublis. Valeurs de retour `Bool` de `append`/`startWriting` non vérifiées dans ce premier passage (gestion d'erreur incomplète, signalée explicitement plutôt que masquée). |
+| Animems — éditeur | `MemesView2.java` — geste tactile (lu en entier : `GestureListener`/`ScaleListener`/`onTouchEvent`/`touchDown`/`touchMove`/`touchUp`/`translation`/`rotate`/`scale`/`safePostScale`/`isPointInsideObject`/`bringLayerToFront`) | `Animems/AnimemesGestureController.swift` | ÉCRIT (NON COMPILÉ) | **Logique de transformation (mathématiques) séparée délibérément du câblage de gestes SwiftUI** (`DragGesture`/`MagnificationGesture`/`RotationGesture`, pas encore écrit) — la logique de matrice est vérifiable ligne à ligne contre l'original, le câblage de gestes multi-touch simultanés ne peut pas être vérifié sans simulateur ; séparer évite qu'une incertitude d'assemblage ne contamine des maths déjà fiables. **Deux bugs sérieux trouvés et corrigés AVANT tout build** : (1) `CGAffineTransform.inverted()` n'est PAS optionnelle contrairement à `Matrix.invert()` Android (retourne la transformation inchangée sur une matrice non inversible plutôt qu'un signal d'échec) — code initial utilisait `if let` sur un type non-Optional, ne pouvait pas compiler. (2) **Piège d'ordre de composition** : `postTranslate`/`postRotate`/`postScale` Android appliquent la nouvelle opération APRÈS la matrice existante (repère de destination) ; `CGAffineTransform.translatedBy`/`.rotated(by:)`/`.scaledBy` de Core Graphics ont la sémantique INVERSE (équivalent `pre*`, pas `post*`) — un premier jet aurait donc transformé les calques dans le mauvais repère dès qu'un calque est pivoté/mis à l'échelle. Corrigé en construisant chaque composante "post" comme une transformation autonome puis `tfm.concatenating(composantePost)`. Différence de sémantique Android (gestes incrémentaux)/SwiftUI (`MagnificationGesture`/`RotationGesture` cumulatifs depuis le début du geste) documentée explicitement pour la future vue de câblage. Mode d'édition de masque (`handleMaskEditTouch`/`maskApplyDrag`/`cummulateMaskTransform`) lu mais PAS encore porté — différé, la logique de masque de base (`AnimationObjectData.maskOffsetX` etc.) existe déjà, seul le geste dédié manque. |
+| Animems — éditeur | `MemesView2.recomposeObjects`/`computeRecomposeBounds` (lus au passage précédent) + `AnimemesCompound.getRecomposeCandidates`/`computeDefaultTotalFrames`/`performRecompose` (lus cette passe, ~3438-3573) | `Animems/AnimemesRecompose.swift` | ÉCRIT (NON COMPILÉ) | Fusion de plusieurs calques sélectionnés en une séquence de bitmaps (façon GIF), réutilisant `LayerRenderer.drawObjectFrame` (conçu dès `AnimemesExporter` pour cette réutilisation). Porte la logique PURE (candidats, bornes, rendu, construction du calque résultat) — PAS la partie orchestration UI de `performRecompose` : `AnimemesRecomposeNameSheet` (dialogue de nommage) et `RecomposeManager.save` (persistance disque PNG) restent non lus/non portés (système séparé de la fusion elle-même), de même que le lien avec `TimelineView` pour l'icône de groupe "▼"/le filtrage par groupe (`enterGroupView`/`exitGroupView`/`applyDefaultTimelineFilter`/`syncVisibilityIcon`, lus mais non portés — dépendent de `TimelineView`, dont seule la logique d'état est portée, voir ligne `TimelineViewModel.swift`). |
+| Animems — éditeur | `android/views/AnimemesCompound.java` — fin de la lecture intégrale (lignes ~2645-3931, dernière tranche de ~1300 lignes) : dialogues de sauvegarde, tutoriel `TapTargetSequence`, "Animate"/`MotionGenerator`, IA (`AIObjectGenerationDelegate`), suppression d'arrière-plan (`RemoveBackground`/ML Kit), vue groupe recompose | — | LU EN ENTIER (3931/3931 lignes), NON PORTÉ (décision documentée) | **6 sous-systèmes secondaires découverts, aucun lu en détail au-delà de leur point d'appel dans `AnimemesCompound`** — tous confirmés distincts du cœur modèle→gestes→rendu→export déjà fermé, tous nécessitant leur propre passage de lecture dédié : (1) **Motion Templates** (`MotionTemplate`/`MotionTemplateManager`/`MotionTrack`) — bibliothèque de mouvements réutilisables, classes jamais ouvertes. (2) **Persistance disque du recompose** (`RecomposeManager`/`RecomposeTemplate`, `AnimemesRecomposeNameSheet`) — sauvegarde des séquences fusionnées en PNG sur disque, distincte de la fusion en mémoire (`AnimemesRecompose.swift`, déjà portée). (3) **Tutoriel/onboarding** (`TapTargetSequence`/`TapTarget`, bibliothèque tierce Android) — purement cosmétique, sans logique de données, PAS un candidat de portage (SwiftUI a ses propres mécanismes d'overlay/coach-mark). (4) **Génération procédurale de mouvement** (`MotionGenerator.generateMouthTalkCycle`, bouton "Animate") — classe jamais ouverte. (5) **Génération d'objet par IA** (`AIObjectGenerationDelegate`, `startAIGeneration`/`replaceObjectWithAIResult`) — dépend d'un service IA externe non identifié ; `replaceObjectWithAIResult` (mutation de données pure, remplacement de bitmap + recentrage) serait portable isolément mais n'a aucune utilité sans le service qui l'appelle. (6) **Suppression d'arrière-plan** (`RemoveBackground.removeBackgroundWithMLKit`/`removeBackgroundAdvanced`) — ML Kit Android n'a pas d'équivalent iOS direct ; l'équivalent naturel serait `VNGeneratePersonSegmentationRequest`/`VNGenerateForegroundInstanceMaskRequest` (Vision framework, iOS 15+), mais ceci nécessite sa propre étude, pas une substitution mécanique. Ces 6 points représentent un périmètre PLUS LARGE que ce que l'estimation initiale du module 8 laissait supposer — communiqués explicitement ici plutôt que silencieusement absorbés dans la clôture du module. |
+| Animems — éditeur | `android/utils/ShapeFactory.java` (lu en entier) | `Animems/ShapeFactory.swift` | ÉCRIT (NON COMPILÉ) | Rasterisation Core Graphics des 3 formes (rectangle/cercle/ligne) en `CGImage`, port complet y compris le contour "assombri" (`darkenColor`, HSV `V -= 0.25`) et la règle Android "l'alpha du `Paint.setColor` est TOUJOURS remplacé par `setAlpha` séparé" (reproduite via `argbColor(_:alpha:)`, qui ignore délibérément l'octet alpha packé de la couleur d'entrée). `rerender(_:canvasW:canvasH:)` relit les propriétés `shape*` déjà présentes sur `AnimationObjectData` (ajoutées lors d'un passage antérieur, confirmées correspondre exactement aux accesseurs Android utilisés ici). |
+| Animems — éditeur | `android/views/BezierEditorView.java` (lu en entier) | `Animems/BezierEditorView.swift` | ÉCRIT (NON COMPILÉ) | Éditeur de courbe de Bézier cubique normalisée (easing personnalisé) — fichier auto-contenu (aucune dépendance timeline/moteur), donc porté EN ENTIER modèle+rendu+gestes (contrairement aux autres vues custom de ce lot, dont seule la logique d'état est portée) : `BezierControlPoints.interpolation(at:)` reproduit la résolution de Newton-Raphson à l'identique (8 itérations, tolérance `1e-6`), `BezierEditorView` (SwiftUI `Canvas`+`DragGesture`) reproduit `onDraw`/`onTouchEvent`. Non vérifié visuellement (pas de simulateur), comme le reste de ce portage. |
+| Animems — éditeur | `android/Paint/PaintPreviewEditorPanel.java` (lu en entier) | `Animems/PaintCapture.swift` | ÉCRIT (NON COMPILÉ) | Dessin au doigt capturé comme séquence de frames bitmap (calque animé façon GIF) — fichier auto-contenu, porté EN ENTIER comme `BezierEditorView`. `PaintCaptureController` reproduit le lissage quadratique (`quadTo(lastPoint, milieu)` → `CGMutablePath.addQuadCurve(to:control:)`) et la capture d'une frame toutes les 6 itérations de mouvement (`CAN_DRAW`) + une frame finale systématique au relâchement. Palette/sliders/boutons (pure disposition Android sans logique) laissés à l'appelant SwiftUI — seule la surface de dessin (`PaintDrawingCanvas`) est fournie. |
+| Animems — éditeur | `android/views/LayerEditorPanel.java` (lu en entier) | `Animems/LayerEditorPanelState.swift` | ÉCRIT (NON COMPILÉ) | Logique d'état SEULE (pas la construction `LinearLayout`/`SeekBar` Android, non portable 1:1) : `bindToLayer` (dérivation des valeurs initiales — priorité dernière `Transform`, repli forme/masque selon un ordre de priorité qui DIFFÈRE entre `opacity` (jamais de repli masque) et `feather` (repli masque seulement si `Transform.feather == 0`), reproduit à l'identique) et `refreshCornerRowVisibility` (règle de visibilité par type). Vue SwiftUI différée : dépend de la sélection courante dans la timeline, pas encore construite. |
+| Animems — éditeur | `android/mask/MaskPreviewEditorPanel.java` (lu en entier) | `Animems/MaskPreviewEditorPanelState.swift`, `MaskType.displayName` (ajouté) | ÉCRIT (NON COMPILÉ) | Logique d'état seule (même raison que `LayerEditorPanelState`). **`buildFinalBitmapStatic`/`applyOpacity` (Android) délibérément NON portés — confirmés OBSOLÈTES par l'architecture Swift, pas juste différés** : ces méthodes ré-écrivaient manuellement le canal alpha du bitmap de masque pour appliquer l'opacité AVANT compositing (contournement Android) ; `LayerRenderer.composite` applique déjà l'opacité une seule fois via `context.setAlpha` au moment du dessin du calque masqué — les reporter aurait appliqué l'opacité EN DOUBLE. |
+| Animems — éditeur | `android/views/ShapePreviewEditorPanel.java` (lu en entier) | `Animems/ShapePreviewEditorPanelState.swift` | ÉCRIT (NON COMPILÉ) | Logique d'état seule : `makeDefault(shapeType:canvasW:canvasH:)` (dimensionnement par défaut selon le type, port d'`init`) et `rowVisibility(for:)` (règles de visibilité des contrôles arrondi/épaisseur/contour selon le type). Palette (18 couleurs) reprise telle quelle. |
+| Animems — éditeur | `android/views/MovementControllerHandlerView.java` + `listener/MovementControllerHandlerListener.java` (lus en entier) | `Animems/MovementControllerState.swift` | ÉCRIT (NON COMPILÉ) | **Découverte importante** : ce panneau de bascules (zoom/rotation/skew/top/bottom/left/right/ancrage) + slider d'angle NE GATE PAS le geste tactile libre déjà porté dans `AnimemesGestureController.swift` — c'est un mode de transformation PRÉCIS par curseur, entièrement SÉPARÉ et ADDITIF (`anchorPoint == true` → pilote `applySeekBarTransformOnAnchor`/`anchorTouchExecute` dans `MemesView2.java`, ni l'un ni l'autre lus). Seul l'état des bascules est porté ; la logique de transformation par curseur elle-même reste un sous-système ENTIER non exploré — voir "Points à vérifier en priorité" ci-dessous. |
+| Animems — éditeur | `android/views/CanvasZoomController.java` (lu en entier) | `Animems/CanvasZoomController.swift` | ÉCRIT (NON COMPILÉ) | Zoom du canvas d'édition (boutons +/−/fit), DISTINCT du zoom de la timeline (`TimelineViewModel.applyPinchZoom`). Fichier auto-contenu, porté EN ENTIER (modèle `CanvasZoomState` + rendu SwiftUI `CanvasZoomControls`) comme `BezierEditorView`/`PaintPreviewEditorPanel` — `computeMinZoom` (zoom minimum garantissant que la vue cible tient dans son parent) reproduit à l'identique. |
+| Animems — éditeur | `android/views/ProTextEditorView.java` (lu en entier, 923 lignes) | `Animems/ProTextEditorState.swift` | ÉCRIT (NON COMPILÉ) — PORTÉE RÉDUITE, JUSTIFIÉE | **~850 des 923 lignes confirmées être de la construction de vue Android pure** (`LinearLayout`/`RecyclerView`/`ColorAdapter`/`FontAdapter`/`ColorDot` programmatiques), sans logique réutilisable au-delà de l'état (`textColor`/`bgColor`/`textSizeSp`/`font`/`alignment`/`bgEnabled`/`cornerDp`), de la palette (16 couleurs) et de `darkenFor` (NON reporté séparément : formule HSV identique à `ShapeFactory.darken`, juste des constantes différentes — dupliquer aurait été une simple divergence de constantes). Mapping police Android (`Typeface.SANS_SERIF/SERIF/MONOSPACE`) → SF Pro/SF Pro Serif/SF Mono via `ProTextFont.font(size:)`, à confirmer visuellement (pas d'équivalence 1:1 garantie). Champ de texte réel (`TextField`/`TextEditor` SwiftUI) et rendu bitmap final (`renderBitmap`, snapshot natif) différés — nécessitent un simulateur pour être ajustés visuellement. |
+| Animems — éditeur | `android/memes/FrameAdapter.java` (lu en entier, 355 lignes) | `Animems/FrameListState.swift` | ÉCRIT (NON COMPILÉ) — PORTÉE TRÈS RÉDUITE, DÉCOUVERTE IMPORTANTE | **Ce fichier ne fait PAS partie du système `AnimationEngine`/keyframes déjà porté** — c'est le pilote d'une bande de vignettes pour un sous-système SÉPARÉ de capture "image par image" façon flipbook (`mView.newFrame()`/`deleteFrame()`/`FrameConnectionListener`, AUCUNE de ces méthodes `MemesView2` lues), dépendant de classes entièrement non lues : `FrameData`, `Frame` (modèle JSON Gson distinct de `SerializableAnimationObject`), `SerializableManager` (persistance disque), `ImageViewRound`/`ButtonAddFrame` (2 vues custom SUPPLÉMENTAIRES non comptées dans la liste initiale des ~10-14), et une classe `MemesView` (sans le `2`) au code probablement mort (`TestViewHolder`, type `3` jamais atteint en pratique). Seule la logique de gestion de LISTE (`add`/`addWidthLimit`/`addHead`/`removeView`, y compris la particularité de nommage trompeur `addHead` qui ajoute en fin de liste, reproduite telle quelle) est portée, indépendante du type d'élément. Sous-système entier à explorer dans une passe dédiée future — voir "Points à vérifier en priorité". |
+| Animems — éditeur | `android/mask/MaskAddPanel.java`, `android/views/ShapeAddPanel.java` (lus en entier) | — | LU, NON PORTÉ (décision) | Pickers bottom-sheet purs (grille d'icônes tapables), aucune logique au-delà de l'énumération déjà couverte par `MaskType`/`AnimationObjectData.ObjectType` existants — construction `LinearLayout`/`HorizontalScrollView` non portable 1:1, sans contenu algorithmique à extraire. À reconstruire directement en SwiftUI (`Picker`/grille de boutons) au moment de la construction de l'écran d'édition, pas avant. |
+| Animems — éditeur | `engine/mask/MaskEditController.java` (lu en entier, 18 lignes) | `Animems/MaskEditController.swift` | ÉCRIT (NON COMPILÉ) | Protocoles de callback purs (`OnMaskGestureListener`/`OnMaskEditModeListener`) — port direct en protocoles Swift. Aucune implémentation concrète encore écrite : dépend du mode d'édition de masque par geste (`handleMaskEditTouch` etc.), lu mais non porté dans `AnimemesGestureController.swift`. |
+| Animems — éditeur | `android/views/TimelineView.java` (lu en entier, 1320 lignes — la plus volumineuse des vues custom restantes) | `Animems/TimelineViewModel.swift` | ÉCRIT (NON COMPILÉ) | **Logique pure séparée du rendu**, même principe que `AnimemesGestureController.swift` : coordonnées (`xAtFrame`/`frameAtX`/`playheadX`, avec le playhead toujours centré et le contenu qui défile — modèle "CapCut"), zoom pincé avec ancrage au point focal (`applyPinchZoom`), pan, drag/redimensionnement d'un item AVEC anti-chevauchement (`resolveOverlap`/`resolveOverlapResizeLeft`/`resolveOverlapResizeRight`, portés à l'identique y compris le garde-fou de boucle et l'extension automatique de `totalFrames`), hit-test (items + marqueurs de keyframe). PAS porté, délibérément : rendu `onDraw`/`drawRuler`/`drawPlayhead`/`drawKeyframeMarkers` (deviendra un `Canvas` SwiftUI), physique de fling `OverScroller`/`VelocityTracker` (aucun équivalent direct — SwiftUI fournit sa propre vélocité de geste, la ballistique reste à concevoir visuellement), planification d'appui long `Handler`/`Runnable` (remplacée trivialement par `.onLongPressGesture`), sérialisation JSON manuelle `toJson`/`fromJson` (redondante avec un futur `Codable` direct sur `TimelineItem`, déjà un type Swift natif). `selected` (référence Java vive) adapté en `selectedId: String?` + recherche par id dans `items` (`TimelineItem` étant un `struct` Swift, pas une classe — différence de représentation déjà actée pour ce type, pas nouvelle ici). |
 
 ## Décisions autonomes prises (journal)
 
@@ -215,6 +297,386 @@ au fil de l'eau.
 - 2026-08-10 : **CI/CD ajouté pour vérifier le Checkpoint 1 sans machine macOS locale** : `codemagic.yaml` (workflow `checkpoint-build`) et `.github/workflows/ios-build.yml` (déclenchement `workflow_dispatch` MANUEL uniquement, PAS à chaque push — décision volontaire pour ne pas consommer de minutes CI GitHub Actions sans le vouloir). Les deux pipelines font strictement la même séquence : installer XcodeGen, décoder le secret `GOOGLE_SERVICE_INFO_PLIST_BASE64` (variable d'environnement Codemagic / secret GitHub selon la plateforme) vers `Resources/GoogleService-Info.plist`, `xcodegen generate`, résolution des dépendances SPM, `xcodebuild build` en mode simulateur avec `CODE_SIGNING_ALLOWED=NO`. AUCUNE section de signature/publication dans les deux — objectif strictement "est-ce que ça compile", pas un pipeline de release (la signature/l'archive/TestFlight viendront bien plus tard, pas avant que plusieurs checkpoints soient validés). Le choix entre les deux dépend des crédits CI disponibles côté utilisateur (Codemagic offre un quota macOS gratuit limité par mois ; GitHub Actions facture les runners macOS au-delà du quota gratuit, généralement plus cher à la minute) — aucune préférence technique imposée, les deux sont strictement équivalents fonctionnellement.
 - 2026-08-10 : **Bug d'environnement trouvé et corrigé en préparant le CI : `.gitignore` était encodé en UTF-16 avec BOM** (`fffe` en tête de fichier), pas en texte brut/UTF-8 comme git l'attend pour ce fichier — conséquence concrète : les règles qu'il contenait (`Resources/GoogleService-Info.plist`, `plist_base64.txt`) n'étaient très probablement JAMAIS appliquées par git (confirmé par `git check-ignore -v`, qui ne matchait aucun des deux fichiers avant correction, alors qu'ils auraient dû l'être). Cause probable : un outil de ce système Windows écrit les fichiers texte contenant des caractères accentués en UTF-16 par défaut — reproduit en écrivant d'abord une version en français, observé le même problème, puis réécrit en anglais/ASCII pur pour contourner cette contrainte d'environnement plutôt que de la "corriger" au niveau de l'outil (hors de portée). Vérifié après coup avec `git check-ignore -v` que les deux fichiers sont maintenant bien reconnus comme ignorés.
 - 2026-08-10 : **Découverte de deux fichiers non suivis par git, contenant le secret Firebase en clair (base64), dans des emplacements inattendus** : `plist_base64.txt` à la racine du dépôt, et surtout `Sources/secrete code` (nom mal orthographié, à l'intérieur de l'arborescence source) — tous deux contiennent le même contenu (`GoogleService-Info.plist` encodé en base64, encadré de marqueurs `-----BEGIN/END CERTIFICATE-----`, format caractéristique de `certutil -encode` sous Windows). Ni l'un ni l'autre n'a été créé par cette session de travail (aucune trace de leur création dans les actions effectuées ici) — probablement des artefacts laissés par une session antérieure en préparant ce même secret pour le CI. Vérifié que `Sources/secrete code` est SANS RISQUE pour la compilation : `project.yml` ne globbe que `Sources/TiinverSwift` (pas `Sources/` au complet), donc XcodeGen ne le ramassera jamais comme fichier source. Les deux fichiers sont maintenant couverts par `.gitignore` (motif `plist_base64.txt` explicite ; `Sources/secrete code` n'a PAS de motif dédié, son nom étant trop spécifique/improbable pour justifier un motif générique risquant de masquer d'autres fichiers involontairement) — **NON SUPPRIMÉS par cette session**, faute de certitude qu'ils ne sont plus nécessaires à l'utilisateur ; signalé explicitement en dehors de ce fichier pour décision.
+- **2026-08-10 : CHECKPOINT 1 VALIDÉ — troisième build Codemagic réel réussi, aucune erreur.** Build `#6a7a2aabd5ae67eb2a755de2` (workflow `checkpoint-build`), toutes les étapes passées y compris "Build simulateur — vérification de compilation uniquement, sans signature" (1m 34s). Ce que ce build confirme CONCRÈTEMENT, pas par supposition : (1) résolution SPM complète et sans conflit des 9 packages de `project.yml` (Alamofire, SocketIO, MetalPetal, Gifu, GoogleMobileAds, GoogleSignIn, FBSDK, WebRTC, Firebase 11.15+) ; (2) compilation sans erreur de l'intégralité des ~50 fichiers Swift des modules 1-6, y compris les 3 stores Core Data indépendants (`TiinverModel`/`TiinverAnalyticsModel`/`TiinverNotificationsModel`) et leurs 16 entités via le protocole générique `CoreDataFetchable`/`CoreDataRepository` ; (3) aucune erreur de liaison (linkage) sur les frameworks tiers. Les deux échecs précédents (`Missing package product 'FirebaseCore'`, `protocol 'CoreDataFetchable' requirement 'fetchRequest()' cannot be satisfied by a non-final class`) sont donc CONFIRMÉS résolus par ce build, pas seulement par lecture de documentation — voir "Erreurs rencontrées et résolues", entrées mises à jour en conséquence. **Conséquence directe** : Checkpoint 1 marqué VALIDÉ dans la "Règle de compilation par checkpoint" en tête de fichier ; le portage reprend au module 7 (Caméra + pipeline filtres GPU MetalPetal), le prochain arrêt obligatoire étant le Checkpoint 2 (fin du module 12). Les points d'incertitude NON liés à la compilation (handshake Socket.IO, rendu du `TabView` pivoté du feed — voir "CHECKPOINT 1 — Résumé pour build macOS", point 2) restent ouverts : un build réussi prouve la compilation, pas le comportement à l'exécution ; ils devront être vérifiés au premier accès à un simulateur/device réel, sans bloquer la reprise du portage.
+- **2026-08-10 : Module 7 (Caméra) — premier passage, PAS FERMÉ, honnêtement signalé comme tel.**
+  Travail réalisé dans cette session, dans l'ordre :
+  1. **Lecture des deux rapports de référence** (`TIINVER_IOS_PORT_ANALYSIS.md` §3.3/§7,
+     `TIINVER_ANIMEMS_SCOPE_LIBRARIES.md` §2.2/§3.1) — confirmé : MetalPetal en fondation du
+     pipeline GPU (caméra ET futur moteur Animems, même framework, un seul apprentissage Metal
+     pour l'équipe), ~40 filtres GLSL à réécrire manuellement (aucun convertisseur automatique),
+     GPUImage3 déconseillé (abandon quasi confirmé, aucune release en 7 ans).
+  2. **Lecture directe du code Android réel du pipeline caméra** (`BaseCameraFragment.java` 711
+     lignes en entier, `GPUCameraRecorder.java`, `CameraHandler.java`, `CameraThread.java`
+     — via son point d'entrée `startPreview` —, `LensFacing.java`, `GPUCameraRecorderBuilder.java`,
+     `CameraRecordListener.java`, `FilterType.java`, `GlFilter.java` + les 22 sous-classes
+     `Gl*Filter`/`BeautyFilter` réellement instanciées, `GlFilterGroup.java`,
+     `GlThreex3TextureSamplingFilter.java`, `MediaVideoEncoder.java`/`MediaAudioEncoder.java`
+     (constantes d'encodage uniquement, pas lus en entier — voir "Prochaine action à faire")).
+     **Découverte majeure** : `FilterType.createGlFilter()` n'a que 23 `case` réellement compilés
+     sur 43 valeurs d'enum — les 20 autres sont dans un bloc `/* ... */` commenté (code mort,
+     jamais exécuté), retombant systématiquement sur `GlMonochromeFilter` par défaut. Confirme
+     l'importance de lire le code source réel plutôt que de déduire le périmètre du nom de l'enum
+     — un carrousel de "43 filtres" en apparence n'en propose réellement que 23 côté Android.
+  3. **Vérification de l'API réelle de MetalPetal 1.10.0 AVANT d'écrire du code Swift** — leçon
+     tirée directement des deux échecs de build du Checkpoint 1 (`FirebaseCore`/
+     `CoreDataFetchable`) : récupéré et lu directement depuis GitHub (tag `1.10.0`, celui déclaré
+     dans `project.yml`) les en-têtes réels `MTIColorMatrixFilter.h/.m`,
+     `MTIUnaryImageRenderingFilter.h/.m`, `MTIBulgeDistortionFilter.h/.m`,
+     `MTIRenderPipelineKernel.h`, `MTIFunctionDescriptor.h`, `MTIVector+SIMD.h`, `MTIImage.h`,
+     `MTIContext.h`/`MTIContext+Rendering.h`, `MTIImageView.h`, et le fichier shader réel
+     `Shaders.metal`/`MTIShaderLib.h` (structure `VertexOut`, convention `fragment float4 nom(...
+     [[stage_in]], texture2d<float> [[texture(0)]], sampler [[sampler(0)]], constant T&
+     [[buffer(N)]])`, exemple réel `bulgeDistortion`) — plutôt que de deviner la signature d'API
+     d'un SDK tiers comme cela avait causé l'échec `Missing package product 'FirebaseCore'`.
+     Confirmé au passage que le SPM package MetalPetal était déjà déclaré dans `project.yml`
+     depuis le module 1 (jamais câblé jusqu'ici) et que son product name (`MetalPetal`) est
+     correct pour la version 1.10.0 déclarée.
+  4. **Écrit** : `Camera/LensFacing.swift`, `Camera/CameraFilterType.swift` (enum 43 valeurs +
+     repli Monochrome fidèle), `Camera/Filters/TiinverCameraShaders.metal` (22 fonctions
+     `fragment`, transliteration GLSL→MSL 1:1, ex. `atan(Q,I)` GLSL 2-arguments → `atan2(Q,I)`
+     MSL, seule vraie différence de langage rencontrée), `Camera/Filters/TiinverCameraFilters.swift`
+     (22 sous-classes `MTIUnaryImageRenderingFilter`, une par filtre — pattern obligatoire vérifié
+     dans le SDK réel, pas un choix arbitraire), `Camera/CameraCaptureController.swift`
+     (`AVCaptureSession`, remplace `Camera2`+`CameraThread`), `Camera/CameraRecordingWriter.swift`
+     (`AVAssetWriter`, remplace `MediaCodec`+`MediaMuxer`), `Camera/CameraRecorder.swift`
+     (orchestrateur équivalent `GPUCameraRecorder`, UN SEUL passage de rendu MetalPetal par frame
+     partagé aperçu+export — élimine par construction le risque de divergence que l'architecture
+     Android à deux pipelines GL séparés doit gérer manuellement), `Camera/CameraPreviewView.swift`
+     (`MTIImageView`, pas un `MTKView` écrit à la main), `Camera/CameraView.swift` (écran SwiftUI).
+  5. **Bug trouvé et corrigé avant même un premier build** (relecture propre, comme pour
+     `JSONValue.rawData` au module 1) : un premier jet de `CameraView.swift` déléguait
+     `CameraRecorderDelegate` à un objet `CameraRecorderCoordinator` recréé à la volée
+     (`weak var delegate` sans propriétaire fort) — aurait été désalloué immédiatement après
+     `.onAppear`, cassant silencieusement `didFinishRecordingAt`. Corrigé en pilotant l'écran via
+     `@Published var lastRecordedURL` sur `CameraRecorder` + `.onChange` côté SwiftUI (forme à UN
+     seul paramètre, la cible iOS du projet étant 16 — la forme à deux paramètres `{ old, new in }`
+     exige iOS 17).
+  **PAS FAIT, honnêtement signalé** (voir tableau "Détail par module" + "Prochaine action à
+  faire") : `CircleCaptureButton.java` jamais lu (comportement du bouton de capture
+  RECONSTITUÉ, pas vérifié) ; sélecteur galerie et item "Animems" laissés en closures vides ;
+  branchement réel dans la navigation (quel écran présente `CameraView`) PAS recherché ;
+  `MediaVideoEncoder`/`MediaAudioEncoder`/`MediaMuxerCaptureWrapper` lus seulement pour leurs
+  constantes, pas en entier. **Module 7 reste `[ ]` non coché dans "Ordre de portage" — ne pas
+  commencer le module 8 avant sa fermeture explicite.**
+- **2026-08-10 : Module 7 (Caméra) — REFERMÉ.** Traitement des 6 points laissés ouverts par le
+  passage précédent, dans l'ordre demandé :
+  1. **`editor/CircleCaptureButton.java` lu en entier (520 lignes).** Confirme un écart réel avec
+     la reconstitution précédente : seuil tap/appui-long = **1000 ms exactement**
+     (`mHandler.postDelayed(action, 1000)`), pas les `0.35` s utilisés au premier jet. Plus grave :
+     le mécanisme SwiftUI utilisé (`.onLongPressGesture(pressing:)`) était impropre par
+     construction — son paramètre `pressing` se déclenche dès le toucher, pas après
+     `minimumDuration`, donc un tap simple aurait démarré un enregistrement au lieu d'une photo.
+     Remplacé par `DragGesture(minimumDistance: 0)` + `DispatchWorkItem` programmé/annulable,
+     calqué directement sur `postDelayed`/`removeCallbacks`. Confirmé par analyse de flux que
+     `actionListener`/`MINIMUM_VIDEO_DURATION_MILLIS` sont du code mort des deux côtés d'un même
+     test (`isRecording` remis à `false` juste avant d'être testé) — rien à porter, pas une
+     supposition.
+  2. **Point d'entrée réel retrouvé par grep de `CameraActivity.class` (7 lanceurs dans tout le
+     dépôt)** : `CameraActivity` est une Activity Android séparée (pas une position
+     `HomeActivity.onArticleSelected` comme le supposait une note non vérifiée du premier jet),
+     lancée depuis le FAB (`R.id.fab`) de `MainFragment.java` (déjà porté en `FeedView.swift`,
+     module 6) via `requestPermission()`. Câblé : FAB ajouté à `FeedView.swift`, vérification
+     `AVCaptureDevice.authorizationStatus`/`requestAccess` avant présentation, `.fullScreenCover`
+     pour `CameraView`. Les 6 autres lanceurs (modules pas encore portés) non câblés.
+  3. **Sélecteur galerie réel écrit** (`Camera/GalleryPickerView.swift`, `PHPickerViewController`
+     via `UIViewControllerRepresentable`) après lecture de `pickImageOrVideo`/`pickMedia` —
+     filtre image+vidéo, sélection unique, routage image/vidéo reproduit à l'identique vers des
+     closures TODO (écrans consommateurs `MediaEditor`/`MediaTrim` pas encore portés).
+  4. **"ANIMEMES" confirmé no-op assumé** — commentaire en tête de `CameraView.swift` déjà clair
+     sur la raison (module 8 pas commencé à ce stade), rien à changer.
+  5. **`MediaVideoEncoder.java`/`MediaAudioEncoder.java`/`MediaMuxerCaptureWrapper.java` relus en
+     entier** (pas seulement leurs constantes comme au premier passage) — 2 lacunes trouvées et
+     corrigées dans `CameraRecordingWriter.swift` : `KEY_I_FRAME_INTERVAL=3` manquant (ajouté via
+     `AVVideoMaxKeyFrameIntervalDurationKey`), garde de monotonicité des horodatages audio
+     (`preventAudioPresentationTimeUs`) non reproduite (ajoutée par prudence, `lastAudioPresentation
+     Time`, bien que le mécanisme source du problème — PTS Android calculé manuellement sur un
+     thread `AudioRecord` séparé — n'ait pas d'équivalent direct côté iOS). La synchronisation à
+     deux compteurs `MediaMuxerCaptureWrapper.start()`/`stop()` CONFIRMÉE sans équivalent
+     nécessaire (résout un problème spécifique à l'API asynchrone `MediaCodec`/`MediaMuxer`,
+     absent avec `AVAssetWriterInput` qui reçoit ses réglages de façon synchrone) — dit
+     explicitement dans le tableau plutôt que de ne rien noter, comme demandé.
+  6. **Tableau "Détail par module" mis à jour** avec le détail de ces 5 corrections/vérifications
+     (nouvelles lignes `CircleCaptureButton.java`, `CameraActivity.java`/`FeedView.swift`,
+     `GalleryPickerView.swift`, lignes `CameraRecordingWriter`/`CameraView` révisées). **Module 7
+     coché `[x]` dans "Ordre de portage"** — voir décision juste en dessous pour la note honnête
+     sur la nature de ce "fermé" (même format que les modules précédents).
+
+  **Enchaînement direct sur le module 8 (Moteur Animems)**, comme demandé explicitement par
+  l'utilisateur — pas de pause entre les modules 7 et 12 (Checkpoint 2), voir "Règle de
+  compilation par checkpoint" en tête de fichier, point 6.
+- **2026-08-10 : Module 8 (Moteur Animems) démarré — PREMIER PASSAGE TRÈS PARTIEL, honnêtement
+  signalé comme tel dès maintenant plutôt que de laisser croire à une progression proportionnée
+  au reste du module.** Contexte de taille rappelé avant de détailler ce qui est fait :
+  `TIINVER_ANIMEMS_SCOPE_LIBRARIES.md` chiffre la catégorie A (cœur éditeur) à **≈24 942 lignes
+  Android** (confirmées+présumées), estimées **10-13,5 semaines-ingénieur** avec MetalPetal —
+  soit, à volume comparable, l'équivalent de 3 à 4 fois le travail cumulé des modules 1 à 7. Ce
+  n'est PAS un module qu'un seul passage supplémentaire, même long, peut raisonnablement fermer.
+  Fait dans cette session :
+  1. Relu `TIINVER_ANIMEMS_SCOPE_LIBRARIES.md` §2.1/§3.1 (déjà lu au module 7, reconfirmé pour le
+     détail catégorie A) : MetalPetal pour le rendu/masques/blending, `AVVideoCompositing`+
+     `AVAssetWriter` natif pour unifier aperçu et export en un seul chemin de rendu (recommandation
+     d'architecture forte du rapport — évite le piège de double synchronisation Canvas/GLSL
+     qu'Android doit gérer manuellement), timeline/keyframes/modèle de données 100% custom
+     (aucune librairie qualifiée trouvée).
+  2. Lu en entier les fichiers du système de keyframes, la partie "100% custom" la plus
+     directement portable sans dépendre d'abord d'une architecture de rendu Metal pas encore
+     conçue : `engine/keyframe/Keyframe.java` (127 lignes), `engine/keyframe/KeyframeTrack.java`
+     (158 lignes). Également lus pour contexte (PAS encore portés, trop couplés à
+     `Bitmap`/`Matrix`/`Canvas` Android pour être portés avant d'avoir conçu le pipeline de rendu
+     Metal du calque) : `core/AnimationObjectData.java` (618 lignes — l'objet "calque" complet :
+     masques, tracks de keyframes par propriété, bitmaps/textures avec horodatages, propriétés de
+     forme), `core/Transform.java` (110 lignes), `core/Const.java`.
+  3. **Écrit** : `Animems/Keyframe.swift`, `Animems/KeyframeTrack.swift` — port direct et complet
+     des deux fichiers lus, formules d'easing/lerp/couleurs reproduites à l'identique (voir
+     tableau "Détail par module" pour le détail des choix `struct` vs classe et de la
+     représentation `[Float]` conservée brute).
+  **PAS FAIT, l'écrasante majorité du module** : `AnimationObjectData` (618 lignes, l'objet
+  "calque" central — PAS encore porté) ; `AnimemesCompound.java` (3931 lignes, l'orchestrateur
+  principal de l'éditeur — PAS encore lu) ; `MemesView2.java` (1978 lignes, rendu Canvas de
+  l'aperçu éditable — PAS lu) ; `MP4Encoder.java` (1864 lignes, export GPU — PAS lu) ; tout le
+  pipeline de rendu Metal/MetalPetal du calque (masques, blending, feather) — AUCUNE conception
+  d'architecture encore faite, contrairement au module 7 où l'architecture MetalPetal avait pu
+  être entièrement vérifiée avant l'écriture ; l'intégration `AVVideoCompositing`/`AVAssetWriter`
+  pour l'export unifié ; toute l'UI (timeline, panneaux de masque/texte/forme, gestes tactiles).
+  **Le module 8 reste `[ ]` non coché** dans "Ordre de portage" — statut "EN COURS" documenté
+  explicitement, pas laissé à interprétation.
+- **2026-08-10 : Module 8 (Moteur Animems) — deuxième passage, `core/` refermé.** Suite directe du
+  premier passage, ordre suivi tel que proposé ("lire `AnimationEngine`/`AnimationComposer`/
+  `BitmapCacheManager`/`AnimationUtils` AVANT de porter `AnimationObjectData`") :
+  1. Lus en entier : `core/AnimationEngine.java` (398 lignes), `core/AnimationComposer.java`,
+     `core/BitmapCacheManager.java`, `core/AnimationUtils.java`, `engine/mask/MaskType.java`,
+     `engine/android/mask/MaskFactory.java` (230 lignes).
+  2. **Découverte architecturale majeure, vérifiée par grep ciblé de `PorterDuff.Mode` dans
+     `MemesView2.java`** (1978 lignes, PAS lu en entier — seul ce grep ciblé) : la compositing des
+     calques n'utilise que 3 modes de fusion (`DST_IN`/`SRC_ATOP`/`CLEAR`), tous portables 1:1 en
+     `CGBlendMode`. **Conclusion actée : Core Graphics seul suffit pour la compositing calques,
+     aperçu ET export — pas besoin de Metal/MetalPetal pour cette partie**, contrairement à la
+     lecture initiale de la recommandation `AVVideoCompositing`+MetalPetal du rapport
+     `TIINVER_ANIMEMS_SCOPE_LIBRARIES.md` §2.1. Voir le détail complet et ses implications
+     (`glMatrix`/`androidToGL_Matrix2` non portés) dans le tableau "Détail par module".
+  3. **Écrit** : `Animems/Transform.swift`, `Animems/AnimationObjectData.swift` (port quasi
+     complet des 618 lignes), `Animems/AnimationComposer.swift`, `Animems/AnimationUtils.swift`,
+     `Animems/MaskType.swift`, `Animems/MaskFactory.swift`, `Animems/BitmapCacheManager.swift`,
+     `Animems/AnimationEngine.swift` — le paquet `core/` Android est maintenant refermé dans son
+     ensemble (tous ses fichiers lus et portés), plus seulement le système de keyframes.
+  4. **Deux bugs trouvés et corrigés avant tout build** (relecture propre des fichiers venant
+     d'être écrits, même discipline qu'aux modules précédents) : (a) collision de nom
+     `track(_:)`/`track: Int` dans `AnimationObjectData` (Swift ne peut pas distinguer une méthode
+     et une propriété stockée de même nom si le site d'appel ressemble à un appel de fonction sur
+     la propriété) — renommée `keyframeTrack(_:)` ; (b) `AnimationUtils.makeMessengerLikeBackground`
+     convertissait un `Float` potentiellement hors-borne en `UInt32` sans clamp préalable — un
+     `UInt32(valeurNégative)` PROVOQUE UN CRASH en Swift (contrairement à un `int` Java hors-borne,
+     silencieusement "wrappé") — clamp déplacé avant la conversion.
+  **PAS ENCORE FAIT** : `AnimemesCompound.java` (3931 lignes, l'orchestrateur principal — pas lu),
+  `MemesView2.java` (lu seulement par grep ciblé sur `PorterDuff.Mode`, pas en entier — le rendu
+  Core Graphics réel du calque, masques appliqués aux bitmaps, texte, formes, reste à porter),
+  `MP4Encoder.java` (export, pas lu), `AVAssetWriter`/pipeline d'export, TOUTE l'UI (timeline,
+  panneaux, gestes). Module 8 toujours `[ ]` non coché.
+- **2026-08-11 : Module 8 — troisième passage : modèle de données restant porté, `AnimemesCompound.java`
+  entamé (≈1300/3931 lignes lues), et surtout PÉRIMÈTRE RÉEL DU RESTE DU MODULE PRÉCISÉ par
+  lecture directe (pas ré-estimé depuis le rapport de faisabilité seul).**
+  1. Lus et portés en entier (petits fichiers) : `model/TimelineItem.java`, `StickerData.java`,
+     `PlaylistEntry.java`, `DrawPathFrameData.java`, `SerializableAnimationObject.java` (+
+     `Utils/BitmapUtils.java`, ciblé, pour confirmer le format base64 PNG). Revérifié contre la
+     déclaration réelle : les 11 cas de `AnimationObjectData.Type` (`core/AnimationObjectData.java:
+     21-23`) correspondaient EXACTEMENT aux 11 cas Swift déjà écrits au passage précédent
+     (`ObjectType`) — confirmation a posteriori, pas une coïncidence qu'il fallait laisser non
+     vérifiée.
+  2. **Lu ≈1300 lignes de `AnimemesCompound.java` (sur 3931), par tranches.** Confirme que cette
+     classe est un `FrameLayout` Android qui mélange ÉTROITEMENT l'état du modèle d'animation
+     (`AnimationComposer`/`AnimationObjectData`) ET la construction/le câblage de dizaines de vues
+     custom via `findViewById`/`new XxxPanel(...)` — PAS un contrôleur de données isolable
+     mécaniquement de l'UI. `init()` (≈330 lignes) est entièrement du binding de layout XML
+     (`R.layout.compound_animemes_layout`) sans logique portable. Repéré et lu en partie les
+     méthodes à plus forte valeur logique : `buildMaskBitmap` (résolution du type de masque/couleur
+     depuis le `label` texte du calque), `applyPropertiesToLayerForPreview`/
+     `validateAndCreateKeyframe` (création de keyframes opacity/color/cornerRadius/feather/mask*
+     au relâchement d'un slider d'édition), `addShapeFromData`/`addMaskFromBitmap` (création de
+     calque depuis les panneaux forme/masque), `showMaskPreviewEditor` (câblage bidirectionnel
+     avec `MaskEditController`/`MaskPreviewEditorPanel` pour l'édition interactive d'un masque).
+  3. **Vérifié que les fichiers `.xml` de layout référencés existent bel et bien et sont lisibles**
+     (`engine/src/main/res/layout/compound_animemes_layout.xml`, confirmé par recherche de
+     fichier) — donc un futur portage de l'UI n'exigerait PAS d'inventer une disposition d'écran :
+     la vraie disposition Android peut être lue et reproduite fidèlement, comme pour tout le reste
+     de ce portage. Important à noter : ce n'est PAS parce que cette voie est ouverte que l'UI a
+     été portée maintenant — seulement que rien ne bloque structurellement de le faire plus tard.
+  4. **Périmètre réel du reste du module 8, maintenant précisé (pas juste le chiffrage global du
+     rapport de faisabilité)** : au-delà d'`AnimemesCompound.java` lui-même, la logique repérée
+     dépend d'au moins ~10 CLASSES DE VUE CUSTOM DISTINCTES, chacune avec son propre fichier
+     `.java` ET son propre layout `.xml`, AUCUNE encore lue : `MaskAddPanel`,
+     `MaskPreviewEditorPanel`, `MaskEditController`, `ShapeAddPanel`, `ShapePreviewEditorPanel`,
+     `LayerEditorPanel`, `TimelineView`, `MovementControllerHandlerView`, `ProTextEditorView`,
+     `BezierEditorView`, `CanvasZoomController`, `PaintPreviewEditorPanel`, `ShapeFactory`,
+     `FrameAdapter`. Chacune est vraisemblablement un fichier de taille comparable aux vues déjà
+     portées ailleurs dans ce projet (quelques centaines de lignes) — ce n'est PAS un détail
+     mineur mais une composante substantielle et jusqu'ici sous-estimée du travail restant, en
+     plus de `MemesView2.java` (1978 lignes, rendu) et `MP4Encoder.java` (1864 lignes, export)
+     déjà identifiés. **Honnêtement signalé plutôt que rush-porté avec un niveau de vérification
+     inférieur au reste de ce projet** : continuer à ce rythme (lecture intégrale avant portage,
+     vérification des API tierces, documentation de chaque décision) sur un périmètre de cette
+     taille dépasse largement ce qu'une seule session supplémentaire peut couvrir avec la même
+     rigueur que les modules 1-7. Module 8 reste `[ ]` non coché ; modules 9-12 PAS commencés —
+     aucune ligne de ce fichier ne doit laisser croire le contraire.
+- **2026-08-11 : Module 8 — quatrième passage : logique réutilisable extraite d'`AnimemesCompound.java`
+  (lecture poussée à ≈2600/3931 lignes) + PREMIER RENDU RÉEL ÉCRIT (`LayerRenderer.swift`), la
+  pièce la plus significative du module à ce jour.**
+  1. **`AnimemesCompound.java` continué de la ligne ~1300 à ~2600** : `captureTransformKeyframe`,
+     `testTimeLine`/callbacks `TimelineView` (`onSelectionChanged`/`onItemChanged`/
+     `onItemResizeRightEnd`/`resampleTransforms`/`resampleMaskTransforms`/`onTrackIconClicked`),
+     `addToTimeline`/`duplicateTimeline`, `initView`, `onClick` (≈300 lignes, lu en entier),
+     `addBitmapFromGallerie`/`onNewAddBitmap`/`fitBitmapIntoSize`/`onNewAddBitmaps`/`addBitmaps`/
+     `add`/`addBitmap`, `addPictureBackground`/`onNewBackgroundPicture`/`onRepeateImage`,
+     `isAnimation`/`saveBitmapDrawed`/`fromBitmapsToVideo`/`createImage`/début de
+     `createVideosFromBitmap`. **Confirmé par lecture exhaustive** (pas par échantillonnage) :
+     `initView`/`onClick` sont ENTIÈREMENT du câblage de widgets Android (visibilité, couleurs,
+     état "selected") sans aucune logique de données extractible — rien à porter de ces deux
+     méthodes tant que l'écran SwiftUI équivalent n'est pas conçu.
+  2. **Deux fonctions PURES, sans dépendance sur la hiérarchie de vues, identifiées et portées** :
+     `resampleTransforms`/`resampleMaskTransforms` (ré-échantillonnage linéaire d'un tableau de
+     `Transform`, voir tableau) et `fitBitmapIntoSize` (redimensionnement aspect-fit, voir
+     tableau) — seule logique d'`AnimemesCompound.java` jugée sûre à porter isolément à ce stade,
+     le reste dépendant de classes pas encore lues (`TimelineView`, `MaskPreviewEditorPanel`,
+     `ShapeFactory`, `BitmapManager`, `MP4Encoder`, `CroperView`...).
+  3. **Lu en détail `engine/android/memes/MemesView2.java`** (pas en entier — ciblé sur `onDraw`/
+     `drawBitmapLastTransform`/`drawObjectFrame`, ~350 des 1978 lignes, la partie directement
+     nécessaire pour un premier rendu réel des types BITMAP/SHAPE) — **écrit `LayerRenderer.swift`**,
+     voir détail complet dans le tableau "Détail par module". C'est la première fois depuis le
+     début du module 8 qu'un vrai PIXEL sera affiché à l'écran si ce code compile et s'exécute —
+     tout ce qui précédait (keyframes, moteur, modèle de données) était de la plomberie sans sortie
+     visuelle.
+  4. **Trois bugs trouvés et corrigés AVANT tout build** (relecture propre du fichier venant
+     d'être écrit, même discipline que les passages précédents) : (a) calcul de marge de flou
+     ("margin") initialement écrit comme une expression sans queue ni tête
+     (`bmpToDraw.width - 0`) — corrigé en faisant réellement transiter `featherPx` (le rayon de
+     flou en points) jusqu'au point de calcul, au lieu de tenter de le reconstituer depuis la
+     taille de l'image déjà floutée ; (b) **une vraie différence de comportement Android entre
+     `drawBitmapLastTransform` et `drawObjectFrame` (repli du rayon de bulle de fond à 10 quand
+     `cornerRadius<=0`, présent dans l'un, absent dans l'autre) accidentellement EFFACÉE en
+     factorisant les deux méthodes en un seul helper commun** — retrouvée en comparant à nouveau
+     ligne à ligne le code Android des deux méthodes, corrigée en passant un `bubbleRadius:
+     CGFloat?` calculé différemment aux deux sites d'appel plutôt qu'un seul `cornerRadius`
+     partagé ; (c) risque de double-application de l'opacité d'un calque à travers deux couches de
+     transparence Core Graphics imbriquées (masque + teinte) — identifié PAR ANALYSE, pas
+     rencontré à l'exécution (impossible à observer sans simulateur), neutralisé par
+     réinitialisation explicite de l'alpha à 1 à l'entrée de la couche imbriquée.
+  **PAS ENCORE FAIT** : rendu `TEXT`/`PATH`/`LINE`/`CLIP`/`ERASE`/`STICKER` (chacun sa propre
+  méthode dans `MemesView2.java`, pas lues), `recomposeObjects` (fusion GIF), le reste
+  d'`AnimemesCompound.java` (~1300 lignes restantes : gestes tactiles probablement dans
+  `MemesView2.java` plutôt qu'ici, fin de `createVideosFromBitmap`, dialogues de sauvegarde,
+  tutoriel, recompose/groupes), `MP4Encoder.java` (export, pas lu), les ~10 vues custom
+  dépendantes (aucune encore lue). Module 8 toujours `[ ]` non coché.
+- **2026-08-11 : Module 8 — cinquième passage : TEXT/STICKER portés, PATH/LINE/CLIP/ERASE
+  explicitement écartés (décision motivée), et l'EXPORT MP4 conçu et écrit
+  (`AnimemesExporter.swift`) — module 8 a maintenant un chemin complet bout-en-bout (modèle →
+  rendu → export), même si chaque maillon reste partiel sur les détails.**
+  1. Lus en entier : `android/renderer/TextRect.java`, `Utils/TextLayoutEngine.java` (moteur de
+     découpage de texte "100% pur, compatible KMP à terme" selon son propre commentaire — un
+     candidat idéal de portage direct). Lues ciblées : `MemesView2.writeText`/`drawShap` (TEXT/
+     STICKER, données par calque) — `drawPath`/`drawLine`/`clipPath`/`erase` également lues mais
+     NON portées : confirmé que ce sont les rendus du GESTE DE DESSIN LIBRE EN COURS (état de
+     CLASSE, pas de calque persistant), et que `clipPath` a un corps Android VIDE (`{}`,
+     confirmé mort). Porter leur rendu avant que la capture tactile elle-même soit conçue serait
+     prématuré — décision documentée, pas un report silencieux.
+  2. **Écrit** : `Animems/TextLayoutEngine.swift` (port fidèle EN UNITÉS UTF-16, pas
+     `String.Index`, pour préserver exactement la sémantique d'indexation Java y compris sur les
+     emoji/caractères hors plan de base), `Animems/TextRect.swift` (rendu Core Graphics, piège de
+     signe évité entre `UIFont.descender` NÉGATIF et `metrics.descent` Android POSITIF),
+     `Animems/LayerRenderer.swift` étendu (`drawText`/`drawSticker`).
+  3. **Un bug de mesure trouvé et corrigé avant tout build** dans `drawText` (relecture propre) :
+     un premier jet mesurait la largeur du caractère `"i"` au lieu du TEXTE RÉEL du calque pour
+     calculer `bubbleElementWidth` — sans rapport avec la vraie formule Android
+     (`fontPaint.measureText(element.getText())`). Corrigé en ajoutant `TextRect.measureWidth(_:)`
+     et en respectant l'ordre exact de l'original (mesure AVANT le retour à la ligne, PUIS
+     `bubbleWidth = min(bubbleElementWidth, bubbleWidthMax)` utilisé comme largeur de wrap).
+  4. **Lu `android/codec/MP4Encoder.java` (structure complète, ~450 lignes ciblées) +
+     `android/codec/Encoder.java` (478 lignes, en entier)** pour identifier le chemin RÉELLEMENT
+     exercé — confirmé en retournant lire la suite d'`AnimemesCompound.createVideosFromBitmap`
+     (jusqu'à la ligne 2645) que le flux réel est `onSurfaceStartEncode()`→`addFrame(composer)`→
+     `startFrameEncoding()`→`onAddFrame`, PAS les 3 AUTRES modes que `Encoder.java` propose
+     (bitmap-par-bitmap, byte-par-byte, "outro vidéo") — ceux-ci confirmés non exercés par cette
+     app à ce stade, non portés à raison. `onAddFrame` recalcule EXACTEMENT la même table de
+     frames que `AnimationEngine.prepareFrame` (déjà porté au passage 2) — confirmé en comparant
+     les deux algorithmes ligne à ligne, pas une supposition de similarité.
+  5. **Décision motivée de NE PAS relire en détail les ~1400 lignes GLSL/`MediaCodec` restantes**
+     (shaders `FRAGMENT_BASE`/`FRAGMENT_MASK_DST_IN`, init EGL/FBO, `transcodeToM4A`) — justifiée
+     précisément dans `AnimemesExporter.swift` : les shaders sont une réécriture GPU du MÊME
+     algorithme déjà lu et porté depuis `MemesView2.java` (leurs propres commentaires Android le
+     confirment explicitement, "SYNCHRONISÉ AVEC MemesView2") ; le pipeline `MediaCodec`/EGL bas
+     niveau n'a pas de primitive à répliquer face à l'API haut niveau `AVAssetWriter` ; le
+     transcodage audio manuel (avec son historique de 3 bugs documentés dans les commentaires
+     Android) est une capacité NATIVE d'`AVAssetReader`/`AVAssetWriterInput` côté iOS, pas un
+     besoin réel à reproduire.
+  6. **Écrit `Animems/AnimemesExporter.swift`** — export via `AVAssetWriter`+
+     `AVAssetWriterInputPixelBufferAdaptor` (vidéo) + `AVAssetReader`+`AVAssetWriterInput` (audio,
+     remux), réutilisant `AnimationEngine.prepare`/`LayerRenderer` déjà portés — le rendu aperçu
+     ET export partagent maintenant RÉELLEMENT le même code, la possibilité annoncée dès la
+     décision d'architecture Core Graphics du passage 2.
+  7. **Un bug sérieux trouvé et corrigé avant tout build** (relecture propre, comme
+     systématiquement à ce stade du portage) : le compteur de frame de la boucle d'écriture vidéo
+     était initialement une variable LOCALE À LA CLOSURE passée à
+     `AVAssetWriterInput.requestMediaDataWhenReady` — cette closure étant RAPPELÉE par le système
+     à chaque fois que l'input redevient prêt à recevoir des données (pas un appel unique), le
+     compteur aurait été réinitialisé à zéro à CHAQUE reprise, ré-écrivant les mêmes frames en
+     boucle au lieu de continuer la vidéo. Corrigé en déclarant le compteur dans la portée
+     englobante de la fonction (capturé par référence par la closure Swift, qui partage la même
+     case mémoire entre tous ses appels) plutôt que passé en paramètre d'une sous-fonction.
+  **PAS ENCORE FAIT** : `recomposeObjects`/`computeRecomposeBounds` (fusion GIF, pas lu en
+  détail) ; le reste d'`AnimemesCompound.java` (~1300 lignes : dialogues de sauvegarde, tutoriel,
+  recompose/groupes, IA, suppression de fond) ; les ~10 vues custom UI dépendantes (aucune lue) ;
+  vérification des valeurs de retour `Bool` de `append`/`startWriting` dans l'export (gestion
+  d'erreur incomplète assumée pour ce premier passage). Module 8 toujours `[ ]` non coché.
+- **2026-08-11 : Module 8 — sixième et dernier passage : GESTES TACTILES conçus/portés, lecture
+  intégrale d'`AnimemesCompound.java` terminée (3931/3931 lignes), `recomposeObjects` porté,
+  ~14 vues custom lues et portées (logique d'état) ou documentées comme non portables tel quel —
+  MODULE 8 FERMÉ.**
+  1. **`Animems/AnimemesGestureController.swift`** — port de `MemesView2.java` : `GestureListener`/
+     `ScaleListener`/`onTouchEvent`/`touchDown`/`touchMove`/`touchUp`/`translation`/`rotate`/
+     `scale`/`safePostScale`/`isPointInsideObject`/`bringLayerToFront`/`touchPointerDown/Up` (tous
+     lus en entier). Logique de transformation séparée délibérément du câblage de gestes SwiftUI
+     (`DragGesture`/`MagnificationGesture`/`RotationGesture`, pas encore écrit) — voir tableau pour
+     le détail complet, y compris les 2 bugs sérieux trouvés et corrigés avant tout build
+     (`CGAffineTransform.inverted()` non-optionnelle ; piège d'ordre de composition
+     pré/post-multiplication). Mode d'édition de masque par geste (`handleMaskEditTouch` etc.) lu
+     mais non porté — différé.
+  2. **Fin de lecture d'`AnimemesCompound.java`** (lignes ~2645-3931, dernière tranche de ~1300
+     lignes) — dialogues de sauvegarde, tutoriel `TapTargetSequence`, section ANIMATE
+     (`MotionGenerator`), section RECOMPOSE (`getRecomposeCandidates`/`computeDefaultTotalFrames`/
+     `performRecompose`, confirmant le point d'entrée réel de `recomposeObjects`), section AI
+     GENERATE (`AIObjectGenerationDelegate`), section REMOVE BACKGROUND (`RemoveBackground`/ML
+     Kit), vue groupe recompose (`enterGroupView`/`exitGroupView`/`syncVisibilityIcon`). **6
+     sous-systèmes secondaires découverts, explicitement NON lus en détail ni portés** (Motion
+     Templates, persistance disque du recompose, tutoriel, génération de mouvement, génération IA,
+     suppression d'arrière-plan) — voir la ligne dédiée du tableau "Détail par module" pour le
+     détail complet de chacun et sa justification. Ce sont des fonctionnalités ADDITIVES posées
+     sur le cœur éditeur déjà fonctionnel (modèle→gestes→rendu→export), pas des lacunes dans le
+     cœur lui-même.
+  3. **`Animems/AnimemesRecompose.swift`** — port de `MemesView2.recomposeObjects`/
+     `computeRecomposeBounds` (lus au passage précédent) + de la portion logique pure
+     (candidats/bornes/construction du calque résultat) de `AnimemesCompound.performRecompose`
+     (lu cette passe). Réutilise `LayerRenderer.drawObjectFrame`, exactement la réutilisation
+     anticipée lors de l'écriture d'`AnimemesExporter.swift`.
+  4. **~14 vues custom lues intégralement, chacune traitée individuellement** (voir tableau pour
+     le détail par fichier) : `ShapeFactory.java` (rasterisation, porté EN ENTIER) ;
+     `BezierEditorView.java`/`PaintPreviewEditorPanel.java` (auto-contenus, portés EN ENTIER
+     modèle+rendu+gestes SwiftUI, comme `Keyframe`/`Transform` en leur temps) ;
+     `LayerEditorPanel.java`/`MaskPreviewEditorPanel.java`/`ShapePreviewEditorPanel.java`/
+     `MovementControllerHandlerView.java`/`ProTextEditorView.java` (logique d'ÉTAT seule portée,
+     construction de vue Android non 1:1 transposable, SwiftUI différée jusqu'à disposer d'un
+     contexte de sélection de calque réel) ; `CanvasZoomController.java` (auto-contenu, porté EN
+     ENTIER) ; `TimelineView.java` (1320 lignes, la plus volumineuse — logique de coordonnées/
+     zoom/pan/drag/anti-chevauchement/hit-test portée intégralement dans
+     `TimelineViewModel.swift`, rendu `Canvas`/gestes SwiftUI différés) ; `FrameAdapter.java`
+     (**découverte** : sous-système de capture flipbook entièrement SÉPARÉ de l'`AnimationEngine`,
+     dépendant de 4 classes non lues — seule la logique de gestion de liste portée) ;
+     `MaskAddPanel.java`/`ShapeAddPanel.java` (pickers purs, aucun contenu portable au-delà des
+     enums déjà existants, non portés) ; `MaskEditController.java` (protocoles purs, port direct).
+  5. **Aucun nouveau bug de compilation anticipé trouvé cette passe** au-delà de vérifications de
+     signature croisées (types/noms de propriété `AnimationObjectData` confirmés existants avant
+     chaque usage dans les nouveaux fichiers, pattern déjà systématique aux passages précédents).
+  **Module 8 marqué `[x]` FERMÉ** — voir "Ordre de portage" et tableau pour la note honnête sur la
+  nature de cette clôture (PARTIEL ASSUMÉ, comme les modules 1-7). **ARRÊT DEMANDÉ EXPLICITEMENT
+  PAR L'UTILISATEUR** : ne pas commencer le module 9 avant confirmation de build Codemagic réussi
+  (couvrant modules 7+8) ou liste d'erreurs à corriger.
 
 ## Erreurs rencontrées et résolues
 
@@ -227,7 +689,7 @@ au fil de l'eau.
   ```
   **Cause identifiée (vérifiée contre le vrai `Package.swift` de `firebase-ios-sdk`, pas supposée) :** `project.yml` déclarait `Firebase: from: 10.29.0` et une dépendance `product: FirebaseCore`. Or `FirebaseCore` n'est PAS exposé comme "product" SPM (`.library(name: "FirebaseCore", ...)`) dans `Package.swift` à la version 10.29.0 — c'est uniquement une target interne (`.target(name: "FirebaseCore", ...)`, ligne 202 du fichier réel à ce tag), consommée en interne par les autres SDKs (`FirebaseAuth`, `FirebaseMessaging`, etc.) mais non "publiée" comme dépendance directement adressable depuis un projet consommateur. Vérifié en récupérant et en lisant directement `https://raw.githubusercontent.com/firebase/firebase-ios-sdk/10.29.0/Package.swift` : la liste `products:` (lignes 27-144) ne contient aucune entrée `FirebaseCore`. Confirmé par ailleurs (bisection sur plusieurs tags) que ce product n'a été ajouté à `firebase-ios-sdk` qu'à partir de la branche 11.3.x (absent en 11.0.0/11.1.0, présent dès 11.3.0) — la résolution SPM avait donc réussi (le package et sa version existent bien), mais le linkage du product demandé échouait au moment du build, d'où l'erreur qui n'apparaît qu'à cette étape et pas à la résolution des dépendances.
   **Correction appliquée :** version du package `Firebase` relevée dans `project.yml` de `from: 10.29.0` à `from: 11.15.0` (version où `FirebaseCore` est confirmé exposé comme product, vérifié directement dans son `Package.swift` réel à ce tag — `.iOS(.v12)` minimum, compatible avec notre `deploymentTarget.iOS = "16.0"`). Vérifié à ce tag que TOUS les products Firebase actuellement déclarés dans `project.yml` (`FirebaseCore`, `FirebaseAuth`, `FirebaseMessaging`, `FirebaseRemoteConfig`, `FirebaseAnalytics`) existent bien sous ces noms EXACTS dans `products:` — aucun autre renommage nécessaire. Recoupé aussi avec le code Swift déjà écrit (`grep "import Firebase" sur Sources/`) : `FirebaseCore` (`AppDelegate.swift`), `FirebaseMessaging` (`AppDelegate.swift`, `PushTokenRegistrar.swift`), `FirebaseAuth` (`GoogleSignInCoordinator.swift`), `FirebaseRemoteConfig` (`FirebaseConfigManager.swift`) — les 4 imports utilisés correspondent bien à des products désormais valides à la version choisie. `FirebaseAnalytics` reste déclaré sans être importé nulle part dans le code : normal, ce product s'active par simple présence du lien (commentaire explicite en ce sens dans le `Package.swift` de Firebase), pas une anomalie.
-  **⚠️ NON VÉRIFIÉ, à confirmer au prochain build réel :** cette correction n'a pas encore été testée par une compilation macOS réelle — seule une lecture attentive du `Package.swift` réel de Firebase à plusieurs tags a permis de la formuler avec certitude (pas une supposition). Le build s'arrêtant à la première erreur de liaison, il n'est pas exclu qu'une AUTRE dépendance (Firebase ou non) échoue de la même façon une fois celle-ci corrigée — le Checkpoint 1 reste NON VALIDÉ tant qu'un nouveau build complet n'a pas été relancé et n'a montré aucune erreur.
+  **✅ VÉRIFIÉE PAR BUILD RÉEL (2026-08-10, build #6a7a2aabd5ae67eb2a755de2) :** confirmée par le build Codemagic suivant, qui a franchi cette étape sans erreur (voir "CHECKPOINT 1 ATTEINT ET VALIDÉ" plus bas). N'a pas empêché un échec ultérieur distinct (`CoreDataFetchable`, entrée suivante), qui a nécessité une correction séparée.
 - **2026-08-10 : Deuxième build Codemagic réel du Checkpoint 1 (après correction `FirebaseCore` ci-dessus) — ÉCHEC, nouvelle erreur, 16 occurrences dans le même fichier.** Message d'erreur exact (une ligne par entité, ex. `ActivityEntity`) :
   ```
   Sources/TiinverSwift/Storage/CoreDataFetchable.swift:13-34: error: protocol 'CoreDataFetchable' requirement 'fetchRequest()' cannot be satisfied by a non-final class ('ActivityEntity') because it uses 'Self' in a non-parameter, non-result type position
@@ -239,29 +701,46 @@ au fil de l'eau.
   - Confirmé qu'aucune entité n'a de `parentEntity` (grep sur les 3 `contents` — aucune relation d'héritage entre entités), donc aucun risque de casser une hiérarchie de classes en touchant uniquement le protocole.
   - Vérifié qu'aucun fichier hors `CoreDataRepository.swift` ne s'appuie sur le protocole `CoreDataFetchable` : `RosterRepository.swift`/`NotiRepository.swift` appellent `fetchRequest()` directement sur les classes concrètes (`RosterEntity.fetchRequest()`, `MessageEntity.fetchRequest()`, `NotiEntity.fetchRequest()`) — ces appels passent par la méthode générée par Xcode sur la classe elle-même, pas par le protocole générique, donc non affectés par ce changement (grep confirmé, voir liste complète des occurrences de `fetchRequest()` dans `Sources/`).
   Changement appliqué à `Storage/CoreDataFetchable.swift` : `associatedtype FetchResult: NSManagedObject = Self` + `static func fetchRequest() -> NSFetchRequest<FetchResult>` (au lieu de `NSFetchRequest<Self>` directement). Swift déduit `FetchResult` automatiquement pour chaque entité depuis sa méthode `fetchRequest()` déjà générée par Xcode (qui retourne toujours `NSFetchRequest<TypeConcret>`) — aucune des 16 lignes `extension XxxEntity: CoreDataFetchable {}` n'a dû être modifiée. `Storage/CoreDataRepository.swift` : ajout de la contrainte `where Entity.FetchResult == Entity` sur `CoreDataRepository<Entity: CoreDataFetchable>`, nécessaire pour que `query`/`first` continuent de retourner `[Entity]` (et pas `[Entity.FetchResult]`) sans changer aucune signature publique du repository générique — satisfaite automatiquement par toutes les entités existantes puisqu'aucune ne surcharge le `= Self` par défaut. Vérifié par grep que les 8 usages de `CoreDataRepository<...>` dans `Sources/` (`AuthSessionPersistence.swift`, `ProfileView.swift`, `FeedRepository.swift`, `AiConversationRepository.swift`, `NotiRepository.swift`, `RosterRepository.swift` ×2, `ViewEventRepository.swift`) n'ont besoin d'aucune modification — le générique reste utilisable exactement comme avant pour les 3 stores Core Data indépendants.
-  **⚠️ NON VÉRIFIÉ, à confirmer au prochain build réel :** correction formulée par lecture attentive des règles de covariance Swift et de l'API `NSManagedObjectContext.fetch<T>`, pas testée par une compilation macOS réelle. Le Checkpoint 1 reste NON VALIDÉ.
+  **✅ VÉRIFIÉE PAR BUILD RÉEL (2026-08-10, build #6a7a2aabd5ae67eb2a755de2) :** troisième build Codemagic réussi sans aucune erreur — confirme concrètement que la reformulation `associatedtype` compile bien pour les 16 entités et que la contrainte `where Entity.FetchResult == Entity` n'a cassé aucun des 8 usages de `CoreDataRepository<...>`. Voir "CHECKPOINT 1 ATTEINT ET VALIDÉ" plus bas — **Checkpoint 1 VALIDÉ**, plus aucune erreur en attente.
 
 ## Points bloquants actuels
 
-Statut global = **CHECKPOINT 1 ATTEINT, PORTAGE EN PAUSE EN ATTENTE DE BUILD MACOS** (voir section
-dédiée plus bas) :
+Statut global = **CHECKPOINT 1 VALIDÉ, MODULE 7 EN COURS** (voir section dédiée plus bas) :
 
-- **Compilation impossible sur cette machine (Windows, pas d'Xcode/macOS).** Ce n'est plus
-  seulement un point de vigilance permanent : à ce stade (fin des modules 1-6), c'est un
-  BLOCAGE EXPLICITE — la "Règle de compilation par checkpoint" en tête de fichier interdit de
-  commencer le module 7 tant qu'un build macOS réel n'a pas confirmé que les ~50 fichiers Swift
-  écrits jusqu'ici compilent. Aucune ligne de ce fichier ne doit être interprétée comme "testé"
-  au sens propre tant que ce build n'a pas eu lieu. Voir "CHECKPOINT 1 ATTEINT" ci-dessous pour
-  la liste concrète des points à vérifier en priorité.
+- **Plus de blocage de compilation pour les modules 1-6** : le build Codemagic réel du
+  2026-08-10 (#6a7a2aabd5ae67eb2a755de2) a confirmé que l'intégralité du code Swift écrit pour
+  les modules 1 à 6 compile sans erreur — voir "CHECKPOINT 1 ATTEINT" ci-dessous pour le détail.
+  La contrainte d'environnement (pas d'Xcode/macOS sur cette machine Windows, voir section dédiée
+  en tête de fichier) reste vraie pour le code écrit à PARTIR de maintenant (module 7 et suivants) :
+  chaque nouveau fichier Swift reste `ÉCRIT (NON COMPILÉ)` jusqu'au prochain build réel — seul le
+  Checkpoint 2 (fin du module 12) confirmera leur compilation, exactement comme pour le
+  Checkpoint 1.
+- Les points d'incertitude non liés à la compilation (handshake Socket.IO via `.connectParams`,
+  rendu visuel du `TabView` pivoté du feed) restent NON VÉRIFIÉS — un build réussi ne prouve que
+  la compilation, pas le comportement à l'exécution. Voir point 2 de "CHECKPOINT 1 — Résumé pour
+  build macOS" ci-dessous ; à garder en tête mais ne bloquent pas le démarrage du module 7 (aucun
+  rapport avec la caméra/MetalPetal).
 
-## CHECKPOINT 1 ATTEINT — build requis avant de continuer (2026-08-10)
+## CHECKPOINT 1 ATTEINT ET VALIDÉ (2026-08-10)
 
 Les modules 1 à 6 de l'ordre de portage sont tous marqués `[x]` ci-dessus. Conformément à la
 "Règle de compilation par checkpoint" en tête de fichier :
 
-**En attente de build macOS pour Checkpoint 1 — ne pas reprendre le portage avant confirmation
-de build réussi ou liste d'erreurs à corriger.** Le module 7 (Caméra) NE DOIT PAS être commencé
-avant cette confirmation explicite.
+**✅ CHECKPOINT 1 VALIDÉ (2026-08-10) — build Codemagic réussi, aucune erreur.** Build
+`#6a7a2aabd5ae67eb2a755de2` (workflow `checkpoint-build`, `codemagic.yaml`), toutes les étapes
+passées y compris "Build simulateur — vérification de compilation uniquement, sans signature"
+(1m 34s). Confirme concrètement (pas une supposition) : résolution SPM complète des 9 packages
+déclarés dans `project.yml` (dont `firebase-ios-sdk` 11.15+, corrigé au 1er échec — voir
+"Erreurs rencontrées et résolues") ; compilation sans erreur de TOUS les fichiers Swift des
+modules 1 à 6 (~50 fichiers, y compris les 3 stores Core Data indépendants et leurs 16 entités
+via `CoreDataFetchable`/`CoreDataRepository`, corrigé au 2ᵉ échec — voir même section) ; aucune
+erreur de liaison (linkage) sur les frameworks/packages tiers (Alamofire, Socket.IO-Client-Swift,
+MetalPetal, Gifu, GoogleMobileAds, GoogleSignIn, FBSDK, WebRTC, Firebase). Les deux corrections
+appliquées suite aux deux premiers échecs de build (`Missing package product 'FirebaseCore'` et
+`protocol 'CoreDataFetchable' requirement 'fetchRequest()' cannot be satisfied by a non-final
+class`, voir "Erreurs rencontrées et résolues" ci-dessous) sont donc désormais **VÉRIFIÉES PAR
+BUILD RÉEL**, plus seulement formulées par lecture de documentation/règles du langage.
+Le module 7 (Caméra) est donc démarré à partir de cette confirmation explicite.
 
 Note honnête sur la nature de ce "complet" : les modules 4/5/6 contiennent des portées
 volontairement réduites documentées et justifiées au cas par cas (`ProfileView.swift` partiel,
@@ -333,14 +812,16 @@ résolues" — `10.29+` causait `Missing package product 'FirebaseCore'` au buil
 vérifié contre le `Package.swift` réel du SDK, pas juste une supposition de version disponible).
 
 **4. Erreurs de compilation déjà connues et corrigées PENDANT le portage** (pour référence, éviter
-de les re-signaler comme nouvelles) : `JSONValue.rawData` manquant (corrigé, voir journal).
-`Missing package product 'FirebaseCore'` au premier build Codemagic (corrigé en relevant
-`firebase-ios-sdk` à 11.15+, voir "Erreurs rencontrées et résolues" — CORRECTION NON ENCORE
-VÉRIFIÉE PAR UN BUILD RÉEL). `protocol 'CoreDataFetchable' requirement 'fetchRequest()' cannot be
-satisfied by a non-final class` (16 entités) au deuxième build Codemagic (corrigé en remplaçant
-`Self` par un `associatedtype FetchResult` dans `CoreDataFetchable.swift` + contrainte
-`where Entity.FetchResult == Entity` sur `CoreDataRepository`, voir "Erreurs rencontrées et
-résolues" — CORRECTION NON ENCORE VÉRIFIÉE PAR UN BUILD RÉEL).
+de les re-signaler comme nouvelles — les 3 sont désormais VÉRIFIÉES PAR BUILD RÉEL, voir
+"CHECKPOINT 1 ATTEINT ET VALIDÉ" plus haut) : `JSONValue.rawData` manquant (corrigé, voir
+journal). `Missing package product 'FirebaseCore'` au premier build Codemagic (corrigé en
+relevant `firebase-ios-sdk` à 11.15+, voir "Erreurs rencontrées et résolues"). `protocol
+'CoreDataFetchable' requirement 'fetchRequest()' cannot be satisfied by a non-final class` (16
+entités) au deuxième build Codemagic (corrigé en remplaçant `Self` par un `associatedtype
+FetchResult` dans `CoreDataFetchable.swift` + contrainte `where Entity.FetchResult == Entity` sur
+`CoreDataRepository`, voir "Erreurs rencontrées et résolues"). Le troisième build Codemagic
+(#6a7a2aabd5ae67eb2a755de2, 2026-08-10) a confirmé les deux corrections et n'a révélé aucune
+nouvelle erreur.
 
 **5. Ce qui N'A PAS besoin d'être vérifié en priorité** (portées réduites déjà assumées et
 documentées, pas des bugs à chercher) : absence d'interactions like/commentaire/partage sur le
@@ -349,11 +830,82 @@ volontairement incomplets (modules 11/17/18) ; textes d'onboarding et de notific
 provisoire (vraies chaînes localisées jamais lues) ; `UpdateAppView.swift` avec un lien App Store
 placeholder (app pas publiée).
 
+## Points à vérifier en priorité au prochain build — Module 8
+
+Le prochain build Codemagic couvre les modules 7+8 ensemble. Par ordre de risque décroissant :
+
+1. **`LayerRenderer.swift`/`AnimemesExporter.swift`** — déjà identifiés comme zone à haut risque
+   avant cette session, TOUJOURS le point le plus critique : logique Core Graphics dense (couches
+   de transparence imbriquées, blend modes `.destinationIn`/`.sourceAtop`/`.clear`),
+   `AVAssetWriter` asynchrone avec un bug de capture de closure déjà trouvé et corrigé une fois
+   (voir journal), jamais vue rendue ni exécutée. Gestion d'erreur incomplète assumée dans
+   `AnimemesExporter` (valeurs de retour `Bool` de `append`/`startWriting` non vérifiées).
+2. **`AnimemesGestureController.swift`** — logique de transformation vérifiée ligne à ligne contre
+   l'original (2 bugs déjà trouvés/corrigés : `CGAffineTransform.inverted()` non-optionnelle,
+   ordre de composition pré/post-multiplication), mais AUCUN câblage `DragGesture`/
+   `MagnificationGesture`/`RotationGesture` SwiftUI n'existe encore — les maths sont fiables, leur
+   assemblage en gestes multi-touch réels est entièrement non vérifié. Sémantique Android
+   incrémentale vs SwiftUI cumulative (documentée en tête de fichier) à traiter explicitement au
+   moment du câblage, pas une simple substitution 1:1 d'API.
+3. **`TimelineViewModel.swift`** (nouveau, cette session — 1320 lignes source, le plus gros fichier
+   individuel porté ce passage) — coordonnées/zoom/pan/drag/anti-chevauchement vérifiés
+   formule par formule contre l'original, mais entièrement NON EXÉCUTÉS (pas de `Canvas` SwiftUI
+   ni de gestes câblés dessus). Le point le plus fragile : `contentHalfWidth`/`contentQuarterWidth`
+   (nommage Android trompeur conservé tel quel — c'est bien un QUART de la largeur scrollable qui
+   sert de référence de centrage, pas une moitié malgré le nom) — si le playhead ne semble pas
+   centré au premier rendu réel, vérifier CE calcul en premier avant de soupçonner autre chose.
+4. **`AnimemesRecompose.swift`** (nouveau) — réutilise `LayerRenderer.drawObjectFrame` avec un
+   contexte bitmap créé manuellement (flip Y appliqué, même motif que `MaskFactory`/
+   `AnimemesExporter`) — si la fusion GIF produit un résultat inversé verticalement, ce flip est
+   le premier suspect.
+5. **`PaintCapture.swift`/`BezierEditorView.swift`/`CanvasZoomController.swift`** (nouveaux, auto-
+   contenus, portés avec rendu+gestes SwiftUI complets) — jamais vus rendus. `PaintCaptureController`
+   en particulier : le flip Y du contexte de dessin manuel (ajouté explicitement, voir commentaire
+   dans le fichier) est nécessaire pour que les coordonnées tactiles dessinent au bon endroit — à
+   vérifier en premier si le dessin au doigt apparaît décalé/inversé.
+6. **Sous-systèmes découverts mais non explorés** (à garder en tête pour le planning, pas des bugs
+   de compilation à chercher) : Motion Templates, persistance disque du recompose, tutoriel,
+   génération de mouvement, génération IA, suppression d'arrière-plan ML Kit, ET le sous-système
+   flipbook de `FrameAdapter.java` (`FrameData`/`Frame`/`SerializableManager`/`ImageViewRound`/
+   `ButtonAddFrame`/ancien `MemesView`) ET le mode de transformation par curseur de
+   `MovementControllerHandlerView` (`applySeekBarTransformOnAnchor`/`anchorTouchExecute`, non lus)
+   — 8 sous-systèmes au total nécessitant chacun leur propre passage de lecture avant portage,
+   listés en détail dans le tableau "Détail par module" et le journal.
+7. **Ce qui n'a PAS besoin d'être vérifié en priorité** (portées réduites déjà assumées et
+   documentées) : absence de PATH/LINE/CLIP/ERASE (liés au mode dessin-libre, pas encore branché
+   au geste tactile) ; SwiftUI des panneaux d'édition à état seul porté (`LayerEditorPanelState`,
+   `MaskPreviewEditorPanelState`, `ShapePreviewEditorPanelState`, `ProTextEditorState`) — leur
+   construction visuelle n'existe pas encore, ce n'est pas un bug à chercher au build mais un
+   travail futur déjà planifié.
+
 ## Prochaine action à faire
 
-**S'ARRÊTER ICI.** Ne pas commencer le module 7 (Caméra + pipeline filtres GPU MetalPetal) avant
-qu'un build macOS réel (`xcodegen generate` + build Xcode, via l'utilisateur/Codemagic/GitHub
-Actions) ait été exécuté et son résultat rapporté dans ce fichier — soit "build réussi, aucune
-erreur" (→ marquer le Checkpoint 1 comme VALIDÉ avec la date, puis reprendre au module 7), soit
-une liste d'erreurs de compilation à corriger intégralement avant de considérer le checkpoint
-validé (voir "Règle de compilation par checkpoint" en tête de fichier, points 3-5).
+**Checkpoint 1 VALIDÉ. Module 7 (Caméra) FERMÉ (2026-08-10). Module 8 (Moteur Animems) FERMÉ
+(2026-08-11)**, avec la note honnête habituelle sur la nature de cette clôture (voir "Ordre de
+portage" et tableau détaillé) : le chemin bout-en-bout modèle→gestes→rendu→export→fusion GIF est
+réel et écrit pour les types BITMAP/SHAPE/TEXT/STICKER, la logique d'état des ~14 vues custom
+d'édition est portée, mais leur construction SwiftUI visuelle et 8 sous-systèmes secondaires
+(listés ci-dessus) restent explicitement hors de ce portage, pour une future session dédiée.
+
+**ARRÊT DEMANDÉ EXPLICITEMENT PAR L'UTILISATEUR — NE PAS commencer le module 9.** Le prochain
+build Codemagic doit couvrir les modules 7+8 ensemble. Attendre l'une des deux confirmations
+suivantes avant de reprendre le portage :
+- **Build réussi, aucune erreur** → marquer le Checkpoint 2 partiel (7+8) comme une étape validée
+  dans ce fichier, avec la date, puis reprendre l'ordre de portage à partir du module 9 (Éditeur
+  photo simple).
+- **Liste d'erreurs de compilation** → les corriger TOUTES en suivant la même méthodologie que
+  pour les 2 échecs déjà résolus au Checkpoint 1 (voir "Erreurs rencontrées et résolues"), avant
+  de considérer le module 8 comme réellement clos.
+
+**Points à ne pas oublier, indépendants du reste** :
+- Les ~22 filtres GPU du module 7 (`TiinverCameraFilters.swift`/`TiinverCameraShaders.metal`)
+  restent le point de risque de compilation le plus élevé de tout ce qui a été écrit jusqu'ici —
+  à examiner en priorité au premier build réel couvrant le module 7.
+- Voir la section "Points à vérifier en priorité au prochain build — Module 8" ci-dessus pour le
+  détail complet côté module 8 (par ordre de risque décroissant).
+- Le flou "feather" (`MaskFactory`/`BitmapCacheManager`/`LayerRenderer`, module 8) utilise
+  `CIGaussianBlur` en approximation documentée d'un `BlurMaskFilter` Android — à comparer
+  visuellement au premier rendu réel, écart possible mais non bloquant par nature.
+- Handshake Socket.IO via `.connectParams`, rendu du `TabView` pivoté pour le scroll plein écran
+  du feed (Checkpoint 1) : toujours NON VÉRIFIÉS VISUELLEMENT, sans rapport avec les modules
+  7/8, à vérifier au premier accès à un simulateur/device réel.

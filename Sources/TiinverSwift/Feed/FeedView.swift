@@ -1,5 +1,7 @@
-import SwiftUI
+import AVFoundation
 import AVKit
+import SwiftUI
+import UIKit
 
 /// Port partiel de `Activity/ui/MainFragment.java` (RecyclerView plein écran + `ExoPlayerManager`)
 /// — défilement vertical, une vidéo à la fois, lecteur unique réutilisé entre les cellules.
@@ -11,9 +13,22 @@ import AVKit
 /// MIGRATION_PROGRESS.md). Si le rendu réel s'avère insatisfaisant, remplacer par un
 /// `ScrollView` + `.scrollTargetBehavior(.paging)` (iOS 17+, plus simple mais relèverait la cible
 /// de déploiement — décision à prendre avec l'utilisateur, pas unilatéralement ici).
+///
+/// **Point d'entrée réel du module 7 (Caméra), câblé ici** : `R.id.fab` de `MainFragment`
+/// (`fab.setOnClickListener` → `requestPermission()` → vérifie `Manifest.permission.CAMERA` →
+/// `startActivity(CameraActivity.class)`) — retrouvé par grep de `CameraActivity.class` dans tout
+/// le dépôt Android (7 lanceurs distincts au total : `MainFragment` (le vrai FAB principal),
+/// `FeedFragment`, `TiinverGeminiAIChat`, `ShareActivity`, `ReferralActivity`,
+/// `MonetizationActivity` — seul le FAB de `MainFragment` est câblé ici, les autres points
+/// d'entrée secondaires appartiennent à des modules pas encore portés). `CameraActivity` est une
+/// **Activity Android à part entière** (pas une position `HomeActivity.onArticleSelected` comme
+/// supposé dans une note précédente de ce fichier avant vérification) — `.fullScreenCover` est
+/// l'équivalent iOS le plus proche de `startActivity` (nouvel écran plein écran, pas une feuille
+/// modale partielle).
 struct FeedView: View {
     @StateObject private var viewModel = FeedViewModel()
     @State private var currentIndex = 0
+    @State private var showCamera = false
 
     var body: some View {
         GeometryReader { geo in
@@ -39,6 +54,85 @@ struct FeedView: View {
         .task { await viewModel.loadInitial() }
         .onChange(of: currentIndex) { newIndex in
             preloadAround(newIndex)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            // Positionnement bottom-trailing standard (le layout XML exact de
+            // `fragment_main.xml` n'a pas été fourni/lu) — comportement du bouton, lui, vérifié
+            // contre le code réel (`requestPermission()`).
+            cameraFAB
+                .padding(.trailing, 20)
+                .padding(.bottom, 90)
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraView(
+                onClose: { showCamera = false },
+                onPhotoCaptured: { _ in
+                    // Port de `onArticleSelected(2, args)` côté `CameraActivity` → `MediaEditor`
+                    // (module 9, "Éditeur photo simple", PAS encore porté). Referme la caméra
+                    // pour l'instant, sans enchaîner sur un éditeur qui n'existe pas encore —
+                    // TODO explicite à reprendre au module 9, pas une case oubliée.
+                    showCamera = false
+                },
+                onVideoRecorded: { _, _ in
+                    // Port de `onArticleSelected(7, args)` côté `CameraActivity` → `MediasDisplay`
+                    // (fragment pas encore identifié dans l'ordre de portage à 18 modules — à
+                    // rattacher au moment venu, comme `Roster.java`/`CreatorFragment.java` au
+                    // module 6). Referme la caméra sans enchaîner, TODO explicite.
+                    showCamera = false
+                },
+                onImagePickedFromGallery: { _ in
+                    // Port de la branche image de `pickMedia` → `onArticleSelected(2, bundle)` →
+                    // `MediaEditor` (module 9, pas encore porté). TODO explicite.
+                    showCamera = false
+                },
+                onVideoPickedFromGallery: { _ in
+                    // Port de la branche vidéo de `pickMedia` → `onArticleSelected(10, bundle)` →
+                    // `MediaTrim` (module non encore identifié dans l'ordre de portage). TODO
+                    // explicite.
+                    showCamera = false
+                },
+                onOpenAnimems: {
+                    // Port de `onArticleSelected(5, ...)` côté `CameraActivity` → `MemesFragment`
+                    // (module 8, pas encore commencé à ce stade — voir `CameraView.swift`).
+                }
+            )
+        }
+    }
+
+    /// Port de `MainFragment.requestPermission()` — vérifie `Manifest.permission.CAMERA` AVANT de
+    /// lancer l'écran caméra (pas seulement au moment d'utiliser `AVCaptureSession`, pour éviter
+    /// d'afficher un écran caméra vide pendant que la boîte de dialogue système apparaît). Sur
+    /// refus, redirige vers les réglages système comme le fait `onPermissionDenied()` côté
+    /// Android (`ACTION_APPLICATION_DETAILS_SETTINGS`).
+    private var cameraFAB: some View {
+        Button {
+            requestCameraPermissionThenPresent()
+        } label: {
+            Image(systemName: "camera.fill")
+                .font(.title2)
+                .foregroundStyle(.white)
+                .frame(width: 56, height: 56)
+                .background(Circle().fill(Color.accentColor))
+                .shadow(radius: 4)
+        }
+    }
+
+    private func requestCameraPermissionThenPresent() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            showCamera = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        showCamera = true
+                    }
+                }
+            }
+        default:
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
         }
     }
 

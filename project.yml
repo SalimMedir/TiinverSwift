@@ -21,8 +21,18 @@ packages:
     url: https://github.com/kaishin/Gifu.git
     from: 3.4.1
   GoogleMobileAds:
-    url: https://github.com/googleads/swift-package-manager-google-mobile-ads.git
-    from: 11.0.0
+    # Checkpoint 3 : `from: 11.0.0` provoquait 11 erreurs "cannot find type in scope"
+    # (BannerView/RewardedAd/RewardedInterstitialAd/NativeAd/AdLoader/NativeAdLoaderDelegate).
+    # Cause CONFIRMÉE (pas supposée) par lecture des notes de version Google ET du
+    # `project.pbxproj` réel de l'exemple officiel `googleads-mobile-ios-examples` (SwiftUIDemo,
+    # `XCRemoteSwiftPackageReference` → `minimumVersion = 13.0.0`) : la nomenclature Swift SANS
+    # préfixe `GAD*` n'existe qu'à partir du SDK 12.0.0 ("Updated Swift API names to follow the
+    # naming conventions from Apple's Swift API Design Guidelines", notes de version Google) —
+    # `from: 11.0.0` (sémantique SPM `upToNextMajor`) restait borné à la branche 11.x, qui n'a
+    # jamais ces types. Même famille de bug que FirebaseCore au Checkpoint 1 : la résolution de
+    # dépendances réussit silencieusement (11.x existe) mais la version résolue n'a pas l'API
+    # attendue. Aligné sur la contrainte de l'exemple officiel plutôt que deviné.
+    from: 13.0.0
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS.git
     from: 7.1.0

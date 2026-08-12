@@ -1397,6 +1397,21 @@ sans cette revue**, indépendamment du fait que le code soit prêt.
   **Correction appliquée** (identique aux 2 sites) : `let featherPx = CGFloat(feather) * CGFloat(feather) * maxFeatherPx`.
   **Relecture complète et ciblée de tout `LayerRenderer.swift` (438 lignes) pour des erreurs sœurs non encore révélées par ce build** (le compilateur peut s'arrêter avant d'atteindre tous les fichiers) : chaque usage de `opacity`/`cornerRadius`/`feather` (les 3 champs `Float` du tuple `resolveVisualProperties`) vérifié individuellement — TOUS déjà correctement enveloppés en `CGFloat(...)` avant toute arithmétique avec une valeur `CGFloat` (`CGFloat(cornerRadius)` lignes 106/111/189/194, `CGFloat(opacity)` ligne 384) ; aucune autre occurrence du motif `Float × CGFloat` trouvée dans ce fichier. `AnimationEngine.swift`/`Transform.swift`/`Keyframe.swift` non concernés par cette erreur (aucune arithmétique CG directe dans ces fichiers modèle).
   **PAS ENCORE VÉRIFIÉE PAR BUILD RÉEL** — nécessite un nouveau build pour confirmer que c'était la seule erreur restante sur l'ensemble modules 1-8.
+- **2026-08-13 : Premier build Codemagic du Checkpoint 3 (couverture complète, modules 1-18) — ÉCHEC, 16 erreurs concentrées sur 2 fichiers.** Messages d'erreur exacts (11 occurrences du même type d'erreur, types distincts) :
+  ```
+  Sources/TiinverSwift/Advertising/AdMobManager.swift: error: cannot find type 'BannerView' in scope
+  Sources/TiinverSwift/Advertising/AdMobManager.swift: error: cannot find type 'RewardedAd' in scope
+  Sources/TiinverSwift/Advertising/AdMobManager.swift: error: cannot find type 'RewardedInterstitialAd' in scope
+  Sources/TiinverSwift/Advertising/AdMobManager.swift: error: cannot find type 'NativeAd' in scope
+  Sources/TiinverSwift/Advertising/AdMobManager.swift: error: cannot find type 'AdLoader' in scope
+  Sources/TiinverSwift/Advertising/AdMobManager.swift: error: cannot find type 'NativeAdLoaderDelegate' in scope
+  Sources/TiinverSwift/Shareboard/ShareboardView.swift:187: error: 'Tool' is inaccessible due to 'private' protection level
+  ```
+  **Erreur 1 — AdMob, cause identifiée (vérifiée, pas supposée) :** `import GoogleMobileAds` et la déclaration SPM dans `project.yml` (`package: GoogleMobileAds` / `product: GoogleMobileAds`) étaient tous les deux corrects — le nom du produit correspond exactement au `Package.swift` réel du SDK (vérifié par récupération directe de `https://raw.githubusercontent.com/googleads/swift-package-manager-google-mobile-ads/main/Package.swift`, qui confirme `.library(name: "GoogleMobileAds", ...)`). Le vrai problème était la VERSION résolue : `project.yml` déclarait `from: 11.0.0`. Or la nomenclature Swift SANS préfixe `GAD*` (`BannerView`/`RewardedAd`/`RewardedInterstitialAd`/`NativeAd`/`AdLoader`/`NativeAdLoaderDelegate`, utilisée dans tout `AdMobManager.swift` depuis le module 16) n'existe qu'à partir du SDK **12.0.0** — confirmé par les notes de version officielles Google ("Updated Swift API names to follow the naming conventions from Apple's Swift API Design Guidelines"). Avec la sémantique SPM `upToNextMajor` de `from: 11.0.0` (équivalent à `>=11.0.0 <12.0.0`), la résolution de dépendances RÉUSSIT (la branche 11.x existe bien, d'où l'absence d'erreur à l'étape de résolution) mais reste bornée à une version qui n'a jamais eu ces types sous ces noms — même famille de bug que `FirebaseCore` au Checkpoint 1 (produit/version qui se résout "avec succès" mais dont le contenu ne correspond pas à l'API attendue). Confirmé par une seconde source indépendante : le `project.pbxproj` réel de l'exemple officiel Google `googleads-mobile-ios-examples` (`Swift/advanced/SwiftUIDemo`), qui déclare explicitement `XCRemoteSwiftPackageReference` avec `requirement.kind = upToNextMajorVersion` et `minimumVersion = 13.0.0` pour ce même package — cet exemple est la référence contre laquelle l'API du module 16 avait été vérifiée à l'écriture, confirmant que la nomenclature utilisée correspond à la branche 13.x, pas 11.x.
+  **Correction appliquée :** `project.yml`, package `GoogleMobileAds` : `from: 11.0.0` → `from: 13.0.0` (aligné sur la contrainte réelle de l'exemple officiel, pas deviné). Commentaire de tête `AdMobManager.swift` corrigé en conséquence (il affirmait à tort que `from: 11.0.0` était la version confirmant la nomenclature actuelle — c'était l'hypothèse non vérifiée à l'origine du bug).
+  **Erreur 2 — Shareboard, cause identifiée :** `ShareboardView.swift` déclarait `private enum Tool` (type imbriqué dans `struct ShareboardView`, ligne 20), puis une `private extension ShareboardView.Tool { var androidAction: String { ... } }` à portée de fichier (ligne 187, EN DEHORS du corps lexical de `ShareboardView`). Un type imbriqué marqué `private` n'est visible que dans le corps lexical de son type englobant (et les extensions DU TYPE ENGLOBANT dans le même fichier) — pas depuis une extension du type imbriqué lui-même déclarée au niveau fichier, même dans le même fichier : `ShareboardView.Tool` n'y est simplement pas un nom accessible. Vérifié par grep (`private (enum|struct|class|typealias)` sur tout `Shareboard/`) qu'aucun autre type du module n'a le même problème — le seul autre type `private` du module (`GraphicMessageCodec.CompactEditorData`) n'est référencé que dans son propre fichier, sans extension externe.
+  **Correction appliquée :** `private enum Tool` → `enum Tool` (accès `internal`, le niveau par défaut) — aucune raison d'encapsulation stricte identifiée qui justifierait `private` ici (le type n'est utilisé qu'à l'intérieur du module Shareboard de toute façon).
+  **PAS ENCORE VÉRIFIÉE PAR BUILD RÉEL** — nécessite un nouveau build Codemagic pour confirmer ces deux corrections. **Checkpoint 3 NON VALIDÉ.**
 
 ## Points bloquants actuels
 
@@ -1865,6 +1880,19 @@ documentées à l'endroit précis concerné, mais doivent être lues avant de co
 4. Backend à transmettre à l'équipe serveur PHP/Slim, DEUX sections indépendantes déjà rédigées :
    "Backend à implémenter — PushKit/VoIP" (module 12) et "Backend à implémenter — Vérification
    StoreKit 2" (module 15).
+
+**PREMIER BUILD CODEMAGIC RÉEL DU CHECKPOINT 3 (2026-08-13) — ÉCHEC, 2 CORRECTIONS APPLIQUÉES,
+CHECKPOINT 3 TOUJOURS NON VALIDÉ.** 16 erreurs, concentrées sur 2 fichiers seulement (voir détail
+complet dans "Erreurs rencontrées et résolues") : (1) 11 erreurs "cannot find type in scope" dans
+`Advertising/AdMobManager.swift` (`BannerView`/`RewardedAd`/`RewardedInterstitialAd`/`NativeAd`/
+`AdLoader`/`NativeAdLoaderDelegate`) — cause réelle : `project.yml` épinglait `GoogleMobileAds` à
+`from: 11.0.0`, alors que la nomenclature Swift sans préfixe `GAD*` utilisée dans ce fichier n'existe
+qu'à partir du SDK 12.0.0 (confirmé par les notes de version Google ET le `project.pbxproj` réel de
+l'exemple officiel, qui épingle `13.0.0`) — corrigé à `from: 13.0.0`. (2) 1 erreur `'Tool' is
+inaccessible due to 'private' protection level` dans `Shareboard/ShareboardView.swift:187` — un
+`enum` imbriqué `private` référencé depuis une extension à portée fichier ; corrigé en `internal`
+(retrait de `private`). **Un nouveau build Codemagic est nécessaire pour confirmer ces deux
+corrections — ne pas considérer le Checkpoint 3 comme atteint tant qu'il n'a pas eu lieu.**
 
 **Méthodologie à conserver pour la suite** (inchangée depuis le début du projet) : lire le code
 source Android réel avant de porter (jamais deviner depuis un nom de classe/méthode) ; vérifier

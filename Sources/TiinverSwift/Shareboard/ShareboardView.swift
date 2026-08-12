@@ -17,7 +17,11 @@ struct ShareboardView: View {
     @State private var mediaPickerItem: PhotosPickerItem?
     @State private var wallpaperPickerItem: PhotosPickerItem?
 
-    private enum Tool: Equatable { case paint, text, palette }
+    // `internal` (pas `private`) : requis par `extension ShareboardView.Tool` en bas de fichier
+    // (Checkpoint 3 — "'Tool' is inaccessible due to 'private' protection level" ligne 187) — un
+    // type imbriqué `private` n'est visible que dans le corps lexical de son type englobant, pas
+    // depuis une extension top-level du type imbriqué lui-même, même dans le même fichier.
+    enum Tool: Equatable { case paint, text, palette }
 
     init(profile: ChatProfile, receiver: String, chatType: String, status: Int) {
         _viewModel = StateObject(wrappedValue: PBSViewModel(profile: profile, receiver: receiver, chatType: chatType, status: status))

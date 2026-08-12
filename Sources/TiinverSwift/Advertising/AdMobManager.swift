@@ -7,10 +7,14 @@ import SwiftUI
 /// StoreKit 2 aux modules 12/15 (Apple/Google ne rendent pas leur documentation JS exploitable via
 /// récupération directe) : noms de types SANS préfixe `GAD*` (`BannerView`/`RewardedAd`/
 /// `RewardedInterstitialAd`/`NativeAd`/`AdLoader`/`Request`/`FullScreenContentDelegate`), API
-/// moderne `async throws` pour le chargement des formats plein écran — confirmée être la
-/// nomenclature ACTUELLE du SDK (`from: 11.0.0` dans `project.yml`, déjà déclaré par un module
-/// antérieur), pas les anciens noms `GADRewardedAd` etc. (toujours valides comme alias
-/// Objective-C, mais pas ce que l'exemple officiel Swift actuel utilise).
+/// moderne `async throws` pour le chargement des formats plein écran — nomenclature introduite en
+/// SDK 12.0.0 ("Updated Swift API names to follow the naming conventions from Apple's Swift API
+/// Design Guidelines", notes de version Google), PAS disponible en 11.x. **Bug Checkpoint 3 trouvé
+/// et corrigé ici** : `project.yml` déclarait encore `from: 11.0.0` (résolution SPM bornée à la
+/// branche 11.x par la sémantique `upToNextMajor`, jamais ces types) — corrigé à `from: 13.0.0`,
+/// aligné sur le `minimumVersion = 13.0.0` réel du `project.pbxproj` de l'exemple officiel
+/// `SwiftUIDemo`. Les anciens noms `GADRewardedAd` etc. restent valides comme alias
+/// Objective-C, mais ne sont plus ce que l'exemple officiel Swift actuel utilise.
 ///
 /// **Interstitiel classique (`InterstitialAd`, PAS `RewardedInterstitialAd`) CONFIRMÉ NON UTILISÉ**
 /// — l'incertitude signalée par TIINVER_IOS_PORT_ANALYSIS.md §5.2 ("à vérifier en lecture directe

@@ -46,12 +46,17 @@ final class ChatViewModel: ObservableObject {
 
     init(
         target: RosterModel, messages: MessageRepository = MessageRepository(),
-        roster: RosterRepository = RosterRepository(), chatRepository: ChatRepository = .shared
+        roster: RosterRepository = RosterRepository(), chatRepository: ChatRepository? = nil
     ) {
         self.target = target
         self.messages = messages
         self.roster = roster
-        self.chatRepository = chatRepository
+        // `chatRepository ?? .shared` évalué ICI, dans le corps de l'init (isolé `@MainActor` via
+        // la classe englobante), plutôt qu'en valeur par défaut de paramètre (`= .shared`,
+        // corrigé — Checkpoint 3, avertissement Swift 6 strict concurrency) : une expression de
+        // valeur par défaut n'hérite pas garantiment de l'isolation d'acteur de l'init dans ce
+        // mode de vérification, contrairement au corps de la fonction.
+        self.chatRepository = chatRepository ?? .shared
         subscribeToRealtimeEvents()
     }
 

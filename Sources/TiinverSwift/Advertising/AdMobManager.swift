@@ -156,6 +156,15 @@ extension NativeAdLoader: NativeAdLoaderDelegate {
     nonisolated func adLoader(_ adLoader: AdLoader, didReceive nativeAd: NativeAd) {
         Task { @MainActor in self.nativeAd = nativeAd }
     }
+
+    /// Port du cas d'échec de `NativeAdsManager.loadOneAd`/`AdListener.onAdFailedToLoad` — SEUL le
+    /// journal d'erreur (`Log.e(TAG, "Ad failed: ...")`) est repris ici, fidèlement à la portée déjà
+    /// réduite documentée en tête de fichier (chargement d'UNE annonce à la fois, pas le pool de 8
+    /// avec retry/cooldown NO_FILL d'Android — cette logique de pool n'a pas d'équivalent dans ce
+    /// portage partiel, donc rien de plus à porter ici que le log).
+    nonisolated func adLoader(_ adLoader: AdLoader, didFailToReceiveAdWithError error: any Error) {
+        print("❌ NativeAdLoader (AdMob) échec de chargement :", error)
+    }
 }
 
 /// Port minimal de `TemplateView.java`/`SmallTemplateView.java` — rendu custom d'une native ad,

@@ -2613,6 +2613,75 @@ Appetize.io pour confirmer que l'app dépasse enfin `UpdateAppView` — le log m
 (`🔍 [checkForceUpdate]`) permettra de confirmer par preuve directe que `expiryDate` est bien
 février 2027 et que la condition évalue `false`.
 
+**2026-08-13 (suite) : CAUSE RÉELLE ET DÉFINITIVE trouvée pour l'échec persistant de
+`CFBundleVersion` — preuve directe fournie par l'utilisateur (Info.plist extrait du `.app` du build
+#16 via `plistlib` Python, `CFBundleVersion` toujours `"1"` malgré `CURRENT_PROJECT_VERSION: "1000"`
+déjà présent dans `project.yml`).**
+
+**Piste "cache DerivedData entre builds" (hypothèse initiale de l'utilisateur) vérifiée puis
+ÉCARTÉE, pas simplement ignorée** : aucune clé `cache:` n'existe dans `codemagic.yaml` (grep sur
+tout le fichier, zéro résultat) ; la documentation Codemagic confirme explicitement que chaque build
+tourne par défaut sur une machine ÉPHÉMÈRE, sans aucune persistance entre builds séparés sauf
+configuration explicite — citée textuellement : le cache de `$HOME/Library/Developer/Xcode/
+DerivedData` est même signalé comme INEFFICACE si on essayait de le mettre en cache volontairement.
+Un `derivedDataPath` fixe ne pose donc aucun problème de réutilisation ENTRE deux builds Codemagic
+séparés (chacun repart d'un dossier vide) — la piste a été fermée avec preuve documentaire, pas
+supposée à tort ni laissée sans réponse.
+
+**Cause réelle, trouvée en remontant au CODE SOURCE RÉEL de XcodeGen** (`Sources/XcodeGenKit/
+InfoPlistGenerator.swift`, récupéré directement — pas une doc paraphrasée, qui s'était déjà montrée
+imprécise/incomplète sur ce fichier précis à plusieurs tentatives de récupération) :
+`generateDefaultInfoPlist(for:)` code EN DUR `dictionary["CFBundleVersion"] = "1"` et
+`dictionary["CFBundleShortVersionString"] = "1.0"` — confirmé par 2 récupérations indépendantes du
+fichier source. **Ni `properties: CFBundleVersion:` (1ʳᵉ tentative, tour précédent) ni
+`CURRENT_PROJECT_VERSION`/`MARKETING_VERSION` en `settings: base:` (2ᵉ tentative, tour d'avant) ne
+changent la valeur ÉCRITE par XcodeGen dans le `Info.plist` généré pour CES 2 CLÉS PRÉCISES** — la
+2ᵉ tentative, qui semblait pourtant bien fondée sur une lecture correcte de `Docs/ProjectSpec.md`
+("generated automatically"), s'est donc avérée insuffisante en pratique : le mécanisme RÉEL n'est
+même pas une substitution de build setting (`$(CURRENT_PROJECT_VERSION)`), c'est un littéral codé en
+dur, invariant quel que soit `project.yml`.
+
+**Correction : contournement direct de XcodeGen, MÊME STRATÉGIE que celle qui a fini par fonctionner
+pour `GoogleService-Info.plist`** (après plusieurs tentatives déclaratives infructueuses là aussi) —
+plutôt que de continuer à chercher une combinaison `project.yml` capable de déjouer un comportement
+codé en dur dans XcodeGen lui-même, un script s'exécute maintenant APRÈS `xcodegen generate` (qui
+vient de produire le `Info.plist` avec ses valeurs codées en dur) et AVANT `xcodebuild build`, pour
+ÉDITER DIRECTEMENT ce fichier via `PlistBuddy` (déjà utilisé ailleurs dans ce fichier pour
+`GoogleService-Info.plist`) :
+- Nouvelle étape `codemagic.yaml` **"Forcer CFBundleVersion/CFBundleShortVersionString dans
+  Info.plist (contournement XcodeGen)"**, insérée juste après la vérification `project.pbxproj` et
+  avant Metal Toolchain — `PlistBuddy -c "Set :CFBundleVersion 1000"`/`"Set
+  :CFBundleShortVersionString 1.0.0"` sur `Resources/Info.plist` (avec repli `Add` si la clé
+  n'existait pas, robustesse contre un changement futur de XcodeGen), valeurs avant/après affichées
+  dans les logs.
+- Nouvelle étape **"Vérifier que CFBundleVersion du .app construit est bien '1000'"**, insérée après
+  la vérification `GoogleService-Info.plist` du `.app`, avant la compression Appetize.io —
+  `PlistBuddy -c "Print :CFBundleVersion"` sur le `Info.plist` RÉELLEMENT compilé dans le `.app`,
+  `exit 1` explicite si différent de `"1000"`. **Preuve automatique à chaque build désormais**,
+  plus besoin d'extraire et de vérifier manuellement le `.app` téléchargé comme cela a été fait pour
+  découvrir ce problème.
+- `project.yml` : `CURRENT_PROJECT_VERSION`/`MARKETING_VERSION` CONSERVÉS (inoffensifs, potentiellement
+  utiles pour `agvtool`/cohérence des build settings), mais leur commentaire mis à jour pour indiquer
+  clairement qu'ils NE SONT PLUS le mécanisme qui fait fonctionner la correction — juste un réglage
+  cohérent en parallèle du vrai correctif (`PlistBuddy`, `codemagic.yaml`).
+
+**Point important, à ne pas perdre de vue** : ce n'était PAS un problème Appetize.io, PAS un problème
+de code applicatif Swift, un VRAI problème d'infrastructure de build CI (XcodeGen). **Et, séparément,
+suite à la décision produit du tour précédent (gate "mise à jour requise" basée uniquement sur une
+date Remote Config, comparaison de version totalement retirée de `checkForceUpdate()`) : ce
+`CFBundleVersion` erroné n'affecte de toute façon PLUS le blocage à l'exécution** — il reste
+important à corriger pour la cohérence des métadonnées de build/future soumission App Store
+(numérotation de version réelle), mais n'est plus, depuis le tour précédent, la cause de quoi que ce
+soit de bloquant pour l'utilisateur final.
+
+Validation faite avant application : `js-yaml` (parse OK, 15 étapes confirmées dans l'ordre attendu,
+`checkpoint-build` inchangé à 6 scripts, `CURRENT_PROJECT_VERSION` confirmé `1000` dans
+`project.yml`) et `bash -n` sur les 15 blocs de script de `visual-smoke-test` (tous valides).
+
+**PAS ENCORE VÉRIFIÉ PAR RUN RÉEL.** Nécessite un nouveau build — la nouvelle étape de vérification
+automatique confirmera (ou infirmera, avec `exit 1` explicite dans ce cas) directement dans les logs
+si `CFBundleVersion` vaut enfin `1000` dans le `.app` construit, sans extraction manuelle.
+
 ## CHECKPOINT 2 ATTEINT ET VALIDÉ (2026-08-11)
 
 Les modules 7 et 8 de l'ordre de portage sont marqués `[x]` ci-dessus (Checkpoint 2 validé sur ce

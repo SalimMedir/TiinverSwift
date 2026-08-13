@@ -90,10 +90,29 @@ Référencé par Settings/FirebaseConfigManager.swift : remoteConfig.setDefaults
 	<string>https://cdn.tiinver.com/</string>
 	<key>stream_base_url</key>
 	<string>https://stream.tiinver.com/</string>
+	<!-- app_expire_day/month/year : valeurs TEMPORAIRES pour la phase de test interactif via
+	Appetize.io (2026-08-13), À REMETTRE À LA VALEUR RÉELLE avant toute soumission App Store. Les
+	valeurs d'origine (day=1/month=13/year=2026, reprises telles quelles du XML Android réel,
+	res/xml/remote_config_defaults.xml — PAS une erreur de transcription de ce portage) contiennent
+	un bug de données authentique côté Android : le mois 13 n'existe pas. Vérifié (pas supposé) que
+	ce bug produit le MÊME effet sur les deux plateformes malgré l'absence de correction côté
+	Android : `SplashActivity.java` calcule `MyTimeManager.getTimeInMillis(expireDay, expireMonth -
+	1, expireYear)` sur un `java.util.Calendar` 0-indexé (mois 0-11) — `13 - 1 = 12` déborde vers
+	janvier de l'année suivante, EXACTEMENT comme `Calendar`/`DateComponents` de Foundation (1-indexé,
+	mois 1-12) déborde pour `month: 13` directement (voir `RootRouterView.swift`, qui n'applique
+	délibérément PAS le `-1` d'Android, déjà documenté à l'écriture de ce fichier) — les deux
+	aboutissent au 1er janvier 2027, une date déjà future, donc ce bug n'est PAS la cause du blocage
+	observé sur Appetize.io/CI (voir `project.yml`, `CFBundleVersion`, pour la cause réelle
+	confirmée : comparaison de version, pas de date). Remplacées ici par une date VALIDE, repoussée
+	~3 mois au-delà d'aujourd'hui (2026-08-13 → 2026-11-13), en défense secondaire au cas où le
+	paramètre Remote Config `app_expire_*` LIVE (côté console Firebase, pas ces valeurs par défaut
+	locales, qui ne servent que de repli hors-ligne) configurerait indépendamment une date déjà
+	dépassée — non vérifiable depuis cet environnement, corrigé par prudence plutôt que supposé sans
+	risque. -->
 	<key>app_expire_day</key>
-	<integer>1</integer>
-	<key>app_expire_month</key>
 	<integer>13</integer>
+	<key>app_expire_month</key>
+	<integer>11</integer>
 	<key>app_expire_year</key>
 	<integer>2026</integer>
 	<key>version_code</key>

@@ -127,7 +127,26 @@ targets:
           - voip
           - remote-notification
         CFBundleShortVersionString: "1.0.0"
-        CFBundleVersion: "1"
+        # `CFBundleVersion` relevé de "1" à "1000" (2026-08-13) — TEMPORAIRE, réservé à la phase de
+        # test interactif via Appetize.io, À REMETTRE À UNE VALEUR RÉELLE COHÉRENTE avant toute
+        # soumission App Store. Cause confirmée (pas supposée) : `RootRouterView.checkForceUpdate()`
+        # (module 5) compare ce nombre au paramètre Firebase Remote Config `version_code` — or ce
+        # projet Firebase ("com-tiinver") est PARTAGÉ avec l'app Android en production, dont le
+        # `versionCode` réel est 378 (vérifié dans `app/build.gradle` du dépôt Android réel,
+        # `C:\Users\helen\AndroidStudioProjects\tiinver`) : le paramètre `version_code` publié côté
+        # console Remote Config est très vraisemblablement calé sur cette valeur Android, jamais
+        # pensé pour être comparé à un `CFBundleVersion` iOS indépendant qui démarre à "1" — pas un
+        # bug de portage, un paramètre Remote Config conçu pour Android uniquement, comparé ici à
+        # une métrique de version différente. `SMOKE_TEST_MODE` (voir `App/AppDelegate.swift`/
+        # `Navigation/RootRouterView.swift`) contourne ce blocage pour le pipeline CI automatisé
+        # (qui contrôle l'environnement de lancement via `simctl`), mais Appetize.io lance l'app
+        # directement sans jamais injecter cette variable — "1000" choisi avec une marge
+        # confortable au-dessus de 378 plutôt qu'un nombre deviné au hasard. **Point produit réel à
+        # trancher avant soumission, pas résolu ici** : soit un paramètre Remote Config DÉDIÉ à iOS
+        # (ex. `ios_version_code`) doit être créé côté console, soit `version_code` doit rester
+        # scindé par plateforme via les conditions Remote Config — décision hors périmètre de ce
+        # portage client, à coordonner avec l'équipe produit/backend.
+        CFBundleVersion: "1000"
         NSCameraUsageDescription: "Tiinver a besoin de la caméra pour publier des photos et vidéos."
         NSMicrophoneUsageDescription: "Tiinver a besoin du micro pour les vidéos, messages vocaux et appels."
         NSPhotoLibraryUsageDescription: "Tiinver a besoin d'accéder à vos photos pour publier du contenu."

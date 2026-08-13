@@ -186,13 +186,23 @@ targets:
         SWIFT_VERSION: 5.9
         TARGETED_DEVICE_FAMILY: "1,2"
         ENABLE_BITCODE: false
-        # Mécanisme RÉEL (pas `properties: CFBundleVersion:`, voir commentaire détaillé sur
-        # `info: properties:` ci-dessus — XcodeGen génère `CFBundleVersion`/
-        # `CFBundleShortVersionString` automatiquement depuis CES build settings, ignorant toute
-        # valeur littérale fournie ailleurs pour ces 2 clés). `CURRENT_PROJECT_VERSION` = "1000",
-        # TEMPORAIRE pour la phase de test Appetize.io (voir commentaire complet plus haut et
-        # MIGRATION_PROGRESS.md) — marge au-dessus du `versionCode` Android réel (378,
-        # `app/build.gradle`), À REMETTRE À UNE VALEUR RÉELLE COHÉRENTE avant soumission App Store.
+        # 2026-08-13 (suite) — CETTE TENTATIVE SEULE S'EST AVÉRÉE INSUFFISANTE, confirmé par preuve
+        # directe (Info.plist extrait d'un `.app` téléchargé via plistlib, `CFBundleVersion`
+        # toujours "1" malgré ces réglages). Cause réelle trouvée dans le CODE SOURCE de XcodeGen
+        # (`Sources/XcodeGenKit/InfoPlistGenerator.swift`, récupéré directement) :
+        # `generateDefaultInfoPlist(for:)` code en dur `dictionary["CFBundleVersion"] = "1"` et
+        # `dictionary["CFBundleShortVersionString"] = "1.0"` — ni `properties:` (1ʳᵉ tentative) ni
+        # CES build settings (2ᵉ tentative) ne changent la valeur ÉCRITE dans le `Info.plist` généré
+        # pour ces 2 clés précises. **Ces 2 réglages sont CONSERVÉS ici** (harmless, potentiellement
+        # utiles pour `agvtool`/cohérence de build settings à l'avenir) **mais NE SONT PLUS LE
+        # MÉCANISME QUI FAIT RÉELLEMENT FONCTIONNER LA CORRECTION** — voir `codemagic.yaml`, étape
+        # "Forcer CFBundleVersion/CFBundleShortVersionString dans Info.plist (contournement
+        # XcodeGen)" : édition directe du `Info.plist` généré via `PlistBuddy`, APRÈS `xcodegen
+        # generate` et AVANT `xcodebuild build`, même stratégie de contournement que pour
+        # `GoogleService-Info.plist` (XcodeGen s'est avéré, à plusieurs reprises cette session, peu
+        # fiable pour ce genre de personnalisation fine d'`Info.plist`). TEMPORAIRE : "1000"/"1.0.0"
+        # à remettre à une valeur réelle cohérente avant soumission App Store — voir
+        # MIGRATION_PROGRESS.md pour l'historique complet de cette investigation.
         CURRENT_PROJECT_VERSION: "1000"
         MARKETING_VERSION: "1.0.0"
     dependencies:

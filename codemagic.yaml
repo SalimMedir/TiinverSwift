@@ -121,6 +121,57 @@ workflows:
           echo "--- Recherche de GoogleService-Info dans $XCODE_PROJECT/project.pbxproj ---"
           grep -A3 "GoogleService-Info" "$XCODE_PROJECT/project.pbxproj" || echo "AUCUNE occurrence de GoogleService-Info dans project.pbxproj — XcodeGen ne l'a PAS inclus à la génération, malgré l'entrée resources: dédiée dans project.yml."
 
+      - name: Forcer CFBundleVersion/CFBundleShortVersionString dans Info.plist (contournement XcodeGen)
+        script: |
+          # 2026-08-13 — CAUSE RÉELLE trouvée avec preuve : un build téléchargé (#16, avec
+          # CURRENT_PROJECT_VERSION="1000" dans project.yml/settings.base) montrait encore
+          # CFBundleVersion="1" une fois extrait avec plistlib côté utilisateur. La piste "cache
+          # DerivedData entre builds" a été vérifiée et ÉCARTÉE (pas une hypothèse non testée) :
+          # aucune clé `cache:` n'existe dans ce fichier, et la documentation Codemagic confirme que
+          # chaque build tourne sur une machine ÉPHÉMÈRE par défaut (`DerivedData` non préservé
+          # entre builds séparés, cité explicitement comme inefficace même en cache volontaire). La
+          # vraie cause est dans XcodeGen lui-même : son fichier source réel
+          # `Sources/XcodeGenKit/InfoPlistGenerator.swift` (récupéré directement, pas une doc
+          # paraphrasée) code en dur `dictionary["CFBundleVersion"] = "1"` et
+          # `dictionary["CFBundleShortVersionString"] = "1.0"` dans `generateDefaultInfoPlist(for:)`
+          # — ni `properties:` (tentative précédente #1) ni `CURRENT_PROJECT_VERSION`/
+          # `MARKETING_VERSION` (tentative précédente #2) ne changent la valeur ÉCRITE dans le
+          # fichier `Info.plist` généré pour CES 2 CLÉS PRÉCISES. Plutôt que de continuer à chercher
+          # une combinaison de project.yml qui contournerait ce comportement codé en dur (risque de
+          # répéter le même cycle infructueux que pour GoogleService-Info.plist), même stratégie qui
+          # a fonctionné pour ce dernier : contournement direct via un script après la génération,
+          # avant la compilation — édite le fichier `Info.plist` QUE XcodeGen vient de produire,
+          # avec `PlistBuddy` (déjà utilisé ailleurs dans ce fichier), pour forcer la valeur
+          # explicitement, indépendamment de ce que XcodeGen a écrit.
+          INFO_PLIST_PATH="Resources/Info.plist"
+          if [ ! -f "$INFO_PLIST_PATH" ]; then
+            echo "ERREUR : $INFO_PLIST_PATH introuvable après xcodegen generate."
+            exit 1
+          fi
+          echo "Avant correction :"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$INFO_PLIST_PATH"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$INFO_PLIST_PATH"
+
+          # `Set` échoue si la clé n'existe pas encore (contrairement à `Add`) — XcodeGen écrit
+          # TOUJOURS une valeur pour ces 2 clés (confirmé par le code source ci-dessus), donc `Set`
+          # devrait toujours réussir ; `Add` en repli uniquement si ce comportement changeait un jour
+          # dans une future version de XcodeGen, pour ne pas faire échouer ce step sur un détail
+          # d'implémentation externe.
+          if /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$INFO_PLIST_PATH" > /dev/null 2>&1; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 1000" "$INFO_PLIST_PATH"
+          else
+            /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string 1000" "$INFO_PLIST_PATH"
+          fi
+          if /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$INFO_PLIST_PATH" > /dev/null 2>&1; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.0" "$INFO_PLIST_PATH"
+          else
+            /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.0.0" "$INFO_PLIST_PATH"
+          fi
+
+          echo "Après correction :"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$INFO_PLIST_PATH"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$INFO_PLIST_PATH"
+
       - name: Install Metal Toolchain
         script: |
           xcodebuild -downloadComponent MetalToolchain
@@ -167,6 +218,26 @@ workflows:
             exit 1
           fi
           echo "OK, trouvé : $FOUND"
+
+      - name: Vérifier que CFBundleVersion du .app construit est bien "1000"
+        script: |
+          # Preuve automatique à chaque build (2026-08-13), pour ne plus avoir à extraire et
+          # vérifier manuellement le Info.plist d'un .app téléchargé comme cela a été fait pour
+          # découvrir ce problème — voir l'étape "Forcer CFBundleVersion/CFBundleShortVersionString
+          # dans Info.plist" plus haut pour la correction elle-même et son contexte complet.
+          APP_PATH=$(find "$CM_BUILD_DIR/DerivedData/Build/Products" -maxdepth 2 -name "TiinverSwift.app" -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERREUR : TiinverSwift.app introuvable sous $CM_BUILD_DIR/DerivedData/Build/Products"
+            exit 1
+          fi
+          BUILT_CFBUNDLE_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP_PATH/Info.plist")
+          BUILT_CFBUNDLE_SHORT=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Info.plist")
+          echo "CFBundleVersion réel dans le .app construit : $BUILT_CFBUNDLE_VERSION (attendu : 1000)"
+          echo "CFBundleShortVersionString réel : $BUILT_CFBUNDLE_SHORT (attendu : 1.0.0)"
+          if [ "$BUILT_CFBUNDLE_VERSION" != "1000" ]; then
+            echo "ERREUR : CFBundleVersion ($BUILT_CFBUNDLE_VERSION) différent de la valeur attendue (1000) — la correction PlistBuddy n'a pas pris effet ou a été écrasée par une étape ultérieure. Voir MIGRATION_PROGRESS.md pour l'historique complet de ce problème."
+            exit 1
+          fi
 
       - name: Compresser le .app pour test interactif manuel via Appetize.io
         script: |

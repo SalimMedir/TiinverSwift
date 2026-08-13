@@ -69,39 +69,55 @@ targets:
       # contrairement à `type: folder`/`syncedFolder`, qui préserverait la hiérarchie).
       - path: Resources
         excludes:
-          # Évite une double inclusion (donc une erreur Xcode "Multiple commands produce
-          # GoogleService-Info.plist") avec l'entrée dédiée ci-dessous.
+          # GoogleService-Info.plist reste EXCLU ici en permanence, PAR CONCEPTION (pas pour éviter
+          # une double inclusion avec une entrée `resources:` dédiée — cette approche a été
+          # ABANDONNÉE, voir `postBuildScripts:` ci-dessous). Cause confirmée par preuve directe
+          # (build Codemagic `6a7d8cb7ab6f0602d098a8f7`, 2026-08-13) : XcodeGen exclut de TOUTE
+          # phase de build tout fichier dont le nom correspond au motif suffixe `*-Info.plist` (PR
+          # #945/issue #1045 du dépôt XcodeGen — voir commentaire détaillé sur `postBuildScripts:`
+          # ci-dessous), y compris via `buildPhase: resources` explicite sur une entrée dédiée
+          # (testé, confirmé insuffisant par ce même build — 0 occurrence de "GoogleService-Info"
+          # dans `project.pbxproj` malgré cette option). Ce fichier ne passe donc plus DU TOUT par
+          # le système `resources:`/`sources:` de XcodeGen — copié directement dans le bundle
+          # construit par un script shell, voir `postBuildScripts:`.
           - "GoogleService-Info.plist"
-      # CAUSE RÉELLE CONFIRMÉE (2026-08-13, 3ᵉ tentative — 2 précédentes insuffisantes) — vérifiée
-      # contre l'historique réel de XcodeGen sur GitHub (issues/PR réels, pas une nouvelle
-      # hypothèse) : PR #945 (XcodeGen, janvier 2021) a étendu la détection interne "ceci est un
-      # fichier Info.plist" à tout nom correspondant au motif SUFFIXE `*-Info.plist` (pas
-      # uniquement une comparaison exacte au chemin configuré par `info:`), pour supprimer un
-      # avertissement Xcode sur les Info.plist personnalisés (`HardwareSupport-Info.plist` dans
-      # l'exemple d'origine). Effet de bord documenté par les mainteneurs eux-mêmes (issue #1045,
-      # "File not added to target membership in 2.19.0") : `GoogleService-Info.plist` matche ce
-      # même motif de suffixe et se retrouve donc exclu de TOUTE phase de build — `Docs/
-      # ProjectSpec.md` réel est explicite : "Info.plist files will never be added to any build
-      # phases, no matter what this [buildPhase] setting is." Ceci explique l'absence TOTALE de
-      # "GoogleService-Info" dans `project.pbxproj` généré (confirmé par le diagnostic du tour
-      # précédent) — pas une phase Copy Bundle Resources vide, une exclusion en amont de toute
-      # référence de build phase.
-      # Hypothèses alternatives DE L'UTILISATEUR explicitement vérifiées et écartées avant cette
-      # correction (pas ignorées) : `optional: true` n'entre en jeu QUE pour les entrées `type:
-      # group`, jamais pour une entrée fichier individuelle comme celle-ci (vérifié dans le code
-      # source réel `SourceGenerator.swift` de XcodeGen) — ne peut donc pas expliquer un problème
-      # de timing d'évaluation ici ; l'entrée `Resources` ci-dessus exclut déjà ce fichier de SON
-      # PROPRE scan de groupe (pas une entrée séparée essayant de retirer rétroactivement un
-      # fichier déjà ajouté par une autre), donc pas de conflit de cache entre les deux entrées.
-      # Correction RÉELLE, documentée par la communauté XcodeGen pour ce cas précis (issue #1045) :
-      # `buildPhase: resources` explicite, qui force l'inclusion dans "Copy Bundle Resources" malgré
-      # la détection automatique par motif de nom. `optional: true` conservé (toujours nécessaire :
-      # fichier non committé, voir décision précédente — aucune preuve qu'il soit responsable de ce
-      # bug précis, seulement toujours requis pour un autre problème, celui-là bien réel : `xcodegen
-      # generate` sur une machine où le secret n'a pas encore été décodé).
-      - path: Resources/GoogleService-Info.plist
-        optional: true
-        buildPhase: resources
+    # CONTOURNEMENT COMPLET du système resources: de XcodeGen pour GoogleService-Info.plist
+    # (2026-08-13, 4ᵉ tentative — 3 précédentes insuffisantes, voir le commentaire `excludes:`
+    # ci-dessus et MIGRATION_PROGRESS.md pour l'historique complet) : XcodeGen exclut
+    # catégoriquement tout fichier `*-Info.plist` de toute build phase générée (`Docs/
+    # ProjectSpec.md` réel : "Info.plist files will never be added to any build phases, no matter
+    # what this setting is" — confirmé s'appliquer aussi à `buildPhase: resources` explicite par un
+    # build réel, pas seulement par la doc). Plutôt que de continuer à chercher une déclaration
+    # `resources:`/`sources:` qui échapperait à cette règle catégorique, ce fichier n'est plus
+    # DU TOUT référencé dans le `.xcodeproj` généré — copié directement dans le bundle `.app` DÉJÀ
+    # CONSTRUIT par un script shell exécuté PENDANT le build Xcode lui-même, hors du système de
+    # resources de XcodeGen entièrement.
+    # `postBuildScripts:` (PAS `postCompileScripts:`, qui s'exécute après Compile Sources mais
+    # AVANT les autres phases) choisi précisément parce qu'il s'exécute "after any other build
+    # phases" (vérifié contre `Docs/ProjectSpec.md` réel de XcodeGen, pas deviné) — garantit que le
+    # bundle `.app` (`${BUILT_PRODUCTS_DIR}/${WRAPPER_NAME}`) existe déjà au moment de la copie.
+    # `SRCROOT`/`BUILT_PRODUCTS_DIR`/`WRAPPER_NAME` : variables de build Xcode standard (pas
+    # spécifiques à XcodeGen) — `SRCROOT` = dossier contenant le `.xcodeproj` généré (racine du
+    # clone, où `Resources/GoogleService-Info.plist` est décodé par `codemagic.yaml` avant
+    # `xcodegen generate`) ; `WRAPPER_NAME` = nom complet du bundle avec extension
+    # (`TiinverSwift.app`).
+    # Ne fait PAS échouer le build si le fichier source est absent (`|| echo ...` plutôt que
+    # `exit 1`) — délibéré, comme `optional: true` pour la même raison ailleurs dans ce fichier :
+    # ce fichier est un secret non committé (voir `.gitignore`), un échec dur bloquerait toute
+    # génération/build LOCAL sur une machine où il n'a jamais été décodé, pas seulement le cas
+    # d'erreur réel qu'on veut détecter. `inputFiles:`/`outputFiles:` déclarés explicitement pour
+    # que le système de build (analyse de dépendances incrémentale) sache que cette phase produit
+    # réellement ce fichier, et la relance si la source change — pas strictement nécessaire pour des
+    # builds CI toujours propres (`git clone` frais à chaque run), mais correct pour un usage Xcode
+    # local incrémental.
+    postBuildScripts:
+      - name: Copier GoogleService-Info.plist dans le bundle (contournement de l'exclusion XcodeGen des fichiers *-Info.plist)
+        script: |
+          cp "${SRCROOT}/Resources/GoogleService-Info.plist" "${BUILT_PRODUCTS_DIR}/${WRAPPER_NAME}/GoogleService-Info.plist" 2>/dev/null || echo "GoogleService-Info.plist non trouvé à la source — build continuera mais l'app crashera au lancement"
+        inputFiles:
+          - $(SRCROOT)/Resources/GoogleService-Info.plist
+        outputFiles:
+          - $(BUILT_PRODUCTS_DIR)/$(WRAPPER_NAME)/GoogleService-Info.plist
     info:
       path: Resources/Info.plist
       properties:

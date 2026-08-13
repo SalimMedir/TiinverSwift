@@ -2751,6 +2751,244 @@ Codemagic ; le comportement RÉEL de la gate de mise à jour (sans `SMOKE_TEST_M
 cependant être confirmé QUE sur Appetize.io ou un test manuel équivalent, jamais par ce pipeline CI
 lui-même — limite structurelle documentée ci-dessus, pas oubliée.
 
+**2026-08-13 (suite) : premier test interactif réel sur Appetize.io — 2 écrans en placeholder texte
+découverts au-delà de l'écran de connexion, jamais branchés à leur vrai contenu.**
+
+**Inventaire complet demandé AVANT toute correction, comme demandé** — recherche exhaustive
+(`grep` sur "module non encore identifié"/"PAS encore porté"/"placeholder" dans tout `Sources/`) :
+**seulement 2 placeholders plein écran existent dans toute l'app**, tous les deux dans
+`HomeShellView.swift` (`HomeShellPlaceholderTab`) :
+1. Onglet "Chat" → `"Roster — module 11 (Messagerie)"`.
+2. Onglet "Créateurs" → `"CreatorFragment — module non encore identifié dans l'ordre de portage"`.
+
+Toutes les AUTRES occurrences de "placeholder"/"pas encore porté" trouvées par la même recherche
+(neuf autres fichiers) sont soit des closures `AsyncImage(...) placeholder: { ... }` (état de
+chargement SwiftUI normal, pas un écran stub), soit des lacunes de SOUS-FONCTIONNALITÉ déjà
+documentées à l'intérieur d'écrans par ailleurs fonctionnels (upload photo de profil, catalogue de
+cadeaux, sélecteur GIF, entrée `MediaTrim` du feed, etc. — modules 9/11/17, déjà listées comme
+réserves connues dans leurs entrées de fermeture respectives). **Confirmé : aucun autre écran de
+navigation principale n'est en placeholder** — les deux ci-dessus sont les seuls à corriger.
+
+**1. Onglet "Chat" — investigation du POURQUOI, pas une supposition.** Le module 11 avait déjà
+documenté ce gap explicitement à sa clôture ("écran de liste des conversations, fichier séparé, hors
+périmètre explicite de cette passe — `RosterModel` accepté en entrée, prêt à être branché") : ce
+n'est PAS une régression ni un bug de routage — `ChatView`/`ChatViewModel` (l'écran de conversation
+INDIVIDUELLE) et `RosterRepository`/`RosterModel` (couche données, module 2) étaient bien construits
+et fonctionnels, mais l'écran-LISTE des conversations (l'équivalent de `Roster.java`/
+`RosterListAdapter.java`, permettant de CHOISIR une conversation) n'avait tout simplement jamais été
+écrit. Lu en entier avant de porter : `roster/ui/Roster.java` (761 lignes) — confirmé : requête
+`ROSTER_URI` triée `stamp ASC` en SQL, mais re-triée `stamp` DESCENDANT en mémoire par `sortIt()`
+juste avant affichage (seul cet ordre FINAL est reproduit) ; tap sur une ligne → `ActivityMsg` avec
+le `RosterModel` de la ligne (équivalent direct de `ChatView(target:)`, déjà prêt à recevoir cet
+argument). Nouveau fichier `Messagerie/RosterListView.swift` : liste des conversations
+(avatar/titre/sous-titre/badge non lus), navigation vers `ChatView` au tap, bouton de rafraîchissement
+manuel. **PAS porté, décision de portée documentée dans le fichier** : nouvelle conversation via
+sélecteur de contacts (module Contacts jamais construit, module 18), sélection multiple/suppression,
+assistant IA, mise à jour temps réel de la liste pendant que l'écran est ouvert (`organizeAndDisplay
+Message`, non câblé — rafraîchissement manuel en attendant).
+
+**2. Onglet "Créateurs" — confirmé, comme demandé, que ce module N'A JAMAIS ÉTÉ TRAITÉ dans aucun
+des 18 modules.** Lu en entier avant de porter : `creatorOfweek/CreatorFragment.java` (218 lignes),
+`CreatorAdapter.java`, `CreatorModel.java`, `TrophyViewModel.java`, `TrophyRepository.java`. Périmètre
+réel déterminé par cette lecture (pas deviné depuis le nom de classe) : classement hebdomadaire des
+créateurs, endpoint `GET weekly_rank` (convention `"error":"false"` standard du backend), réponse
+`data` = CHAÎNE JSON encodée (double encodage, PAS un tableau imbriqué directement — même motif que
+`JSONValue.stringEncodedJSON`, déclaré au tout début du projet mais jamais utilisé jusqu'ici : premier
+appel réel de ce helper). **Comportement réel non trivial, vérifié par lecture plutôt que supposé** :
+le PREMIER élément du classement devient une carte "star" mise en avant séparément ; les éléments
+RESTANTS forment la liste classée en dessous avec un badge `"TOP " + (position+1)` calculé sur
+l'INDEX DANS LA LISTE RESTANTE (donc la liste recommence à "TOP 1" sous la star, pas "TOP 2" —
+comportement Android réel reproduit tel quel, pas "corrigé" pour paraître plus cohérent). Nouveau
+mini-module `Creators/` (3 fichiers : `CreatorModel.swift`, `TrophyRepository.swift`,
+`CreatorOfWeekView.swift`) — tap sur la star ou une ligne classée → `ProfileView(userId:)` (module
+17, déjà construit). **PAS porté, décoratif/hors périmètre du cœur fonctionnel** : confettis
+(`KonfettiView`), animation de badge, bannière AdMob (`adView` — un emplacement de PLUS que les 11
+déjà cartographiés au module 16 ; pas ajouté à `AdMobIdentifiers.swift` sans un vrai ID de production
+à vérifier, pas fabriqué), réessai automatique après erreur (délai fixe 5s côté Android — remplacé
+par un bouton "Réessayer" manuel, plus prévisible côté iOS).
+
+**`HomeShellView.swift`** : les deux `HomeShellPlaceholderTab(...)` remplacés par
+`NavigationStack { RosterListView() }`/`NavigationStack { CreatorOfWeekView() }` ; le type
+`HomeShellPlaceholderTab` lui-même supprimé (vérifié par grep : plus aucun appelant après ce
+remplacement, pas laissé comme code mort) ; commentaire d'en-tête du fichier mis à jour pour
+refléter les deux fermetures.
+
+**Petit piège Swift évité en écrivant `CreatorModel`** : `Identifiable` avec un `id` calculé comme
+`userId ?? UUID().uuidString` aurait généré un NOUVEL identifiant aléatoire à CHAQUE accès (pas
+seulement au décodage), cassant l'identité SwiftUI d'une ligne de `List`/`ForEach` entre deux rendus
+sans même un nouveau fetch — corrigé avec un `UUID` STOCKÉ (`private let localId = UUID()`), calculé
+une seule fois par instance, PAS recalculé à chaque lecture de `id`.
+
+Validation faite avant application : relecture manuelle attentive des 4 nouveaux fichiers Swift et
+des 2 fichiers modifiés (pas de compilateur Swift disponible dans cet environnement) — signatures
+d'API existantes (`RosterRepository.rosterAll()`, `ChatView.init(target:)`, `ProfileView.init(userId:
+isCurrentUser:)`, `JSONValue.stringEncodedJSON`/`isBackendSuccess`, `ChatType.wireValue`) toutes
+vérifiées par lecture directe de leur déclaration réelle avant utilisation, pas supposées.
+
+**PAS ENCORE VÉRIFIÉ PAR BUILD RÉEL NI PAR TEST APPETIZE.IO.** Nécessite un nouveau build Codemagic
+(compilation) puis un nouveau test interactif pour confirmer que les deux onglets affichent
+maintenant leur contenu réel — code neuf, jamais compilé ni exécuté, même réserve que pour tout le
+reste de ce portage.
+
+## Audit de fidélité post-Appetize (2026-08-13)
+
+**Cadrage honnête de cette section, à lire avant le reste** : un audit ligne-à-ligne des 18 modules
+contre leur source Android réelle, au même niveau de rigueur que la lecture initiale de chacun (qui
+a représenté l'essentiel du travail de tout ce portage), représenterait plusieurs journées de travail
+dédiées — pas réalisable en une seule passe sans sacrifier cette rigueur même. Cette section fait
+donc DEUX choses distinctes, à ne pas confondre :
+1. **Vérification ciblée, fraîche, avec preuve** pour les modules directement en cause dans les
+   symptômes rapportés (module 6/Feed, module 5/routage racine, le gap module 11/Roster, le nouveau
+   mini-module Créateurs) — détaillée ci-dessous, section "Feed".
+2. **Reclassement honnête** des 14 autres modules dans les 3 statuts demandés, à partir de ce qui est
+   RÉELLEMENT connu aujourd'hui (l'historique déjà rigoureusement documenté module par module dans
+   "Détail par module" PLUS le fait, maintenant établi sans ambiguïté par cette session, qu'AUCUN
+   module n'a jamais été vu s'exécuter avant les tout premiers tests Appetize.io de ces derniers
+   tours) — PAS une nouvelle relecture ligne à ligne de leur source Android en une seule passe. Le
+   tableau ci-dessous distingue explicitement les deux catégories.
+
+### Partie 1 — Cause exacte du feed vide, confirmée par preuve
+
+**Chemin de chargement tracé en entier, chaque maillon vérifié individuellement, pas supposé :**
+- Déclencheur : `FeedView.task { await viewModel.loadInitial() }` — se déclenche bien à la première
+  apparition de la vue, aucune condition bloquante en amont dans la vue elle-même.
+- URL de base : `APIEnvironment.restBaseURL = "https://tiinver.com/api/v1/"` — comparé caractère par
+  caractère à `infoContract.SERVER` RÉEL (`back_sync/infoContract.java:154`, ligne active, PAS une
+  des 3 lignes commentées juste au-dessus incluant un `10.0.2.2` de dev) — **identique, confirmé,
+  PAS la cause**.
+- Endpoint : `feedtimeline/{userId}/{limit}/{offset}` — comparé à `ActivityRepository.java:134`
+  (`td.get("feedtimeline/" + userId + "/" + limit + "/" + offset, ...)`) — **identique, confirmé,
+  PAS la cause**.
+- Clé de réponse : `json.jsonArray("activities")` — comparé à `ActivityRepository.java:140`
+  (`reponse.getJSONArray("activities")`) — **identique, confirmé, PAS la cause**.
+- `APIClient.request(...)` : erreurs réseau/décodage correctement propagées via `throw`
+  (`APIError.transport`/`APIError.decoding`) — **pas d'erreur avalée silencieusement à ce niveau,
+  confirmé par lecture, PAS la cause**.
+
+**Cause réelle, confirmée par lecture directe du code, PAS une supposition — DEUX défauts distincts,
+cumulatifs :**
+1. **`FeedViewModel.loadNextPage()`** : `guard let userId = UserSession.shared.myId.flatMap(Int.init)
+   else { return }` — retournait SILENCIEUSEMENT si aucune session valide (pas connecté, ou
+   `cachedUser()` jamais peuplé), SANS renseigner `errorMessage` dans ce cas précis (seul le bloc
+   `catch` d'une erreur réseau le faisait).
+2. **`FeedView.swift`** : confirmé par lecture complète du fichier AVANT correction — `viewModel.
+   isLoading` et `viewModel.errorMessage` n'étaient référencés NULLE PART dans le corps de la vue.
+   **Conséquence : même dans le cas où `errorMessage` ÉTAIT correctement renseigné (échec réseau
+   réel), l'écran restait blanc indéfiniment** — aucune distinction visuelle possible entre "en
+   cours de chargement", "erreur", "pas de session" et "flux réellement vide". C'est ce 2ᵉ défaut,
+   indépendant du 1ᵉʳ, qui garantissait un écran blanc silencieux QUELLE QUE SOIT la cause runtime
+   réelle rencontrée sur Appetize.io — non déterminable avec certitude laquelle des deux (session
+   absente vs réseau) s'est produite dans la session de test spécifique de l'utilisateur, faute
+   d'accès aux logs de cette session précise depuis cet environnement.
+
+**Corrections appliquées** : `FeedViewModel.loadNextPage()` renseigne désormais `errorMessage` de
+façon explicite dans le cas "pas de session" au lieu de retourner silencieusement ; `FeedView.swift`
+affiche maintenant un état visible tant qu'aucun post n'est chargé — `ProgressView` (chargement),
+message d'erreur + bouton "Réessayer" (échec), ou message "Aucune vidéo à afficher" (flux vide sans
+erreur) — les 3 cas désormais clairement distinguables à l'écran.
+
+### Partie 2 — Statut réel par module (18 modules)
+
+Légende : **FIDÈLE ET FONCTIONNEL** = comportement confirmé par exécution réelle (Codemagic ou
+Appetize.io) ; **FIDÈLE MAIS NON TESTÉ** = code vérifié contre l'Android réel à l'écriture, jamais vu
+s'exécuter ; **ÉCART CONNU** = défaut ou omission identifiée, avec description précise.
+
+| # | Module | Statut | Détail |
+|---|---|---|---|
+| 1 | Infra réseau/auth | FIDÈLE MAIS NON TESTÉ | `APIClient`/`APIEnvironment` revérifiés ligne à ligne cette session (base URL, endpoint, enveloppe de réponse) contre `TransportData.java`/`infoContract.java` réels — exacts. Flux de bout en bout (connexion réelle réussie) jamais confirmé par un test. |
+| 2 | Stockage local (Core Data) | FIDÈLE MAIS NON TESTÉ | Schéma non re-audité cette session ; `RosterRepository`/`FeedRepository` (utilisés par les vérifications ci-dessus) confirmés cohérents avec le schéma existant. |
+| 3 | Auth / Onboarding | ÉCART CONNU (partiel) | Écran de connexion CONFIRMÉ atteignable (Appetize.io, avant le fix de la gate de mise à jour) — mais une connexion réelle réussie de bout en bout (identifiants → session valide → `myId` peuplé) n'est PAS confirmée ; c'est précisément l'absence de cette confirmation qui a rendu la cause n°1 du feed vide impossible à exclure avec certitude. |
+| 4 | Notifications push | FIDÈLE MAIS NON TESTÉ | Non revisité cette session. |
+| 5 | UI Shell / routage racine | FIDÈLE ET FONCTIONNEL (partiel) | La gate de mise à jour forcée (`RootRouterView.checkForceUpdate`) est CONFIRMÉE fonctionner en conditions réelles (Appetize.io, 2 tours précédents) — c'est la toute première logique métier de ce portage vue tourner avec certitude. Le reste de la coquille (3 onglets) n'était PAS fonctionnel jusqu'à ce tour (voir #6/#11/Créateurs) — corrigé, pas encore reconfirmé par un nouveau test. |
+| 6 | Feed vidéo | ÉCART CORRIGÉ, EN ATTENTE DE VÉRIFICATION | Cause exacte confirmée et corrigée cette session (Partie 1 ci-dessus) — pas encore revérifié par un nouveau test Appetize.io/Codemagic. |
+| 7 | Caméra + filtres GPU | FIDÈLE MAIS NON TESTÉ | Compile sans erreur depuis le Checkpoint 2 ; jamais vu appliqué à un flux caméra réel (aucun accès device/simulateur avec caméra fonctionnelle pour ce portage). |
+| 8 | Moteur Animems | FIDÈLE MAIS NON TESTÉ | Idem — chemin bout-en-bout compile, jamais vu rendu ni ses gestes multi-touch exécutés. |
+| 9 | Éditeur photo simple | ÉCART CONNU | Écran d'édition principal (stickers/texte/peinture par-dessus la photo) explicitement PAS construit à la clôture du module — décision de portée documentée à l'époque, toujours vraie. |
+| 10 | Trim / Timeline / Waveform | ÉCART CONNU | Export vidéo réel (`AVAssetExportSession`) et extraction de vignettes explicitement PAS écrits — décision de portée documentée à l'époque. |
+| 11 | Messagerie / Chat UI | ÉCART CONNU → partiellement corrigé ce tour | Écran-liste des conversations (`RosterListView.swift`) était un gap documenté depuis la clôture du module, confirmé être la cause du placeholder "Chat" — corrigé ce tour (voir entrée dédiée plus haut). Réserves restantes inchangées : transfert upload/download réel, sélecteurs GIF/cadeau, zoom média plein écran. |
+| 12 | Appels WebRTC/CallKit | FIDÈLE MAIS NON TESTÉ | Code le plus complexe de tout le portage, jamais exécuté — reste la priorité n°1 pour un futur test réel dès qu'un scénario à 2 comptes/appareils sera possible. |
+| 13 | Shareboard temps réel | FIDÈLE MAIS NON TESTÉ | Idem #12, dépend du même moteur WebRTC. |
+| 14 | Message Graphic | FIDÈLE MAIS NON TESTÉ | Partage le moteur de rendu avec #13, même statut. |
+| 15 | Wallet / Paiements | ÉCART CONNU | StoreKit 2 nécessite des `Product` configurés dans App Store Connect (absents à ce stade) — `BuyCoinsView` restera vide tant qu'ils ne le sont pas, pas une erreur de code. Audit de conformité App Store 3.1.1/3.1.5 toujours en attente d'arbitrage produit. |
+| 16 | AdMob | ÉCART CONNU | Nécessite le SDK réellement chargé + prompt ATT non câblé (documenté depuis la clôture du module) — comportement réel avec annonces jamais vu. |
+| 17 | Profil / Réglages | ÉCART CONNU | Upload de photo de profil explicitement pas porté (gap de transfert de fichiers récurrent, déjà documenté). `ProfileView`/`SettingsView` utilisés comme dépendances par les corrections de ce tour (Créateurs → `ProfileView(userId:)`) sans anomalie relevée à cette occasion, mais pas un audit complet. |
+| 18 | Divers | ÉCART CONNU | Contacts, Statistiques, "boost interne" jamais construits (décision de portée documentée à la clôture). Recherche/Follow/Report/Comments/Certification (consultation) construits mais non re-vérifiés cette session. |
+| — | **Roster (liste conversations)** | ÉCART CORRIGÉ, EN ATTENTE DE VÉRIFICATION | Gap du module 11 fermé ce tour — voir entrée dédiée. |
+| — | **Créateurs (classement)** | ÉCART CORRIGÉ, EN ATTENTE DE VÉRIFICATION | N'appartenait à aucun des 18 modules — mini-module ajouté ce tour, voir entrée dédiée. |
+
+### Partie 3 — Écarts UI identifiés (Material Design vs Human Interface Guidelines)
+
+**Limite honnête à poser avant cette partie** : cette analyse est faite au niveau du CODE (quels
+composants/primitives sont utilisés), PAS d'une inspection visuelle pixel-par-pixel des captures
+Appetize.io réelles — ces captures n'ont pas été fournies à cet environnement pour un examen direct,
+seules des descriptions textuelles ponctuelles l'ont été jusqu'ici. Une revue visuelle réelle (espace-
+ment, alignement, densité, contraste en dark mode) nécessite soit un accès direct aux captures, soit
+un accès à un simulateur — à faire une fois l'un des deux disponible.
+
+**Ce qui est vérifiable et vérifié au niveau du code, sur l'ensemble du projet (grep systématique)** :
+- **SF Symbols utilisés partout, pas d'icônes Android importées** — confirmé, aucune ressource
+  `.png`/vecteur Android (`ic_*`) référencée nulle part dans `Sources/`, uniquement `Image(systemName:
+  ...)`.
+- **Primitives de navigation natives SwiftUI** (`NavigationStack`, `TabView`, `.sheet`,
+  `.fullScreenCover`, `List`) utilisées systématiquement, pas de composants Android recréés à la
+  main (pas de `RecyclerView`/`ViewPager` réimplémentés — remplacés par `List`/`TabView` natifs,
+  décision déjà actée et documentée au module 1).
+- **Dark mode** : aucune couleur codée en dur en hexadécimal trouvée par grep dans les nouvelles vues
+  (`Color(.secondarySystemBackground)`, `.foregroundStyle(.secondary)`, etc. — couleurs sémantiques
+  système, qui s'adaptent automatiquement) — MAIS pas de vérification VISUELLE réelle en dark mode
+  possible depuis cet environnement.
+- **Point à surveiller, identifié mais pas nécessairement un défaut** : le bouton caméra flottant de
+  `FeedView` (`cameraFAB`, cercle plein bottom-trailing) reprend visuellement le motif Material "FAB"
+  — MAIS ce motif est aussi un motif natif iOS courant pour les apps de flux vidéo type
+  TikTok/Instagram Reels, pas nécessairement un signe de portage brut non adapté ; à confirmer une
+  fois une capture réelle disponible plutôt que de le "corriger" sans preuve qu'il pose un problème
+  visuel réel.
+
+### Partie 4 — Connectivité réseau (Appetize.io vs Codemagic)
+
+**Vérifiable depuis cet environnement** : `APIEnvironment.restBaseURL`/`vpsBaseURL` sont des domaines
+HTTPS PUBLICS de production (`tiinver.com`/`api.tiinver.com`), pas une IP privée/`localhost`/IP de
+développeur — aucune raison structurelle pour qu'un environnement tiers comme Appetize.io (qui a un
+accès Internet sortant standard) ne puisse pas les atteindre, contrairement à un serveur de dev
+accessible uniquement depuis un réseau local ou l'émulateur Android (`10.0.2.2`, vu en commentaire
+dans `infoContract.java` mais jamais la valeur active).
+
+**PAS vérifiable depuis cet environnement, à confirmer côté infrastructure serveur** — documenté
+comme prérequis distinct des bugs de code, pas résolu ici :
+- Le serveur `tiinver.com`/`api.tiinver.com` applique-t-il une restriction par IP/pare-feu qui
+  exclurait les plages d'IP sortantes d'Appetize.io ou de Codemagic ? Aucune preuve trouvée dans le
+  code d'une telle restriction (elle serait côté serveur, invisible depuis ce dépôt client), mais pas
+  écartée non plus.
+- Le certificat TLS est-il correctement validé par la chaîne de confiance par défaut d'iOS (pas de
+  pinning de certificat personnalisé trouvé dans `APIClient.swift`/`Alamofire` — confirmé par lecture,
+  aucune configuration `ServerTrustManager` custom) ? Rien ne l'indique comme problématique au niveau
+  du code, mais un certificat expiré/mal chaîné côté serveur resterait invisible depuis ce dépôt.
+- **Test recommandé, hors de portée de cet environnement** : `curl -v https://tiinver.com/api/v1/`
+  depuis une machine quelconque avec accès Internet standard confirmerait en quelques secondes si le
+  serveur répond normalement à une requête externe générique — premier test à faire avant de creuser
+  plus loin côté client si le feed reste vide après la correction ci-dessus.
+
+### Partie 5 — Liste priorisée avant de dire "fonctionnel", pas seulement "compilé"
+
+1. **Confirmer par un nouveau test réel (Appetize.io ou device)** que le feed affiche maintenant soit
+   du contenu, soit un état d'erreur/chargement visible — la correction de la Partie 1 n'est pas
+   encore revérifiée.
+2. **Confirmer qu'une connexion réelle de bout en bout fonctionne** (identifiants → session persistée
+   → `UserSession.shared.myId` peuplé) — actuellement non confirmé, condition nécessaire pour que le
+   feed ET tout le reste de l'app authentifiée fonctionnent.
+3. **Si le feed reste vide après la correction** : exécuter le test `curl` de la Partie 4 pour écarter
+   un problème d'infrastructure serveur avant de re-chercher un bug côté client.
+4. **Modules 12/13/14 (WebRTC/CallKit/Shareboard)** — code le plus complexe et le plus à risque de
+   tout le portage, jamais exécuté ; priorité pour un test réel dès qu'un scénario à 2 comptes est
+   possible.
+5. **Module 15 (StoreKit 2)** — nécessite une configuration App Store Connect externe avant de pouvoir
+   être testé du tout ; l'audit de conformité 3.1.1/3.1.5 reste un arbitrage produit non résolu.
+6. **Revue visuelle réelle en dark mode et Dynamic Type** — non vérifiable depuis cet environnement,
+   nécessite soit des captures Appetize.io dédiées à ces réglages, soit un accès simulateur direct.
+7. **Audit ligne-à-ligne complet des 14 modules non retouchés cette session** — reporté à une ou
+   plusieurs passes dédiées ultérieures (voir cadrage en tête de cette section), pas fait ici par
+   souci de rigueur plutôt que de rapidité.
+
 ## CHECKPOINT 2 ATTEINT ET VALIDÉ (2026-08-11)
 
 Les modules 7 et 8 de l'ordre de portage sont marqués `[x]` ci-dessus (Checkpoint 2 validé sur ce

@@ -54,7 +54,24 @@ struct RootRouterView: View {
         expiryComponents.day = config.expireDay
         let expiryDate = Calendar(identifier: .gregorian).date(from: expiryComponents) ?? .distantFuture
 
-        let localVersion = Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0") ?? 0
+        let rawBundleVersion = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+        let localVersion = Int(rawBundleVersion ?? "0") ?? 0
+
+        // LOG TEMPORAIRE DE DIAGNOSTIC (2026-08-13) — à retirer une fois le blocage "mise à jour
+        // requise" confirmé résolu sur Appetize.io. Affiche les valeurs RÉELLEMENT comparées, pas
+        // supposées : la tentative précédente (`CFBundleVersion: "1000"` dans `project.yml`,
+        // `info: properties:`) s'est avérée sans effet malgré un build neuf — cause identifiée
+        // (XcodeGen génère `CFBundleVersion` depuis le build setting `CURRENT_PROJECT_VERSION`,
+        // ignorant `properties:` pour cette clé précise, voir `project.yml` pour le détail complet
+        // et la correction appliquée), mais ce log reste utile pour CONFIRMER par preuve directe au
+        // prochain test, plutôt que de re-supposer, que la valeur compilée correspond enfin à ce
+        // qui est attendu.
+        print("🔍 [SMOKE_TEST checkForceUpdate] CFBundleVersion brut (Info.plist) = \(rawBundleVersion ?? "nil")")
+        print("🔍 [SMOKE_TEST checkForceUpdate] localVersion (Int) = \(localVersion)")
+        print("🔍 [SMOKE_TEST checkForceUpdate] config.versionCode (Remote Config) = \(config.versionCode)")
+        print("🔍 [SMOKE_TEST checkForceUpdate] expiryDate (Remote Config) = \(expiryDate), Date() = \(Date())")
+        print("🔍 [SMOKE_TEST checkForceUpdate] condition version (config.versionCode > localVersion) = \(config.versionCode > localVersion)")
+        print("🔍 [SMOKE_TEST checkForceUpdate] condition date (Date() > expiryDate) = \(Date() > expiryDate)")
 
         // `SMOKE_TEST_MODE=1` : UNIQUEMENT injecté par le workflow Codemagic `visual-smoke-test`
         // (`codemagic.yaml`, `SIMCTL_CHILD_SMOKE_TEST_MODE=1` exporté avant `xcrun simctl launch`
@@ -71,6 +88,7 @@ struct RootRouterView: View {
         } else {
             forceUpdateRequired = Date() > expiryDate || config.versionCode > localVersion
         }
+        print("🔍 [SMOKE_TEST checkForceUpdate] forceUpdateRequired final = \(forceUpdateRequired)")
         configChecked = true
     }
 }

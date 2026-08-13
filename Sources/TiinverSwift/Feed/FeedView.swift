@@ -31,24 +31,19 @@ struct FeedView: View {
     @State private var showCamera = false
 
     var body: some View {
-        GeometryReader { geo in
-            TabView(selection: $currentIndex) {
-                ForEach(Array(viewModel.posts.enumerated()), id: \.offset) { index, post in
-                    FeedCell(post: post, isActive: index == currentIndex)
-                        .frame(width: geo.size.height, height: geo.size.width)
-                        .rotationEffect(.degrees(-90))
-                        .tag(index)
-                        .onAppear {
-                            if index == viewModel.posts.count - 2 {
-                                Task { await viewModel.loadNextPage() }
-                            }
-                        }
-                }
+        ZStack {
+            if viewModel.posts.isEmpty {
+                // 2026-08-13 — état visible AJOUTÉ (audit post-Appetize.io) : ce cas (aucun post
+                // encore chargé) précédait un écran totalement blanc, sans distinction possible
+                // entre "en cours de chargement", "erreur réseau/session" et "flux réellement vide"
+                // — confirmé par lecture complète de ce fichier AVANT correction, `viewModel.
+                // isLoading`/`errorMessage` n'étaient référencés NULLE PART dans le corps de cette
+                // vue. Les 3 états sont maintenant visibles ; le flux vidéo plein écran (ci-dessous)
+                // ne s'affiche qu'une fois au moins un post chargé, comme avant.
+                emptyOrStatusState
+            } else {
+                feedPager
             }
-            .frame(width: geo.size.height, height: geo.size.width)
-            .rotationEffect(.degrees(90), anchor: .topLeading)
-            .offset(x: geo.size.width)
-            .tabViewStyle(.page(indexDisplayMode: .never))
         }
         .ignoresSafeArea()
         .task { await viewModel.loadInitial() }
@@ -97,6 +92,54 @@ struct FeedView: View {
                 }
             )
         }
+    }
+
+    private var feedPager: some View {
+        GeometryReader { geo in
+            TabView(selection: $currentIndex) {
+                ForEach(Array(viewModel.posts.enumerated()), id: \.offset) { index, post in
+                    FeedCell(post: post, isActive: index == currentIndex)
+                        .frame(width: geo.size.height, height: geo.size.width)
+                        .rotationEffect(.degrees(-90))
+                        .tag(index)
+                        .onAppear {
+                            if index == viewModel.posts.count - 2 {
+                                Task { await viewModel.loadNextPage() }
+                            }
+                        }
+                }
+            }
+            .frame(width: geo.size.height, height: geo.size.width)
+            .rotationEffect(.degrees(90), anchor: .topLeading)
+            .offset(x: geo.size.width)
+            .tabViewStyle(.page(indexDisplayMode: .never))
+        }
+    }
+
+    /// État affiché tant qu'aucun post n'est chargé — distingue explicitement les 3 cas
+    /// auparavant indiscernables (écran blanc dans tous les cas) : chargement en cours, erreur
+    /// (réseau OU session absente/invalide — `FeedViewModel.loadNextPage()`), et flux réellement
+    /// vide (chargement terminé, aucune erreur, mais 0 post reçu du serveur).
+    @ViewBuilder
+    private var emptyOrStatusState: some View {
+        VStack(spacing: 16) {
+            if viewModel.isLoading {
+                ProgressView()
+                    .tint(.white)
+            } else if let errorMessage = viewModel.errorMessage {
+                Text(errorMessage)
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                Button("Réessayer") { Task { await viewModel.loadNextPage() } }
+                    .buttonStyle(.borderedProminent)
+            } else {
+                Image(systemName: "film").font(.system(size: 40)).foregroundStyle(.white.opacity(0.6))
+                Text("Aucune vidéo à afficher pour le moment").foregroundStyle(.white.opacity(0.8))
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
     }
 
     /// Port de `MainFragment.requestPermission()` — vérifie `Manifest.permission.CAMERA` AVANT de

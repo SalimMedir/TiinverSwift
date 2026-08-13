@@ -20,7 +20,18 @@ final class FeedViewModel: ObservableObject {
     }
 
     func loadNextPage() async {
-        guard !isLoading, let userId = UserSession.shared.myId.flatMap(Int.init) else { return }
+        guard !isLoading else { return }
+        // 2026-08-13 — CAUSE RÉELLE CONFIRMÉE du feed vide sans aucune erreur visible (audit
+        // post-Appetize.io) : cette garde retournait SILENCIEUSEMENT si `myId` était absent/invalide
+        // (pas de session valide) — `errorMessage` n'était jamais touché dans ce cas précis (seul le
+        // bloc `catch` plus bas le renseignait), et de toute façon `FeedView.swift` ne rendait NULLE
+        // PART `errorMessage`/`isLoading` (2ᵉ défaut confirmé indépendamment, voir `FeedView.swift`)
+        // — l'écran restait donc blanc pour TOUJOURS, sans distinction possible entre "en cours de
+        // chargement", "échec réseau" et "pas de session". Rendu visible explicitement ici.
+        guard let userId = UserSession.shared.myId.flatMap(Int.init) else {
+            errorMessage = "Aucune session active — reconnexion nécessaire."
+            return
+        }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }

@@ -2254,10 +2254,46 @@ manuelle attentive à la place ; `ProcessInfo` est un type Foundation, disponibl
 supplémentaire via `import UIKit` déjà présent en tête de fichier (UIKit réexporte Foundation sur les
 plateformes Apple, fait standard bien établi, pas une API tierce nécessitant vérification externe).
 
+**✅ CONFIRMÉ PAR RUN RÉEL (2026-08-13) — `SMOKE_TEST_MODE=1` fonctionne, la boîte de dialogue de
+permission notifications n'apparaît plus.** Bonne nouvelle à documenter explicitement, distincte du
+contournement lui-même : le smoke-test atteint désormais le PREMIER VRAI ÉCRAN CUSTOM de l'app
+(pas un écran système générique) — la gate de mise à jour forcée du module 5
+(`RootRouterView.checkForceUpdate`/`UpdateAppView`, "Une nouvelle version est disponible"). **C'est
+la toute première confirmation en conditions réelles qu'un comportement fonctionnel PROPRE À
+L'APPLICATION (pas juste "l'app ne crashe pas") se déclenche correctement** : Remote Config est
+bien interrogé au démarrage, `TiinverFirebaseConfigManager.versionCode` est bien comparé à
+`CFBundleVersion` local, et la décision de routage vers `UpdateAppView` plutôt que
+`AuthCoordinatorView`/`HomeShellView` est bien prise sur cette base — exactement le comportement
+voulu, PAS un bug. (Cause du déclenchement : la valeur `versionCode` configurée côté console Firebase
+Remote Config est supérieure au `CFBundleVersion` du build de test — configuration légitime, la gate
+elle-même fonctionne comme conçu.)
+
+**Contournement étendu à cette gate, MÊME PATTERN que pour la permission notifications** (voir
+entrée précédente) — `Navigation/RootRouterView.swift`, `checkForceUpdate()` : le calcul de
+`forceUpdateRequired` est désormais gardé par `if ProcessInfo.processInfo.environment
+["SMOKE_TEST_MODE"] == "1"`, mis à `false` inconditionnellement dans ce cas plutôt que d'évaluer
+`Date() > expiryDate || config.versionCode > localVersion`. **Choix délibéré, plus ciblé que
+sauter toute la fonction** : `TiinverFirebaseConfigManager.shared.fetchAndActivate()` reste appelé
+normalement AVANT ce garde — seule la DÉCISION DE BLOCAGE est neutralisée, pas la récupération des
+valeurs Remote Config elles-mêmes (dont d'autres écrans, ex. tarification certification/récompenses
+publicitaires, module 15, dépendent) — cohérent avec l'esprit du contournement notifications
+(`UNUserNotificationCenter.current().delegate = self` reste inconditionnel là aussi, seul l'appel
+bloquant `requestAuthorization` est sauté). Aucune modification à `codemagic.yaml` nécessaire pour
+cette extension : `SIMCTL_CHILD_SMOKE_TEST_MODE=1` (déjà exporté avant `xcrun simctl launch`) fixe
+la variable d'environnement pour tout le PROCESS lancé, donc pour tout le code Swift qui la lit
+ensuite — un seul point d'injection CI, utilisable par un nombre quelconque de gardes côté app.
+**Réservé exclusivement à ce workflow, comme précédemment** : `SMOKE_TEST_MODE` n'est positionné
+nulle part ailleurs (ni schéma, ni target, ni build `checkpoint-build`) — comportement de production/
+TestFlight strictement inchangé en son absence.
+
+`ProcessInfo` disponible sans import supplémentaire dans ce fichier malgré seulement `import
+SwiftUI` en tête — confirmé par le fichier lui-même, pas supposé : `Date()`/`Calendar`/
+`DateComponents` (types Foundation) y sont déjà utilisés sans `import Foundation` explicite juste
+au-dessus de ce changement, même précédent que pour `AppDelegate.swift`.
+
 **PAS ENCORE VÉRIFIÉ PAR RUN RÉEL.** Nécessite un nouveau run de `visual-smoke-test` pour confirmer
-à la fois que `SMOKE_TEST_MODE=1` atteint bien l'app (donc qu'aucune boîte de dialogue n'apparaît
-dans les nouvelles captures) ET que le premier écran réel de l'app (connexion/onboarding attendu)
-est enfin visible dans les captures `ecran_*.png`.
+que l'app dépasse maintenant aussi cette gate et atteint l'écran de connexion/onboarding (module 3)
+attendu d'après le flux de routage de `RootRouterView`.
 
 ## CHECKPOINT 2 ATTEINT ET VALIDÉ (2026-08-11)
 

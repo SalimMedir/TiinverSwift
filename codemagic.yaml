@@ -187,14 +187,44 @@ workflows:
           APPETIZE_DIR="$CM_BUILD_DIR/appetize_upload"
           ZIP_PATH="$APPETIZE_DIR/TiinverSwift.zip"
           mkdir -p "$APPETIZE_DIR"
+
+          # DIAGNOSTIC (2026-08-13) — le .zip précédent n'apparaissait dans AUCUN artifact malgré
+          # un chemin de script identique à celui déclaré dans `artifacts:` (vérifié, pas supposé —
+          # les deux valent `$CM_BUILD_DIR/appetize_upload/TiinverSwift.zip` à l'octet près). 2
+          # causes réelles possibles, non départagées avant preuve : (a) `zip` échoue silencieusement
+          # (son code de sortie n'était jamais vérifié) ; (b) le fichier est bien créé sur disque
+          # MAIS trop volumineux pour la collecte d'artifacts propre à Codemagic (ce `.app` embarque
+          # plusieurs XCFrameworks conséquents — WebRTC/Firebase/MetalPetal/FBSDK/GoogleMobileAds —
+          # aucune limite de taille officielle trouvée dans la documentation Codemagic pour
+          # confirmer ou infirmer cette hypothèse, donc NON affirmée ici, seulement mesurée
+          # ci-dessous). Taille du `.app` AVANT compression, pour trancher (b) dès ce build :
+          du -sh "$APP_PATH"
+
           # `cd` dans le dossier PARENT du .app avant de zipper (dans un sous-shell, pour ne pas
           # affecter le répertoire de travail du reste de ce step) : Appetize.io attend
           # "TiinverSwift.app" directement à la racine de l'archive, pas un chemin absolu profond
           # type "Users/builder/clone/DerivedData/Build/Products/.../TiinverSwift.app".
           # `$ZIP_PATH` reste valide depuis ce nouveau répertoire (chemin absolu).
           (cd "$APP_DIR" && zip -r "$ZIP_PATH" "TiinverSwift.app")
-          echo "Archive produite : $ZIP_PATH"
+          ZIP_EXIT=$?
+          echo "Code de sortie de la commande zip : $ZIP_EXIT"
+          if [ "$ZIP_EXIT" -ne 0 ]; then
+            echo "ERREUR : la commande zip a échoué (code $ZIP_EXIT) — cause (a) confirmée, voir la sortie de zip ci-dessus pour le détail exact."
+            exit 1
+          fi
+
+          # Vérification explicite (pas un simple `ls` informatif, même approche que pour
+          # GoogleService-Info.plist) : `zip` peut retourner 0 sans que le fichier de sortie existe
+          # réellement dans certains cas d'erreur inhabituels — `-s` vérifie taille non nulle, pas
+          # seulement l'existence.
+          echo "--- Vérification explicite du fichier zip produit ---"
           ls -la "$ZIP_PATH"
+          if [ ! -s "$ZIP_PATH" ]; then
+            echo "ERREUR : $ZIP_PATH n'existe pas ou est vide malgré un code de sortie 0 de zip — cause (a), variante silencieuse."
+            exit 1
+          fi
+          echo "Archive produite avec succès : $ZIP_PATH ($(du -h "$ZIP_PATH" | cut -f1))"
+          echo "Si ce fichier reste absent des artifacts du build malgré cette confirmation sur disque, la cause (b) — taille trop importante pour la collecte Codemagic — devient la piste principale, à traiter séparément (ex. \$CM_EXPORT_DIR, mécanisme Codemagic dédié à l'export d'artifacts personnalisés, non essayé pour l'instant)."
 
       - name: Choisir un simulateur iPhone récent disponible (iPhone 15 si présent, sinon le plus récent)
         script: |

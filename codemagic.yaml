@@ -170,21 +170,46 @@ workflows:
 
       - name: Capturer une série de captures d'écran (splash → routeur racine → connexion/onboarding)
         script: |
-          mkdir -p smoke_test_screenshots
+          # Chemin ABSOLU explicite, dérivé de $CM_BUILD_DIR (racine du clone — confirmé par la
+          # documentation Codemagic : "the global working directory defaults to the directory where
+          # the repository is cloned"/"All paths are relative to the clone directory"), utilisé
+          # IDENTIQUE ici et dans `artifacts:` ci-dessous — élimine toute ambiguïté sur le
+          # répertoire de travail réel au moment de la capture vs celui utilisé pour la collecte
+          # des artifacts par Codemagic.
+          SCREENSHOT_DIR="$CM_BUILD_DIR/smoke_test_screenshots"
+          mkdir -p "$SCREENSHOT_DIR"
+          echo "Dossier de captures : $SCREENSHOT_DIR"
+
           # Laisse passer l'écran de lancement (UILaunchScreen) avant la première capture, comme
           # demandé — délai empirique, pas mesuré précisément (pas d'accès à l'app en exécution
           # avant ce workflow pour calibrer plus finement).
           sleep 3
           for i in $(seq -w 1 8); do
-            xcrun simctl io "$DEVICE_UDID" screenshot "smoke_test_screenshots/ecran_${i}.png"
+            xcrun simctl io "$DEVICE_UDID" screenshot "$SCREENSHOT_DIR/ecran_${i}.png"
             sleep 2
           done
-          ls -la smoke_test_screenshots
+
+          echo "--- Contenu réel de $SCREENSHOT_DIR après capture ---"
+          ls -la "$SCREENSHOT_DIR"
+
+          # Vérification explicite plutôt qu'un simple `ls` informatif : si `xcrun simctl io
+          # screenshot` a échoué silencieusement pour chaque itération (code de sortie 0 mais
+          # fichier non produit — pas observé mais pas exclu non plus, jamais vérifié en pratique
+          # depuis cet environnement), ce step doit échouer BRUYAMMENT ici plutôt que de laisser la
+          # section Artifacts silencieusement vide/absente sur la page du build, comme constaté.
+          PNG_COUNT=$(find "$SCREENSHOT_DIR" -maxdepth 1 -name "*.png" | wc -l | tr -d ' ')
+          echo "Nombre de captures .png trouvées : $PNG_COUNT"
+          if [ "$PNG_COUNT" -eq 0 ]; then
+            echo "ERREUR : aucune capture .png dans $SCREENSHOT_DIR — le workflow échoue ici explicitement au lieu de produire un build vert sans artifact."
+            exit 1
+          fi
 
     artifacts:
-      # Dossier de sortie standard Codemagic — publié automatiquement comme artifacts
-      # téléchargeables du build, aucune section `publishing:` nécessaire pour cela.
-      - smoke_test_screenshots/*.png
+      # Chemin ABSOLU identique à $SCREENSHOT_DIR ci-dessus (variables d'environnement supportées
+      # dans les patterns `artifacts:`, confirmé par la documentation Codemagic) — publié
+      # automatiquement comme artifacts téléchargeables du build, aucune section `publishing:`
+      # nécessaire pour cela.
+      - $CM_BUILD_DIR/smoke_test_screenshots/*.png
 
     # Volontairement AUCUNE section `publishing:` (pas de TestFlight/App Store Connect) — ce
     # workflow ne fait QUE de la capture d'écran diagnostique sur simulateur, voir avertissement de

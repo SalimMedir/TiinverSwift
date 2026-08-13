@@ -2537,6 +2537,82 @@ upload manuel sur Appetize.io — les logs de diagnostic ajoutés ci-dessus perm
 immédiatement, par les valeurs réellement observées, si `localVersion` vaut maintenant `1000` et si
 l'app dépasse enfin `UpdateAppView`.
 
+**2026-08-13 (suite) : CHANGEMENT DE COMPORTEMENT PRODUIT — décision du propriétaire du projet, PAS
+un nouveau fix de bug.** La gate "mise à jour requise" (`RootRouterView.checkForceUpdate()`, module
+5) repose désormais UNIQUEMENT sur une date d'expiration (`Date() > expiryDate`) — la comparaison de
+version (`config.versionCode > localVersion`) est intégralement RETIRÉE de la condition de blocage,
+sur demande explicite, indépendamment de toute l'investigation de débogage des tours précédents
+(qui avait fini par confirmer avec certitude la cause exacte du blocage — `CFBundleVersion` ignoré
+par XcodeGen — AVANT que cette décision produit ne rende cette investigation obsolète pour la
+condition elle-même, toujours utile pour comprendre POURQUOI cette comparaison posait problème).
+
+**Motivation produit, telle que formulée par le propriétaire du projet et confirmée cohérente avec
+tout ce qui a été découvert cette session** : `version_code` (paramètre Remote Config) est PARTAGÉ
+avec l'app Android en production (son propre `versionCode` Gradle, réel = 378, voir entrée
+précédente) — jamais pensé pour être comparé à un `CFBundleVersion` iOS indépendant. Plutôt que de
+maintenir cette comparaison inter-plateforme structurellement bancale (qui exigerait soit un
+paramètre Remote Config dédié iOS, soit une segmentation par condition de plateforme côté console —
+les deux hors périmètre de ce portage client, déjà signalés comme point produit ouvert dans une
+entrée précédente), le blocage repose désormais sur un mécanisme plus simple et directement dans
+l'esprit d'un gate de mise à jour à distance : une DATE, modifiable depuis la console Firebase Remote
+Config (`app_expire_day/month/year`) SANS nouveau déploiement — repousser cette date de 3 mois
+débloque immédiatement tous les clients déjà installés, ce qu'une condition de version ne permet pas
+aussi simplement (nécessiterait de republier un `version_code` Remote Config plus élevé, avec le même
+risque de désynchronisation inter-plateforme qui vient d'être retiré).
+
+**Modifications appliquées, une seule fois, comme demandé** :
+1. **`Navigation/RootRouterView.swift`, `checkForceUpdate()`** : `rawBundleVersion`/`localVersion`
+   entièrement retirés (plus lus du tout) ; la condition finale devient simplement
+   `forceUpdateRequired = Date() > expiryDate` (bypass `SMOKE_TEST_MODE` inchangé, toujours en place
+   pour le pipeline CI). Les 6 lignes de log `🔍 [SMOKE_TEST checkForceUpdate]` du tour précédent
+   sont retirées et remplacées par UNE seule ligne de log minimal (`🔍 [checkForceUpdate] expiryDate
+   = ..., Date() = ..., forceUpdateRequired (avant SMOKE_TEST_MODE) = ...`), conservée à dessein pour
+   un audit futur — la comparaison de version n'a plus besoin d'être tracée puisqu'elle n'existe
+   plus.
+2. **Vérifié par grep sur tout `Sources/` (pas supposé) avant de toucher `FirebaseConfigManager.
+   swift`** : `TiinverFirebaseConfigManager.versionCode` (Settings/FirebaseConfigManager.swift) n'a
+   AUCUN autre appelant que `RootRouterView.swift` — laissé en place tel quel (propriété Remote
+   Config toujours valide, pas supprimée), seule la référence dans la condition de blocage a été
+   retirée, conformément à l'instruction de ne pas toucher la déclaration si elle n'est pas utilisée
+   ailleurs pour autre chose. **Point distinct, sans rapport, vérifié au passage** : il existe
+   PLUSIEURS AUTRES propriétés `versionCode` dans ce portage (`MessagePacket.versionCode`/
+   `MessageLib.versionCode`/`RosterModel.versionCode`/`ChatProfile.versionCode`,
+   `TiinverModel.xcdatamodeld`) — toutes liées au VERSIONNAGE DU PROTOCOLE DE MESSAGERIE (dérivées
+   de `CFBundleVersion` pour le format des paquets de chat, module 11), un concept ENTIÈREMENT
+   DIFFÉRENT et sans rapport avec `TiinverFirebaseConfigManager.versionCode` (paramètre Remote
+   Config du gate de mise à jour) — confirmé par lecture, PAS touchées par ce changement, qui ne
+   concerne que ce dernier.
+3. **Commentaire d'en-tête de `RootRouterView.swift` réécrit** pour documenter cette DIVERGENCE
+   DÉLIBÉRÉE iOS/Android (Android garde ses deux conditions dans `SplashActivity.java`, non modifié
+   — seul le portage iOS diverge, sur décision produit explicite) plutôt que de laisser une
+   description obsolète de la logique à double condition.
+4. **`Resources/RemoteConfigDefaults.plist`, `app_expire_day/month/year`** : repoussé de `13/11/2026`
+   (exactement 3 mois, sans marge) à `13/02/2027` (6 mois) — cette date de repli hors-ligne devient
+   désormais le SEUL filet de sécurité local si `fetchAndActivate()` échoue pendant les tests (plus
+   de condition de version comme mécanisme alternatif) ; marge volontairement plus large que le
+   minimum de 3 mois demandé, pour couvrir une phase de test qui pourrait s'étendre. Commentaire XML
+   du fichier mis à jour pour refléter que cette date de repli est maintenant le mécanisme PRINCIPAL
+   de sécurité locale, plus une simple défense secondaire.
+
+**Rappel important, pour la suite** : cette décision produit signifie concrètement que TOUT
+utilisateur avec un `CFBundleVersion` arbitrairement ancien continuera de fonctionner tant que la
+date d'expiration Remote Config n'est pas dépassée — c'est un choix assumé du propriétaire du projet
+(gate par date plutôt que par version), pas un oubli. `CURRENT_PROJECT_VERSION`/`MARKETING_VERSION`
+dans `project.yml` (voir entrée précédente) restent TEMPORAIRES et à réajuster avant App Store pour
+d'autres raisons (cohérence de version pour l'App Store Connect/TestFlight), indépendamment de cette
+gate qui ne les utilise plus du tout.
+
+Validation faite avant application : `fast-xml-parser` pour `RemoteConfigDefaults.plist` (XML valide
+confirmé, valeurs finales relues : `app_expire_day=13`/`app_expire_month=2`/`app_expire_year=2027`) ;
+relecture manuelle attentive de `RootRouterView.swift` (pas de compilateur Swift disponible dans cet
+environnement) — `rawBundleVersion`/`localVersion` confirmés absents de tout le fichier après
+modification, `config.versionCode` confirmé absent de la condition finale.
+
+**PAS ENCORE VÉRIFIÉ PAR RUN RÉEL.** Nécessite un nouveau build puis un nouvel upload manuel sur
+Appetize.io pour confirmer que l'app dépasse enfin `UpdateAppView` — le log minimal ajouté
+(`🔍 [checkForceUpdate]`) permettra de confirmer par preuve directe que `expiryDate` est bien
+février 2027 et que la condition évalue `false`.
+
 ## CHECKPOINT 2 ATTEINT ET VALIDÉ (2026-08-11)
 
 Les modules 7 et 8 de l'ordre de portage sont marqués `[x]` ci-dessus (Checkpoint 2 validé sur ce

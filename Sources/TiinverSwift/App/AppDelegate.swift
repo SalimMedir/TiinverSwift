@@ -37,10 +37,21 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
         Messaging.messaging().delegate = self
         UNUserNotificationCenter.current().delegate = self
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-            guard granted else { return }
-            DispatchQueue.main.async {
-                application.registerForRemoteNotifications()
+        // `SMOKE_TEST_MODE=1` : UNIQUEMENT injecté par le workflow Codemagic `visual-smoke-test`
+        // (`codemagic.yaml`, via `SIMCTL_CHILD_SMOKE_TEST_MODE=1` exporté avant `xcrun simctl
+        // launch` — mécanisme réel de `simctl` pour propager une variable d'environnement au
+        // process lancé dans le simulateur, vérifié contre un fil de discussion Apple Developer
+        // Forums avant utilisation, pas deviné). JAMAIS présent en production (absent de tout
+        // schéma de build/target réel, uniquement positionné par ce workflow CI de diagnostic
+        // visuel) — saute la demande de permission notifications, dont la boîte de dialogue
+        // système BLOQUE tout le reste de l'écran et empêche le smoke-test (passif, aucune
+        // interaction simulée par conception) d'atteindre le premier écran réel de l'app.
+        if ProcessInfo.processInfo.environment["SMOKE_TEST_MODE"] != "1" {
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                guard granted else { return }
+                DispatchQueue.main.async {
+                    application.registerForRemoteNotifications()
+                }
             }
         }
 

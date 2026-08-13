@@ -245,6 +245,19 @@ workflows:
             --predicate "process == \"$BUILT_EXECUTABLE\"" > "$LOG_FILE" 2>&1 &
           LOG_PID=$!
 
+          # `SIMCTL_CHILD_<VAR>` : mécanisme RÉEL de `simctl` (vérifié contre un fil de discussion
+          # Apple Developer Forums avant utilisation, pas deviné) pour propager une variable
+          # d'environnement au process lancé DANS le simulateur — le préfixe `SIMCTL_CHILD_` est
+          # retiré par `simctl`, l'app reçoit `SMOKE_TEST_MODE=1` tel quel. Lu par
+          # `App/AppDelegate.swift` (`didFinishLaunchingWithOptions`) pour sauter la demande de
+          # permission notifications, dont la boîte de dialogue système bloquait tout le reste de
+          # l'écran et empêchait ce smoke-test passif (aucune interaction simulée, par conception)
+          # d'atteindre le premier écran réel de l'app (voir MIGRATION_PROGRESS.md — 2 approches
+          # évaluées, celle-ci retenue : le boot headless de ce workflow, `simctl boot` sans jamais
+          # ouvrir Simulator.app, n'a pas de fenêtre GUI réelle sur laquelle une automation
+          # AppleScript/System Events pourrait cliquer, et `idb` aurait introduit une dépendance CI
+          # non vérifiée).
+          export SIMCTL_CHILD_SMOKE_TEST_MODE=1
           xcrun simctl launch "$DEVICE_UDID" "$BUILT_BUNDLE_ID"
           LAUNCH_EXIT=$?
           echo "xcrun simctl launch exit code : $LAUNCH_EXIT"
@@ -281,7 +294,7 @@ workflows:
             echo "$CRASH_DIR introuvable sur ce runner." | tee -a "$CRASH_FILE"
           fi
 
-      - name: Capturer une série de captures d'écran (splash → routeur racine → connexion/onboarding)
+      - name: Capturer une série de captures d'écran (lancement → premier écran réel de l'app)
         script: |
           # Chemin ABSOLU explicite, dérivé de $CM_BUILD_DIR (racine du clone — confirmé par la
           # documentation Codemagic : "the global working directory defaults to the directory where
@@ -293,13 +306,30 @@ workflows:
           mkdir -p "$SCREENSHOT_DIR"
           echo "Dossier de captures : $SCREENSHOT_DIR"
 
-          # Délai relevé de 3s à 10s (2026-08-13) — les 8 captures précédentes montraient toutes le
-          # springboard, identiques entre elles ; avant de conclure à un crash, élimine d'abord
-          # l'hypothèse la plus simple (lancement à froid + init Firebase/Core Data plus lent que
-          # les 3s initiales) — voir aussi le diagnostic logs/crash de l'étape précédente, qui
-          # tranchera entre les deux hypothèses indépendamment de ce délai.
+          # 2026-08-13 (suite) : la boîte de dialogue système de permission notifications, atteinte
+          # sans crash pour la première fois de ce portage, était bloquante pour la suite (voir
+          # `SMOKE_TEST_MODE=1`, exporté avant `xcrun simctl launch` dans l'étape précédente, lu par
+          # `App/AppDelegate.swift` pour sauter la demande d'autorisation) — plus de boîte de
+          # dialogue à "passer" par un tap, elle n'apparaît plus du tout dans ce workflow. Les 2
+          # phases de capture ci-dessous restent utiles pour autre chose : documenter la transition
+          # ENTRE l'écran de lancement (`UILaunchScreen`) et le premier écran réel de l'app, qui
+          # peut nécessiter un peu plus de temps (routage racine, vérification d'état de connexion)
+          # maintenant que la boîte de dialogue ne bloque plus artificiellement ce chargement.
+
+          # Phase 1 ("lancement_") : même délai qu'avant (10s, cause déjà documentée : cold start +
+          # init Firebase/Core Data), 3 captures rapprochées pour documenter l'état juste après le
+          # lancement.
           sleep 10
-          for i in $(seq -w 1 8); do
+          for i in $(seq -w 1 3); do
+            xcrun simctl io "$DEVICE_UDID" screenshot "$SCREENSHOT_DIR/lancement_${i}.png"
+            sleep 2
+          done
+
+          # Phase 2 ("ecran_") : attente supplémentaire pour laisser le premier écran réel de
+          # l'app (connexion/onboarding attendu, d'après `RootRouterView.swift`) se charger
+          # complètement, puis 5 captures pour documenter son état stabilisé.
+          sleep 5
+          for i in $(seq -w 1 5); do
             xcrun simctl io "$DEVICE_UDID" screenshot "$SCREENSHOT_DIR/ecran_${i}.png"
             sleep 2
           done

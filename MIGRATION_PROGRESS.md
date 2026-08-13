@@ -1,9 +1,12 @@
 # Suivi de migration Tiinver Android → iOS Swift
 
 Dernière mise à jour : 2026-08-13
-Statut global : **PORTAGE COMPLET — 18 modules compilent, phase de validation visuelle/fonctionnelle
-à venir.** Voir "CHECKPOINT 3 ATTEINT ET VALIDÉ (2026-08-13)" et "État réel du projet" pour le détail
-honnête de ce que "compile" veut dire ici — et ce que ça ne veut PAS dire.
+Statut global : **PORTAGE COMPLET — 18 modules compilent ET l'app se lance réellement sans crash sur
+simulateur (premier succès visuel runtime confirmé le 2026-08-13, après correction d'un vrai crash
+Firebase au démarrage) — validation visuelle/fonctionnelle du RESTE de l'app (écrans propres,
+interactions, modules individuels) encore à venir.** Voir "CHECKPOINT 3 ATTEINT ET VALIDÉ
+(2026-08-13)", "CHECKPOINT 3 — PREMIER SUCCÈS VISUEL RUNTIME CONFIRMÉ" et "État réel du projet" pour
+le détail honnête de ce qui est réellement vérifié à ce stade — et ce qui ne l'est toujours pas.
 Statut CHECKPOINT 2 VALIDÉ (2026-08-11) — build Codemagic réussi, aucune erreur de
 compilation restante sur les modules 1-8 (5 itérations de correction au total : `FirebaseCore`/
 `CoreDataFetchable` pour le Checkpoint 1, puis `MaskPreviewEditorPanelState`/
@@ -1674,11 +1677,19 @@ framework Apple utilisée a été vérifiée contre une documentation ou un sour
 correction au total sur toute la durée du projet.
 
 **Ce qui est TOUT AUSSI VRAI, et qu'il ne faut pas laisser le mot "complet" du statut global
-masquer : aucun de ces 18 modules n'a jamais été vu s'exécuter, ni sur un simulateur, ni sur un
-device réel.** Cet environnement de travail n'a eu, du premier au dernier module, aucun accès à
+masquer : à la date d'écriture initiale de cette section, aucun des 18 modules n'avait jamais été vu
+s'exécuter, ni sur un simulateur, ni sur un device réel.** **Mise à jour (2026-08-13, plus tard le
+même jour)** : ce n'est plus tout à fait exact au sens strict — voir "CHECKPOINT 3 — PREMIER SUCCÈS
+VISUEL RUNTIME CONFIRMÉ" ci-dessous, qui documente le tout premier lancement réel réussi (sur
+simulateur, via `visual-smoke-test`) après correction d'un vrai crash au démarrage
+(`GoogleService-Info.plist` absent du bundle, 4 tentatives de correction). **Mais la substance de
+cet avertissement reste entièrement valable** : ce premier succès ne couvre que l'amorçage de l'app
+jusqu'à une boîte de dialogue système générique — aucun écran propre à l'application n'a encore été
+vu rendu, et les 18 modules restent, individuellement, aussi peu vérifiés à l'exécution qu'avant.
+Cet environnement de travail n'a eu, du premier au dernier module, aucun accès à
 Xcode/macOS (voir "⚠️ Contrainte d'environnement" en tête de fichier) — chaque vérification a été
-faite soit par lecture de code, soit par des builds Codemagic qui ne testent QUE la compilation, pas
-le comportement. Concrètement, "compile" confirme :
+faite soit par lecture de code, soit par des builds Codemagic qui, jusqu'à ce premier succès
+runtime, ne testaient QUE la compilation, pas le comportement. Concrètement, "compile" confirme :
 - que la syntaxe Swift est valide et que les types s'accordent (les 5 catégories d'erreurs corrigées
   au Checkpoint 3, listées ci-dessus, montrent que ce n'est pas un simple détail — un projet de cette
   taille en accumule mécaniquement à chaque build) ;
@@ -1830,6 +1841,423 @@ encore jamais été vérifié à aucun moment de ce portage. Prérequis explicit
 workflow : un vrai test sur device physique nécessite un compte Apple Developer payant (signature,
 provisioning) — hors périmètre de cette étape, qui reste volontairement non signée
 (`CODE_SIGNING_ALLOWED=NO`, identique à `checkpoint-build`).
+
+**2026-08-13 (suite) : premier run de `visual-smoke-test` réussi (toutes les étapes vertes, y compris
+la capture) mais AUCUNE section "Artifacts" sur la page du build Codemagic.** Corrigé dans
+`codemagic.yaml` (seul fichier modifié, comme demandé) :
+- **Diagnostic, vérifié contre la documentation Codemagic réelle (pas deviné)** : "the global working
+  directory defaults to the directory where the repository is cloned" et "All paths [in `artifacts:`]
+  are relative to the clone directory, but absolute paths are supported as well" — les chemins relatifs
+  `smoke_test_screenshots/*.png` (déclaration `artifacts:`) et `smoke_test_screenshots/ecran_${i}.png`
+  (écriture par `xcrun simctl io ... screenshot`) étaient donc déjà censés désigner le même
+  répertoire en théorie. La cause exacte de l'absence de section Artifacts n'a PAS pu être confirmée
+  avec certitude depuis cet environnement (aucun accès aux logs du build Codemagic ni à un
+  reproducteur local) — traité honnêtement comme un diagnostic best-effort, pas une certitude.
+- **Corrections appliquées, cumulatives plutôt qu'un pari sur une seule cause** : (1) chemin ABSOLU
+  explicite `$CM_BUILD_DIR/smoke_test_screenshots` utilisé IDENTIQUEMENT dans le script d'écriture ET
+  dans `artifacts:` (variables d'environnement confirmées supportées dans les patterns `artifacts:`
+  par la documentation) — élimine toute ambiguïté sur le répertoire de travail réel, même si les
+  chemins relatifs auraient dû fonctionner sur le papier ; (2) vérification explicite ajoutée en fin
+  d'étape de capture (`find ... -name "*.png" | wc -l`) qui fait ÉCHOUER le build (`exit 1`) si le
+  dossier est vide, plutôt que de laisser un step vert masquer un échec silencieux de `xcrun simctl io
+  screenshot` (code de sortie 0 sans fichier produit — jamais observé mais jamais exclu non plus,
+  jamais vérifié en pratique depuis cet environnement) ; (3) `ls -la` conservé et complété d'un
+  message explicite du chemin résolu, pour un diagnostic immédiat dans les logs dès le prochain run.
+- **But de cette double approche** : même si la cause précise reste incertaine, le prochain build sera
+  soit vert AVEC des artifacts visibles, soit rouge AVEC un message d'erreur explicite pointant vers
+  le dossier vide — jamais plus vert sans qu'on sache pourquoi il n'y a rien à télécharger.
+- Validation YAML faite avant application (comme pour `project.yml` au Checkpoint 3) : `js-yaml` via
+  Node, installé temporairement dans le répertoire scratchpad puis supprimé — `PARSE OK`, `artifacts:`
+  contient bien `$CM_BUILD_DIR/smoke_test_screenshots/*.png`, `checkpoint-build` confirmé inchangé
+  (6 scripts, identique à avant cette correction).
+- **PAS ENCORE VÉRIFIÉ PAR BUILD RÉEL** — nécessite un nouveau run de `visual-smoke-test` pour
+  confirmer que la section Artifacts apparaît bien cette fois.
+
+**2026-08-13 (suite) : les 8 captures d'écran du run précédent de `visual-smoke-test` montrent
+TOUTES le springboard du simulateur (icône TiinverSwift visible mais l'app n'est jamais affichée),
+identiques entre elles — première vraie donnée de bug FONCTIONNEL post-compilation de tout ce
+portage, potentiellement, mais PAS ENCORE CONFIRMÉE.** Deux hypothèses en présence, non tranchées à
+ce stade : (a) l'app démarre puis crashe immédiatement (retour au springboard) — `FirebaseApp.
+configure()`/Core Data au premier lancement sont les suspects les plus probables vu leur historique
+dans ce portage (aucun n'a jamais été exécuté avant ce workflow) ; (b) l'app n'a en réalité jamais été
+lancée du tout (`xcrun simctl launch` "réussit" dès que launchd accepte la requête, indépendamment de
+ce qui se passe ensuite — un exit code 0 ne prouve rien à lui seul), par exemple à cause d'un
+décalage entre le bundle ID supposé (`com.tiinver.ios`, codé en dur dans le script) et celui
+réellement embarqué dans le `.app` construit.
+
+**Instrumentation de diagnostic ajoutée à `codemagic.yaml` (SEUL fichier modifié, comme demandé) —
+PAS de correction du bug lui-même tant que la cause exacte n'est pas confirmée par un run réel,
+conformément à la méthodologie du projet ("ne jamais claim tested sans un vrai build") :**
+1. Le bundle ID ET l'exécutable RÉELLEMENT embarqués dans le `.app` construit sont désormais lus
+   dynamiquement depuis son `Info.plist` (`PlistBuddy -c "Print :CFBundleIdentifier"`/
+   `:CFBundleExecutable`) plutôt que supposés — comparés à la valeur attendue `com.tiinver.ios` avec
+   un avertissement explicite en cas d'écart, et utilisés (valeur RÉELLE, pas supposée) pour le
+   `launch` qui suit, afin que le diagnostic reste valide même si un décalage existe.
+2. Code de sortie de `xcrun simctl install` ET `xcrun simctl launch` désormais explicitement capturés
+   et affichés dans les logs du build.
+3. `xcrun simctl spawn ... log stream --level debug --predicate 'process == "<exécutable réel>"'`
+   démarré en arrière-plan JUSTE AVANT le `launch` (pas après, pour ne rater aucun message des
+   premières millisecondes), laissé tourner 8s, puis arrêté et son contenu affiché dans les logs ET
+   exporté en artifact (`simulator_log.txt`).
+4. Recherche de rapports de crash `.ips`/`.crash` récents (moins de 10 minutes) dans
+   `~/Library/Logs/DiagnosticReports` sur le runner macOS, filtrés par le nom de l'exécutable réel —
+   contenu affiché dans les logs ET exporté en artifact (`crash_reports.txt`), même si vide
+   (fichier toujours créé pour un diagnostic sans ambiguïté : "vide" ≠ "pas cherché").
+5. Délai avant la première capture d'écran relevé de 3s à 10s, pour éliminer d'abord l'hypothèse la
+   plus simple (lancement à froid + init Firebase/Core Data plus lente que prévu) avant de conclure à
+   un crash — indépendant des points 1-4, qui trancheront de toute façon la question par les faits.
+Validation faite avant application : `js-yaml` (parse OK, `checkpoint-build` confirmé inchangé à
+6 scripts) ET `bash -n` sur les 9 blocs de script extraits individuellement (tous valides
+syntaxiquement) — les deux méthodes de vérification déjà établies aux corrections précédentes de ce
+fichier.
+
+**PAS ENCORE VÉRIFIÉ PAR RUN RÉEL — cause du symptôme (crash vs jamais lancé) toujours INCONNUE à ce
+stade.** Nécessite un nouveau run de `visual-smoke-test` pour obtenir les logs/rapports de crash
+réels ; cette entrée sera complétée avec la cause exacte une fois ce run effectué. **Si la cause
+s'avère être un crash au démarrage, ce sera traité avec la même priorité qu'une erreur de
+compilation** — la toute première preuve d'un bug fonctionnel réel dans ce portage, à distinguer des
+~18 corrections précédentes qui étaient toutes des erreurs de compilation.
+
+**2026-08-13 (suite) : cause CONFIRMÉE par `simulator_log.txt` (instrumentation ajoutée au run
+précédent) — le premier vrai bug fonctionnel post-compilation de ce portage n'était PAS du code
+Swift.** Message exact du crash :
+```
+*** Terminating app due to uncaught exception 'com.firebase.core', reason: '`FirebaseApp.configure()`
+could not find a valid GoogleService-Info.plist in your project.'
+```
+avec, plus haut dans le même log, la preuve directe que la recherche du fichier dans le bundle
+échoue : `Request: GoogleService-Info type: plist → Result: None`. L'app crashait donc AVANT
+d'afficher quoi que ce soit — cohérent avec les 8 captures identiques du run précédent (toutes le
+springboard, l'app n'ayant jamais eu le temps de rendre un seul frame).
+
+**Cause racine — vérifiée, pas devinée, et PLUS SUBTILE que l'hypothèse initiale ("le fichier n'est
+probablement pas déclaré dans `project.yml`") :** `project.yml` déclarait DÉJÀ
+`resources: - path: Resources` (dossier entier, présent depuis le tout premier commit du projet) —
+la déclaration n'était PAS absente. Vérifié contre la documentation XcodeGen réelle
+(`Docs/ProjectSpec.md` du dépôt `yonaskolb/XcodeGen`, récupérée directement, pas supposée) : un
+dossier sans extension comme `Resources` prend par défaut `type: group` (chaque fichier ajouté
+individuellement à la phase "Copy Bundle Resources"), PAS `type: folder`/`syncedFolder` (qui
+préserverait une hiérarchie de sous-dossier dans le bundle) — aucune exclusion `.gitignore`
+automatique documentée, aucun `excludes:` déclaré dans `project.yml`, aucun traitement spécial
+documenté pour un `.plist` en vrac. **Le mécanisme interne exact par lequel ce fichier précis
+n'atterrissait PAS dans le bundle malgré cette déclaration n'a PAS pu être confirmé avec certitude
+absolue depuis cet environnement** (pas d'accès à un `.xcodeproj`/`xcodebuild` réel pour inspecter la
+phase de build générée) — documenté honnêtement comme tel plutôt que de fabriquer une explication
+définitive non vérifiable.
+
+**Correction appliquée (`project.yml`, section `resources:` de la cible `TiinverSwift`)** : ajout
+d'une entrée DÉDIÉE et EXPLICITE pour ce fichier précis, en plus (pas à la place) de l'entrée
+`Resources` existante :
+```yaml
+resources:
+  - path: Resources
+    excludes:
+      - "GoogleService-Info.plist"   # évite une double inclusion / erreur "Multiple commands produce"
+  - path: Resources/GoogleService-Info.plist
+    optional: true   # REQUIS : fichier non committé (secret), sinon `xcodegen generate` échoue sur
+                      # toute machine où il n'a pas encore été décodé — vérifié contre la doc XcodeGen
+                      # réelle ("Disable missing path check. Defaults to false").
+```
+`type: file` (référence de fichier individuelle, sa propre entrée "Copy Bundle Resources") est le
+défaut XcodeGen pour un chemin avec extension, vérifié contre la doc réelle — pas besoin de le
+déclarer explicitement.
+
+**Vérification ajoutée à `codemagic.yaml` (workflow `visual-smoke-test`), nouvelle étape "Vérifier
+que GoogleService-Info.plist est bien copié dans le bundle .app"**, insérée JUSTE APRÈS le build et
+AVANT le démarrage du simulateur : `find <chemin du .app construit> -name "GoogleService-Info.plist"`,
+échoue explicitement (`exit 1`) si absent — confirme la correction en quelques secondes après le
+build, sans attendre tout le cycle boot/install/launch/captures (~30s) pour le savoir.
+
+Validation faite avant application (même méthode qu'à chaque correction CI de ce Checkpoint 3) :
+`js-yaml` (parse OK, structure `resources:`/`artifacts:` inspectée directement, `checkpoint-build`
+confirmé inchangé à 6 scripts) et `bash -n` sur les 10 blocs de script de `visual-smoke-test`
+(tous valides).
+
+**Confirmation explicite demandée : ce N'ÉTAIT PAS un bug de code Swift** — les ~18 corrections
+précédentes de ce Checkpoint 3 étaient toutes des erreurs de compilation (project.yml/AdMob SDK/
+conformité de protocole/accessibilité/masquage de nom) ; celle-ci est la première portant sur un
+comportement à l'EXÉCUTION, et sa cause est une omission de configuration de build (`project.yml`),
+pas un bug dans le code applicatif lui-même. Elle est restée invisible du premier commit du projet
+(Checkpoint 1, 2026-08-10) jusqu'à ce jour PARCE QU'aucun lancement réel de l'app n'avait eu lieu
+avant `visual-smoke-test` — un build qui compile ne dit rien sur un fichier de ressource qui ne
+s'embarque pas correctement, exactement le point déjà documenté dans "État réel du projet".
+
+**PAS ENCORE VÉRIFIÉ PAR RUN RÉEL** — nécessite un nouveau run de `visual-smoke-test` pour confirmer
+que l'app dépasse enfin l'écran de lancement et affiche un vrai écran (connexion/onboarding) dans les
+captures.
+
+**2026-08-13 (suite) : la vérification rapide ajoutée au tour précédent ("Vérifier que
+GoogleService-Info.plist est bien copié dans le bundle .app") confirme que le fichier est TOUJOURS
+absent du bundle `.app` construit, MALGRÉ l'entrée `resources:` dédiée ajoutée à `project.yml`.**
+La correction précédente n'a donc PAS résolu le problème — cause toujours non confirmée à ce stade.
+Reproduction locale impossible pour investiguer davantage (vérifié : aucun toolchain Swift/XcodeGen
+disponible dans cet environnement Windows — `which swift`/`which xcodegen` tous deux introuvables),
+donc impossible de faire tourner `xcodegen generate` soi-même pour inspecter le `project.pbxproj`
+réellement produit. Plutôt que d'avancer une nouvelle hypothèse non vérifiable, 3 étapes de
+diagnostic supplémentaires ajoutées à `codemagic.yaml` (workflow `visual-smoke-test`), chacune
+conçue pour ISOLER dans quelle phase le fichier disparaît, avant toute nouvelle tentative de
+correction :
+1. **Nouvelle étape "Vérifier la présence réelle du plist décodé sur disque (avant xcodegen
+   generate)"**, juste après le décodage du secret : `ls -la Resources/GoogleService-Info.plist` +
+   taille en octets (`wc -c`) + répertoire de travail courant (`pwd`) — confirme que le fichier
+   existe RÉELLEMENT sur disque, avec un contenu non vide, à l'instant précis où `xcodegen generate`
+   va scanner les resources (pas juste "la commande de décodage n'a pas retourné d'erreur").
+2. **Ordre des étapes reconfirmé par lecture directe du fichier (pas supposé)** : décodage (étape 2)
+   → nouvelle vérification disque (étape 3) → `xcodegen generate` (étape 4) → nouvelle vérification
+   pbxproj (étape 5) → Metal Toolchain → résolution SPM → build → vérification bundle `.app` —
+   l'ordre relatif décodage-avant-génération-avant-build était déjà correct, confirmé de nouveau.
+3. **Nouvelle étape "Vérifier que GoogleService-Info.plist apparaît dans project.pbxproj généré"**,
+   juste après `xcodegen generate` : `grep -A3 "GoogleService-Info" $XCODE_PROJECT/project.pbxproj`
+   — XcodeGen résout les chemins de resources AU MOMENT DE LA GÉNÉRATION, pas du build ; si
+   l'entrée n'apparaît pas ici, la cause est dans `project.yml`/le comportement de XcodeGen lui-même
+   (avant même que `xcodebuild` n'entre en jeu) ; si elle apparaît mais que le fichier reste absent
+   du `.app` final (étape de vérification déjà existante, après le build), la cause serait plutôt
+   côté exécution de la phase "Copy Bundle Resources" par `xcodebuild` — grille de lecture ajoutée
+   en commentaire directement sur cette étape existante pour que les deux diagnostics se combinent
+   sans ambiguïté au prochain run.
+
+**Aucune correction de `project.yml` appliquée à cette étape** — conformément à la consigne explicite
+de ne pas deviner : la correction précédente (entrée `resources:` dédiée) reste en place (elle n'a
+pas été identifiée comme fausse, seulement comme insuffisante — retrait prématuré sans preuve serait
+tout aussi risqué qu'une nouvelle hypothèse non vérifiée), et aucune nouvelle modification n'est
+appliquée tant que les 3 diagnostics ci-dessus n'auront pas isolé la phase exacte où le fichier
+disparaît. Validation faite avant application : `js-yaml` (parse OK, 12 étapes dans
+`visual-smoke-test`, ordre confirmé, `checkpoint-build` inchangé à 6 scripts) et `bash -n` sur les 12
+blocs de script (tous valides).
+
+**PAS ENCORE VÉRIFIÉ PAR RUN RÉEL — cause toujours INCONNUE.** Nécessite un nouveau run de
+`visual-smoke-test` ; cette entrée sera mise à jour avec la cause exacte (avec preuve directe des
+logs, pas une hypothèse) une fois ce run effectué.
+
+**2026-08-13 (suite) : CAUSE RÉELLE identifiée avec preuve — pas une nouvelle hypothèse — après que
+la correction précédente (entrée `resources:` dédiée simple) se soit avérée insuffisante (confirmé
+par les 2 diagnostics du tour précédent : le fichier existe bien sur disque à 1217 octets avant
+`xcodegen generate`, mais zéro occurrence de "GoogleService-Info" dans `project.pbxproj` généré —
+donc le problème est bien dans `project.yml`/le comportement de XcodeGen, pas dans l'ordre des
+étapes CI ni dans le script de décodage).**
+
+Reproduction locale toujours impossible (aucun toolchain Swift/XcodeGen dans cet environnement
+Windows) — investigation menée en recherchant l'historique RÉEL du projet XcodeGen sur GitHub
+(issues, pull requests, changelog), pas en re-devinant une nouvelle syntaxe :
+- **XcodeGen PR #945 (janvier 2021)** a étendu la détection interne "ceci est un fichier Info.plist"
+  de XcodeGen à tout nom de fichier correspondant au motif SUFFIXE `*-Info.plist` (pas seulement une
+  comparaison exacte avec le chemin configuré par `info:`) — but original : supprimer un
+  avertissement Xcode sur les Info.plist personnalisés (exemple d'origine dans la PR :
+  `HardwareSupport-Info.plist`).
+- **Effet de bord documenté par les mainteneurs eux-mêmes dans XcodeGen issue #1045** ("File not
+  added to target membership in 2.19.0") : `GoogleService-Info.plist` matche ce même motif de
+  suffixe et se retrouve donc exclu de TOUTE phase de build. `Docs/ProjectSpec.md` (réel, du dépôt
+  XcodeGen) est explicite sur ce point : *"Info.plist files will never be added to any build
+  phases, no matter what this \[buildPhase\] setting is."* — ceci explique précisément l'absence
+  TOTALE de "GoogleService-Info" dans le `.pbxproj` généré, pas juste une omission de la phase Copy
+  Bundle Resources : le fichier est exclu en amont de toute référence de build phase.
+- Les 2 hypothèses alternatives explicitement demandées ont été vérifiées (pas ignorées) et
+  écartées : `optional: true` ne déclenche de vérification d'existence de fichier QUE pour les
+  entrées `type: group` (vérifié dans le code source réel `SourceGenerator.swift` de XcodeGen,
+  récupéré directement) — sans effet pour une entrée fichier individuelle comme la nôtre, donc pas
+  de problème de timing d'évaluation possible ; l'entrée `Resources` (dossier) exclut déjà ce
+  fichier dans SON PROPRE scan de groupe, pas via une entrée séparée essayant de retirer
+  rétroactivement un fichier déjà mis en cache par une autre — pas de conflit entre les deux
+  entrées `resources:`.
+- **Correction documentée par la communauté XcodeGen pour ce cas précis** (issue #1045, workaround
+  confirmé par plusieurs utilisateurs touchés par le même symptôme) : ajout explicite de
+  `buildPhase: resources` sur l'entrée dédiée, qui force l'inclusion dans "Copy Bundle Resources"
+  malgré la détection automatique par motif de suffixe de nom.
+
+**Correction appliquée à `project.yml`** (entrée dédiée existante conservée, `optional: true`
+conservé — toujours nécessaire pour la raison déjà documentée, aucune preuve qu'il soit en cause
+ici — `buildPhase: resources` ajouté) :
+```yaml
+- path: Resources/GoogleService-Info.plist
+  optional: true
+  buildPhase: resources
+```
+Validation faite avant application : `js-yaml` (parse OK, structure `resources:` inspectée
+directement — 2 entrées confirmées avec les bonnes clés). `codemagic.yaml` INCHANGÉ à cette étape
+(les 2 diagnostics ajoutés au tour précédent restent en place et suffisent à confirmer/infirmer cette
+correction au prochain run — pas besoin d'en ajouter davantage tant que celle-ci n'a pas été testée).
+
+**Honnêteté sur ce qui est confirmé vs. ce qui reste à confirmer** : la CAUSE (motif de détection
+Info.plist de XcodeGen) est établie avec preuve directe (issues/PR réels du dépôt XcodeGen, pas une
+supposition) — mais la CORRECTION elle-même (`buildPhase: resources`) n'a PAS encore été vérifiée par
+un run réel depuis cet environnement, conformément à la méthodologie du projet ("ne jamais claim
+tested sans un vrai build"). **PAS ENCORE VÉRIFIÉ PAR RUN RÉEL.** Nécessite un nouveau run de
+`visual-smoke-test` ; cette entrée sera complétée avec la confirmation (ou l'infirmation, auquel cas
+l'investigation continuera) une fois ce run effectué — les 2 diagnostics déjà en place
+(présence sur disque + grep pbxproj) donneront la réponse immédiatement, sans attendre le cycle
+complet boot/install/launch/captures.
+
+**2026-08-13 (suite) : `buildPhase: resources` CONFIRMÉ INSUFFISANT par preuve directe — build
+Codemagic `6a7d8cb7ab6f0602d098a8f7`.** `xcodegen generate` réussit sans erreur, mais
+`GoogleService-Info.plist` reste à 0 occurrence dans `project.pbxproj` malgré cette option
+explicite. L'exclusion catégorique de XcodeGen pour les fichiers `*-Info.plist` s'applique donc de
+façon plus stricte que ce que le contournement communautaire (issue #1045) documentait — cohérent
+avec la citation littérale déjà relevée de `Docs/ProjectSpec.md` ("no matter what this setting
+is"), qui s'avère donc s'appliquer AUSSI à `buildPhase:` explicite, pas seulement à l'inférence
+automatique par extension.
+
+**Changement d'approche : abandon complet du système `resources:`/`sources:` de XcodeGen pour ce
+fichier, remplacé par une "Run Script" build phase qui copie le fichier directement dans le bundle
+`.app` déjà construit, pendant le build Xcode lui-même — hors du système de resources de XcodeGen
+entièrement.** Syntaxe vérifiée contre `Docs/ProjectSpec.md` réel de XcodeGen avant écriture (pas
+devinée) : 3 clés possibles au niveau de la cible — `preBuildScripts`/`postCompileScripts`/
+`postBuildScripts` — `postBuildScripts` choisi car "run after any other build phases" (confirmé
+textuellement), garantissant que le bundle `.app` existe déjà au moment de la copie. Propriétés
+`script`/`name`/`inputFiles`/`outputFiles` toutes vérifiées contre la doc réelle.
+
+**Correction appliquée à `project.yml`** :
+```yaml
+resources:
+  - path: Resources
+    excludes:
+      - "GoogleService-Info.plist"   # exclu en permanence — ne passe plus DU TOUT par XcodeGen
+postBuildScripts:
+  - name: Copier GoogleService-Info.plist dans le bundle (contournement de l'exclusion XcodeGen des fichiers *-Info.plist)
+    script: |
+      cp "${SRCROOT}/Resources/GoogleService-Info.plist" "${BUILT_PRODUCTS_DIR}/${WRAPPER_NAME}/GoogleService-Info.plist" 2>/dev/null || echo "GoogleService-Info.plist non trouvé à la source — build continuera mais l'app crashera au lancement"
+    inputFiles:
+      - $(SRCROOT)/Resources/GoogleService-Info.plist
+    outputFiles:
+      - $(BUILT_PRODUCTS_DIR)/$(WRAPPER_NAME)/GoogleService-Info.plist
+```
+L'entrée `resources:` dédiée (`buildPhase: resources`/`optional: true`) est RETIRÉE — elle ne
+fonctionnait pas et n'avait plus de raison d'exister. `SRCROOT`/`BUILT_PRODUCTS_DIR`/`WRAPPER_NAME`
+sont des variables de build Xcode standard (pas spécifiques à XcodeGen) : `SRCROOT` = dossier
+contenant le `.xcodeproj` généré, où le fichier est décodé par `codemagic.yaml` avant `xcodegen
+generate` ; `WRAPPER_NAME` = nom complet du bundle avec extension (`TiinverSwift.app`).
+`inputFiles:`/`outputFiles:` déclarés pour une intégration correcte à l'analyse de dépendances
+incrémentale de Xcode (pas strictement nécessaire pour des builds CI toujours propres, mais correct
+pour un usage local). Le script ne fait PAS échouer le build si la source est absente (`|| echo`
+plutôt que `exit 1`) — délibéré, même raison que `optional: true` ailleurs dans ce fichier : ne pas
+bloquer une génération/build LOCAL sur une machine où le secret n'a jamais été décodé.
+
+Validation faite avant application : `js-yaml` (parse OK, `resources:` confirmé réduit à la seule
+entrée dossier avec exclusion, `postBuildScripts:` confirmé avec les 4 clés attendues) et `bash -n`
+sur le script extrait (valide). `codemagic.yaml` INCHANGÉ — les 2 diagnostics déjà en place (présence
+dans `project.pbxproj` après génération, présence dans le bundle `.app` après build) suffisent à
+confirmer/infirmer cette nouvelle approche : la vérification pbxproj devrait désormais légitimement
+ne PLUS trouver "GoogleService-Info" (le fichier n'est plus un member Xcode, par conception) — SEULE
+la vérification bundle `.app` (après build, cherchant dans le `.app` produit sur disque, pas dans le
+`.pbxproj`) doit désormais le trouver.
+
+**✅ CONFIRMÉ PAR RUN RÉEL (2026-08-13) — 4ᵉ tentative RÉUSSIE, le crash `FirebaseApp.configure()`
+est définitivement résolu.** Le workflow `visual-smoke-test` montre l'app TiinverSwift se lancer
+réellement sur simulateur iOS et atteindre une boîte de dialogue système native (demande de
+permission notifications) — preuve directe que `postBuildScripts` copie bien
+`GoogleService-Info.plist` dans le bundle construit et que Firebase s'initialise sans planter.
+**ID du build Codemagic correspondant non communiqué avec cette confirmation — à renseigner ici dès
+qu'il est disponible depuis l'interface Codemagic** (aucun accès API/CLI à Codemagic depuis cet
+environnement pour le récupérer soi-même).
+
+**Interprétation précise des 8 captures (identiques entre elles) — pas un bug, une limite connue du
+smoke-test passif :** les 8 captures montrent TOUTES la même boîte de dialogue système iOS (demande
+de permission notifications, déclenchée très tôt dans le cycle de lancement — voir
+`Notifications/PushTokenRegistrar.swift`/`AppDelegate.swift`, module 4). Le smoke-test ne simule
+AUCUNE interaction (voir avertissement de tête du workflow `visual-smoke-test` dans
+`codemagic.yaml` — "aucune interaction (tap/saisie) n'est simulée ici", décision déjà documentée)
+— la boîte de dialogue reste donc affichée à l'identique sur toute la fenêtre de capture (~16s),
+puisque rien ne la fait disparaître. **Ceci confirme que l'app atteint ce point sans planter, mais
+NE confirme PAS ce qu'il y a derrière/après cette boîte de dialogue** — aucun écran propre à
+l'application (connexion/onboarding/feed) n'a encore été vu, seulement un écran système iOS
+générique commun à toute app demandant cette permission.
+
+## CHECKPOINT 3 — PREMIER SUCCÈS VISUEL RUNTIME CONFIRMÉ (2026-08-13)
+
+En plus de la compilation (section "CHECKPOINT 3 ATTEINT ET VALIDÉ" ci-dessus, qui ne portait QUE
+sur la compilation, comme documenté explicitement à l'époque), **l'app a maintenant été vue
+s'exécuter réellement pour la première fois de tout ce portage** : lancement sur simulateur iOS
+réussi, aucun crash, progression jusqu'à une interaction système native (permission notifications).
+C'est la première preuve d'exécution réelle après :
+- 18 modules portés sans jamais voir l'app tourner ;
+- 1 vrai bug fonctionnel trouvé et corrigé en 4 tentatives (`GoogleService-Info.plist` absent du
+  bundle — voir entrées de journal ci-dessus pour l'historique complet des 4 tentatives, dont 3
+  insuffisantes avant la bonne).
+
+**Ce que cette confirmation change concrètement au statut du projet :** la ligne de l'"État réel du
+projet" ci-dessous affirmant qu'"aucun de ces 18 modules n'a jamais été vu s'exécuter" n'est plus
+tout à fait exacte au sens strict — le PROCESSUS DE LANCEMENT (infrastructure module 1, Firebase/
+notifications module 4, routage racine) a maintenant été vu s'exécuter sans planter. **Ce que ça ne
+change PAS** : aucun écran SwiftUI propre à l'application n'a encore été vu rendu à l'écran (la
+boîte de dialogue système masque tout ce qu'il y a derrière) — la distinction "compile ≠ s'exécute
+sans crash ≠ affiche un écran correct ≠ fonctionne réellement" reste entièrement valable, on vient
+seulement de franchir la 2ᵉ étape sur 4.
+
+**Prochaines étapes de validation nécessaires, par ordre logique :**
+1. **Étendre `visual-smoke-test` pour interagir avec la boîte de dialogue système** — `xcrun simctl`
+   ne fournit PAS d'API de tap/UI-automation de haut niveau à lui seul (ce n'est pas un outil de
+   pilotage d'interface comme XCUITest) ; deux pistes réelles, à vérifier avant d'écrire du code
+   plutôt que supposer laquelle fonctionne le plus simplement en CI :
+   - `xcrun simctl privacy <device> grant notifications <bundle id>` (sous-commande `privacy` de
+     `simctl`, existe pour pré-accorder certaines permissions AVANT le lancement de l'app plutôt que
+     de taper sur la boîte de dialogue — évite le problème plutôt que de le résoudre par un tap, si
+     la permission ciblée est bien couverte par cette sous-commande) ;
+   - à défaut, un vrai tap programmatique nécessite `xcrun simctl io <device> ... ` n'expose pas de
+     commande de tap direct — la voie standard pour un tap simulé est un petit harnais XCUITest
+     (cible de test UI dédiée) plutôt que `simctl` seul ; à confirmer contre la documentation Apple
+     réelle avant d'implémenter, PAS deviné ici.
+2. Une fois la boîte de dialogue franchie (par l'une des deux pistes ci-dessus), capturer l'écran
+   RÉEL suivant — probablement l'écran de connexion/onboarding (module 3) d'après le flux de routage
+   documenté (`RootRouterView.swift`) — pour la toute première fois de ce portage.
+3. Élargir progressivement la couverture du smoke-test à d'autres écrans atteignables (feed après
+   connexion simulée, etc.) UNIQUEMENT une fois qu'un mécanisme d'authentification de test/compte de
+   démonstration est disponible côté backend — hors de portée du portage client lui-même, à
+   coordonner avec l'équipe serveur.
+4. Ne pas perdre de vue la liste complète des points de risque non liés à ce premier écran — voir
+   "Liste consolidée des points de risque pour la phase de test" (P1-P5), toujours entièrement valable
+   : ce succès ne couvre qu'un seul point (P4, comportements fondamentaux) parmi une longue liste.
+
+**2026-08-13 (suite) : point 1 ci-dessus implémenté — smoke-test étendu au-delà de la boîte de
+dialogue système, `codemagic.yaml` ET `App/AppDelegate.swift` modifiés (les deux commités
+ensemble, comme demandé).**
+
+**Choix entre les deux approches évaluées, documenté explicitement** (tap simulé vs variable
+d'environnement de contournement) : **variable d'environnement retenue**, PAS le tap simulé —
+raison technique concrète, pas une préférence arbitraire : ce workflow boote le simulateur en mode
+headless (`xcrun simctl boot`, jamais `open -a Simulator`), donc il n'existe AUCUNE fenêtre GUI réelle
+sur laquelle une automation AppleScript/System Events pourrait cliquer — `simctl io screenshot`
+fonctionne au niveau du daemon CoreSimulator, indépendamment de toute fenêtre à l'écran, ce qui est
+justement ce qui permet à ce workflow de capturer des écrans SANS jamais ouvrir Simulator.app.
+Ouvrir Simulator.app pour permettre une automation GUI aurait ajouté une dépendance à une session
+graphique + des permissions d'Accessibilité macOS (`Réglages Système > Confidentialité >
+Accessibilité`) presque certainement NON pré-accordées sur un runner Codemagic partagé et éphémère —
+risque de fragilité élevé pour un gain incertain. L'alternative `idb` (Facebook iOS Development
+Bridge, qui expose un vrai `idb ui tap X Y`) aurait résolu ce problème mais introduit une NOUVELLE
+dépendance CI non vérifiée (binaire à installer, statut de maintenance incertain) pour un besoin
+ponctuel — écartée pour cette raison, pas parce qu'elle ne fonctionnerait pas.
+
+**Mécanisme implémenté, vérifié avant utilisation (pas deviné)** : `SIMCTL_CHILD_<VAR>`, confirmé
+par un fil de discussion Apple Developer Forums — toute variable d'environnement exportée dans le
+shell APPELANT `xcrun simctl launch`, préfixée par `SIMCTL_CHILD_`, est transmise (préfixe retiré)
+au process lancé DANS le simulateur. `codemagic.yaml`, étape "Démarrer le simulateur, installer et
+lancer l'app" : `export SIMCTL_CHILD_SMOKE_TEST_MODE=1` ajouté juste avant `xcrun simctl launch`.
+`App/AppDelegate.swift`, `didFinishLaunchingWithOptions` : l'appel `UNUserNotificationCenter.
+current().requestAuthorization(...)` (celui qui déclenche la boîte de dialogue système) est
+désormais gardé par `if ProcessInfo.processInfo.environment["SMOKE_TEST_MODE"] != "1"` — SEUL cet
+appel est sauté (`UNUserNotificationCenter.current().delegate = self` reste inconditionnel, sans
+effet visuel). **Ce contournement est réservé EXCLUSIVEMENT à ce workflow CI** : `SMOKE_TEST_MODE`
+n'est positionné NULLE PART ailleurs (ni schéma de build, ni target, ni variable d'environnement
+Codemagic pour `checkpoint-build`) — en son absence (tout usage réel : simulateur manuel, device,
+TestFlight, production), le comportement est strictement identique à avant cette modification.
+
+**Capture en 2 phases** (`smoke_test_screenshots/lancement_*.png` ×3, `smoke_test_screenshots/
+ecran_*.png` ×5) plutôt qu'un "avant/après permission" comme initialement envisagé : la boîte de
+dialogue n'est plus "franchie" par un tap, elle n'apparaît plus DU TOUT désormais, donc la
+distinction avant/après permission n'a plus de sens — reformulée en "lancement" (10s après le
+launch, même délai qu'avant, documente la transition post-splash) vs "écran" (5s supplémentaires,
+documente l'état stabilisé du premier écran réel de l'app, qui peut désormais prendre plus de temps
+à charger que lorsque la boîte de dialogue bloquait artificiellement tout le reste).
+
+Validation faite avant application : `js-yaml` (parse OK, 12 étapes confirmées dans l'ordre attendu,
+`checkpoint-build` inchangé à 6 scripts) et `bash -n` sur les 12 blocs de script (tous valides). Pas
+de compilateur Swift disponible dans cet environnement pour vérifier `AppDelegate.swift` — relecture
+manuelle attentive à la place ; `ProcessInfo` est un type Foundation, disponible sans import
+supplémentaire via `import UIKit` déjà présent en tête de fichier (UIKit réexporte Foundation sur les
+plateformes Apple, fait standard bien établi, pas une API tierce nécessitant vérification externe).
+
+**PAS ENCORE VÉRIFIÉ PAR RUN RÉEL.** Nécessite un nouveau run de `visual-smoke-test` pour confirmer
+à la fois que `SMOKE_TEST_MODE=1` atteint bien l'app (donc qu'aucune boîte de dialogue n'apparaît
+dans les nouvelles captures) ET que le premier écran réel de l'app (connexion/onboarding attendu)
+est enfin visible dans les captures `ecran_*.png`.
 
 ## CHECKPOINT 2 ATTEINT ET VALIDÉ (2026-08-11)
 

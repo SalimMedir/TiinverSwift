@@ -2473,6 +2473,70 @@ ou `visual-smoke-test` suffisent pour produire un `.app`/`.zip` à jour) puis un
 sur Appetize.io pour confirmer que l'app dépasse enfin `UpdateAppView` et atteint l'écran de
 connexion/onboarding.
 
+**2026-08-13 (suite) : le blocage "mise à jour requise" persistait sur Appetize.io MÊME APRÈS un
+build neuf avec `CFBundleVersion: "1000"` — confirmé par l'utilisateur, pas un ancien zip en cache.
+La correction précédente était donc insuffisante. Cause RÉELLE trouvée avec certitude, sur preuve
+directe de la documentation XcodeGen — pas une nouvelle estimation.**
+
+**Investigation complète menée en une seule passe, comme demandé, avant toute nouvelle
+correction :**
+1. **`RootRouterView.checkForceUpdate()` relu ligne par ligne** — code de LECTURE confirmé CORRECT,
+   le bug n'est PAS ici : `Bundle.main.infoDictionary?["CFBundleVersion"] as? String`, converti en
+   `Int` via `Int(...)`. Côté Remote Config, `FirebaseConfigManager.versionCode` convertit aussi en
+   `Int` (`Int(remoteConfig["version_code"].numberValue.doubleValue)`). **Hypothèse "comparaison de
+   chaînes plutôt que numérique" (`"1000" < "378"` alphabétique) explicitement vérifiée et
+   ÉCARTÉE** : les deux côtés de `config.versionCode > localVersion` sont des `Int` authentiques,
+   jamais des `String` comparées lexicographiquement.
+2. **Cause RÉELLE, confirmée par preuve documentaire directe (PAS une hypothèse)** : `project.yml`
+   définissait `CFBundleVersion: "1000"` sous `info: properties:` — or `Docs/ProjectSpec.md` RÉEL du
+   dépôt XcodeGen (récupéré directement, cité verbatim) liste EXPLICITEMENT `CFBundleVersion` ET
+   `CFBundleShortVersionString` parmi les propriétés Info.plist **"generated automatically"** par
+   XcodeGen. Confirmé par une seconde source indépendante (rapports d'utilisateurs XcodeGen) :
+   mapping standard Xcode `CURRENT_PROJECT_VERSION` → `CFBundleVersion` / `MARKETING_VERSION` →
+   `CFBundleShortVersionString`. **Conséquence directe, maintenant évidente** : toute valeur
+   littérale fournie dans `properties:` pour CES DEUX CLÉS PRÉCISES est IGNORÉE par XcodeGen, qui les
+   dérive à la place des BUILD SETTINGS correspondants — jamais déclarés dans `settings: base:`
+   jusqu'ici, donc Xcode utilisait sa valeur implicite par défaut pour `CURRENT_PROJECT_VERSION`
+   (`"1"`). **Ceci explique EXACTEMENT et ENTIÈREMENT pourquoi la correction précédente
+   (`CFBundleVersion: "1000"` dans `properties:`) n'a eu STRICTEMENT AUCUN effet** sur un build pourtant
+   neuf — la valeur écrite n'était simplement jamais lue par XcodeGen pour cette clé.
+3. **Piste cache Remote Config (`minimumFetchInterval`) examinée puis écartée comme nécessaire à
+   corriger séparément** : `RemoteConfigSettings().minimumFetchInterval = 3600` (1h, déjà fidèle à
+   l'original Android) pourrait en théorie retourner une valeur mise en cache plutôt qu'un fetch
+   frais — MAIS la cause trouvée au point 2 explique déjà ENTIÈREMENT le symptôme observé
+   indépendamment de tout cache Remote Config (le problème est `localVersion`, jamais mis à jour
+   côté client, pas `config.versionCode`) : peu importe la fraîcheur de la valeur Remote Config
+   reçue, `localVersion` restait bloqué à `1` quoi qu'il arrive. Pas de correction nécessaire ici,
+   documenté comme piste examinée et écartée plutôt que simplement ignorée.
+
+**Correction complète appliquée EN UNE SEULE FOIS, comme demandé, pas par nouvelle itération** —
+`project.yml` :
+- `CFBundleVersion`/`CFBundleShortVersionString` RETIRÉS de `info: properties:` (valeurs
+  littérales ignorées là, confirmé).
+- `CURRENT_PROJECT_VERSION: "1000"` et `MARKETING_VERSION: "1.0.0"` AJOUTÉS à `settings: base:` —
+  le mécanisme qui fonctionne RÉELLEMENT pour générer ces 2 clés Info.plist. Même valeur "1000"
+  qu'avant (toujours TEMPORAIRE, toujours à réajuster avant App Store, raison inchangée : marge au-
+  dessus du `versionCode` Android réel 378, voir entrée précédente) — cette fois via le bon
+  mécanisme.
+
+**Log de diagnostic temporaire ajouté à `Navigation/RootRouterView.swift`,
+`checkForceUpdate()`** (à retirer une fois le blocage confirmé résolu) : affiche dans les logs du
+simulateur, à chaque évaluation, `CFBundleVersion` brut lu depuis `Info.plist`, `localVersion` (Int),
+`config.versionCode` (Remote Config), `expiryDate`/`Date()`, le résultat de CHACUNE des deux
+conditions séparément, et `forceUpdateRequired` final — pour confirmer par preuve directe au
+prochain test que `localVersion` vaut enfin `1000` (pas re-suppose), plutôt que d'empiler encore une
+correction non vérifiée.
+
+Validation faite avant application : `js-yaml` — confirmé programmatiquement que `CFBundleVersion`/
+`CFBundleShortVersionString` sont bien ABSENTS de `info.properties` et que
+`settings.base.CURRENT_PROJECT_VERSION`/`MARKETING_VERSION` sont bien PRÉSENTS avec les valeurs
+attendues (pas une relecture visuelle seule).
+
+**PAS ENCORE VÉRIFIÉ PAR RUN RÉEL/TEST APPETIZE.IO.** Nécessite un nouveau build puis un nouvel
+upload manuel sur Appetize.io — les logs de diagnostic ajoutés ci-dessus permettront de confirmer
+immédiatement, par les valeurs réellement observées, si `localVersion` vaut maintenant `1000` et si
+l'app dépasse enfin `UpdateAppView`.
+
 ## CHECKPOINT 2 ATTEINT ET VALIDÉ (2026-08-11)
 
 Les modules 7 et 8 de l'ordre de portage sont marqués `[x]` ci-dessus (Checkpoint 2 validé sur ce

@@ -8,11 +8,13 @@ import UserNotifications
 /// Structure vérifiée dans le code source (pas devinée) :
 /// - 3 onglets dans un `ViewPager` NON swipeable (`viewPager.setSwipeable(false)` — navigation
 ///   uniquement via la barre du bas), piloté par `NavigationCompound` : `MainFragment` (flux
-///   vidéo, module 6 — `FeedView.swift`, ÉCRIT), `Roster` (liste des conversations, module 11,
-///   pas encore porté), `CreatorFragment` ("créateur de la semaine" — classement, module pas
-///   identifié dans les 18 de l'ordre de portage, probablement "Divers"/18, pas encore porté).
-///   Les 2 onglets non portés affichent un placeholder, même logique que
-///   `App/RootPlaceholderView.swift` (module 1, supprimé — voir `RootRouterView.swift`).
+///   vidéo, module 6 — `FeedView.swift`, ÉCRIT), `Roster` (liste des conversations — `Messagerie/
+///   RosterListView.swift`, fermé le 2026-08-13 après découverte via test interactif Appetize.io
+///   que ce gap déjà documenté au module 11 restait branché sur un placeholder), `CreatorFragment`
+///   ("créateur de la semaine" — classement, `Creators/CreatorOfWeekView.swift`, confirmé N'
+///   APPARTENIR À AUCUN des 18 modules de l'ordre de portage original, mini-module ajouté le
+///   2026-08-13 après la même découverte). Voir MIGRATION_PROGRESS.md pour le détail complet des
+///   deux fermetures.
 /// - `navigation_notifications` et `navigation_profile` ne sont PAS des onglets du ViewPager :
 ///   ils lancent des Activity séparées (`ShowNoti`, `AddPerfilFoto`) — reproduit ici comme des
 ///   écrans présentés en `sheet`, pas des onglets `TabView`.
@@ -44,14 +46,14 @@ struct HomeShellView: View {
                 .tabItem { Label("Accueil", systemImage: "house.fill") }
                 .tag(0)
 
-            HomeShellPlaceholderTab(title: "Messages", subtitle: "Roster — module 11 (Messagerie)")
+            NavigationStack { RosterListView() }
                 .tabItem {
                     Label("Chat", systemImage: "message.fill")
                 }
                 .badge(chatUnreadCount)
                 .tag(1)
 
-            HomeShellPlaceholderTab(title: "Classement", subtitle: "CreatorFragment — module non encore identifié dans l'ordre de portage")
+            NavigationStack { CreatorOfWeekView() }
                 .tabItem { Label("Créateurs", systemImage: "trophy.fill") }
                 .tag(2)
         }
@@ -126,19 +128,5 @@ struct HomeShellView: View {
         let roster = RosterRepository()
         let rows = (try? await roster.query(predicate: NSPredicate(format: "unreadCount > 0"))) ?? []
         chatUnreadCount = rows.reduce(0) { $0 + Int($1.unreadCount) }
-    }
-}
-
-private struct HomeShellPlaceholderTab: View {
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        VStack(spacing: 8) {
-            Text(title).font(.title2.bold())
-            Text(subtitle).foregroundStyle(.secondary).multilineTextAlignment(.center)
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

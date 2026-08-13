@@ -97,9 +97,29 @@ workflows:
           # (App/AppDelegate.swift) plante au lancement si ce fichier est absent — sans lui, ce
           # workflow ne produirait que des captures d'un crash immédiat, pas l'écran de connexion.
 
+      - name: Vérifier la présence réelle du plist décodé sur disque (avant xcodegen generate)
+        script: |
+          # Diagnostic (2026-08-13, suite) — le fichier reste absent du bundle .app malgré la
+          # correction project.yml précédente (entrée resources: dédiée). Étape 1 de
+          # l'investigation demandée : confirmer avec preuve (taille réelle, pas supposée) que le
+          # fichier existe bien sur disque à l'instant précis où `xcodegen generate` va scanner les
+          # resources — avant de chercher plus loin.
+          ls -la Resources/GoogleService-Info.plist
+          echo "Taille en octets : $(wc -c < Resources/GoogleService-Info.plist)"
+          echo "Répertoire de travail courant : $(pwd)"
+
       - name: xcodegen generate
         script: |
           xcodegen generate
+
+      - name: Vérifier que GoogleService-Info.plist apparaît dans project.pbxproj généré
+        script: |
+          # Étape 3 de l'investigation demandée : XcodeGen résout les chemins de resources au
+          # moment de LA GÉNÉRATION (cette étape), pas au moment du build — si l'entrée
+          # n'apparaît pas ici dans project.pbxproj, le problème est dans project.yml/XcodeGen,
+          # PAS dans xcodebuild ni dans le simulateur (étapes suivantes, hors de cause dans ce cas).
+          echo "--- Recherche de GoogleService-Info dans $XCODE_PROJECT/project.pbxproj ---"
+          grep -A3 "GoogleService-Info" "$XCODE_PROJECT/project.pbxproj" || echo "AUCUNE occurrence de GoogleService-Info dans project.pbxproj — XcodeGen ne l'a PAS inclus à la génération, malgré l'entrée resources: dédiée dans project.yml."
 
       - name: Install Metal Toolchain
         script: |
@@ -125,7 +145,14 @@ workflows:
           # Ajouté 2026-08-13 suite au crash Firebase confirmé par les logs du run précédent
           # (`FirebaseApp.configure()` ne trouvait pas ce fichier au premier lancement réel — voir
           # `project.yml`, section `resources:`, pour la correction appliquée : entrée dédiée
-          # `Resources/GoogleService-Info.plist`). Vérification placée ICI, juste après le build et
+          # `Resources/GoogleService-Info.plist`). **Toujours en échec après cette correction
+          # (2026-08-13, suite)** — étape 4 de l'investigation demandée : à lire EN COMBINAISON avec
+          # les 2 étapes de diagnostic ajoutées plus haut (présence sur disque avant generate,
+          # présence dans project.pbxproj après generate). Si CE step échoue mais que
+          # "GoogleService-Info" apparaissait bien dans project.pbxproj : le problème est côté
+          # xcodebuild/exécution de la phase Copy Bundle Resources, PAS côté project.yml — sinon
+          # (absent du pbxproj dès la génération), le problème reste côté project.yml/XcodeGen.
+          # Vérification placée ICI, juste après le build et
           # AVANT de démarrer/installer/lancer le simulateur, pour échouer vite en cas de régression
           # — pas besoin d'attendre tout le cycle boot/install/launch/captures pour le savoir.
           APP_PATH=$(find "$CM_BUILD_DIR/DerivedData/Build/Products" -maxdepth 2 -name "TiinverSwift.app" -print -quit)

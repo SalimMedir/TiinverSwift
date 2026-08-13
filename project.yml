@@ -63,7 +63,34 @@ targets:
     sources:
       - path: Sources/TiinverSwift
     resources:
+      # `path: Resources` seul (sans `type:`) donne à XcodeGen le type par défaut pour un dossier
+      # sans extension, `group` — chaque fichier À L'INTÉRIEUR est bien ajouté individuellement à
+      # la phase "Copy Bundle Resources" (donc censé finir à la racine du bundle, pas dans un
+      # sous-dossier — contrairement à `type: folder`/`syncedFolder`, qui préserverait la
+      # hiérarchie). **Bug confirmé au premier lancement réel (2026-08-13, `visual-smoke-test`,
+      # log système : `FirebaseApp.configure()` plante, "Request: GoogleService-Info type: plist →
+      # Result: None")** : malgré cette déclaration, ce fichier précis ne se retrouvait PAS dans le
+      # bundle `.app` construit — mécanisme exact non confirmable avec certitude depuis cet
+      # environnement (pas d'accès à un `xcodebuild`/`.xcodeproj` réel pour l'inspecter), corrigé
+      # ci-dessous par une entrée dédiée plutôt que de re-deviner le comportement interne exact de
+      # XcodeGen pour ce cas précis.
       - path: Resources
+        excludes:
+          # Évite une double inclusion (donc une erreur Xcode "Multiple commands produce
+          # GoogleService-Info.plist") avec l'entrée dédiée ci-dessous.
+          - "GoogleService-Info.plist"
+      # Entrée dédiée, EXPLICITE : `type: file` est le défaut XcodeGen pour un chemin de fichier
+      # avec extension (vérifié contre `Docs/ProjectSpec.md` réel du dépôt XcodeGen, pas deviné) —
+      # garantit une référence de fichier individuelle avec sa propre entrée "Copy Bundle
+      # Resources", sans dépendre du comportement d'inclusion en masse du dossier parent.
+      # `optional: true` REQUIS : ce fichier n'est PAS committé (secret, voir `.gitignore` et
+      # `GOOGLE_SERVICE_INFO_PLIST_BASE64`) — sans cette option, `xcodegen generate` échouerait sur
+      # toute machine où le fichier n'a pas encore été décodé (vérifié contre la doc XcodeGen
+      # réelle : "Disable missing path check. Defaults to false" — sans elle, un chemin de fichier
+      # absent fait échouer `xcodegen generate` immédiatement, pas seulement produire un bundle
+      # incomplet).
+      - path: Resources/GoogleService-Info.plist
+        optional: true
     info:
       path: Resources/Info.plist
       properties:

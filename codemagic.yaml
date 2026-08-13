@@ -120,6 +120,27 @@ workflows:
             -derivedDataPath "$CM_BUILD_DIR/DerivedData" \
             CODE_SIGNING_ALLOWED=NO
 
+      - name: Vérifier que GoogleService-Info.plist est bien copié dans le bundle .app
+        script: |
+          # Ajouté 2026-08-13 suite au crash Firebase confirmé par les logs du run précédent
+          # (`FirebaseApp.configure()` ne trouvait pas ce fichier au premier lancement réel — voir
+          # `project.yml`, section `resources:`, pour la correction appliquée : entrée dédiée
+          # `Resources/GoogleService-Info.plist`). Vérification placée ICI, juste après le build et
+          # AVANT de démarrer/installer/lancer le simulateur, pour échouer vite en cas de régression
+          # — pas besoin d'attendre tout le cycle boot/install/launch/captures pour le savoir.
+          APP_PATH=$(find "$CM_BUILD_DIR/DerivedData/Build/Products" -maxdepth 2 -name "TiinverSwift.app" -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERREUR : TiinverSwift.app introuvable sous $CM_BUILD_DIR/DerivedData/Build/Products"
+            exit 1
+          fi
+          echo "Recherche de GoogleService-Info.plist dans $APP_PATH :"
+          FOUND=$(find "$APP_PATH" -name "GoogleService-Info.plist")
+          if [ -z "$FOUND" ]; then
+            echo "ERREUR : GoogleService-Info.plist absent du bundle .app construit — le crash Firebase au lancement (FirebaseApp.configure()) va se reproduire. Voir project.yml, section resources:."
+            exit 1
+          fi
+          echo "OK, trouvé : $FOUND"
+
       - name: Choisir un simulateur iPhone récent disponible (iPhone 15 si présent, sinon le plus récent)
         script: |
           # Le runner Codemagic (`xcode: latest`) ne garantit pas la présence exacte d'"iPhone 15"

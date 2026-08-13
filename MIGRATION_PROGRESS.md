@@ -2682,6 +2682,75 @@ Validation faite avant application : `js-yaml` (parse OK, 15 étapes confirmées
 automatique confirmera (ou infirmera, avec `exit 1` explicite dans ce cas) directement dans les logs
 si `CFBundleVersion` vaut enfin `1000` dans le `.app` construit, sans extraction manuelle.
 
+**2026-08-13 (suite) : DEUXIÈME fichier confirmé absent du bundle `.app` malgré sa présence sur le
+disque de build — `RemoteConfigDefaults.plist`, cause DISTINCTE de `GoogleService-Info.plist` mais
+symptôme identique.** Preuve directe fournie par l'utilisateur : log runtime (Codemagic ET `.app`
+téléchargé inspecté manuellement) montrant `Request: RemoteConfigDefaults type: plist → Result:
+None` — même format de message que pour `GoogleService-Info.plist`, confirmant qu'il s'agit du même
+type d'échec de résolution `Bundle.main`, mais PAS la même cause : ce fichier ne correspond PAS au
+motif `*-Info.plist` (PR #945/#1027 XcodeGen) qui expliquait `GoogleService-Info.plist`. Plutôt que
+d'ouvrir une nouvelle investigation approfondie pour identifier la cause XcodeGen exacte (le système
+`resources:`/`sources:` de XcodeGen s'est déjà montré peu fiable à plusieurs reprises sur ce projet —
+`GoogleService-Info.plist`, `CFBundleVersion`/`Info.plist`), même contournement direct appliqué
+immédiatement : copie explicite hors du système `resources:` de XcodeGen.
+
+**Investigation du comportement par défaut de Firebase quand ce fichier est absent, comme demandé,
+AVANT de considérer le correctif terminé** : `TiinverFirebaseConfigManager.init()` appelle
+`remoteConfig.setDefaults(fromPlist: "RemoteConfigDefaults")` — Firebase (SDK réel, comportement
+documenté) échoue SILENCIEUSEMENT si la ressource n'est pas trouvée (pas de crash, juste le message
+`Request:...Result: None` observé) et ne définit AUCUNE valeur par défaut. Une clé Remote Config
+JAMAIS définie (ni par défaut, ni par un fetch réussi) retourne, côté SDK Firebase, une valeur
+numérique par défaut de `0` (comportement standard, pas nil) — donc `config.expireDay`/
+`expireMonth`/`expireYear` valent tous `0` dans ce scénario. `DateComponents(year: 0, month: 0, day:
+0)` alimente `Calendar(identifier: .gregorian).date(from:)` dans `RootRouterView.
+checkForceUpdate()` : ceci produit une date RÉELLE mais extrêmement ancienne (PAS `nil` — le repli
+`?? .distantFuture` ne se déclenche QUE si aucune date n'est calculable du tout, ce qui n'est pas le
+cas ici, des composants année/mois/jour étant bien présents, même à `0`) — donc `Date() > expiryDate`
+est TOUJOURS vrai. **Ceci explique intégralement et de façon cohérente le blocage systématique
+observé sur Appetize.io**, où `SMOKE_TEST_MODE` n'est jamais injecté (contrairement au pipeline CI
+`visual-smoke-test`, qui contourne cette évaluation entièrement).
+
+**Point CRUCIAL, à documenter clairement comme demandé : le pipeline CI `visual-smoke-test`
+(Codemagic) n'a JAMAIS validé la vraie logique de date — seulement son contournement.** Depuis
+l'introduction de `SMOKE_TEST_MODE` (ajouté justement pour dépasser cette même gate lors du
+diagnostic du crash Firebase), CHAQUE run CI a évalué `if SMOKE_TEST_MODE == "1" { forceUpdateRequired
+= false }` — la branche `else` contenant `Date() > expiryDate` n'a JAMAIS été réellement exécutée
+sur Codemagic, où `SMOKE_TEST_MODE=1` est systématiquement injecté avant le lancement (`simctl
+launch`, `codemagic.yaml`). Ce bug était donc structurellement INVISIBLE à tous les tests précédents
+de ce portage, PAS par manque de rigueur mais parce que le pipeline de test automatisé et le chemin
+de code bogué ne se recoupaient jamais — un angle mort méthodologique précis, maintenant comblé par
+la vérification post-build ajoutée ci-dessous (qui confirme la PRÉSENCE du fichier dans le bundle,
+indépendamment de tout bypass).
+
+**Corrections appliquées** :
+1. **`project.yml`, `resources: excludes:`** : `RemoteConfigDefaults.plist` ajouté à la liste
+   d'exclusion permanente de l'entrée `Resources` (même raisonnement que `GoogleService-Info.plist`
+   — ne passe plus DU TOUT par le système `resources:` de XcodeGen).
+2. **`project.yml`, `postBuildScripts:`** : nouveau script séparé "Copier RemoteConfigDefaults.plist
+   dans le bundle", même modèle exact que celui de `GoogleService-Info.plist` (copie `${SRCROOT}/
+   Resources/RemoteConfigDefaults.plist` vers `${BUILT_PRODUCTS_DIR}/${WRAPPER_NAME}/`, `inputFiles:`/
+   `outputFiles:` déclarés, pas d'échec dur si absent — cohérence avec le motif déjà en place).
+3. **`codemagic.yaml`, nouvelle étape "Vérifier que RemoteConfigDefaults.plist est bien copié dans
+   le bundle .app"**, insérée juste après la vérification `GoogleService-Info.plist` existante,
+   même pattern exact (`find` sur le `.app` construit, `exit 1` explicite si absent).
+4. **Date d'expiration du plist RE-CONFIRMÉE dans le futur** (pas re-corrigée, déjà bonne) :
+   `app_expire_day/month/year` = `13/2/2027` (mise à jour lors d'un tour précédent, produit sur
+   décision du propriétaire du projet passant la gate à une logique 100% date — PAS `13/11/2026`
+   comme la référence de l'instruction initiale le laissait supposer, cette valeur étant celle
+   d'AVANT ce changement de logique) — confirmé par relecture directe du fichier, pas supposé.
+
+Validation faite avant application : `js-yaml` (parse OK pour les deux fichiers ; `resources.
+excludes` confirmé contenir les 2 entrées ; `postBuildScripts` confirmé à 2 scripts ; 16 étapes
+`visual-smoke-test` confirmées dans l'ordre attendu ; `checkpoint-build` inchangé à 6 scripts) et
+`bash -n` sur les 16 blocs de script (tous valides).
+
+**PAS ENCORE VÉRIFIÉ PAR RUN RÉEL.** Nécessite un nouveau build puis un nouvel upload manuel sur
+Appetize.io — les 2 nouvelles étapes de vérification automatique (`RemoteConfigDefaults.plist`
+présent dans le bundle, `CFBundleVersion` = "1000") donneront une confirmation directe dans les logs
+Codemagic ; le comportement RÉEL de la gate de mise à jour (sans `SMOKE_TEST_MODE`) ne pourra
+cependant être confirmé QUE sur Appetize.io ou un test manuel équivalent, jamais par ce pipeline CI
+lui-même — limite structurelle documentée ci-dessus, pas oubliée.
+
 ## CHECKPOINT 2 ATTEINT ET VALIDÉ (2026-08-11)
 
 Les modules 7 et 8 de l'ordre de portage sont marqués `[x]` ci-dessus (Checkpoint 2 validé sur ce

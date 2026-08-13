@@ -90,31 +90,31 @@ Référencé par Settings/FirebaseConfigManager.swift : remoteConfig.setDefaults
 	<string>https://cdn.tiinver.com/</string>
 	<key>stream_base_url</key>
 	<string>https://stream.tiinver.com/</string>
-	<!-- app_expire_day/month/year : valeurs TEMPORAIRES pour la phase de test interactif via
-	Appetize.io (2026-08-13), À REMETTRE À LA VALEUR RÉELLE avant toute soumission App Store. Les
-	valeurs d'origine (day=1/month=13/year=2026, reprises telles quelles du XML Android réel,
-	res/xml/remote_config_defaults.xml — PAS une erreur de transcription de ce portage) contiennent
-	un bug de données authentique côté Android : le mois 13 n'existe pas. Vérifié (pas supposé) que
-	ce bug produit le MÊME effet sur les deux plateformes malgré l'absence de correction côté
-	Android : `SplashActivity.java` calcule `MyTimeManager.getTimeInMillis(expireDay, expireMonth -
-	1, expireYear)` sur un `java.util.Calendar` 0-indexé (mois 0-11) — `13 - 1 = 12` déborde vers
-	janvier de l'année suivante, EXACTEMENT comme `Calendar`/`DateComponents` de Foundation (1-indexé,
-	mois 1-12) déborde pour `month: 13` directement (voir `RootRouterView.swift`, qui n'applique
-	délibérément PAS le `-1` d'Android, déjà documenté à l'écriture de ce fichier) — les deux
-	aboutissent au 1er janvier 2027, une date déjà future, donc ce bug n'est PAS la cause du blocage
-	observé sur Appetize.io/CI (voir `project.yml`, `CFBundleVersion`, pour la cause réelle
-	confirmée : comparaison de version, pas de date). Remplacées ici par une date VALIDE, repoussée
-	~3 mois au-delà d'aujourd'hui (2026-08-13 → 2026-11-13), en défense secondaire au cas où le
-	paramètre Remote Config `app_expire_*` LIVE (côté console Firebase, pas ces valeurs par défaut
-	locales, qui ne servent que de repli hors-ligne) configurerait indépendamment une date déjà
-	dépassée — non vérifiable depuis cet environnement, corrigé par prudence plutôt que supposé sans
-	risque. -->
+	<!-- app_expire_day/month/year : REPLI HORS-LIGNE UNIQUEMENT (setDefaults(fromPlist:), utilisé
+	seulement si `fetchAndActivate()` échoue ou n'a jamais réussi une première fois — la valeur
+	RÉELLE et à jour est celle publiée côté console Firebase Remote Config, modifiable À DISTANCE
+	sans nouveau déploiement, exactement l'objectif produit de ce mécanisme).
+	2026-08-13 (suite) : `RootRouterView.checkForceUpdate()` a changé de logique — décision du
+	propriétaire du projet, le blocage "mise à jour requise" repose désormais UNIQUEMENT sur cette
+	date (`Date() > expiryDate`), la comparaison de version (`config.versionCode`) étant totalement
+	retirée de la condition (cause du blocage réel rencontré sur Appetize.io — un `version_code`
+	Remote Config partagé avec l'app Android, jamais aligné avec le `CFBundleVersion` iOS). Cette
+	date de repli devient donc le SEUL filet de sécurité local si le fetch réseau échoue pendant les
+	tests — repoussée à 6 mois au-delà d'aujourd'hui (2026-08-13 → 2027-02-13) plutôt que les ~3 mois
+	minimum demandés, marge volontaire puisque c'est maintenant l'unique mécanisme de blocage (plus
+	de version en filet de sécurité alternatif) et que la phase de test peut s'étendre au-delà de 3
+	mois. Valeurs d'origine (day=1/month=13/year=2026, mois 13 invalide) : reprises verbatim du XML
+	Android réel (`res/xml/remote_config_defaults.xml`, PAS une erreur de transcription de ce
+	portage) — bug de données authentique déjà documenté et corrigé lors d'un tour précédent (voir
+	MIGRATION_PROGRESS.md pour l'analyse complète : ce bug débordait déjà vers une date future sur
+	les deux plateformes, jamais la cause du blocage observé). TEMPORAIRE : à remettre à une valeur
+	réelle cohérente avant toute soumission App Store — voir MIGRATION_PROGRESS.md. -->
 	<key>app_expire_day</key>
 	<integer>13</integer>
 	<key>app_expire_month</key>
-	<integer>11</integer>
+	<integer>2</integer>
 	<key>app_expire_year</key>
-	<integer>2026</integer>
+	<integer>2027</integer>
 	<key>version_code</key>
 	<integer>1</integer>
 </dict>

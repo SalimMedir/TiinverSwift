@@ -6,16 +6,22 @@ import SwiftUI
 /// (déjà écrit, module 5).
 ///
 /// Gate de mise à jour forcée porté (Firebase Remote Config confirmé réellement utilisé — voir
-/// `PushTokenRegistrar.swift`, décision Priorité 0) : `currentTime > lastTime ||
-/// remoteVersion > VERSION_CODE` → `UpdateAppView`. **Simplification documentée** : l'original lit
-/// `remoteVersion` depuis une valeur mise en cache localement (`infoContract.REMOTE_VERSION_KEY`,
-/// clé `"version"`) dont l'écriture n'a pas été localisée dans le code lu jusqu'ici — ce portage
-/// compare directement `TiinverFirebaseConfigManager.shared.versionCode` (valeur Remote Config
-/// fraîchement récupérée) à `CFBundleVersion` de `Info.plist`, sans la couche de cache
-/// intermédiaire dont l'origine reste incertaine. **Piège de portage évité, documenté** :
-/// `MyTimeManager.getTimeInMillis(expireDay, expireMonth - 1, expireYear)` soustrait 1 au mois
-/// car `java.util.Calendar` est 0-indexé — `Calendar`/`DateComponents` de Foundation sont
-/// 1-indexés (mois 1-12), donc PAS de `-1` ici malgré la ressemblance avec l'original.
+/// `PushTokenRegistrar.swift`, décision Priorité 0). Android compare `currentTime > lastTime ||
+/// remoteVersion > VERSION_CODE` (`SplashActivity.navigateAfterConfig`). **Divergence
+/// DÉLIBÉRÉE iOS/Android, décision produit (2026-08-13, pas un bug ni une simplification de
+/// portage)** : la condition de VERSION est entièrement RETIRÉE côté iOS — seule la date
+/// d'expiration (`Date() > expiryDate`) déclenche `UpdateAppView` ici, sur demande explicite du
+/// propriétaire du projet. Raison produit : `version_code` (Remote Config) est un paramètre
+/// PARTAGÉ avec l'app Android en production (son propre `versionCode` Gradle), jamais pensé pour
+/// être comparé à un `CFBundleVersion` iOS indépendant — cause du blocage réel rencontré lors des
+/// tests Appetize.io, résolue en supprimant la comparaison plutôt qu'en tentant de forcer un
+/// alignement inter-plateforme hors périmètre de ce portage. Objectif produit du choix "date
+/// seule" : repousser l'expiration depuis la console Firebase (`app_expire_day/month/year`) débloque
+/// l'app SANS nouveau déploiement, ce qu'une condition de version ne permettrait pas. **Piège de
+/// portage évité, documenté** : `MyTimeManager.getTimeInMillis(expireDay, expireMonth - 1,
+/// expireYear)` soustrait 1 au mois car `java.util.Calendar` est 0-indexé — `Calendar`/
+/// `DateComponents` de Foundation sont 1-indexés (mois 1-12), donc PAS de `-1` ici malgré la
+/// ressemblance avec l'original.
 struct RootRouterView: View {
     @State private var authenticatedUser: User?
     @State private var forceUpdateRequired = false
@@ -54,41 +60,32 @@ struct RootRouterView: View {
         expiryComponents.day = config.expireDay
         let expiryDate = Calendar(identifier: .gregorian).date(from: expiryComponents) ?? .distantFuture
 
-        let rawBundleVersion = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
-        let localVersion = Int(rawBundleVersion ?? "0") ?? 0
-
-        // LOG TEMPORAIRE DE DIAGNOSTIC (2026-08-13) — à retirer une fois le blocage "mise à jour
-        // requise" confirmé résolu sur Appetize.io. Affiche les valeurs RÉELLEMENT comparées, pas
-        // supposées : la tentative précédente (`CFBundleVersion: "1000"` dans `project.yml`,
-        // `info: properties:`) s'est avérée sans effet malgré un build neuf — cause identifiée
-        // (XcodeGen génère `CFBundleVersion` depuis le build setting `CURRENT_PROJECT_VERSION`,
-        // ignorant `properties:` pour cette clé précise, voir `project.yml` pour le détail complet
-        // et la correction appliquée), mais ce log reste utile pour CONFIRMER par preuve directe au
-        // prochain test, plutôt que de re-supposer, que la valeur compilée correspond enfin à ce
-        // qui est attendu.
-        print("🔍 [SMOKE_TEST checkForceUpdate] CFBundleVersion brut (Info.plist) = \(rawBundleVersion ?? "nil")")
-        print("🔍 [SMOKE_TEST checkForceUpdate] localVersion (Int) = \(localVersion)")
-        print("🔍 [SMOKE_TEST checkForceUpdate] config.versionCode (Remote Config) = \(config.versionCode)")
-        print("🔍 [SMOKE_TEST checkForceUpdate] expiryDate (Remote Config) = \(expiryDate), Date() = \(Date())")
-        print("🔍 [SMOKE_TEST checkForceUpdate] condition version (config.versionCode > localVersion) = \(config.versionCode > localVersion)")
-        print("🔍 [SMOKE_TEST checkForceUpdate] condition date (Date() > expiryDate) = \(Date() > expiryDate)")
+        // 2026-08-13 — CHANGEMENT DE COMPORTEMENT PRODUIT (décision du propriétaire du projet, pas
+        // un fix de bug) : le blocage "mise à jour requise" repose désormais UNIQUEMENT sur
+        // `expiryDate` (Remote Config `app_expire_day/month/year`, modifiable à distance depuis la
+        // console Firebase sans nouveau déploiement). La comparaison de version
+        // (`config.versionCode > localVersion`) est RETIRÉE de cette condition — elle comparait un
+        // `versionCode` Remote Config partagé avec l'app Android en production (jamais aligné avec
+        // le `CFBundleVersion` iOS indépendant) à une métrique de version totalement différente,
+        // cause du vrai blocage rencontré sur Appetize.io. `TiinverFirebaseConfigManager.
+        // versionCode` (Settings/FirebaseConfigManager.swift) N'EST PAS supprimé : vérifié par grep
+        // sur tout `Sources/` qu'il n'a aucun autre appelant que ce fichier — laissé en place par
+        // simplicité (propriété Remote Config toujours valide si un usage futur en a besoin), mais
+        // n'intervient plus dans cette décision.
+        print("🔍 [checkForceUpdate] expiryDate = \(expiryDate), Date() = \(Date()), forceUpdateRequired (avant SMOKE_TEST_MODE) = \(Date() > expiryDate)")
 
         // `SMOKE_TEST_MODE=1` : UNIQUEMENT injecté par le workflow Codemagic `visual-smoke-test`
         // (`codemagic.yaml`, `SIMCTL_CHILD_SMOKE_TEST_MODE=1` exporté avant `xcrun simctl launch`
         // — même mécanisme, même variable que le contournement de la permission notifications
-        // dans `App/AppDelegate.swift`). Confirmé en conditions réelles (2026-08-13) : cette gate
-        // fonctionne correctement (Remote Config `versionCode` du projet Firebase configuré
-        // au-dessus de `CFBundleVersion` local) et bloque le smoke-test passif (aucune interaction
-        // simulée) sur `UpdateAppView` indéfiniment — sauté UNIQUEMENT ici, `fetchAndActivate()`
-        // reste appelé normalement au-dessus (les autres valeurs Remote Config, ex. tarification
-        // certification/récompenses pub, restent chargées pour les écrans suivants). JAMAIS
-        // présent en production/TestFlight — comportement strictement inchangé en son absence.
+        // dans `App/AppDelegate.swift`). Inchangé par ce changement de logique — reste le seul
+        // moyen de forcer `forceUpdateRequired = false` pour le pipeline CI automatisé, qui ne
+        // contrôle pas la valeur `app_expire_*` publiée côté console Firebase. JAMAIS présent en
+        // production/TestFlight — comportement strictement inchangé en son absence.
         if ProcessInfo.processInfo.environment["SMOKE_TEST_MODE"] == "1" {
             forceUpdateRequired = false
         } else {
-            forceUpdateRequired = Date() > expiryDate || config.versionCode > localVersion
+            forceUpdateRequired = Date() > expiryDate
         }
-        print("🔍 [SMOKE_TEST checkForceUpdate] forceUpdateRequired final = \(forceUpdateRequired)")
         configChecked = true
     }
 }

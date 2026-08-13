@@ -2295,6 +2295,184 @@ au-dessus de ce changement, même précédent que pour `AppDelegate.swift`.
 que l'app dépasse maintenant aussi cette gate et atteint l'écran de connexion/onboarding (module 3)
 attendu d'après le flux de routage de `RootRouterView`.
 
+**2026-08-13 (suite) : nouveau chemin de test — `.app` zippé exporté pour upload manuel sur
+Appetize.io, COMPLÉMENTAIRE au smoke-test automatique passif, pas un remplacement.**
+
+**Pourquoi ce chemin est nécessaire, au-delà de ce que `visual-smoke-test` peut faire seul** : le
+smoke-test automatique (captures à intervalles réguliers, aucune interaction simulée par
+conception — voir avertissement de tête de workflow) a permis de découvrir/corriger 2 vrais blocages
+successifs (crash Firebase, gate de mise à jour forcée) mais reste, par nature, incapable d'aller
+plus loin qu'un écran atteignable SANS toucher l'écran. Tout ce qui nécessite une interaction tactile
+réelle — saisie d'identifiants sur l'écran de connexion, navigation dans le feed, dessin dans
+Animems, prise de vue caméra, gestes Shareboard — est HORS DE PORTÉE de ce workflow par construction
+(voir aussi les 2 approches déjà évaluées et écartées pour simuler un tap en CI headless, journal
+2026-08-13 précédent : AppleScript/System Events sans fenêtre GUI réelle, `idb` non vérifié).
+
+**Nouvelle étape ajoutée à `codemagic.yaml`, workflow `visual-smoke-test`, "Compresser le .app pour
+test interactif manuel via Appetize.io"** — placée après le build et la vérification
+`GoogleService-Info.plist`, avant le cycle boot/install/launch/captures (indépendante de tout ce qui
+suit, n'a besoin que du `.app` déjà construit) : localise `TiinverSwift.app` (même recherche `find`
+que les autres étapes, cohérent avec l'existant), le compresse en `.zip` avec `zip -r` exécuté DANS
+le dossier parent du `.app` (sous-shell `cd`, pour que l'archive contienne `TiinverSwift.app`
+directement à sa racine — format attendu par Appetize.io) et l'exporte comme artifact téléchargeable
+via `artifacts: - $CM_BUILD_DIR/appetize_upload/TiinverSwift.zip` (même mécanisme que les captures
+d'écran déjà exportées). Toutes les étapes existantes (captures automatiques) restent inchangées.
+
+**Mode d'emploi pour un test interactif réel, une fois ce `.zip` téléchargé depuis la page du
+build Codemagic** :
+1. Aller sur https://appetize.io/upload (compte gratuit suffisant pour un usage ponctuel/test).
+2. Uploader `TiinverSwift.zip` — Appetize.io détecte automatiquement un `.app` simulateur iOS zippé.
+3. Choisir un modèle d'appareil/version iOS proche de la cible (`deploymentTarget.iOS = "16.0"`,
+   `project.yml`) et lancer une session — l'app tourne dans un vrai simulateur iOS piloté depuis le
+   navigateur, avec taps/saisie clavier/gestes réels, sans matériel Apple ni compte Apple Developer
+   payant.
+4. **C'est désormais le chemin RECOMMANDÉ pour toute vérification nécessitant une interaction
+   réelle** — en particulier, par ordre de priorité (voir "Liste consolidée des points de risque
+   pour la phase de test") : l'écran de connexion/onboarding (P4, jamais vu au-delà du premier
+   rendu passif), Animems (P3 — rendu Core Graphics/gestes jamais vus), la caméra + pipeline de
+   filtres (P3 — jamais vue appliquée à un flux réel), Shareboard temps réel (P1 — nécessite deux
+   sessions Appetize.io simultanées pour tester la collaboration, ou un compte + un device réel côté
+   pair).
+Réserve à garder en tête : `GoogleService-Info.plist`/Firebase et tout appel réseau vers le vrai
+backend fonctionneront normalement dans Appetize.io (c'est un simulateur iOS standard avec accès
+réseau) — mais StoreKit 2 (produits App Store Connect) et AdMob (SDK réel côté appareil) peuvent se
+comporter différemment dans cet environnement tiers, non vérifié, à garder à l'esprit en testant ces
+zones spécifiques.
+
+Validation faite avant application : `js-yaml` (parse OK, 13 étapes confirmées dans l'ordre attendu,
+nouvel artifact confirmé dans la liste, `checkpoint-build` inchangé à 6 scripts) et `bash -n` sur les
+13 blocs de script (tous valides).
+
+**2026-08-13 (suite) : `TiinverSwift.zip` (export Appetize.io) CONFIRMÉ absent des artifacts du
+build — pas dans `smoke_test_screenshots`, pas dans son propre dossier, confirmé par inspection
+directe du zip d'artifacts téléchargé.** Vérification faite AVANT toute correction, comme demandé,
+pas de nouvelle hypothèse sans preuve :
+1. **`artifacts:` et le script vérifiés côte à côte** — chemins identiques à l'octet près
+   (`$CM_BUILD_DIR/appetize_upload/TiinverSwift.zip` des deux côtés). Pas un problème de chemin.
+2. **2 causes réelles restent possibles, non départagées avant preuve** : (a) la commande `zip`
+   échoue silencieusement — son code de sortie n'était JAMAIS vérifié dans la version précédente du
+   script (`(cd "$APP_DIR" && zip -r "$ZIP_PATH" "TiinverSwift.app")` sans capture de `$?`) ; (b) le
+   fichier est bien créé sur disque mais trop volumineux pour la collecte d'artifacts de Codemagic —
+   ce `.app` embarque plusieurs XCFrameworks conséquents (WebRTC, Firebase, MetalPetal, FBSDK,
+   GoogleMobileAds). **Recherche faite (pas supposée) : aucune limite de taille officielle trouvée
+   dans la documentation Codemagic accessible** pour confirmer ou infirmer (b) — ni confirmée ni
+   écartée à ce stade, seulement mesurée par la nouvelle instrumentation ci-dessous.
+3. `zip` lui-même est un outil standard macOS (`/usr/bin/zip`), présent nativement — pas de raison
+   de douter de sa disponibilité sur les runners Codemagic, mais vérifié quand même par la capture
+   explicite du code de sortie plutôt que supposé.
+
+**Diagnostic ajouté à `codemagic.yaml`, étape "Compresser le .app pour test interactif manuel via
+Appetize.io"**, même approche que pour `GoogleService-Info.plist` (qui a fonctionné) :
+- `du -sh "$APP_PATH"` AVANT compression — mesure la taille réelle du `.app`, donnée directe pour
+  juger la plausibilité de la cause (b).
+- Code de sortie de `zip` capturé explicitement (`ZIP_EXIT=$?`) et vérifié — `exit 1` avec message
+  clair si non nul (cause (a) confirmée dans ce cas).
+- `ls -la "$ZIP_PATH"` + test `[ ! -s "$ZIP_PATH" ]` (existence ET taille non nulle, pas juste
+  présence) après la compression — `exit 1` explicite si le fichier est absent/vide malgré un code
+  de sortie 0 de `zip` (variante silencieuse de la cause (a)).
+- Taille finale de l'archive affichée dans les logs si tout est correct.
+- Piste de secours notée en commentaire pour la suite SI le fichier est confirmé présent sur disque
+  avec une taille non nulle mais reste absent des artifacts malgré tout (pointant alors vers la
+  cause (b)) : `$CM_EXPORT_DIR`, un mécanisme Codemagic dédié à l'export d'artifacts personnalisés
+  distinct du simple pattern `artifacts:`, repéré dans la documentation mais PAS encore essayé —
+  à tester en second recours, pas en premier, pour ne pas empiler une nouvelle inconnue sur une
+  cause pas encore confirmée.
+
+Validation faite avant application : `js-yaml` (parse OK, 13 étapes confirmées dans l'ordre attendu,
+`checkpoint-build` inchangé à 6 scripts) et `bash -n` sur les 13 blocs de script (tous valides).
+
+**PAS ENCORE CORRIGÉ — cause toujours INCONNUE, uniquement instrumentée.** Nécessite un nouveau run
+de `visual-smoke-test` ; cette entrée sera complétée avec la cause exacte (confirmée par les logs,
+pas supposée) et la correction correspondante une fois ce run effectué.
+
+**2026-08-13 (suite) : sur Appetize.io, l'app reste bloquée sur `UpdateAppView` sans jamais aller
+plus loin — cause identifiée : Appetize.io lance l'app directement, sans passer par notre script
+`simctl`, donc `SIMCTL_CHILD_SMOKE_TEST_MODE=1` n'est jamais injecté et le bypass CI ne s'applique
+pas.** Investigation complète de `RootRouterView.checkForceUpdate()` demandée avant toute correction
+— faite, avec preuve, pas supposée :
+
+1. **Confirmé : DEUX mécanismes de blocage indépendants existent, pas un seul.** `forceUpdateRequired
+   = Date() > expiryDate || config.versionCode > localVersion` — (a) comparaison de VERSION
+   (`TiinverFirebaseConfigManager.versionCode`, paramètre Remote Config, vs `CFBundleVersion` local)
+   ET (b) comparaison de DATE (`expiryDate`, calculée depuis `app_expire_day/month/year`, également
+   des paramètres Remote Config). Les deux sont déjà fidèlement portés depuis
+   `SplashActivity.java` (`currentTime > lastTime || remoteVersion > infoContract.VERSION_CODE`),
+   relu en entier pour confirmer (`C:\Users\helen\AndroidStudioProjects\tiinver`).
+2. **Cause RÉELLE du blocage identifiée avec preuve, pas la date** : les valeurs PAR DÉFAUT locales
+   (`Resources/RemoteConfigDefaults.plist`, utilisées seulement en repli hors-ligne — les valeurs
+   RÉELLEMENT actives une fois `fetchAndActivate()` réussi viennent du serveur Firebase, PAS de ce
+   plist) donnent `version_code=1` (= `CFBundleVersion` local à l'époque → comparaison fausse, pas
+   bloquant) et une date qui déborde vers le 1er janvier 2027 (`app_expire_month=13`, invalide,
+   voir point 3) — donc AVEC LES DÉFAUTS SEULS, rien ne devrait bloquer. Le blocage observé en
+   pratique (CI et Appetize.io, tous deux avec accès réseau réel) ne peut s'expliquer QUE par une
+   valeur RÉELLEMENT PUBLIÉE côté console Firebase Remote Config, récupérée par `fetchAndActivate()`,
+   qui écrase ces défauts. **Confirmé par preuve concrète, pas une supposition** : le projet Firebase
+   ("com-tiinver") est PARTAGÉ avec l'app Android en production, dont le `versionCode` RÉEL est
+   **378** (`app/build.gradle` du dépôt Android réel) — le paramètre Remote Config `version_code`
+   publié côté console est très vraisemblablement calé sur cette valeur Android, jamais pensé pour
+   être comparé à un `CFBundleVersion` iOS indépendant qui démarrait à `"1"`. **Ce n'est pas un bug
+   de portage** : c'est un paramètre Remote Config conçu et publié pour Android, comparé ici (par
+   construction, même Firebase project) à une métrique de version iOS totalement différente et sans
+   rapport. **Point produit réel, non résolu ici, à trancher avant soumission** : un paramètre Remote
+   Config DÉDIÉ iOS (ex. `ios_version_code`) ou une segmentation par condition de plateforme côté
+   console Firebase — hors périmètre de ce portage client, à coordonner avec l'équipe produit/
+   backend.
+3. **Bug de données authentique trouvé en cours d'investigation, distinct de la cause du blocage** :
+   `app_expire_month = 13` — un mois qui n'existe pas, présent VERBATIM dans le XML Android source
+   réel (`res/xml/remote_config_defaults.xml`, PAS une erreur de transcription de ce portage) et
+   fidèlement reproduit dans `RemoteConfigDefaults.plist`. Vérifié (pas supposé) que ce bug produit
+   un comportement ÉQUIVALENT sur les deux plateformes malgré l'absence de correction chez Android :
+   `SplashActivity.java` calcule `getTimeInMillis(expireDay, expireMonth - 1, expireYear)` sur un
+   `Calendar` 0-indexé — `13 - 1 = 12` déborde vers janvier de l'année suivante ; `RootRouterView.
+   swift` (Foundation, 1-indexé, PAS de `-1`, décision déjà documentée à l'écriture de ce fichier)
+   déborde de la même façon pour `month: 13` directement. Les deux aboutissent au 1ᵉʳ janvier 2027 —
+   une date déjà future, donc CE bug n'est PAS la cause du blocage observé (confirmé par le point 2
+   ci-dessus : c'est la version, pas la date).
+
+**Corrections appliquées — 2 fichiers, à bien distinguer par nature** :
+
+**(A) `project.yml`, `CFBundleVersion` : `"1"` → `"1000"`.** Fixe DÉFINITIVEMENT (jusqu'à
+soumission réelle) la cause RÉELLE du blocage identifiée au point 2 — marge confortable au-dessus du
+`versionCode` Android réel (378), pas un nombre deviné au hasard. **TEMPORAIRE, marqué comme tel
+dans le commentaire du fichier** : à remettre à une valeur réelle cohérente avant toute soumission
+App Store.
+
+**(B) `Resources/RemoteConfigDefaults.plist`, `app_expire_day/month/year` : `1/13/2026` →
+`13/11/2026`.** Défense secondaire, PAS la correction principale (voir point 2 : la date n'est pas
+la cause identifiée) — corrige au passage le bug de données authentique du point 3 (mois invalide)
+ET repousse l'échéance de repli hors-ligne à ~3 mois au-delà d'aujourd'hui (2026-08-13), au cas où
+le paramètre Remote Config `app_expire_*` LIVE côté console configurerait indépendamment une date
+déjà dépassée — non vérifiable depuis cet environnement (aucun accès à la console Firebase), corrigé
+par prudence plutôt que supposé sans risque. **TEMPORAIRE également**, marqué comme tel dans le
+commentaire XML ajouté au fichier.
+
+**Distinction à bien garder, comme demandé** :
+- **`SMOKE_TEST_MODE`** (`AppDelegate.swift`/`RootRouterView.swift`, injecté via
+  `SIMCTL_CHILD_SMOKE_TEST_MODE=1` dans `codemagic.yaml`) : contournement propre et sûr, RÉSERVÉ AU
+  PIPELINE CI AUTOMATISÉ, qui contrôle intégralement l'environnement de lancement (`xcrun simctl
+  launch`). Ne s'applique PAS ailleurs — jamais actif hors de ce workflow, par construction.
+- **`CFBundleVersion`/`app_expire_*` (ce tour)** : réglage de DONNÉES DE BUILD, nécessaire
+  spécifiquement parce qu'Appetize.io (et tout lancement hors de notre script `simctl`) échappe
+  totalement au mécanisme `SMOKE_TEST_MODE` — pas un contournement de code, un ajustement des
+  valeurs elles-mêmes. **Portée BEAUCOUP plus large que `SMOKE_TEST_MODE`** : contrairement à ce
+  dernier (jamais actif hors CI), ces valeurs sont RÉELLEMENT embarquées dans TOUT build produit
+  depuis ce `project.yml`/`RemoteConfigDefaults.plist`, y compris un futur build de production tant
+  qu'elles ne sont pas réajustées — **rappel explicite, comme demandé : à réajuster à une version/
+  date réelle et cohérente avant toute soumission App Store réelle, ce n'est qu'un réglage temporaire
+  pour la phase de test.**
+
+Validation faite avant application : `js-yaml` pour `project.yml` (parse OK, `CFBundleVersion`
+confirmé `"1000"`) ; `fast-xml-parser` (validation XML complète, pas un simple comptage de balises)
+pour `RemoteConfigDefaults.plist` (XML valide confirmé, valeurs finales relues et confirmées :
+`app_expire_day=13`/`app_expire_month=11`/`app_expire_year=2026`/`version_code=1` inchangé) ;
+confirmé par `git check-ignore` que ce fichier n'est pas exclu par erreur par `.gitignore` (contrai-
+rement à `GoogleService-Info.plist`, qui l'est légitimement, lui, en tant que secret).
+
+**PAS ENCORE VÉRIFIÉ PAR RUN RÉEL/TEST APPETIZE.IO.** Nécessite un nouveau build (`checkpoint-build`
+ou `visual-smoke-test` suffisent pour produire un `.app`/`.zip` à jour) puis un nouvel upload manuel
+sur Appetize.io pour confirmer que l'app dépasse enfin `UpdateAppView` et atteint l'écran de
+connexion/onboarding.
+
 ## CHECKPOINT 2 ATTEINT ET VALIDÉ (2026-08-11)
 
 Les modules 7 et 8 de l'ordre de portage sont marqués `[x]` ci-dessus (Checkpoint 2 validé sur ce

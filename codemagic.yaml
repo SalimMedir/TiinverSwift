@@ -154,6 +154,11 @@ workflows:
 
       - name: Démarrer le simulateur, installer et lancer l'app
         script: |
+          # Chemin ABSOLU identique à celui utilisé par l'étape de capture ci-dessous — créé ici
+          # aussi car cette étape y écrit également ses propres fichiers de diagnostic.
+          SCREENSHOT_DIR="$CM_BUILD_DIR/smoke_test_screenshots"
+          mkdir -p "$SCREENSHOT_DIR"
+
           xcrun simctl boot "$DEVICE_UDID" || true
           xcrun simctl bootstatus "$DEVICE_UDID" -b
 
@@ -162,11 +167,71 @@ workflows:
             echo "ERREUR : TiinverSwift.app introuvable sous $CM_BUILD_DIR/DerivedData/Build/Products"
             exit 1
           fi
+          echo "APP_PATH=$APP_PATH"
+
+          # DIAGNOSTIC (2026-08-13) — les 8 captures du run précédent montraient toutes le
+          # springboard, identiques entre elles : l'app ne s'est jamais affichée à l'écran, soit
+          # parce que le launch n'a jamais réellement démarré le bon binaire, soit parce qu'elle a
+          # crashé immédiatement. Lit le bundle ID ET l'exécutable RÉELLEMENT embarqués dans le
+          # .app construit plutôt que de supposer "com.tiinver.ios"/"TiinverSwift" — un décalage
+          # silencieux ici expliquerait exactement ce symptôme (`xcrun simctl launch` réussit
+          # techniquement dès que la requête est acceptée par launchd, même si l'app ciblée
+          # n'existe pas ou crashe l'instant d'après — un exit code 0 ne prouve rien à lui seul).
+          BUILT_BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Info.plist")
+          BUILT_EXECUTABLE=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP_PATH/Info.plist")
+          echo "Bundle ID réel du .app construit : $BUILT_BUNDLE_ID (attendu : com.tiinver.ios)"
+          echo "Exécutable réel du .app construit : $BUILT_EXECUTABLE"
+          if [ "$BUILT_BUNDLE_ID" != "com.tiinver.ios" ]; then
+            echo "ATTENTION : bundle ID construit différent de com.tiinver.ios — utilisé quand même ci-dessous (valeur réelle), pas la valeur supposée."
+          fi
 
           xcrun simctl install "$DEVICE_UDID" "$APP_PATH"
-          # com.tiinver.ios : PRODUCT_BUNDLE_IDENTIFIER réel de project.yml (confirmé par
-          # Resources/GoogleService-Info.plist, voir décision module 1/Checkpoint 1), pas deviné.
-          xcrun simctl launch "$DEVICE_UDID" com.tiinver.ios
+          echo "xcrun simctl install exit code : $?"
+
+          # Démarre la capture des logs système AVANT le launch, pas après, pour ne rater aucun
+          # message des toutes premières millisecondes (init Firebase/Core Data, etc.) — filtré sur
+          # le nom réel de l'exécutable, tourne en arrière-plan pendant la fenêtre de diagnostic
+          # ci-dessous puis est arrêté explicitement.
+          LOG_FILE="$SCREENSHOT_DIR/simulator_log.txt"
+          xcrun simctl spawn "$DEVICE_UDID" log stream --level debug --style compact \
+            --predicate "process == \"$BUILT_EXECUTABLE\"" > "$LOG_FILE" 2>&1 &
+          LOG_PID=$!
+
+          xcrun simctl launch "$DEVICE_UDID" "$BUILT_BUNDLE_ID"
+          LAUNCH_EXIT=$?
+          echo "xcrun simctl launch exit code : $LAUNCH_EXIT"
+          if [ "$LAUNCH_EXIT" -ne 0 ]; then
+            echo "ERREUR : xcrun simctl launch a retourné un code non nul — l'app n'a probablement jamais démarré."
+          fi
+
+          # Fenêtre de 8s pour laisser un éventuel crash au démarrage apparaître dans le stream de
+          # logs avant de l'arrêter (pas une preuve d'absence de crash si rien n'apparaît — voir
+          # aussi la recherche de rapports .ips/.crash ci-dessous, complémentaire).
+          sleep 8
+          kill "$LOG_PID" 2>/dev/null || true
+          wait "$LOG_PID" 2>/dev/null || true
+
+          echo "--- Logs système filtrés sur le process $BUILT_EXECUTABLE (8s après launch) ---"
+          cat "$LOG_FILE" 2>/dev/null || echo "(fichier de logs vide ou introuvable)"
+
+          CRASH_FILE="$SCREENSHOT_DIR/crash_reports.txt"
+          : > "$CRASH_FILE"
+          CRASH_DIR="$HOME/Library/Logs/DiagnosticReports"
+          echo "--- Recherche de rapports de crash récents pour $BUILT_EXECUTABLE dans $CRASH_DIR ---"
+          if [ -d "$CRASH_DIR" ]; then
+            RECENT_CRASHES=$(find "$CRASH_DIR" \( -iname "${BUILT_EXECUTABLE}*.ips" -o -iname "${BUILT_EXECUTABLE}*.crash" \) -mmin -10)
+            if [ -n "$RECENT_CRASHES" ]; then
+              echo "Rapport(s) de crash trouvé(s) — copiés dans $CRASH_FILE :"
+              for f in $RECENT_CRASHES; do
+                echo "===== $f =====" | tee -a "$CRASH_FILE"
+                cat "$f" | tee -a "$CRASH_FILE"
+              done
+            else
+              echo "Aucun rapport .ips/.crash récent pour $BUILT_EXECUTABLE dans $CRASH_DIR." | tee -a "$CRASH_FILE"
+            fi
+          else
+            echo "$CRASH_DIR introuvable sur ce runner." | tee -a "$CRASH_FILE"
+          fi
 
       - name: Capturer une série de captures d'écran (splash → routeur racine → connexion/onboarding)
         script: |
@@ -180,10 +245,12 @@ workflows:
           mkdir -p "$SCREENSHOT_DIR"
           echo "Dossier de captures : $SCREENSHOT_DIR"
 
-          # Laisse passer l'écran de lancement (UILaunchScreen) avant la première capture, comme
-          # demandé — délai empirique, pas mesuré précisément (pas d'accès à l'app en exécution
-          # avant ce workflow pour calibrer plus finement).
-          sleep 3
+          # Délai relevé de 3s à 10s (2026-08-13) — les 8 captures précédentes montraient toutes le
+          # springboard, identiques entre elles ; avant de conclure à un crash, élimine d'abord
+          # l'hypothèse la plus simple (lancement à froid + init Firebase/Core Data plus lent que
+          # les 3s initiales) — voir aussi le diagnostic logs/crash de l'étape précédente, qui
+          # tranchera entre les deux hypothèses indépendamment de ce délai.
+          sleep 10
           for i in $(seq -w 1 8); do
             xcrun simctl io "$DEVICE_UDID" screenshot "$SCREENSHOT_DIR/ecran_${i}.png"
             sleep 2
@@ -210,6 +277,11 @@ workflows:
       # automatiquement comme artifacts téléchargeables du build, aucune section `publishing:`
       # nécessaire pour cela.
       - $CM_BUILD_DIR/smoke_test_screenshots/*.png
+      # Diagnostic ajouté 2026-08-13 (log système filtré + rapports de crash éventuels) — exportés
+      # en artifacts pour lecture directe depuis la page du build, sans avoir à rouvrir la console
+      # de logs complète de l'étape "Démarrer le simulateur, installer et lancer l'app".
+      - $CM_BUILD_DIR/smoke_test_screenshots/simulator_log.txt
+      - $CM_BUILD_DIR/smoke_test_screenshots/crash_reports.txt
 
     # Volontairement AUCUNE section `publishing:` (pas de TestFlight/App Store Connect) — ce
     # workflow ne fait QUE de la capture d'écran diagnostique sur simulateur, voir avertissement de

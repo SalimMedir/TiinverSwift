@@ -65,32 +65,43 @@ targets:
     resources:
       # `path: Resources` seul (sans `type:`) donne à XcodeGen le type par défaut pour un dossier
       # sans extension, `group` — chaque fichier À L'INTÉRIEUR est bien ajouté individuellement à
-      # la phase "Copy Bundle Resources" (donc censé finir à la racine du bundle, pas dans un
-      # sous-dossier — contrairement à `type: folder`/`syncedFolder`, qui préserverait la
-      # hiérarchie). **Bug confirmé au premier lancement réel (2026-08-13, `visual-smoke-test`,
-      # log système : `FirebaseApp.configure()` plante, "Request: GoogleService-Info type: plist →
-      # Result: None")** : malgré cette déclaration, ce fichier précis ne se retrouvait PAS dans le
-      # bundle `.app` construit — mécanisme exact non confirmable avec certitude depuis cet
-      # environnement (pas d'accès à un `xcodebuild`/`.xcodeproj` réel pour l'inspecter), corrigé
-      # ci-dessous par une entrée dédiée plutôt que de re-deviner le comportement interne exact de
-      # XcodeGen pour ce cas précis.
+      # la phase "Copy Bundle Resources" (finit à la racine du bundle, pas dans un sous-dossier —
+      # contrairement à `type: folder`/`syncedFolder`, qui préserverait la hiérarchie).
       - path: Resources
         excludes:
           # Évite une double inclusion (donc une erreur Xcode "Multiple commands produce
           # GoogleService-Info.plist") avec l'entrée dédiée ci-dessous.
           - "GoogleService-Info.plist"
-      # Entrée dédiée, EXPLICITE : `type: file` est le défaut XcodeGen pour un chemin de fichier
-      # avec extension (vérifié contre `Docs/ProjectSpec.md` réel du dépôt XcodeGen, pas deviné) —
-      # garantit une référence de fichier individuelle avec sa propre entrée "Copy Bundle
-      # Resources", sans dépendre du comportement d'inclusion en masse du dossier parent.
-      # `optional: true` REQUIS : ce fichier n'est PAS committé (secret, voir `.gitignore` et
-      # `GOOGLE_SERVICE_INFO_PLIST_BASE64`) — sans cette option, `xcodegen generate` échouerait sur
-      # toute machine où le fichier n'a pas encore été décodé (vérifié contre la doc XcodeGen
-      # réelle : "Disable missing path check. Defaults to false" — sans elle, un chemin de fichier
-      # absent fait échouer `xcodegen generate` immédiatement, pas seulement produire un bundle
-      # incomplet).
+      # CAUSE RÉELLE CONFIRMÉE (2026-08-13, 3ᵉ tentative — 2 précédentes insuffisantes) — vérifiée
+      # contre l'historique réel de XcodeGen sur GitHub (issues/PR réels, pas une nouvelle
+      # hypothèse) : PR #945 (XcodeGen, janvier 2021) a étendu la détection interne "ceci est un
+      # fichier Info.plist" à tout nom correspondant au motif SUFFIXE `*-Info.plist` (pas
+      # uniquement une comparaison exacte au chemin configuré par `info:`), pour supprimer un
+      # avertissement Xcode sur les Info.plist personnalisés (`HardwareSupport-Info.plist` dans
+      # l'exemple d'origine). Effet de bord documenté par les mainteneurs eux-mêmes (issue #1045,
+      # "File not added to target membership in 2.19.0") : `GoogleService-Info.plist` matche ce
+      # même motif de suffixe et se retrouve donc exclu de TOUTE phase de build — `Docs/
+      # ProjectSpec.md` réel est explicite : "Info.plist files will never be added to any build
+      # phases, no matter what this [buildPhase] setting is." Ceci explique l'absence TOTALE de
+      # "GoogleService-Info" dans `project.pbxproj` généré (confirmé par le diagnostic du tour
+      # précédent) — pas une phase Copy Bundle Resources vide, une exclusion en amont de toute
+      # référence de build phase.
+      # Hypothèses alternatives DE L'UTILISATEUR explicitement vérifiées et écartées avant cette
+      # correction (pas ignorées) : `optional: true` n'entre en jeu QUE pour les entrées `type:
+      # group`, jamais pour une entrée fichier individuelle comme celle-ci (vérifié dans le code
+      # source réel `SourceGenerator.swift` de XcodeGen) — ne peut donc pas expliquer un problème
+      # de timing d'évaluation ici ; l'entrée `Resources` ci-dessus exclut déjà ce fichier de SON
+      # PROPRE scan de groupe (pas une entrée séparée essayant de retirer rétroactivement un
+      # fichier déjà ajouté par une autre), donc pas de conflit de cache entre les deux entrées.
+      # Correction RÉELLE, documentée par la communauté XcodeGen pour ce cas précis (issue #1045) :
+      # `buildPhase: resources` explicite, qui force l'inclusion dans "Copy Bundle Resources" malgré
+      # la détection automatique par motif de nom. `optional: true` conservé (toujours nécessaire :
+      # fichier non committé, voir décision précédente — aucune preuve qu'il soit responsable de ce
+      # bug précis, seulement toujours requis pour un autre problème, celui-là bien réel : `xcodegen
+      # generate` sur une machine où le secret n'a pas encore été décodé).
       - path: Resources/GoogleService-Info.plist
         optional: true
+        buildPhase: resources
     info:
       path: Resources/Info.plist
       properties:

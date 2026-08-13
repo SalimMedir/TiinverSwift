@@ -219,6 +219,30 @@ workflows:
           fi
           echo "OK, trouvé : $FOUND"
 
+      - name: Vérifier que RemoteConfigDefaults.plist est bien copié dans le bundle .app
+        script: |
+          # Ajouté 2026-08-13, même pattern exact que la vérification GoogleService-Info.plist
+          # ci-dessus — confirmé par preuve directe (log runtime réel, `Bundle.main` "Request:
+          # RemoteConfigDefaults type: plist → Result: None") que ce fichier n'atterrissait pas dans
+          # le bundle `.app` malgré sa présence sur le disque de build. Sans lui,
+          # `TiinverFirebaseConfigManager.setDefaults(fromPlist:)` échoue silencieusement, les clés
+          # `app_expire_day/month/year` retombent à 0 côté Remote Config, et
+          # `RootRouterView.checkForceUpdate()` calcule une date d'expiration extrêmement ancienne —
+          # blocage systématique de la gate "mise à jour requise", sans crash ni erreur visible
+          # ailleurs. Voir `project.yml`, `postBuildScripts:`, pour la correction appliquée.
+          APP_PATH=$(find "$CM_BUILD_DIR/DerivedData/Build/Products" -maxdepth 2 -name "TiinverSwift.app" -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERREUR : TiinverSwift.app introuvable sous $CM_BUILD_DIR/DerivedData/Build/Products"
+            exit 1
+          fi
+          echo "Recherche de RemoteConfigDefaults.plist dans $APP_PATH :"
+          FOUND=$(find "$APP_PATH" -name "RemoteConfigDefaults.plist")
+          if [ -z "$FOUND" ]; then
+            echo "ERREUR : RemoteConfigDefaults.plist absent du bundle .app construit — la gate mise à jour requise (RootRouterView.checkForceUpdate) va bloquer systématiquement au lancement. Voir project.yml, postBuildScripts:."
+            exit 1
+          fi
+          echo "OK, trouvé : $FOUND"
+
       - name: Vérifier que CFBundleVersion du .app construit est bien "1000"
         script: |
           # Preuve automatique à chaque build (2026-08-13), pour ne plus avoir à extraire et

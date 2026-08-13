@@ -81,6 +81,18 @@ targets:
           # le système `resources:`/`sources:` de XcodeGen — copié directement dans le bundle
           # construit par un script shell, voir `postBuildScripts:`.
           - "GoogleService-Info.plist"
+          # RemoteConfigDefaults.plist — même symptôme, cause DIFFÉRENTE de GoogleService-Info.plist
+          # (2026-08-13) : confirmé par preuve directe (log runtime, `Bundle.main` "Request:
+          # RemoteConfigDefaults type: plist → Result: None") que ce fichier, bien que présent sur
+          # le disque de build, n'atterrissait PAS dans le bundle `.app` via ce dossier `Resources`
+          # — CE fichier ne correspond PAS au motif `*-Info.plist` (donc pas la même cause que
+          # GoogleService-Info.plist), mais le résultat empirique est identique : absent du bundle.
+          # Plutôt que d'ouvrir une nouvelle investigation approfondie pour un 2ᵉ fichier avec le
+          # même symptôme (le système `resources:`/`sources:` de XcodeGen s'est déjà montré peu
+          # fiable pour de la personnalisation fine de bundle sur ce projet, voir aussi
+          # `CFBundleVersion`/`Info.plist`), même contournement appliqué directement : copié par le
+          # même script `postBuildScripts:` ci-dessous, hors du système resources de XcodeGen.
+          - "RemoteConfigDefaults.plist"
     # CONTOURNEMENT COMPLET du système resources: de XcodeGen pour GoogleService-Info.plist
     # (2026-08-13, 4ᵉ tentative — 3 précédentes insuffisantes, voir le commentaire `excludes:`
     # ci-dessus et MIGRATION_PROGRESS.md pour l'historique complet) : XcodeGen exclut
@@ -118,6 +130,25 @@ targets:
           - $(SRCROOT)/Resources/GoogleService-Info.plist
         outputFiles:
           - $(BUILT_PRODUCTS_DIR)/$(WRAPPER_NAME)/GoogleService-Info.plist
+      # RemoteConfigDefaults.plist — script SÉPARÉ (pas fusionné dans le précédent), même modèle
+      # exact, même raison (2026-08-13) : ce fichier n'atterrissait pas non plus dans le bundle via
+      # `resources:`, symptôme identique à GoogleService-Info.plist mais cause distincte (pas le
+      # motif `*-Info.plist`) — voir commentaire détaillé sur `resources: excludes:` ci-dessus. Sans
+      # ce fichier, `TiinverFirebaseConfigManager.setDefaults(fromPlist:)` échoue silencieusement
+      # (pas de crash), et les 3 clés `app_expire_day/month/year` retombent à `0` (comportement
+      # standard Firebase pour une clé Remote Config jamais définie, ni par défaut ni par fetch) —
+      # `DateComponents(year: 0, month: 0, day: 0)` produit alors une date extrêmement ancienne, PAS
+      # `nil` (`Calendar.date(from:)` ne renvoie `nil` que si aucune date n'est calculable du tout,
+      # ce qui n'est pas le cas ici), donc `Date() > expiryDate` (`RootRouterView.
+      # checkForceUpdate()`) est TOUJOURS vrai — explique le blocage systématique observé sur
+      # Appetize.io (où `SMOKE_TEST_MODE` n'est jamais injecté, contrairement au pipeline CI).
+      - name: Copier RemoteConfigDefaults.plist dans le bundle (même contournement que GoogleService-Info.plist)
+        script: |
+          cp "${SRCROOT}/Resources/RemoteConfigDefaults.plist" "${BUILT_PRODUCTS_DIR}/${WRAPPER_NAME}/RemoteConfigDefaults.plist" 2>/dev/null || echo "RemoteConfigDefaults.plist non trouvé à la source — build continuera mais la gate de mise à jour bloquera systématiquement au lancement"
+        inputFiles:
+          - $(SRCROOT)/Resources/RemoteConfigDefaults.plist
+        outputFiles:
+          - $(BUILT_PRODUCTS_DIR)/$(WRAPPER_NAME)/RemoteConfigDefaults.plist
     info:
       path: Resources/Info.plist
       properties:

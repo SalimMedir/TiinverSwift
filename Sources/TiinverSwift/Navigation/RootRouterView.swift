@@ -56,7 +56,21 @@ struct RootRouterView: View {
 
         let localVersion = Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0") ?? 0
 
-        forceUpdateRequired = Date() > expiryDate || config.versionCode > localVersion
+        // `SMOKE_TEST_MODE=1` : UNIQUEMENT injecté par le workflow Codemagic `visual-smoke-test`
+        // (`codemagic.yaml`, `SIMCTL_CHILD_SMOKE_TEST_MODE=1` exporté avant `xcrun simctl launch`
+        // — même mécanisme, même variable que le contournement de la permission notifications
+        // dans `App/AppDelegate.swift`). Confirmé en conditions réelles (2026-08-13) : cette gate
+        // fonctionne correctement (Remote Config `versionCode` du projet Firebase configuré
+        // au-dessus de `CFBundleVersion` local) et bloque le smoke-test passif (aucune interaction
+        // simulée) sur `UpdateAppView` indéfiniment — sauté UNIQUEMENT ici, `fetchAndActivate()`
+        // reste appelé normalement au-dessus (les autres valeurs Remote Config, ex. tarification
+        // certification/récompenses pub, restent chargées pour les écrans suivants). JAMAIS
+        // présent en production/TestFlight — comportement strictement inchangé en son absence.
+        if ProcessInfo.processInfo.environment["SMOKE_TEST_MODE"] == "1" {
+            forceUpdateRequired = false
+        } else {
+            forceUpdateRequired = Date() > expiryDate || config.versionCode > localVersion
+        }
         configChecked = true
     }
 }

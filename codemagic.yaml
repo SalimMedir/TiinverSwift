@@ -62,3 +62,131 @@ workflows:
     # compilent-ils réellement ?". Pas de signature, pas d'archive, pas d'envoi TestFlight/App
     # Store Connect à ce stade du portage — voir la "Règle de compilation par checkpoint" dans
     # MIGRATION_PROGRESS.md pour la suite (Checkpoint 2 après les modules 7-12, etc.).
+
+  visual-smoke-test:
+    name: Test visuel automatisé — captures d'écran simulateur (premier écran/onboarding uniquement)
+    # Workflow SÉPARÉ de `checkpoint-build`, ne le modifie pas et ne dépend pas de lui — build son
+    # propre binaire simulateur, PAS de signature. But : donner un premier retour VISUEL (l'app
+    # lancée, écrans atteignables sans interaction) en attendant un accès à un vrai device via
+    # compte Apple Developer payant — voir MIGRATION_PROGRESS.md, section "Premier test visuel
+    # automatisé (simulateur Codemagic)". Ne remplace PAS un test manuel réel : capture uniquement
+    # ce qui est atteignable sans toucher l'écran (splash → routeur racine → connexion/onboarding),
+    # aucune interaction (tap/saisie) n'est simulée ici.
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    environment:
+      <<: *checkpoint_env
+      groups:
+        - firebase_ios_secrets
+    scripts:
+      - name: Installer XcodeGen
+        script: |
+          brew list xcodegen &>/dev/null || brew install xcodegen
+
+      - name: Décoder GoogleService-Info.plist depuis le secret d'environnement
+        script: |
+          if [ -z "${GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" ]; then
+            echo "ERREUR : la variable d'environnement GOOGLE_SERVICE_INFO_PLIST_BASE64 n'est pas définie."
+            echo "À configurer dans Codemagic : Team settings > Environment variables > groupe 'firebase_ios_secrets'."
+            exit 1
+          fi
+          mkdir -p Resources
+          echo "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > Resources/GoogleService-Info.plist
+          plutil -lint Resources/GoogleService-Info.plist
+          # Requis ici (pas seulement pour la compilation) : `FirebaseApp.configure()`
+          # (App/AppDelegate.swift) plante au lancement si ce fichier est absent — sans lui, ce
+          # workflow ne produirait que des captures d'un crash immédiat, pas l'écran de connexion.
+
+      - name: xcodegen generate
+        script: |
+          xcodegen generate
+
+      - name: Install Metal Toolchain
+        script: |
+          xcodebuild -downloadComponent MetalToolchain
+
+      - name: Résoudre les dépendances Swift Package Manager
+        script: |
+          xcodebuild -resolvePackageDependencies \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME"
+
+      - name: Build simulateur (avec derivedDataPath fixe pour retrouver le .app ensuite)
+        script: |
+          xcodebuild build \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$CM_BUILD_DIR/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Choisir un simulateur iPhone récent disponible (iPhone 15 si présent, sinon le plus récent)
+        script: |
+          # Le runner Codemagic (`xcode: latest`) ne garantit pas la présence exacte d'"iPhone 15"
+          # d'une image à l'autre — sélection dynamique plutôt qu'un nom codé en dur, pour ne pas
+          # faire échouer ce workflow silencieusement si Apple renomme/retire un modèle par défaut.
+          DEVICE_UDID=$(python3 - <<'PY'
+          import json, subprocess, sys
+
+          raw = subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"])
+          data = json.loads(raw)
+
+          candidates = []
+          for runtime, devices in data["devices"].items():
+              if "iOS" not in runtime:
+                  continue
+              for d in devices:
+                  if d.get("isAvailable") and d["name"].startswith("iPhone"):
+                      candidates.append((runtime, d["name"], d["udid"]))
+
+          if not candidates:
+              sys.exit("Aucun simulateur iPhone disponible sur ce runner.")
+
+          preferred = [c for c in candidates if c[1] == "iPhone 15"]
+          pool = preferred if preferred else candidates
+          pool.sort(key=lambda c: c[0])  # identifiants de runtime iOS, tri croissant par version
+          runtime, name, udid = pool[-1]
+          print(f"Simulateur choisi : {name} ({runtime})", file=sys.stderr)
+          print(udid)
+          PY
+          )
+          echo "DEVICE_UDID=$DEVICE_UDID" >> $CM_ENV
+
+      - name: Démarrer le simulateur, installer et lancer l'app
+        script: |
+          xcrun simctl boot "$DEVICE_UDID" || true
+          xcrun simctl bootstatus "$DEVICE_UDID" -b
+
+          APP_PATH=$(find "$CM_BUILD_DIR/DerivedData/Build/Products" -maxdepth 2 -name "TiinverSwift.app" -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERREUR : TiinverSwift.app introuvable sous $CM_BUILD_DIR/DerivedData/Build/Products"
+            exit 1
+          fi
+
+          xcrun simctl install "$DEVICE_UDID" "$APP_PATH"
+          # com.tiinver.ios : PRODUCT_BUNDLE_IDENTIFIER réel de project.yml (confirmé par
+          # Resources/GoogleService-Info.plist, voir décision module 1/Checkpoint 1), pas deviné.
+          xcrun simctl launch "$DEVICE_UDID" com.tiinver.ios
+
+      - name: Capturer une série de captures d'écran (splash → routeur racine → connexion/onboarding)
+        script: |
+          mkdir -p smoke_test_screenshots
+          # Laisse passer l'écran de lancement (UILaunchScreen) avant la première capture, comme
+          # demandé — délai empirique, pas mesuré précisément (pas d'accès à l'app en exécution
+          # avant ce workflow pour calibrer plus finement).
+          sleep 3
+          for i in $(seq -w 1 8); do
+            xcrun simctl io "$DEVICE_UDID" screenshot "smoke_test_screenshots/ecran_${i}.png"
+            sleep 2
+          done
+          ls -la smoke_test_screenshots
+
+    artifacts:
+      # Dossier de sortie standard Codemagic — publié automatiquement comme artifacts
+      # téléchargeables du build, aucune section `publishing:` nécessaire pour cela.
+      - smoke_test_screenshots/*.png
+
+    # Volontairement AUCUNE section `publishing:` (pas de TestFlight/App Store Connect) — ce
+    # workflow ne fait QUE de la capture d'écran diagnostique sur simulateur, voir avertissement de
+    # tête de workflow. Ne remplace PAS "CHECKPOINT 3 ATTEINT ET VALIDÉ" (compilation) ni un futur
+    # test manuel réel sur device — voir "État réel du projet" dans MIGRATION_PROGRESS.md.

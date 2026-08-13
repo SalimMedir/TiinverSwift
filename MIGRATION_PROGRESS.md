@@ -1,7 +1,10 @@
 # Suivi de migration Tiinver Android → iOS Swift
 
-Dernière mise à jour : 2026-08-12 12:00
-Statut global : **CHECKPOINT 2 VALIDÉ (2026-08-11)** — build Codemagic réussi, aucune erreur de
+Dernière mise à jour : 2026-08-13
+Statut global : **PORTAGE COMPLET — 18 modules compilent, phase de validation visuelle/fonctionnelle
+à venir.** Voir "CHECKPOINT 3 ATTEINT ET VALIDÉ (2026-08-13)" et "État réel du projet" pour le détail
+honnête de ce que "compile" veut dire ici — et ce que ça ne veut PAS dire.
+Statut CHECKPOINT 2 VALIDÉ (2026-08-11) — build Codemagic réussi, aucune erreur de
 compilation restante sur les modules 1-8 (5 itérations de correction au total : `FirebaseCore`/
 `CoreDataFetchable` pour le Checkpoint 1, puis `MaskPreviewEditorPanelState`/
 `AnimemesGestureController` (`CGFloat`/`Int`)/`LayerRenderer` (`Float`/`CGFloat`) pour ce
@@ -44,10 +47,14 @@ remplacé par StoreKit 2 sur instruction explicite — voir "⚠️ AUDIT CONFOR
 fermé avec des réserves explicites (couverture fonctionnelle priorisée sur l'exhaustivité de lecture
 d'un sous-module à ~54 fichiers). Voir "RÉSERVES AVANT CHECKPOINT 3" dans "Prochaine action à faire"
 pour le détail complet.
-Statut Checkpoint 3 : **NE PEUT PAS être validé depuis cet environnement** (aucun accès macOS/Xcode
-sur toute la durée de ce portage, du premier au dernier module) — le code est écrit pour les 18
-modules mais AUCUNE compilation réelle n'a eu lieu depuis le Checkpoint 2 (modules 9-18 inclus).
-Prochaine étape obligatoire : compilation Xcode réelle dès qu'un accès macOS existe.
+**Statut Checkpoint 3 : ✅ VALIDÉ le 2026-08-13, build Codemagic `6a7d077bf7a4998eb5c549e8` —
+compilation réussie sur l'intégralité des 18 modules.** Atteint après 5 itérations de correction sur
+autant de builds successifs (`project.yml` avec `url:` manquant sur `GoogleMobileAds`, version SDK
+GoogleMobileAds `11.0.0`→`13.0.0`, conformité `AdLoaderDelegate` incomplète, accessibilité `private`
+du type `Tool` dans `ShareboardView.swift`, masquage de nom `image` dans `RemoveBackground.swift` —
+détail complet de chacune dans "Erreurs rencontrées et résolues"). **Ce que cette validation prouve,
+et ce qu'elle NE prouve PAS : voir "État réel du projet" juste après "CHECKPOINT 3 ATTEINT ET
+VALIDÉ" — aucun module n'a encore été vu s'exécuter sur simulateur/device réel.**
 
 ## ⚠️ Contrainte d'environnement (lire avant toute reprise de session)
 
@@ -1622,6 +1629,207 @@ originalTransactionId: <Transaction.originalID — identique à transactionId po
   à recouper, StoreKit 2 n'a pas d'équivalent direct dans le code Android existant) — proposition
   cohérente avec les conventions REST déjà observées ailleurs dans ce backend, à ajuster avec
   l'équipe serveur avant implémentation finale.
+
+## CHECKPOINT 3 ATTEINT ET VALIDÉ (2026-08-13)
+
+Les 18 modules de l'ordre de portage sont tous `[x]`. Conformément à la "Règle de compilation par
+checkpoint", ce Checkpoint couvre l'intégralité du projet (modules 1-18), contrairement aux
+Checkpoints 1 et 2 qui couvraient des périmètres réduits.
+
+**✅ CHECKPOINT 3 VALIDÉ (2026-08-13) — build Codemagic `6a7d077bf7a4998eb5c549e8` réussi, aucune
+erreur.** 5 itérations de correction ont été nécessaires sur 5 builds successifs avant d'atteindre ce
+résultat (voir "Erreurs rencontrées et résolues" pour le détail complet de chacune) :
+1. `project.yml` — package `GoogleMobileAds` sans `url:` (perdu lors d'une correction précédente,
+   erreur `xcodegen generate` AVANT toute compilation Swift), corrigé.
+2. `project.yml` — `GoogleMobileAds` épinglé à `from: 11.0.0`, version où la nomenclature Swift sans
+   préfixe `GAD*` (`BannerView`/`RewardedAd`/etc., utilisée dans `AdMobManager.swift` depuis le
+   module 16) n'existe pas encore (introduite en SDK 12.0.0) — relevé à `from: 13.0.0`, aligné sur
+   l'exemple officiel Google.
+3. `Advertising/AdMobManager.swift` — `NativeAdLoader` ne conformait pas entièrement à
+   `AdLoaderDelegate` (callback d'échec manquant) — ajouté, comportement vérifié contre le vrai
+   `NativeAdsManager.java` Android (journal d'erreur seul, la logique de pool/retry/NO_FILL restant
+   hors périmètre documenté de ce portage partiel).
+4. `Shareboard/ShareboardView.swift` — type imbriqué `Tool` marqué `private`, inaccessible depuis une
+   extension à portée fichier — corrigé en `internal`.
+5. `PhotoEditor/RemoveBackground.swift` — paramètre `image: CGImage` masquant la méthode statique de
+   même nom `image(fromRGBAPixels:width:height:)` — corrigé par qualification `Self.image(...)`.
+
+Confirme concrètement : l'intégralité du code Swift écrit pour les 18 modules du portage — depuis
+l'infrastructure réseau/auth (module 1) jusqu'à Recherche/Follow/Certification (module 18), en
+passant par WebRTC/CallKit (12), Shareboard temps réel (13), StoreKit 2 (15) et AdMob (16) — compile
+sans erreur avec le SDK/deployment target déclarés dans `project.yml` (iOS 16.0).
+
+**Note honnête sur la nature de cette validation, comme pour les Checkpoints 1 et 2 : "compile sans
+erreur" ne veut dire QUE cela.** Voir la section "État réel du projet" ci-dessous pour le détail
+complet de ce qui reste non vérifié, et "Liste consolidée des points de risque pour la phase de test"
+pour la priorité recommandée de la phase qui commence maintenant.
+
+## État réel du projet (à lire avant toute annonce "terminé" côté produit)
+
+**Ce qui est VRAI :** les 18 modules de l'ordre de portage sont écrits, chacun avec une lecture du
+code Android réel préalable à son portage (jamais deviné depuis un nom de classe), chaque API tierce/
+framework Apple utilisée a été vérifiée contre une documentation ou un source réel avant utilisation
+(jamais supposée), et l'ENSEMBLE compile sans erreur sur un vrai build Codemagic (Checkpoint 3,
+2026-08-13, build `6a7d077bf7a4998eb5c549e8`) — après 3 checkpoints et environ 18 itérations de
+correction au total sur toute la durée du projet.
+
+**Ce qui est TOUT AUSSI VRAI, et qu'il ne faut pas laisser le mot "complet" du statut global
+masquer : aucun de ces 18 modules n'a jamais été vu s'exécuter, ni sur un simulateur, ni sur un
+device réel.** Cet environnement de travail n'a eu, du premier au dernier module, aucun accès à
+Xcode/macOS (voir "⚠️ Contrainte d'environnement" en tête de fichier) — chaque vérification a été
+faite soit par lecture de code, soit par des builds Codemagic qui ne testent QUE la compilation, pas
+le comportement. Concrètement, "compile" confirme :
+- que la syntaxe Swift est valide et que les types s'accordent (les 5 catégories d'erreurs corrigées
+  au Checkpoint 3, listées ci-dessus, montrent que ce n'est pas un simple détail — un projet de cette
+  taille en accumule mécaniquement à chaque build) ;
+- que les dépendances SPM déclarées (`Alamofire`/`SocketIO`/`MetalPetal`/`Gifu`/`GoogleMobileAds`/
+  `GoogleSignIn`/`FBSDK`/`WebRTC`/`Firebase`/`TOCropViewController`) se résolvent et se linkent
+  correctement à leurs versions déclarées.
+
+"Compile" NE confirme PAS :
+- qu'un seul écran s'affiche correctement (mise en page, contraintes, couleurs, texte tronqué) ;
+- qu'un seul geste tactile (dessin Animems, pinch/rotate d'un objet Shareboard, swipe de trim vidéo)
+  produit le comportement attendu une fois câblé à un vrai `Canvas`/`DragGesture` SwiftUI en
+  exécution — la géométrie a été vérifiée formule par formule contre l'original Android, mais jamais
+  vue rendue ;
+- qu'un seul flux réseau temps réel (Socket.IO, signalisation WebRTC, Shareboard collaboratif)
+  fonctionne de bout en bout entre deux appareils réels — seule la structure du code (endpoints,
+  format des messages, séquencement) a été vérifiée par lecture croisée avec le serveur/l'app
+  Android, jamais par un échange réseau réel ;
+- qu'un flux dépendant d'une configuration EXTERNE à Xcode (produits StoreKit 2 dans App Store
+  Connect, App ID AdMob effectivement actif côté console Google, jeton VoIP APNs) fonctionne — ces
+  briques sont câblées côté client mais leur bout externe n'a jamais pu être testé depuis cet
+  environnement, par construction (voir sections "Backend à implémenter" et audit App Store).
+
+**En une phrase : le portage de code Android → Swift est fonctionnellement terminé et prouvé
+syntaxiquement correct ; le portage de comportement (ce qu'un utilisateur voit et ressent) n'a pas
+encore commencé à être vérifié.** La phase qui s'ouvre maintenant (accès simulateur/device réel) est
+donc une phase de test à part entière, pas une formalité de clôture.
+
+## Liste consolidée des points de risque pour la phase de test (par priorité)
+
+Cette liste réunit tous les points d'incertitude accumulés au fil des 18 modules et 3 checkpoints
+(auparavant dispersés dans "Points bloquants actuels", "Points à vérifier en priorité — Module 8",
+"Points à ne pas oublier", le tableau "Détail par module" et l'audit App Store) en un seul ordre de
+priorité pour la phase de test qui commence. Chaque point renvoie à sa documentation détaillée
+d'origine plutôt que de la dupliquer.
+
+**P0 — Risque produit/conformité, à trancher AVANT toute soumission, indépendant des tests
+techniques :**
+1. **Conformité App Store 3.1.1/3.1.5 du Wallet** — le mécanisme de paiement mobile money/crypto
+   HORS APPLICATION (avec ID de transaction saisi à la main) découvert au module 15 est un vrai
+   risque de rejet, pas un simple avertissement théorique. StoreKit 2 remplace l'ACHAT de pièces,
+   mais retrait/transfert restent fidèles à l'original et n'ont pas été réévalués sous cet angle. Voir
+   "⚠️ AUDIT CONFORMITÉ APP STORE — Wallet/Paiements", **à lire et trancher avant toute soumission**.
+
+**P1 — Code le plus complexe et le plus neuf du portage, priorité de test technique la plus haute :**
+2. **Module 12 (WebRTC/CallKit/PushKit) et module 13 (Shareboard, qui en dépend)** — développement
+   largement NEUF (CallKit/PushKit n'ont aucun équivalent Android à recopier), jamais exécuté. Inclut
+   1 bug data-channel déjà trouvé et corrigé à l'écriture (delegate jamais assigné) — la classe de
+   bug la plus probable (callback jamais déclenché) à surveiller en priorité à l'exécution réelle.
+3. **Shareboard temps réel (module 13/14) entre DEUX appareils réels** — seule la structure du
+   protocole a été vérifiée, jamais un échange réel ; portée déjà réduite documentée (pinch/rotate/
+   suppression d'objet non live-synced, décoratif différé) à garder en tête pendant le test, pas des
+   bugs à chercher.
+4. Gap fonctionnel connu module 13 : pas de point d'entrée UI pour REJOINDRE un Shareboard déjà
+   ouvert par un pair, seulement pour en démarrer un — correctif identifié (rendre `SystemInfoRow`
+   "shareboard" cliquable dans `ChatView`), pas encore fait.
+
+**P2 — Dépendent d'une configuration externe à Xcode, pas testables tant qu'elle n'existe pas :**
+5. **StoreKit 2 (module 15)** — nécessite des `Product` consommables créés dans App Store Connect ;
+   sans eux, `BuyCoinsView` reste vide indéfiniment, PAS une erreur de code à chercher. Vérification
+   d'achat côté serveur (`storekit/verify-purchase`) pas encore implémentée — voir "Backend à
+   implémenter — Vérification StoreKit 2".
+6. **AdMob (module 16)** — nécessite le SDK réellement chargé (`MobileAds.shared.start()`) et les
+   entrées Info.plist (`GADApplicationIdentifier`, SKAdNetwork) prises en compte à l'exécution ; le
+   prompt App Tracking Transparency (`ATTrackingManager.requestTrackingAuthorization`) N'EST PAS
+   câblé malgré la clé Info.plist présente — à faire avant tout test avec de vraies annonces.
+7. **PushKit/VoIP bout en bout (module 12)** — jeton VoIP émis/reçu côté client, mais déclenchement
+   du push VoIP via APNs entièrement côté serveur, PAS implémenté — voir "Backend à implémenter —
+   PushKit/VoIP". Le réveil "app tuée" ne peut pas être testé tant que cette pièce serveur n'existe
+   pas, indépendamment de la qualité du code client.
+
+**P3 — Compilent sans erreur depuis le Checkpoint 2 mais AUCUN rendu/geste jamais vérifié à
+l'écran (modules 7-10) :**
+8. `Animems/LayerRenderer.swift`/`AnimemesExporter.swift` — Core Graphics dense (blend modes
+   imbriqués), `AVAssetWriter` asynchrone (1 bug de capture de closure déjà corrigé), jamais vue
+   rendue ni exportée.
+9. `Animems/AnimemesGestureController.swift` — maths de transformation vérifiées formule par formule,
+   mais AUCUN geste SwiftUI (`DragGesture`/`MagnificationGesture`/`RotationGesture`) câblé dessus
+   encore vu en action ; sémantique incrémentale Android vs cumulative SwiftUI à traiter explicitement
+   au câblage.
+10. `Animems/TimelineViewModel.swift` — coordonnées/zoom/pan vérifiés formule par formule, jamais
+    exécuté ; point le plus fragile identifié : `contentHalfWidth`/`contentQuarterWidth` (nommage
+    Android trompeur conservé tel quel — c'est un QUART de la largeur, pas une moitié).
+11. `Animems/AnimemesRecompose.swift`/`PaintCapture.swift` — flips verticaux manuels (contexte bitmap,
+    dessin au doigt) à vérifier en premier si un rendu apparaît inversé/décalé.
+12. Le flou "feather" (`MaskFactory`/`BitmapCacheManager`/`LayerRenderer`) utilise `CIGaussianBlur` en
+    approximation documentée d'un `BlurMaskFilter` Android — écart visuel possible, à comparer.
+13. Les ~22 filtres GPU caméra (module 7, `TiinverCameraShaders.metal`) compilent sans erreur depuis
+    le Checkpoint 2 mais n'ont jamais été vus appliqués à un flux caméra réel.
+14. `PhotoCropView.swift` (module 9) — pas d'équivalent direct trouvé pour `handleFlip` dans l'API
+    publique de `TOCropViewController`, point ouvert non résolu.
+15. `project.yml` — package `TOCropViewController` (module 9) : sa résolution/son linkage n'ont été
+    confirmés qu'à CE Checkpoint 3 (premier build à couvrir les modules 9+), pas avant.
+
+**P4 — Comportements fondamentaux jamais vérifiés visuellement, hérités du Checkpoint 1, sans
+rapport avec les modules suivants :**
+16. Handshake Socket.IO via `.connectParams` — jamais vérifié par une connexion réelle.
+17. Rendu du `TabView` pivoté pour le scroll plein écran du feed vidéo (module 6) — jamais vu.
+
+**P5 — Fonctionnalités délibérément non construites (décisions documentées, PAS des bugs à
+chercher), à planifier séparément :**
+18. **Transferts de fichiers, gap RÉCURRENT à travers 3 modules** (upload photo de profil module 17,
+    documents de certification module 18, pièces jointes/GIF/cadeaux chat module 11) — tous pointent
+    vers le même fichier jamais lu en détail : `UploadFileOrDataService.java`/`HttpFileUploader.java`
+    Android. Une lecture dédiée débloquerait plusieurs gaps à la fois.
+19. Module 17 : `FollowList` (câblé au module 18 depuis), `HashtagProfile.java` (964 lignes, pas lu),
+    `CategoryActivity`, détail granulaire de `SettingStorageFragment`, contenu réel de
+    `SettingHelpFragment`/`SettingAboutFragment` (stubs).
+20. Module 18 : Contacts (en réalité un sélecteur de membres de groupe, endpoint identifié mais pas
+    construit), Statistiques créateur (`StatisticsActivity.java`, pas lu en détail), "boost interne"
+    (`advertising/`, 9 fichiers, PAS repéré du tout cette session — sans rapport avec AdMob).
+21. Soumission d'une nouvelle demande de certification (upload de justificatif) — seule la
+    consultation du statut existant est portée.
+
+## Premier test visuel automatisé (simulateur Codemagic), en attendant l'accès à un vrai device via compte Apple Developer payant
+
+**2026-08-13, après validation du Checkpoint 3.** Nouveau workflow Codemagic **`visual-smoke-test`**
+ajouté à `codemagic.yaml` (SÉPARÉ de `checkpoint-build`, qui reste inchangé — voir le workflow lui-
+même pour le détail complet, commenté en français comme le reste du fichier). But : donner un premier
+retour VISUEL réel — un écran, pas seulement "ça compile" — sans attendre un accès macOS local ni un
+compte Apple Developer payant (nécessaire pour tester sur un vrai iPhone).
+
+**Ce que fait ce workflow, dans l'ordre :**
+1. Build simulateur (mêmes étapes que `checkpoint-build` : XcodeGen, décodage du secret
+   `GoogleService-Info.plist`, Metal Toolchain, résolution SPM), avec `-derivedDataPath` fixe pour
+   retrouver le `.app` produit de façon prévisible.
+2. Sélection DYNAMIQUE d'un simulateur iPhone disponible sur le runner (`xcrun simctl list devices
+   available -j`, parsé en Python) — préfère "iPhone 15" s'il existe, sinon prend le modèle iPhone le
+   plus récent disponible. Dynamique plutôt qu'un nom d'appareil codé en dur, pour ne pas faire
+   échouer silencieusement le workflow si Apple change la liste des simulateurs par défaut d'une
+   image Codemagic à l'autre.
+3. `xcrun simctl boot`/`bootstatus -b` (attend un boot complet), `xcrun simctl install`, `xcrun simctl
+   launch com.tiinver.ios` (bundle ID réel confirmé par `Resources/GoogleService-Info.plist`, pas
+   deviné).
+4. Attente de 3s (laisser passer l'écran de lancement `UILaunchScreen`) puis **8 captures d'écran**
+   via `xcrun simctl io <udid> screenshot`, une toutes les 2s (~16s de couverture au total) — sans
+   AUCUNE interaction simulée (pas de tap/saisie), donc capture uniquement ce qui est atteignable
+   passivement : écran de lancement → routeur racine (`RootRouterView`) → écran de connexion/
+   onboarding.
+5. Captures exportées comme `smoke_test_screenshots/*.png` via la section `artifacts:` standard de
+   Codemagic — téléchargeables directement depuis la page du build, aucune section `publishing:`
+   nécessaire (et volontairement absente : pas de signature, pas de TestFlight/App Store Connect à ce
+   stade).
+
+**Ce que ce workflow NE fait PAS, à ne pas laisser croire par erreur** : ce n'est PAS un remplacement
+d'un test manuel réel sur device, ni une preuve que les gestes tactiles/flux réseau temps réel
+fonctionnent (voir "État réel du projet" plus haut, points P1-P4 de la liste de risques) — il ne fait
+que confirmer que l'app SE LANCE et affiche quelque chose de visible sur un simulateur, ce qui n'avait
+encore jamais été vérifié à aucun moment de ce portage. Prérequis explicite non résolu par ce
+workflow : un vrai test sur device physique nécessite un compte Apple Developer payant (signature,
+provisioning) — hors périmètre de cette étape, qui reste volontairement non signée
+(`CODE_SIGNING_ALLOWED=NO`, identique à `checkpoint-build`).
 
 ## CHECKPOINT 2 ATTEINT ET VALIDÉ (2026-08-11)
 

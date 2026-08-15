@@ -15,6 +15,7 @@ final class ProfileViewModel: ObservableObject {
     @Published var isLoadingPosts = false
     @Published var isBlocked = false
     @Published var isFollowing = false
+    @Published var isUploadingPhoto = false
 
     let userId: String
     let isCurrentUser: Bool
@@ -67,6 +68,21 @@ final class ProfileViewModel: ObservableObject {
         guard let myId = UserSession.shared.myId else { return }
         isFollowing = true
         try? await repository.follow(userId: userId, followerId: myId)
+    }
+
+    /// Port de `AddPerfilFoto` (flux d'envoi de la photo de profil, section reprise dans
+    /// `ProfileRepository.uploadProfilePicture` — voir GAP-004) — met à jour l'avatar affiché
+    /// immédiatement après succès, comme `Onresponse` côté Android (`listenerAdapter.Onresponse`
+    /// renvoie `object_url` et l'UI Android l'affiche aussitôt via Glide, sans recharger tout le
+    /// profil).
+    func uploadProfilePicture(imageData: Data) async {
+        guard isCurrentUser, let myId = UserSession.shared.myId else { return }
+        isUploadingPhoto = true
+        defer { isUploadingPhoto = false }
+        do {
+            let url = try await repository.uploadProfilePicture(userId: myId, imageData: imageData)
+            profile?.profile = url
+        } catch {}
     }
 
     /// Port de `UserProfile.block`/`actionOnMenuItem` — bascule bloquer/débloquer.

@@ -68,12 +68,61 @@ final class APIClient {
         try await request(baseURL: APIEnvironment.restBaseURL, endpoint: endpoint, method: .delete, params: params, headersOverride: headersForDelete())
     }
 
+    /// Sans `Content-Type` explicite : Alamofire calcule le `multipart/form-data; boundary=...`
+    /// exact lui-même pour `upload(multipartFormData:)` — un `Content-Type` JSON fixe ici (comme
+    /// `headers()`) casserait le parsing du corps côté serveur.
+    private func multipartHeaders() -> HTTPHeaders {
+        var headers: HTTPHeaders = ["Accept": "application/json"]
+        if let apiKey = UserSession.shared.apiKey {
+            headers.add(name: "Authorization", value: apiKey)
+        }
+        return headers
+    }
+
     private func headersForDelete() -> HTTPHeaders {
         var headers: HTTPHeaders = ["Content-Type": "application/json; charset=utf-8"]
         if let apiKey = UserSession.shared.apiKey {
             headers.add(name: "Authorization", value: apiKey)
         }
         return headers
+    }
+
+    /// Équivalent multipart de `HttpFileUploader`/`CertificationRepository.requestOK` — POST direct
+    /// vers le backend Tiinver (PAS BunnyCDN, voir `Chat/MediaUploadService` pour les pièces jointes
+    /// chat qui suivent un protocole entièrement différent) avec des champs texte + un unique champ
+    /// fichier, même convention de réponse (`error`/`message`) que le reste de l'API. Utilisé par
+    /// `ProfileRepository.uploadProfilePicture` (endpoint `user`, champ `object_url`) et la
+    /// soumission de certification (endpoint `certification/request`, champ `documentUrl`).
+    func uploadMultipart(
+        endpoint: String,
+        fields: [String: String],
+        fileFieldName: String,
+        filename: String,
+        mimeType: String,
+        fileData: Data
+    ) async throws -> JSONValue {
+        let url = APIEnvironment.restBaseURL + endpoint
+        return try await withCheckedThrowingContinuation { continuation in
+            session.upload(multipartFormData: { form in
+                for (key, value) in fields {
+                    form.append(Data(value.utf8), withName: key)
+                }
+                form.append(fileData, withName: fileFieldName, fileName: filename, mimeType: mimeType)
+            }, to: url, headers: multipartHeaders())
+            .validate(statusCode: 200..<300)
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    do {
+                        continuation.resume(returning: try JSONValue.parse(data))
+                    } catch {
+                        continuation.resume(throwing: APIError.decoding(error))
+                    }
+                case .failure(let error):
+                    continuation.resume(throwing: APIError.transport(error))
+                }
+            }
+        }
     }
 
     // MARK: - VPS (infoContract.VPS_SERVER — ex TransportData.postToVPS, file "NoRetries")

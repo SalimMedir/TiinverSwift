@@ -1,14 +1,19 @@
+import PhotosUI
 import SwiftUI
 
 /// Port consolidé de `UserProfile.java` (1198, sections chrome Android non pertinentes ignorées —
-/// immersion plein écran, gestion manuelle barre de statut) + `AddPerfilFoto.java` (1164, sections
-/// upload photo NON portées, voir avertissement `ProfileRepository.uploadProfilePicture`) — voir
-/// `ProfileViewModel.swift` pour la justification de la fusion en un seul écran.
+/// immersion plein écran, gestion manuelle barre de statut) + `AddPerfilFoto.java` (1164) — voir
+/// `ProfileViewModel.swift` pour la justification de la fusion en un seul écran. Upload de la
+/// photo de profil porté le 2026-08-15 (GAP-004) via `PhotosPicker` natif plutôt que le sélecteur
+/// custom + `CroperView` Android — écart d'architecture assumé (voir `MIGRATION_AUDIT.md` GAP-004) :
+/// Android recadre AVANT l'envoi, ici l'image est envoyée telle quelle (re-encodée en JPEG),
+/// le serveur affiche déjà l'avatar en cercle recadré côté client de toute façon.
 struct ProfileView: View {
     @StateObject private var viewModel: ProfileViewModel
     @State private var showBlockConfirm = false
     @State private var showEditProfile = false
     @State private var showReport = false
+    @State private var avatarPickerItem: PhotosPickerItem?
 
     private let columns = [GridItem(.flexible(), spacing: 2), GridItem(.flexible(), spacing: 2), GridItem(.flexible(), spacing: 2)]
 
@@ -52,16 +57,23 @@ struct ProfileView: View {
         .navigationDestination(isPresented: $showReport) {
             ReportView(targetId: viewModel.userId, username: viewModel.profile?.username ?? "", reportType: "user")
         }
+        .onChange(of: avatarPickerItem) { item in
+            guard let item else { return }
+            Task {
+                guard let raw = try? await item.loadTransferable(type: Data.self),
+                      let jpegData = UIImage(data: raw)?.jpegData(compressionQuality: 0.9)
+                else { return }
+                await viewModel.uploadProfilePicture(imageData: jpegData)
+                avatarPickerItem = nil
+            }
+        }
     }
 
     @ViewBuilder
     private var header: some View {
         if let profile = viewModel.profile {
             VStack(spacing: 8) {
-                AsyncImage(url: URL(string: profile.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
-                    Color(.secondarySystemBackground)
-                }
-                .frame(width: 84, height: 84).clipShape(Circle())
+                avatar(profile)
 
                 HStack(spacing: 4) {
                     Text(profile.firstname ?? "").font(.headline)
@@ -135,6 +147,35 @@ struct ProfileView: View {
         target.subTitle = username
         target.profile = profile.profile
         return target
+    }
+
+    /// Port de `AddPerfilFoto` (bouton édition avatar, SON PROPRE profil uniquement — l'avatar
+    /// d'autrui, `UserProfile.java`, n'a pas ce bouton) — `PhotosPicker` enveloppe l'avatar
+    /// directement plutôt qu'un bouton "crayon" séparé superposé, comportement équivalent
+    /// (un seul point de tap pour changer la photo) avec moins de vues.
+    @ViewBuilder
+    private func avatar(_ profile: User) -> some View {
+        let image = AsyncImage(url: URL(string: profile.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+            if viewModel.isUploadingPhoto {
+                ProgressView()
+            } else {
+                Color(.secondarySystemBackground)
+            }
+        }
+        .frame(width: 84, height: 84).clipShape(Circle())
+
+        if viewModel.isCurrentUser {
+            PhotosPicker(selection: $avatarPickerItem, matching: .images) {
+                image.overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "camera.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.white, .blue)
+                }
+            }
+            .disabled(viewModel.isUploadingPhoto)
+        } else {
+            image
+        }
     }
 
     private func stat(_ value: String, _ label: String) -> some View {

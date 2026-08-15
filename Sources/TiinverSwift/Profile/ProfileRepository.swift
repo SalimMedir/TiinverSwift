@@ -57,12 +57,27 @@ final class ProfileRepository {
         _ = try await APIClient.shared.post(["id": userId, "column": column, "value": value], endpoint: "user")
     }
 
-    /// Port de `ProfileRepository.uploadPhotoProfile` — `HttpFileUploader` vers `POST user`
-    /// (upload multipart, PAS encore porté ce module — voir avertissement dans le tableau détaillé :
-    /// même gap que `requestUpload`/`requestDownload` du module 11, `UploadFileOrDataService.java`
-    /// pas lu cette passe non plus).
+    /// Port de `ProfileRepository.uploadPhotoProfile` (`HttpFileUploader`, type=2,
+    /// `uploadRequestBodyPerfil`) — `UploadFileOrDataService.java`/`HttpFileUploader.java` lus en
+    /// entier (GAP-004, 2026-08-15) : ce flux est un POST multipart DIRECT vers le backend Tiinver
+    /// (`{SERVER}user`), PAS BunnyCDN (BunnyCDN n'est utilisé QUE pour les pièces jointes chat —
+    /// protocole entièrement différent, voir `MIGRATION_AUDIT.md` GAP-004). Champs fidèles à
+    /// `uploadRequestBodyPerfil` : `id`=userId, `column`="profile_picture", `format`="json",
+    /// fichier nommé `wn_image.jpeg` (nom fixe côté Android, pas dynamique). Réponse `{error,
+    /// object_url}` — même convention `error` string que `JSONValue.isBackendSuccess`.
     func uploadProfilePicture(userId: String, imageData: Data) async throws -> String {
-        throw JSONError.typeMismatch("uploadProfilePicture — transfert multipart pas encore porté, voir MIGRATION_PROGRESS.md")
+        let value = try await APIClient.shared.uploadMultipart(
+            endpoint: "user",
+            fields: ["id": userId, "column": "profile_picture", "format": "json"],
+            fileFieldName: "object_url",
+            filename: "wn_image.jpeg",
+            mimeType: "image/jpeg",
+            fileData: imageData
+        )
+        guard value.isBackendSuccess else {
+            throw JSONError.typeMismatch(value.backendErrorMessage ?? "uploadProfilePicture")
+        }
+        return try value.string("object_url")
     }
 
     /// Port de `SettingAccountFragment.logout`/`deleteAccount` — endpoints `logout`/`deleteaccount`,

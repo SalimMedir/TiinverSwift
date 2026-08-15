@@ -1,5 +1,7 @@
+import AVFoundation
 import Combine
 import Foundation
+import UIKit
 
 /// Port de `messagerie/ui/ChatFragmentTest.java` (3080 lignes, lu en entier) — la logique métier de
 /// l'écran de chat, SANS le chrome Android (immersive mode, `CursorLoader`, `ItemTouchHelper`,
@@ -226,17 +228,82 @@ final class ChatViewModel: ObservableObject {
 
     /// Port commun de `prepareFileMessage`/`prepareGifMessage` — construit un message média local
     /// (`isFileUploaded=0` sauf pour les GIF déjà hébergés, `isUploaded` en argument comme
-    /// `prepareGifMessage(detail, object, isUploaded)`).
-    func sendMedia(object: String, localFileURI: String, width: String?, height: String?, duration: String?, alreadyUploaded: Bool = false) {
+    /// `prepareGifMessage(detail, object, isUploaded)`). `localThumbnailURI` : port de
+    /// `mlib.setThumbnailUri(detail.getThumbnailUri())` (branche vidéo UNIQUEMENT de
+    /// `prepareFileMessage`, ligne 2424-2427) — chemin LOCAL avant upload, `requestUpload` le
+    /// remplace par l'URL CDN distante une fois `ChatMediaUploadService` terminé (GAP-004).
+    func sendMedia(object: String, localFileURI: String, width: String?, height: String?, duration: String?, localThumbnailURI: String? = nil, alreadyUploaded: Bool = false) {
         var mlib = buildOutgoingBase(object: object)
         mlib.objectUrl = localFileURI
         mlib.localFileDirection = localFileURI
         mlib.width = width
         mlib.height = height
         mlib.duration = duration
+        mlib.thumbnailUri = localThumbnailURI
         mlib.isFileUploaded = alreadyUploaded ? 1 : 0
         appendOptimistic(mlib)
         Task { try? await messages.insertFileMessage(mlib) }
+    }
+
+    /// Port de la branche `pickMedia`/`onArticleSelected(2|4, bundle)` (`ChatFragmentTest.java`,
+    /// lignes 422-450, lu en entier) — calcule les métadonnées locales (largeur/hauteur/durée,
+    /// `MediaDataDetail` côté Android construit par le même callback de sélection) avant d'appeler
+    /// `sendMedia`. Point d'entrée appelé par `ChatView` après sélection dans `GalleryPickerView`
+    /// (réutilisation du composant existant, module 7 Caméra — même picker `ImageAndVideo` que
+    /// `pickMedia` Android, `PickVisualMedia.ImageAndVideo`).
+    func attachMedia(url: URL, isVideo: Bool) {
+        if isVideo {
+            Task { await attachVideo(url: url) }
+        } else {
+            attachImage(url: url)
+        }
+    }
+
+    private func attachImage(url: URL) {
+        guard let data = try? Data(contentsOf: url), let image = UIImage(data: data) else { return }
+        sendMedia(
+            object: "photo", localFileURI: url.absoluteString,
+            width: String(Int(image.size.width * image.scale)),
+            height: String(Int(image.size.height * image.scale)),
+            duration: nil
+        )
+    }
+
+    /// Génère une miniature locale via `AVAssetImageGenerator` — port INTENTIONNELLEMENT différent
+    /// de `saveThumbnailToCache` (Android), qui est du code COMMENTÉ dans `prepareFileMessage`
+    /// (ligne 2425, jamais exécuté) : `UploadFileOrDataService.uploadMediaAndThumbnail` utilise
+    /// pourtant `data.getThumbnailUri()` SANS garde de nullité pour la branche vidéo — sans
+    /// génération réelle, ce chemin échouerait en pratique côté Android lui-même. Reproduit le
+    /// comportement INTENTIONNEL (upload média + miniature) avec une vraie génération plutôt que le
+    /// code mort qui l'entoure.
+    private func attachVideo(url: URL) async {
+        let asset = AVURLAsset(url: url)
+        let durationSeconds = (try? await asset.load(.duration))?.seconds ?? 0
+        var width = 0, height = 0
+        if let track = try? await asset.loadTracks(withMediaType: .video).first,
+           let naturalSize = try? await track.load(.naturalSize) {
+            width = Int(abs(naturalSize.width))
+            height = Int(abs(naturalSize.height))
+        }
+        sendMedia(
+            object: "video", localFileURI: url.absoluteString,
+            width: width > 0 ? String(width) : nil,
+            height: height > 0 ? String(height) : nil,
+            duration: String(Int(durationSeconds * 1000)),
+            localThumbnailURI: Self.generateThumbnail(for: asset)
+        )
+    }
+
+    private static func generateThumbnail(for asset: AVURLAsset) -> String? {
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        guard let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil),
+              let jpegData = UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.8)
+        else { return nil }
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString).appendingPathExtension("jpg")
+        guard (try? jpegData.write(to: destination)) != nil else { return nil }
+        return destination.absoluteString
     }
 
     private func buildOutgoingBase(object: String) -> MessageLib {
@@ -334,13 +401,39 @@ final class ChatViewModel: ObservableObject {
     }
 
     /// Port de `MessageActionListener.onUpload`/`checkAndUploadFile`/`upload(MessageLib)` —
-    /// **transfert réel PAS implémenté** : `UploadFileOrDataService.java` (service Android de
-    /// téléversement en premier plan) n'a pas été lu cette passe — deviner son endpoint/format
-    /// multipart violerait la méthodologie du projet. Point d'ancrage documenté pour la prochaine
-    /// lecture dédiée, pas un oubli silencieux.
+    /// **implémenté le 2026-08-15 (GAP-004)**, `UploadFileOrDataService.java` lu en entier :
+    /// upload direct BunnyCDN (`ChatMediaUploadService`, PAS `APIClient` — protocole différent, voir
+    /// `MIGRATION_AUDIT.md` GAP-004), puis mise à jour Core Data (`updateFileUploaded`) ET de la
+    /// liste affichée. Envoie ENSUITE le message via socket (`send(mlib)`) — Android compte sur un
+    /// re-bind ultérieur de la vue (`onBindViewHolder`) pour rappeler `sendSimpleMessage` une fois
+    /// `isFileUploaded` passé à 1 ; SwiftUI ne re-déclenche PAS `.onAppear` sur une simple mise à
+    /// jour de contenu, donc l'envoi est déclenché explicitement ici pour un comportement observable
+    /// équivalent (le message part bien vers le pair une fois l'upload terminé).
     private func requestUpload(_ mlib: MessageLib) {
-        // TODO(module 11 suite) : lire UploadFileOrDataService.java, implémenter via URLSession
-        // upload task, puis appeler messages.updateStatus / mettre à jour isFileUploaded+objectUrl.
+        guard let messageId = mlib.messageId, let object = mlib.object,
+              let localPath = mlib.localFileDirection, let fileURL = URL(string: localPath)
+        else { return }
+        let thumbnailURL = mlib.thumbnailUri.flatMap(URL.init(string:))
+        Task {
+            do {
+                let result = try await ChatMediaUploadService.shared.upload(
+                    messageId: messageId, object: object, fileURL: fileURL, thumbnailFileURL: thumbnailURL
+                )
+                try await messages.updateFileUploaded(messageId: messageId, objectUrl: result.objectUrl, thumbnailUri: result.thumbnailUrl)
+                guard let index = items.firstIndex(where: { $0.messageId == messageId }),
+                      case .message(var updated) = items[index]
+                else { return }
+                updated.objectUrl = result.objectUrl
+                updated.isFileUploaded = 1
+                if let thumb = result.thumbnailUrl { updated.thumbnailUri = thumb }
+                items[index] = .message(updated)
+                send(updated)
+            } catch {
+                // `isFileUploaded` reste à 0 — un prochain `handleAppear` (la bulle redevient
+                // visible, ex. scroll) relance un nouvel essai, sans compteur de tentatives, comme
+                // `checkAndUploadFile` (Android) qui relance aussi inconditionnellement.
+            }
+        }
     }
 
     /// Port de `MessageActionListener.onDowload`/`checkAndDownloadFile`/`downloadFile(...)` —

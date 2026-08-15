@@ -10,6 +10,7 @@ struct ChatView: View {
     @ObservedObject private var callCoordinator: CallCoordinator = .shared
     @State private var showGifPicker = false
     @State private var showGiftPicker = false
+    @State private var showAttachmentPicker = false
     @State private var showShareboard = false
     @State private var showMessageGraphicCompose = false
     @FocusState private var inputFocused: Bool
@@ -186,6 +187,13 @@ struct ChatView: View {
 
     private var inputBar: some View {
         HStack(spacing: 8) {
+            // Port de `pickImageOrVideo`/`pickMedia` (`ChatFragmentTest.java`, lu en entier,
+            // GAP-004 2026-08-15) — icône séparée non identifiée dans les 3080 lignes lues (bouton
+            // déclencheur hors du fragment, probablement `chat_salon.xml` non fourni), branchée ici
+            // sur un trombone, motif déjà établi ailleurs dans ce portage pour les points d'entrée
+            // non localisés précisément (ex. bouton d'appel, Shareboard — voir commentaires
+            // `outgoingCallProfile`/`showShareboard`).
+            Button { showAttachmentPicker = true } label: { Image(systemName: "paperclip") }
             Button { showGifPicker = true } label: { Image(systemName: "face.smiling") } // onDisplayGif
             Button { showGiftPicker = true } label: { Image(systemName: "gift") } // onDisplayGift
             TextField("Message", text: $viewModel.inputText, axis: .vertical)
@@ -214,6 +222,21 @@ struct ChatView: View {
                 viewModel.sendGift(giftId: giftId)
                 showGiftPicker = false
             }
+        }
+        // Port de `pickMedia` (`ActivityResultContracts.PickVisualMedia`, `ImageAndVideo` — même
+        // filtre que `GalleryPickerView`, réutilisé tel quel plutôt qu'un second picker dédié).
+        .sheet(isPresented: $showAttachmentPicker) {
+            GalleryPickerView(
+                onImagePicked: { url in
+                    showAttachmentPicker = false
+                    viewModel.attachMedia(url: url, isVideo: false)
+                },
+                onVideoPicked: { url in
+                    showAttachmentPicker = false
+                    viewModel.attachMedia(url: url, isVideo: true)
+                },
+                onCancel: { showAttachmentPicker = false }
+            )
         }
     }
 

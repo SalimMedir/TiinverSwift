@@ -254,6 +254,20 @@ final class MessageRepository {
         }
     }
 
+    /// Port de `UploadFileOrDataService.saveMediaUrls`/`uploadMediaToBunny` (GAP-004, 2026-08-15) —
+    /// `ContentValues{object_url, isFileUploaded=1[, thumbnail_uri]}` appliqué à `wk_messages`
+    /// après un upload BunnyCDN réussi (voir `ChatMediaUploadService`). `thumbnailUri` optionnel :
+    /// seule la branche vidéo en fournit un (`saveMediaUrls`), la branche générique
+    /// (`uploadMediaToBunny`) ne touche QUE `object_url`/`isFileUploaded`, `thumbnailUri` reste
+    /// intact si `nil` ici (comme Android ne l'inclut pas dans son `ContentValues` pour ce cas).
+    func updateFileUploaded(messageId: String, objectUrl: String, thumbnailUri: String?) async throws {
+        try await messages.update(predicate: NSPredicate(format: "messageId == %@", messageId)) { entity in
+            entity.objectUrl = objectUrl
+            entity.isFileUploaded = 1
+            if let thumbnailUri { entity.thumbnailUri = thumbnailUri }
+        }
+    }
+
     /// Port de `ChatFragmentTest.onCreateLoader`/`displayMessageOnInicialPage`/
     /// `displayMoreMessageOnScroll` (les 3, lus en entier) — CursorLoader `MSG_URI` filtré
     /// `conversationId=?`, trié `stamp DESC`, paginé `LIMIT 100 OFFSET n`. `belongsToCurrentUser`

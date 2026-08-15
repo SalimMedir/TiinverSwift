@@ -3399,4 +3399,115 @@ rythme.
 - `PhotoCropView.swift` (module 9) : pas d'équivalent direct pour `handleFlip` dans l'API publique
   de `TOCropViewController` — point ouvert, voir tableau détaillé module 9.
 - `project.yml` : package `TOCropViewController` ajouté (module 9), pas encore résolu par un build
+
+---
+
+**SESSION DU 2026-08-15 (suite à `MIGRATION_AUDIT.md`, commit `733da28`) — GAP-000 clos, GAP-004
+partiellement débloqué.** Reprise sans mémoire d'une session précédente, contexte reconstruit à
+partir de Git + `MIGRATION_AUDIT.md`/`MIGRATION_PROGRESS.md`. Aucun accès build/Appetize.io/device
+depuis cet environnement — uniquement du travail vérifiable par lecture de code.
+
+- **GAP-000 (démarrage) clos** : `App.java` (le vrai `onCreate()`, PAS `onCreate2()` — code mort
+  confirmé) relu en entier et comparé ligne par ligne à `AppDelegate.swift`. Deux constats
+  nouveaux : SDK Facebook (App Events/attribution pub, PAS de login — vérifié par grep) jamais
+  porté (P3, aucun impact utilisateur) ; et surtout `ViewEventRepository.swift` (stockage local
+  watch-time, équivalent `ViewTracker.java`) **existe mais n'est appelé nulle part** — ni pour
+  enregistrer localement depuis le feed, ni pour synchroniser vers le serveur
+  (`BGTaskScheduler`/`WorkManager` absent). Ajouté au registre comme GAP-008. Voir
+  `MIGRATION_AUDIT.md` pour le détail complet.
+- **GAP-004 (upload de fichiers) : hypothèse précédente corrigée.** `HttpFileUploader.java`,
+  `UploadFileOrDataService.java`, `ProfileRepository.java` et `CertificationRepository.java` (côté
+  Android) lus en entier — **ce ne sont PAS 3 usages d'un seul protocole** comme supposé
+  précédemment, mais 2 protocoles réels : (1) backend Tiinver multipart direct (profil +
+  certification, même convention `error`/JSON) et (2) BunnyCDN PUT direct (pièces jointes chat,
+  protocole entièrement différent, clé `AccessKey` statique). Détail complet dans
+  `MIGRATION_AUDIT.md`, GAP-004.
+- **Implémenté et fermé cette session** : upload de la photo de profil, bout en bout.
+  `APIClient.uploadMultipart(...)` (nouvelle méthode générique Alamofire, `Networking/
+  APIClient.swift` — attention : en-têtes SANS `Content-Type` fixe, `multipartHeaders()` dédié,
+  sinon le boundary calculé par Alamofire serait écrasé par le `Content-Type` JSON de `headers()`)
+  + `ProfileRepository.uploadProfilePicture` (POST réel vers `user`, remplace le `throw` explicite)
+  + `ProfileViewModel.uploadProfilePicture` + `ProfileView` (avatar tapable via `PhotosPicker`
+  natif iOS 16+ pour `isCurrentUser`, `ProgressView` pendant l'envoi, mise à jour immédiate de
+  l'avatar affiché après succès — pas de rechargement complet du profil, fidèle au comportement
+  Android `Onresponse`). Écart assumé : pas de recadrage avant envoi (Android : `CroperView`) —
+  l'avatar est de toute façon affiché en cercle recadré côté client.
+- **PAS fait cette session** (restant du même GAP-004, désormais bien scopé) : soumission
+  certification (réutilise `uploadMultipart` tel quel, juste écrire `CertificationRepository.swift`
+  + UI) et pièces jointes chat (protocole BunnyCDN séparé, service dédié à écrire). Deux tâches
+  listées dans le tracker de session, prêtes à reprendre sans re-investigation.
+- **Aucune compilation réelle possible depuis cet environnement** (toujours pas de macOS/Xcode ici)
+  — le code ajouté cette session (multipart upload + UI `PhotosPicker`) n'a PAS été vérifié par un
+  build réel, à confirmer au prochain build Codemagic/GitHub Actions, en même temps que les
+  corrections du 2026-08-13 (GoogleMobileAds 13.0.0, `Tool` enum) toujours non confirmées non plus.
+
+---
+
+**SESSION DU 2026-08-15 (suite directe, même journée) — GAP-004 CLOS EN ENTIER.** Reprise sur
+instruction explicite de l'utilisateur ("ne recommence pas l'audit global, termine GAP-004"),
+sans nouvelle reconstruction de contexte. Toujours aucun accès build/Appetize.io/device.
+
+- **Certification (soumission)** : `CertificationRepository.java` relu en entier (`requestOK`,
+  `request(Map)`, `getBy`, `tarification`) + `CertificationRequestActivity.java`/
+  `CertificationPlanFragment.java`/`CertificationActivity.java` (flux complet : 2 onglets
+  "create"/"dashboard", palier UNIQUE "basic" toujours envoyé en dur malgré une API générique, pas
+  de gate sur un statut existant). Implémenté : `CertificationRepository.submit(userId:
+  documentData:)` (réutilise `APIClient.uploadMultipart` ajouté dans la session précédente) +
+  section "Nouvelle demande" dans `CertificationView.swift` (`PhotosPicker`, prix via
+  `TiinverFirebaseConfigManager.certificationPrice`, statut rechargé après succès).
+  `CertificationPlanFragment.tarification()` (re-fetch réseau du prix, redondant avec Remote
+  Config) délibérément PAS porté — hors périmètre strict de GAP-004.
+- **Pièces jointes chat (BunnyCDN)** : `ChatFragmentTest.java` relu ciblé (lignes 413-450 sélection
+  média, 2417-2479 `prepareFileMessage`) pour confirmer le mapping exact avant upload — confirme
+  que `ChatViewModel.sendMedia` (déjà existant) construisait déjà les bons champs. Implémenté :
+  nouveau fichier `Messagerie/ChatMediaUploadService.swift` (PUT direct BunnyCDN, clé `AccessKey`
+  statique reprise à l'identique du fichier Android, **PAS** `APIClient` — protocole différent) +
+  `MessageRepository.updateFileUploaded(...)` (nouvelle méthode Core Data) +
+  `ChatViewModel.requestUpload` (le point d'ancrage `TODO` laissé par la session précédente, fermé)
+  + `ChatViewModel.attachMedia/attachImage/attachVideo` (nouveau point d'entrée, calcul largeur/
+  hauteur/durée + génération RÉELLE d'une miniature vidéo via `AVAssetImageGenerator` — Android ne
+  génère PAS réellement sa miniature à cet endroit, code commenté, aurait cassé
+  `uploadMediaAndThumbnail` qui suppose pourtant un `thumbnailUri` non nul) + bouton trombone dans
+  `ChatView.swift` (`GalleryPickerView` réutilisé tel quel, déjà utilisé par le module Caméra).
+  **2 bugs "double slash" trouvés dans `UploadFileOrDataService.java`** en le relisant précisément
+  (incohérents entre la branche vidéo et la branche générique, clairement accidentels) — NON
+  reproduits, corrigés uniformément dans le port. **Explicitement HORS périmètre** de cette
+  fermeture : le téléchargement des pièces jointes REÇUES (`ChatViewModel.requestDownload`, TODO
+  toujours présent, `DownloadReceiver.java` jamais lu) — gap distinct, pas GAP-004 (upload
+  seulement) ; et la confirmation événement-par-événement que le message avec URL uploadée part
+  bien vers le pair via Socket.IO (rattaché à GAP-003, chat profond, hors scope de cette session).
+- **2 bugs trouvés et corrigés AVANT de considérer le travail fini** (vérification statique,
+  détaillée dans `MIGRATION_AUDIT.md` GAP-004) : `.onChange(of:) { oldValue, newValue in }` (API iOS
+  17+, incompatible avec `deploymentTarget: 16.0`) utilisée par erreur dans `ProfileView.swift`,
+  corrigée en forme à un seul paramètre (seule forme utilisée partout ailleurs dans le projet,
+  confirmé par grep) ; `FirebaseConfigManager.shared` (n'existe pas) au lieu de
+  `TiinverFirebaseConfigManager.shared` dans `CertificationView.swift`.
+- **GAP-004 est maintenant DONE dans son intégralité** (les 3 usages : profil, certification, chat)
+  — seule réserve : aucune compilation réelle, à confirmer au prochain build CI. `MIGRATION_AUDIT.md`
+  mis à jour en conséquence (section 2, GAP-004 fusionné en une seule entrée DONE, section 6).
+
+---
+
+**SESSION DU 2026-08-15 (3ᵉ tour, même journée) — PREMIER BUILD CI RÉEL POST-GAP-004 : ÉCHEC,
+BUILD NON VALIDÉ.** Sur instruction explicite de l'utilisateur, priorité changée : ne PAS commencer
+GAP-003 avant d'avoir un build CI réel. Détail complet dans `MIGRATION_AUDIT.md`, nouvelle section
+11 — résumé ici :
+
+- Build déclenché via l'API GitHub REST (`workflow_dispatch` sur `ios-build.yml`), le token présent
+  dans `git remote -v` (`origin`) réutilisé pour cet usage précis, comme demandé.
+- **Run #31905358058, commit `733da28` (état de `main`, PAS le code GAP-004 non commité), conclusion
+  FAILURE** après ~36s — échec bien avant toute compilation Swift, à l'étape `Install Metal
+  Toolchain` (`xcodebuild: error: invalid option '-downloadComponent'`). Cause : aucune sélection
+  explicite de version Xcode dans le workflow, alors que le runner `macos-14-arm64` héberge
+  plusieurs Xcode côte à côte — le défaut pointait vers une version sans ce flag (Xcode 16+
+  uniquement).
+- Fix écrit dans `.github/workflows/ios-build.yml` (sélection dynamique de la dernière version Xcode
+  disponible) mais **PAS testé** : `workflow_dispatch` exécute toujours le YAML tel que committé sur
+  la branche cible, pas un fichier local — retester nécessite un push.
+- **Demandé explicitement à l'utilisateur s'il fallait committer/pousser** (le fix CI seul, tout,
+  ou rien) — réponse : **"ne rien pousser, juste diagnostiquer"**. Donc rien n'a été commité ni
+  poussé cette session, conformément à la réponse.
+- **BUILD NON VALIDÉ** — ni `main` actuel ni le code GAP-004 (11 fichiers modifiés + 1 nouveau,
+  tous non commités) n'ont été confirmés compilables. Prochaine action : obtenir l'autorisation de
+  pousser (au minimum le fix CI seul) pour pouvoir retester, voir `CLAUDE_CONTINUATION.md`.
   réel — même statut `ÉCRIT (NON COMPILÉ)` que le reste du code depuis le Checkpoint 2.

@@ -44,6 +44,14 @@ entière, comme le portage initial de ces mêmes modules l'a été.**
 
 ## 1. RÉSUMÉ EXÉCUTIF
 
+**Mise à jour 2026-08-15 (2ᵉ passe, GAP-004 clos)** : le tableau ci-dessous n'a PAS été recompté
+intégralement après cette passe (upload photo profil + certification + pièces jointes chat, tous
+passés à DONE, plus GAP-000/GAP-008 identifiés) — le recompte exact des 38 lignes + section 2
+nécessiterait de rouvrir chaque ligne, hors budget de cette session ciblée sur GAP-004. Au minimum
+3 lignes sont connues DÉSORMAIS DONE alors que ce tableau les compte encore ailleurs (MISSING/
+PARTIAL) : voir section 2 (M11/M17/M18) et section 6, déjà mises à jour individuellement. Traiter
+les pourcentages ci-dessous comme approximatifs/datés du 2026-08-13, pas comme une vérité actuelle.
+
 Décompte des fonctionnalités/écrans cartographiés en section 6 (Screen Parity Matrix), 38 lignes :
 
 | Statut | Nombre | % |
@@ -81,7 +89,8 @@ n'a été trouvée LÀ OÙ une vérification a été faite ; les zones `NEEDS_VA
 
 | ID | Domaine | Fonctionnalité | Android | iOS | Statut | Priorité |
 |---|---|---|---|---|---|---|
-| M01 | Démarrage | Init Firebase/AdMob/config app | `TiinverApplication`/`HomeActivity.onCreate` | `App/AppDelegate.swift` | DONE [VÉRIFIÉ CETTE SESSION — voir GAP-000] | P0 |
+| M01 | Démarrage | Init Firebase/AdMob/config app | `App.java onCreate()` | `App/AppDelegate.swift` | DONE [VÉRIFIÉ CETTE SESSION — voir GAP-000, clos] | P0 |
+| M01 | Démarrage | Sync watch-time (temps de visionnage) | `Utils/ViewTracker.java`+`ViewSyncWorker.java` | `Storage/ViewEventRepository.swift` (jamais appelé) | MISSING [VÉRIFIÉ CETTE SESSION — voir GAP-008] | P2 |
 | M02 | Session | Persistance session locale | `SessionManager`/`SharedPreferences` | `Security/UserSession.swift` | DONE [VÉRIFIÉ CETTE SESSION] | P0 |
 | M03 | Réseau | Client REST générique | `Http/TransportData.java` | `Networking/APIClient.swift` | DONE [VÉRIFIÉ CETTE SESSION] | P0 |
 | M05 | Navigation | Routage racine (login/mise à jour/accueil) | `SplashActivity.navigateAfterConfig` | `Navigation/RootRouterView.swift` | DONE [VÉRIFIÉ CETTE SESSION] | P0 |
@@ -91,7 +100,8 @@ n'a été trouvée LÀ OÙ une vérification a été faite ; les zones `NEEDS_VA
 | M06 | Feed | Interactions temps réel sur le feed | — | — | NEEDS_VALIDATION [SYNTHÈSE] | P2 |
 | M11 | Chat | Liste des conversations | `roster/ui/Roster.java` | `Messagerie/RosterListView.swift` | DONE [VÉRIFIÉ CETTE SESSION] | P0 |
 | M11 | Chat | Conversation individuelle (envoi/réception) | `ChatFragmentTest.java` | `Messagerie/ChatView.swift`+`ChatViewModel.swift` | NEEDS_VALIDATION [SYNTHÈSE — voir GAP-003] | P1 |
-| M11 | Chat | Upload/download pièces jointes | `UploadFileOrDataService.java`/`HttpFileUploader.java` | — | MISSING [voir GAP-004] | P1 |
+| M11 | Chat | Upload pièces jointes (BunnyCDN) | `UploadFileOrDataService.java` | `Messagerie/ChatMediaUploadService.swift` | DONE [VÉRIFIÉ CETTE SESSION — voir GAP-004, clos 2026-08-15] | P1 |
+| M11 | Chat | Download pièces jointes reçues | `DownloadReceiver.java` | `ChatViewModel.requestDownload` (`TODO`, non implémenté) | MISSING — hors périmètre GAP-004 (upload seulement), gap distinct | P1 |
 | M11 | Chat | Sélecteur GIF/cadeau | `StickerPickerDialog`/`GiftGalleryView` | `ChatView.swift` (`GiftPickerPlaceholder`) | PARTIAL | P2 |
 | M11 | Chat | Reconnexion Socket.IO | `ChatManager.java` | `Realtime/ChatRepository.swift` | NEEDS_VALIDATION [SYNTHÈSE] | P1 |
 | M12 | Appels | Appel WebRTC + CallKit/PushKit | `RTConnection2.java`+`CallService.java` | `Calls/*.swift` | NEEDS_VALIDATION [SYNTHÈSE — jamais exécuté, voir GAP-005] | P1 |
@@ -108,11 +118,11 @@ n'a été trouvée LÀ OÙ une vérification a été faite ; les zones `NEEDS_VA
 | M15 | Wallet | Retrait/transfert/conversion/parrainage | `WithdrawActivity`/`TransfertCoinsActivity`/etc. | `Wallet/*.swift` | NEEDS_VALIDATION [SYNTHÈSE] | P1 |
 | M16 | AdMob | Bannière/rewarded/rewarded-interstitial/native | `NativeAdsManager.java`+13 layouts | `Advertising/AdMobManager.swift` | NEEDS_VALIDATION [SYNTHÈSE — SDK vérifié, jamais vu charger une vraie pub] | P2 |
 | M17 | Profil | Voir profil (soi/autrui) | `UserProfile.java`+`AddPerfilFoto.java` | `Profile/ProfileView.swift` | NEEDS_VALIDATION [SYNTHÈSE] | P1 |
-| M17 | Profil | Upload photo de profil | `AddPerfilFoto.java` | `Profile/ProfileRepository.swift` (`throw`, non implémenté) | MISSING [voir GAP-004] | P1 |
+| M17 | Profil | Upload photo de profil | `AddPerfilFoto.java` | `Profile/ProfileRepository.swift`+`ProfileView.swift` (`PhotosPicker`) | DONE [VÉRIFIÉ CETTE SESSION — voir GAP-004, 2026-08-15] | P1 |
 | M17 | Réglages | Compte/Confidentialité/Notifications/Stockage/Apparence/Pub/Aide/À propos | 8 fragments `Setting*Fragment.java` | `Settings/*.swift` | PARTIAL [SYNTHÈSE — plusieurs fragments Android eux-mêmes partiellement morts, déjà documenté] | P2 |
 | M18 | Recherche | Recherche universelle | `RechercheTiinver.java` | `Discover/SearchView.swift` | NEEDS_VALIDATION [SYNTHÈSE] | P2 |
 | M18 | Divers | Follow/Signalement/Commentaires | `Following`/`report`/`comments` | `Discover/FollowListView.swift`/`ReportView.swift`/`CommentsView.swift` | NEEDS_VALIDATION [SYNTHÈSE] | P2 |
-| M18 | Divers | Certification (soumission) | `CertificationRequestActivity.java` | `Discover/CertificationView.swift` (consultation seule) | PARTIAL [voir GAP-004] | P2 |
+| M18 | Divers | Certification (soumission) | `CertificationRequestActivity.java` | `Discover/CertificationView.swift`+`CertificationRepository.submit` | DONE [VÉRIFIÉ CETTE SESSION — voir GAP-004, clos 2026-08-15] | P2 |
 | M18 | Divers | Contacts (sélecteur de membres groupe) | `ConnectedUsersRepository.java` | — | MISSING | P2 |
 | M18 | Divers | Statistiques créateur | `StatisticsActivity.java` | — | MISSING | P3 |
 | M18 | Divers | Boost interne (promotion payante) | `advertising/` (9 fichiers) | — | MISSING (jamais même repéré en détail) | P3 |
@@ -125,43 +135,91 @@ n'a été trouvée LÀ OÙ une vérification a été faite ; les zones `NEEDS_VA
 
 ## 3. GAP REGISTER
 
-### GAP-000 — Démarrage : conformité de l'audit sur ce point précis
+### GAP-000 — Démarrage : conformité de l'audit sur ce point précis (CLOS cette session, 2026-08-15)
 
 **Domaine :** Architecture/Démarrage
 **Fonctionnalité :** Initialisation SDK au lancement
 **Priorité :** P0
-**Statut actuel :** DONE [VÉRIFIÉ CETTE SESSION, partiellement — `AppDelegate.swift` relu en entier,
-`HomeActivity`/`TiinverApplication` PAS relus dans cette passe précise, synthèse de sessions
-précédentes reprise pour la partie Android]
+**Statut actuel :** DONE [VÉRIFIÉ CETTE SESSION — `App.java` (le vrai `onCreate()` @Override, PAS
+`onCreate2()` qui est du code mort jamais appelé, confirmé par grep) relu en entier ET comparé
+ligne par ligne à `AppDelegate.swift`]
 
 #### Android — référence réelle
-Fichiers : `App/AppDelegate.swift` (iOS, déjà cité) référence `FirebaseApp.configure()`,
-`TiinverConfig.configure()`, `configureAdMob()`, enregistrement `UNUserNotificationCenter`/
-`Messaging.messaging().delegate`, démarrage `CallCoordinator`.
+`app/src/main/java/com/tiinver/App.java`, méthode `onCreate()` (l.264-332) : `TiinverConfig.init`,
+création de 3 canaux de notification, `FirebaseApp.initializeApp`, `EmojiCompat`/`EmojiManager`
+(police emoji Google de remplacement), `FirebaseConfigManager.fetchAndActivate` (+ mise à jour
+synchrone immédiate des valeurs d'expiration AVANT le fetch réseau), `FacebookSdk.sdkInitialize` +
+`AppEventsLogger.activateApp`, `MobileAds.initialize` (délai 3s), `initWebRct()` (WebRTC), et
+`ViewTracker.startPeriodicSync` (`Utils/ViewTracker.java` — sync périodique WorkManager/15min des
+événements de visionnage vers le serveur).
 
 #### iOS — état actuel
-`Sources/TiinverSwift/App/AppDelegate.swift` — lu en entier cette session (voir section audit Feed,
-même fichier consulté pour la garde `SMOKE_TEST_MODE`). Ordre d'initialisation cohérent.
+`Sources/TiinverSwift/App/AppDelegate.swift` relu en entier. Correspondances confirmées :
+`FirebaseApp.configure()`, `TiinverConfig.configure()`, `configureAdMob()`,
+`UNUserNotificationCenter`/`Messaging.messaging().delegate`, `CallCoordinator.shared.start()`
+(équivalent iOS-only de `initWebRct()`, nécessaire pour PushKit).
 
 #### Différence exacte
-Aucune trouvée dans ce qui a été relu. Le fichier Android d'origine (`TiinverApplication.java` ou
-équivalent) n'a pas été rouvert dans cette passe précise pour confirmer l'ordre exact
-d'initialisation SDK — seule la version Swift a été relue directement.
+1. **`EmojiCompat`/`EmojiManager`** — absent côté iOS. **IOS_INTENTIONAL_DIFFERENCE, pas un gap** :
+   ce mécanisme Android remplace la police emoji système (souvent obsolète/incohérente selon le
+   fabricant) par une police Google téléchargée ; iOS a un rendu emoji couleur natif et à jour dans
+   toutes les polices système, ce contournement n'a pas de raison d'être porté.
+2. **`FacebookSdk.sdkInitialize`/`AppEventsLogger.activateApp`** — **MISSING, nouveau constat de
+   cette session**, absent de tout le projet iOS (aucune dépendance Facebook dans `project.yml`,
+   aucun appel d'init). Vérifié que ce n'est PAS du Facebook Login (aucun `LoginManager`/
+   `LoginButton`/`FacebookCallback`/`GraphRequest` trouvé dans tout `com.tiinver` par grep) — usage
+   Android limité à l'activation de l'événement standard "app ouverte" (Meta App Events,
+   analytics/attribution publicitaire uniquement). Aucun impact fonctionnel utilisateur ; impact
+   potentiel sur le reporting d'attribution publicitaire côté Meta. Priorité P3, non bloquant.
+3. **`ViewTracker.startPeriodicSync`** — **MISSING, constat le plus significatif de cette session**.
+   Le stockage local existe bien côté iOS (`Storage/ViewEventRepository.swift`, `ViewEventEntity`
+   Core Data, logique de cumul watchtime/scrollPosition/replayCount/exitPoint fidèle à
+   `ViewTracker.record()`), MAIS **`ViewEventRepository` n'est appelé nulle part ailleurs dans tout
+   le projet** (confirmé par grep sur l'ensemble de `Sources/` — seule sa propre définition et un
+   commentaire dans `HomeShellView.swift` la mentionnent). Deux problèmes empilés, pas un seul :
+   (a) rien n'enregistre localement le temps de visionnage depuis `FeedView`/le lecteur vidéo (le
+   commentaire d'en-tête de `ViewEventRepository.swift` le confirme explicitement : "la partie
+   écriture locale seulement" existe, mais rien ne l'appelle) ; (b) aucune synchronisation
+   périodique vers le serveur n'existe (`BGTaskScheduler`, équivalent iOS de `WorkManager`, absent
+   du projet — confirmé par grep). Déjà noté comme différé "au module 18" dans un commentaire de
+   `HomeShellView.swift`, mais le module 18 a été fermé (2026-08-12) sans que ce point soit repris
+   dans son résumé de clôture — probablement oublié plutôt que sciemment exclu. Impact produit
+   potentiel : si le classement Créateurs/algorithme de recommandation dépend de ces données
+   côté serveur (à confirmer côté backend), le feed iOS ne contribuerait actuellement AUCUNE donnée
+   de comportement de visionnage, silencieusement.
 
 #### Action recommandée
-Avant de clore ce point avec certitude totale, relire le vrai point d'entrée Android
-(`Application.onCreate` ou `HomeActivity.onCreate`) une fois, pour confirmer qu'aucune init n'a été
-oubliée. Non bloquant : rien dans le reste de l'audit ne pointe vers un SDK non initialisé.
+Point 1 : aucune, différence voulue. Point 2 : ajouter le SDK Facebook (`FacebookCore`/`FacebookLogin`
+via SPM) + un appel d'activation équivalent dans `AppDelegate.swift`, P3, séparable du reste. Point 3 :
+nécessite une session dédiée — (a) brancher `ViewEventRepository.record(...)` depuis le lecteur vidéo
+du feed (au scroll/sortie de vidéo, à identifier précisément dans `FeedView.swift`/le player) ; (b)
+implémenter un `BGTaskScheduler` périodique (~15 min, réseau requis) rejouant la logique de
+`ViewSyncWorker.java` (non lu en détail dans cette session — à faire avant d'implémenter (b)). Ajouté
+au registre de gaps comme GAP-008 ci-dessous pour suivi.
 
 #### Dépendances
-Firebase, AdMob, PushKit/CallKit.
+Firebase, AdMob, PushKit/CallKit, Core Data (`AnalyticsCoreDataStack`), `BGTaskScheduler` (à ajouter).
 
 #### Risque de régression
-LOW
+LOW pour les 2 gaps trouvés (fonctionnalités actuellement inertes, rien à casser en les ajoutant).
 
 #### Critère de validation
-Relecture du vrai `Application`/`onCreate` Android + confirmation qu'aucune étape d'init n'y figure
-sans équivalent dans `AppDelegate.swift`.
+Point 2 : événement "app activée" visible dans Meta Events Manager après un lancement réel. Point 3 :
+une ligne `ViewEventEntity` créée localement après visionnage d'une vidéo du feed, puis absente après
+la fenêtre de sync suivante (confirmée reçue côté serveur).
+
+---
+
+### GAP-008 — Synchronisation du temps de visionnage (watch-time) jamais branchée côté iOS
+
+**Domaine :** Feed / Analytics
+**Priorité :** P2 (aucun impact visible utilisateur, impact potentiel sur classement/algorithme
+côté serveur si celui-ci consomme ces données — à confirmer)
+**Statut actuel :** MISSING [VÉRIFIÉ CETTE SESSION — voir détail complet dans GAP-000, point 3]
+
+#### Action recommandée
+Voir GAP-000. Lire `service/worker/ViewSyncWorker.java` (Android, jamais lu en détail) avant
+d'implémenter la synchronisation périodique iOS.
 
 ---
 
@@ -299,41 +357,115 @@ messages entre deux comptes.
 
 ---
 
-### GAP-004 — Upload de fichiers : gap récurrent transversal, jamais résolu
+### GAP-004 — Upload de fichiers : CLOS cette session (2026-08-15, 2ᵉ passe)
 
 **Domaine :** Transversal (Chat/Profil/Certification)
 **Priorité :** P1
-**Statut actuel :** MISSING
+**Statut actuel :** DONE [VÉRIFIÉ CETTE SESSION — les 3 usages (profil, certification, pièces
+jointes chat) sont maintenant implémentés bout en bout côté code. Réserve unique : AUCUNE
+compilation/exécution réelle possible depuis cet environnement (pas de macOS/Xcode ici), voir
+section "Vérification statique effectuée cette session" plus bas.]
 
-#### Android — référence réelle
-Fichiers : `UploadFileOrDataService.java`, `HttpFileUploader.java` — **jamais lus en détail à aucun
-moment de tout ce portage**, confirmé par grep répété dans `MIGRATION_PROGRESS.md` à travers les
-modules 11/17/18.
+#### Android — référence réelle (méthode conservée de la 1ʳᵉ passe)
+`HttpFileUploader.java`, `UploadFileOrDataService.java`, `ProfileRepository.java` (méthode
+`uploadPhotoProfile`), `CertificationRepository.java` (méthode `requestOK`) — tous lus en entier.
+Complété cette 2ᵉ passe par `ChatFragmentTest.java` (lignes 413-450 : `pickImageOrVideo`/`pickMedia`,
+picker `ImageAndVideo` ; lignes 2417-2479 : `prepareFileMessage`, mapping exact `MessageLib` avant
+upload) et `models/activity/MyMediaType.java` (4 constantes extension/MIME, lu en entier).
 
-#### iOS — état actuel
-`ProfileRepository.uploadProfilePicture` lève explicitement une erreur (non implémenté) ;
-`CertificationRepository` ne couvre que la consultation de statut, pas la soumission avec justificatif
-; le module Chat n'a pas de transfert de fichier réel (médias reçus affichés, mais l'envoi de nouveaux
-médias n'est pas confirmé bout-en-bout).
+#### Correction majeure par rapport à l'hypothèse précédente
+La session précédente supposait qu'**un seul** `MediaUploadService.swift` partagé débloquerait les 3
+usages d'un coup. **C'est faux** — lecture complète confirmant **3 protocoles réellement différents**,
+pas 3 appels du même service :
 
-#### Différence exacte
-Trois fonctionnalités utilisateur bloquées par le MÊME gap non résolu : changer sa photo de profil,
-soumettre une demande de certification, envoyer un média dans le chat (à confirmer au GAP-003).
+1. **Photo de profil** (`ProfileRepository.uploadPhotoProfile` → `HttpFileUploader` type=2) : POST
+   multipart DIRECT vers le backend Tiinver, `{SERVER}user`, champs `id`/`column=profile_picture`/
+   `format=json`/fichier `object_url` (nom fixe `wn_image.jpeg`). Réponse `{error, object_url}`,
+   même convention que le reste de l'API (`JSONValue.isBackendSuccess`).
+2. **Certification** (`CertificationRepository.requestOK`) : POST multipart DIRECT vers le backend
+   Tiinver, `{SERVER}certification/request`, champs `userId`/`certificationLevel`/`format=json`/
+   fichier `documentUrl`. **Même protocole que (1)** (backend Tiinver, multipart, convention `error`)
+   — ces deux-là PEUVENT effectivement partager un seul point d'entrée générique.
+3. **Pièces jointes chat** (`UploadFileOrDataService.java`) : **protocole entièrement différent**,
+   PAS le backend Tiinver — PUT binaire direct vers **BunnyCDN storage**
+   (`https://storage.bunnycdn.com/{STORAGE_ZONE}/tiinver/message/{type}/{filename}`, header
+   `AccessKey` avec une clé statique codée en dur côté Android — `STORAGE_ZONE="tiinver-media"`,
+   note sécurité : clé de stockage embarquée côté client, déjà le cas côté Android, pas une
+   régression introduite par le portage). Vidéo = 2 PUT séparés (média + thumbnail). URL CDN
+   publique résultante : `https://cdn.tiinver.com/{folder}/{filename}`. Après upload, mise à jour
+   LOCALE uniquement (SQLite `ContentProvider` côté Android) — le backend Tiinver lui-même
+   n'intervient pas dans cette partie, l'URL doit ensuite être transmise via Socket.IO pour que
+   l'autre participant la reçoive (à vérifier dans `Realtime/ChatRepository.swift`, lié à GAP-003).
+   Champs `bunnyApiKey`/`videoLibraryId` déclarés dans le fichier Android mais jamais utilisés
+   (code mort confirmé, à ne PAS porter).
+
+#### iOS — état actuel (les 3 usages fermés)
+- **Photo de profil** — `APIClient.uploadMultipart(...)` (méthode générique, `Networking/
+  APIClient.swift`) + `ProfileRepository.uploadProfilePicture` (POST réel vers `user`) +
+  `ProfileViewModel.uploadProfilePicture` + `ProfileView` (avatar tapable via `PhotosPicker` natif
+  quand `isCurrentUser`). Écart assumé : pas de recadrage avant envoi (Android : `CroperView`),
+  l'avatar est de toute façon affiché en cercle recadré côté client.
+- **Certification (soumission)** — `CertificationRepository.submit(userId:documentData:)` (même
+  `uploadMultipart`, endpoint `certification/request`, champs `userId`/`certificationLevel="basic"`
+  [seul palier réellement envoyé par Android, `btnSubmitCertification` — reproduit à l'identique,
+  PAS une sélection de palier absente]/`format`/`documentUrl`) + `CertificationView` (section
+  "Nouvelle demande" ajoutée : prix via `TiinverFirebaseConfigManager.certificationPrice`,
+  `PhotosPicker`, statut rechargé après succès). `CertificationPlanFragment.tarification()`
+  (re-fetch réseau redondant avec Remote Config) délibérément PAS porté, hors périmètre strict de
+  ce GAP (transfert de fichier).
+- **Pièces jointes chat** — nouveau fichier `Messagerie/ChatMediaUploadService.swift` (PUT direct
+  BunnyCDN, `AccessKey` statique, PAS `APIClient`) + `MessageRepository.updateFileUploaded(...)`
+  (nouvelle méthode Core Data) + `ChatViewModel.requestUpload` (point d'ancrage déjà documenté par
+  la 1ʳᵉ passe, maintenant implémenté) + `ChatViewModel.attachMedia/attachImage/attachVideo` (calcul
+  largeur/hauteur/durée + génération de miniature vidéo via `AVAssetImageGenerator`) +
+  `ChatView` (bouton trombone → `GalleryPickerView`, réutilisé tel quel, module 7). **2 bugs
+  "double slash" trouvés dans `UploadFileOrDataService.java` en le relisant précisément pour cette
+  implémentation** (URL de PUT ET/OU URL CDN finale, incohérents entre la branche vidéo et la
+  branche générique — voir commentaire de tête de `ChatMediaUploadService.swift`) — NON reproduits,
+  corrigés uniformément (accidentels, pas un protocole voulu, contrairement à `MyMediaType.IMAGE`
+  qui déclare `.webp`/`image/jpeg` de façon cohérente PARTOUT et EST donc reproduit tel quel).
+  **Écart assumé** : miniature vidéo générée réellement côté iOS (`AVAssetImageGenerator`) —
+  `saveThumbnailToCache` (Android, `prepareFileMessage` ligne 2425) est du code COMMENTÉ/mort, alors
+  que `UploadFileOrDataService.uploadMediaAndThumbnail` utilise `thumbnailUri` SANS garde de
+  nullité : sans génération réelle, ce chemin serait cassé même côté Android. **Emplacement précis
+  du bouton d'attache non identifié** dans les 3080 lignes lues de `ChatFragmentTest.java` (pas dans
+  ce fichier, probablement `chat_salon.xml` non fourni) — branché sur une icône trombone par
+  cohérence avec les autres points d'entrée déjà non localisés précisément dans ce module (bouton
+  d'appel, Shareboard, voir `ChatView.swift`).
+
+#### Vérification statique effectuée cette session (AUCUN accès Xcode/build/device)
+Relecture manuelle des fichiers modifiés/créés pour : cohérence des types (`String`/`Int`/`Int64`
+Core Data), signatures d'appel (`APIClient.uploadMultipart`, `MultipartFormData.append`,
+`Session.upload(multipartFormData:to:headers:)`, `URLSession.upload(for:from:)`, `AVAsset.load(_:)`
+async), disponibilité API vs `deploymentTarget: 16.0` (`project.yml`) — **1 erreur trouvée et
+corrigée avant de continuer** : `.onChange(of:) { oldValue, newValue in }` (forme iOS 17+) utilisée
+par erreur dans `ProfileView.swift`, corrigée en `{ newValue in }` (seule forme disponible en 16.0,
+confirmée par grep sur tout `Sources/` — 10+ usages existants, tous dans cette forme). **1 bug
+trouvé et corrigé** : `FirebaseConfigManager.shared` (n'existe pas) au lieu de
+`TiinverFirebaseConfigManager.shared` dans `CertificationView.swift`, corrigé après grep de
+vérification. Aucune garantie de compilation réelle — la seule vérification qui fasse foi est un
+build CI (`ios-build.yml`/`codemagic.yaml`) ou un accès Xcode direct, ni l'un ni l'autre disponibles
+depuis cet environnement Windows.
 
 #### Action recommandée
-Une lecture dédiée de `UploadFileOrDataService.java`/`HttpFileUploader.java` débloquerait les 3 gaps
-d'un coup — identifier le endpoint/format multipart réel, implémenter un `MediaUploadService.swift`
-partagé plutôt que 3 implémentations séparées.
+Aucune côté transfert de fichier — GAP-004 clos. Reste, HORS PÉRIMÈTRE de ce GAP mais découvert en
+le fermant : confirmer comment un message chat avec pièce jointe atteint réellement l'autre
+participant une fois uploadé (le `send(mlib)` explicite ajouté dans `requestUpload` émet bien via
+`ChatRepository.sendPrivateMessage`/`sendGroupMessage`, MAIS ce chemin socket n'a pas été re-vérifié
+événement par événement dans cette session — lié à GAP-003, qui reste une session à part entière).
 
 #### Dépendances
-`APIClient`, format multipart (Alamofire le supporte nativement).
+`APIClient` (fait), Alamofire (déjà utilisé), `AVFoundation` (miniature vidéo, déjà lié au projet
+pour d'autres modules), BunnyCDN (`URLSession` natif, pas de SDK).
 
 #### Risque de régression
-LOW — nouvelle fonctionnalité, pas de code existant à casser.
+LOW — 3 fonctionnalités précédemment inertes/manquantes, rien d'existant cassé en les complétant.
 
 #### Critère de validation
-Upload réel d'une photo de profil confirmé par une réponse serveur 200 + photo visible au rechargement
-du profil.
+Build CI réel + test manuel : (1) upload réel d'une photo de profil, réponse 200 + photo visible au
+rechargement ; (2) soumission de certification, statut passe à "pending" après envoi ; (3) envoi
+d'une photo/vidéo en chat, bulle affiche la miniature locale puis bascule sur l'icône "prêt" une
+fois l'upload terminé, ET l'autre participant reçoit bien le message (test à 2 comptes).
 
 ---
 
@@ -508,7 +640,7 @@ interne à `advertising/` (boost payant, jamais même repéré en détail).
 | `EarnCoinsActivity` (AdMob rewarded) | `Wallet/EarnCoinsView.swift` | Non, cette session | NEEDS_VALIDATION | — |
 | `RechercheTiinver` | `Discover/SearchView.swift` | Non, cette session | NEEDS_VALIDATION | — |
 | `FollowList` | `Discover/FollowListView.swift` | Non, cette session | NEEDS_VALIDATION | — |
-| `CertificationActivity` | `Discover/CertificationView.swift` | Non, cette session | PARTIAL | Soumission MISSING (GAP-004) |
+| `CertificationActivity` | `Discover/CertificationView.swift` | Oui, cette session (2026-08-15) | DONE | Soumission implémentée (GAP-004 clos) ; `tarification()` (re-fetch prix redondant) non porté, mineur |
 | `StatisticsActivity` | — | — | MISSING | Jamais porté |
 | Contacts (sélecteur membres groupe) | — | — | MISSING | Jamais porté |
 | Boost interne (`advertising/`) | — | — | MISSING | Jamais même repéré en détail |
@@ -628,3 +760,63 @@ dans `MIGRATION_PROGRESS.md`, reformulés ici pour visibilité dans l'audit :
 code pendant la rédaction de ce document (les seules corrections visibles dans le dépôt — feed,
 navigation — proviennent de commits antérieurs à cette passe, pas de ce tour d'audit). Prochaine
 étape : instructions de l'utilisateur pour prioriser la suite parmi les GAP listés ci-dessus.
+
+---
+
+## 11. PREMIER BUILD CI RÉEL POST-GAP-004 (2026-08-15) — BUILD NON VALIDÉ
+
+**Contexte** : sur instruction explicite de l'utilisateur, déclenchement d'un vrai build CI
+(`.github/workflows/ios-build.yml`, GitHub Actions) via l'API GitHub REST (`workflow_dispatch`),
+pour vérifier que tout le code écrit depuis le 2026-08-13 (y compris GAP-004, cette session) compile
+réellement. **AUCUN commit/push effectué à ce stade** — l'utilisateur a explicitement choisi
+l'option "ne rien pousser, juste diagnostiquer" quand la question s'est posée (le fix ci-dessous
+nécessite un push pour être re-testé).
+
+### Run #1 — RÉSULTAT RÉEL (pas une estimation)
+
+- **Run ID** : `31905358058`
+- **Commit testé** : `733da28fc414dc059474c9be4e973280ae8bb153` (dernier commit sur `main` au
+  moment du déclenchement — **PAS** le code GAP-004 de cette session, resté non commité, voir
+  avertissement ci-dessous)
+- **Déclenché** : 2026-08-15 19:57:16 UTC, via API REST avec le token présent dans `git remote -v`
+- **Runner** : `macos-14-arm64`, image `20260629.0180.1`, macOS `14.8.7`
+- **Conclusion** : **FAILURE**, échec après seulement ~36 secondes (bien avant toute compilation
+  Swift réelle)
+- **Étape en échec** : `Install Metal Toolchain` (`xcodebuild -downloadComponent MetalToolchain`)
+- **Erreur exacte** (log brut) : `xcodebuild: error: invalid option '-downloadComponent'`
+- **Étapes JAMAIS ATTEINTES** (marquées `skipped`) : `Résoudre les dépendances Swift Package
+  Manager`, `Build simulateur — vérification de compilation uniquement, sans signature` — **donc
+  AUCUNE vérification de dépendances SPM ni de compilation Swift n'a eu lieu dans ce run**, contrai-
+  rement à ce qu'on pourrait déduire d'un "build lancé".
+
+### Analyse groupée par cause (méthode demandée par l'utilisateur)
+
+1. **Erreurs de configuration CI/runner** — 1 trouvée : `-downloadComponent` n'existe pas sur la
+   version d'Xcode sélectionnée par défaut sur ce runner. Cause réelle : le workflow ne sélectionne
+   JAMAIS explicitement de version Xcode (`xcode-select`/`DEVELOPER_DIR`) alors que le runner
+   `macos-14-arm64` héberge plusieurs Xcode installés côte à côte — le symlink par défaut pointait
+   vers une version trop ancienne pour ce flag (introduit avec la séparation du toolchain Metal en
+   composant téléchargeable, Xcode 16+).
+2. **Erreurs de dépendances SPM** — NON ÉVALUABLE, étape jamais atteinte.
+3. **Erreurs Swift** — NON ÉVALUABLE, étape jamais atteinte. **En particulier, aucun des fichiers
+   Swift de GAP-004 (cette session) n'a été testé par ce run**, puisqu'ils ne sont même pas encore
+   commités.
+4. **Erreurs Firebase/GoogleMobileAds/signature/ressources** — NON ÉVALUABLES, étapes jamais
+   atteintes.
+
+### Correction appliquée (écrite, PAS testée — nécessite un push pour l'être)
+
+`.github/workflows/ios-build.yml` — nouvelle étape avant `Install Metal Toolchain` : sélectionne
+explicitement la version Xcode la plus récente disponible sur le runner
+(`ls -d /Applications/Xcode_*.app | sort -V | tail -1` + `sudo xcode-select -s`), plutôt qu'un
+numéro de version codé en dur (pour ne pas se recasser à la prochaine image de runner GitHub, mise à
+jour régulièrement). Log ajouté (`xcodebuild -version`) pour documenter la version réellement
+sélectionnée au prochain run.
+
+### État réel — À NE PAS CONFONDRE AVEC UN SUCCÈS
+
+**BUILD NON VALIDÉ.** Ni le code actuel de `main` (commit `733da28`), ni a fortiori le code GAP-004
+de cette session (non commité), n'ont été confirmés compilables par un build CI réel. Le fix
+ci-dessus est une hypothèse raisonnable (cause d'erreur claire, correction directe) mais **NON
+CONFIRMÉE** — seul un nouveau run CI après push pourrait le confirmer. Prochaine action exacte : voir
+`CLAUDE_CONTINUATION.md`, section BUILD CI.

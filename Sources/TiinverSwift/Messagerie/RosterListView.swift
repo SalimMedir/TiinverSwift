@@ -10,16 +10,19 @@ import SwiftUI
 /// est reproduit ici, pas la requête SQL intermédiaire).
 ///
 /// **PAS porté, décision de portée** (comme le reste de ce portage lorsqu'un sous-écran nécessite sa
-/// propre passe de lecture dédiée) : nouvelle conversation via sélecteur de contacts (`Contact.
-/// class`, FAB `GoToContact` — module Contacts jamais construit, voir module 18) ; sélection
-/// multiple/suppression (`ToolBarActionCompound`, `RosterListAdapter.itemSelected`) ; assistant IA
-/// (`TiinverGeminiAIChat`, hors périmètre `TIINVER_IOS_PORT_ANALYSIS.md`) ; mise à jour temps réel
-/// de la liste (présence en ligne/frappe/nouveau message reçu pendant que l'écran est ouvert —
-/// `Roster.organizeAndDisplayMessage`, non câblé, `refresh()` manuel via le bouton toolbar en
-/// attendant). Recherche d'une conversation existante et navigation vers `ChatView` (le cœur
-/// observable de cet écran) sont portés.
+/// propre passe de lecture dédiée) : sélection multiple/suppression (`ToolBarActionCompound`,
+/// `RosterListAdapter.itemSelected`) ; assistant IA (`TiinverGeminiAIChat`, hors périmètre
+/// `TIINVER_IOS_PORT_ANALYSIS.md`) ; mise à jour temps réel de la liste (présence en ligne/frappe/
+/// nouveau message reçu pendant que l'écran est ouvert — `Roster.organizeAndDisplayMessage`, non
+/// câblé, `refresh()` manuel via le bouton toolbar en attendant) ; `NewMessage.java` (recherche
+/// téléphone/email pour un chat 1:1 direct, écran séparé du sélecteur de contacts). Recherche d'une
+/// conversation existante et navigation vers `ChatView` sont portés.
+///
+/// **Création de groupe portée le 2026-08-15** (test Appetize réel, GAP fonctionnel) — port de
+/// `Contact.class` (FAB `GoToContact`) : voir `ContactPickerView.swift`/`GroupCreationView.swift`.
 struct RosterListView: View {
     @StateObject private var viewModel = RosterListViewModel()
+    @State private var showContactPicker = false
 
     var body: some View {
         Group {
@@ -46,8 +49,25 @@ struct RosterListView: View {
                     Image(systemName: "arrow.clockwise")
                 }
             }
+            // Port du FAB `GoToContact` (`Roster.java:84,133-144`) — bouton bottom-trailing côté
+            // Android, déplacé dans la barre du haut côté iOS (convention native, pas de FAB
+            // flottant standard en SwiftUI/`List` sans superposition manuelle) — action et
+            // destination identiques, seul le positionnement diffère.
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { showContactPicker = true } label: {
+                    Image(systemName: "person.2.badge.plus")
+                }
+            }
+        }
+        .navigationDestination(isPresented: $showContactPicker) {
+            ContactPickerView()
         }
         .task { await viewModel.refresh() }
+        .onChange(of: showContactPicker) { presented in
+            // Reflète immédiatement le nouveau groupe dans la liste dès qu'on revient (pas
+            // d'observation temps réel de `wk_roster`, voir réserves de portée ci-dessus).
+            if !presented { Task { await viewModel.refresh() } }
+        }
     }
 
     private var emptyState: some View {

@@ -1025,3 +1025,82 @@ en un écran affichable, contrairement à `AnimemesCompound`/`fragment_memes.xml
 existant est un effort déjà estimé à plusieurs semaines-ingénieur dans `TIINVER_ANIMEMS_SCOPE_
 LIBRARIES.md` (GAP-006). Pas une correction ponctuelle.
 **Test Appetize après correction** : NON TESTÉ.
+
+---
+
+## APPETIZE FUNCTIONAL TEST — 2026-08-15 (suite) — P0-4/5/6 CONSTRUITS
+
+Sur instruction explicite de l'utilisateur ("continue sans attendre de test Appetize
+intermédiaire — un seul test global à la fin, quota Appetize limité"), les 3 fonctionnalités P0-4/
+5/6 (identifiées ci-dessus comme "jamais construites", pas de simples bugs) ont été **construites
+dans la même session**, pas seulement documentées comme manquantes.
+
+### P0-4 — CHAT : création de groupe — CONSTRUIT
+
+Port complet de `contacts/ContactsFragment.java`/`ChooseFragment.java`/`Group.java` (lus en entier
+via investigation dédiée) :
+- **Nouveaux fichiers** : `Messagerie/GroupModels.swift`, `Messagerie/ContactsRepository.swift`
+  (`GET connectedusers/{userId}`), `Messagerie/GroupRepository.swift` (`POST group` + `POST
+  membership` en boucle), `Messagerie/ContactPickerView.swift` (sélection multiple),
+  `Messagerie/GroupCreationView.swift` (nom/privé-public/lucratif+prix/lien d'invitation local).
+- **Modifié** : `Messagerie/RosterListView.swift` (bouton d'entrée, port du FAB `GoToContact`
+  déplacé en barre du haut — convention iOS, pas de FAB flottant natif).
+- Champs `POST group` fidèles à l'original **y compris la faute de frappe réelle du serveur**
+  (`type: "pivate"`, pas "private") — reproduite, pas "corrigée".
+- Après création : message système local + `RosterModel` construit → navigation directe vers
+  `ChatView` (réutilise `MessageRepository.insertTextMessage`, qui met déjà à jour `wk_roster` —
+  même chemin que les messages normaux, pas dupliqué).
+- **GitHub Actions** : SUCCESS (run `31912698274`, commit `f2460f2`), les 6 fichiers confirmés
+  compilés, 0 erreur, 0 warning.
+
+### P0-5 — GALERIE : MediaEditor + publication — CONSTRUIT (périmètre réduit assumé)
+
+Port de `editor/media/MediaEditor.java`/`ImageEditorCompound.java` (crop) + `PublishFragment.java`
+(légende/hashtags), investigation dédiée ayant confirmé l'endpoint réel de publication
+(`activity/add`, identique au chemin `HttpFileUploader.uploadRequestBody` type=0).
+- **Nouveau fichier** : `Feed/PublishComposeView.swift` (recadrage via `PhotoCropView` déjà
+  existant, réutilisé tel quel + légende/hashtags).
+- **Modifiés** : `Feed/FeedRepository.swift` (+ `publish(...)`, réutilise `APIClient.
+  uploadMultipart` de GAP-004), `Feed/FeedView.swift` (les 4 fermetures vides caméra/galerie
+  remplacées par un vrai flux vers `PublishComposeView`).
+- **Périmètre volontairement réduit** : peinture/texte/stickers du calque photo d'Android
+  (`ImageEditorCompound`) PAS repris — confirmés secondaires par l'investigation (le flux principal
+  est crop→légende→publication). Catégorie/consentement IA de l'écran Android PAS repris non plus
+  — confirmés NE PAS être envoyés au serveur par le code Android réel malgré leur présence dans
+  l'UI (`uploadRequestBody` ne les inclut pas), donc hors du comportement observable à reproduire.
+  `MediaTrim` (recadrage temporel vidéo) non repris — vidéo publiée telle quelle.
+- **GitHub Actions** : SUCCESS (même run), 3 fichiers confirmés compilés, 0 erreur, 0 warning.
+
+### P0-6 — ANIMEMS : écran éditeur — CONSTRUIT (périmètre minimal assumé, PAS la parité complète)
+
+Assemblage d'un écran RÉEL autour du moteur déjà porté (`AnimationComposer`/`AnimationObjectData`/
+`LayerRenderer`/`ShapeFactory`/`AnimemesExporter`/`TextRect`) — chaque signature vérifiée
+directement dans le code source avant intégration, aucune modification du moteur lui-même.
+- **Nouveaux fichiers** : `Animems/AnimemesEditorView.swift` (canevas `Canvas`+`CGContext` via
+  `GraphicsContext.withCGContext`, barre d'outils, geste de déplacement), `Animems/
+  AnimemesEditorState.swift` (état, ajout photo/texte/forme, export).
+- **Périmètre MINIMAL assumé et documenté en tête de fichier** : ajout photo/texte/forme (rectangle/
+  cercle/ligne), déplacement au doigt (**translation seule** — pas de rotation/échelle combinées
+  comme `AnimemesGestureController` le permettrait en entier), export MP4 **statique 3 secondes**
+  (`holdLast`, pas de vraie animation image par image ni de timeline détaillée). PAS la parité
+  complète avec `AnimemesCompound.java` (24 942 lignes, déjà estimée à plusieurs semaines-ingénieur
+  dans `TIINVER_ANIMEMS_SCOPE_LIBRARIES.md`, GAP-006) — un sous-ensemble réellement fonctionnel,
+  pas une façade.
+- **Câblage** : `CameraView.onOpenAnimems` (fermeture vide auparavant) présente maintenant cet
+  écran via `FeedView` (`fullScreenCover`).
+- **GitHub Actions** : SUCCESS (même run), 2 fichiers confirmés compilés, 0 erreur, 0 warning —
+  résultat notable vu la complexité (rendu `CGContext` bas niveau, `AVAssetWriter`), vérifié
+  explicitement plutôt que supposé sûr par analogie avec les autres fichiers.
+
+### Codemagic
+
+Toujours en attente d'un déclenchement manuel par l'utilisateur — aucun résultat Codemagic
+rapporté à ce jour pour aucun commit de cette journée (`e4b1832`, `3f5f880`, `f2460f2`).
+
+### Revue transversale (TODO/stubs/placeholders)
+
+Recherche effectuée sur tout `Sources/` — gaps trouvés déjà connus et documentés (pas de nouvelle
+découverte majeure) : sélecteur GIF/stickers du chat (`ChatView.swift`, placeholder texte),
+téléchargement des pièces jointes chat reçues (`ChatViewModel.requestDownload`, distinct de
+GAP-004 qui ne couvrait que l'upload), TODOs de migration Core Data (routine, sans impact
+fonctionnel). Rien nécessitant une action dans cette passe.

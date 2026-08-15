@@ -13,26 +13,26 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 **BUILD CI VALIDÉ :** Oui (GitHub Actions uniquement — voir stratégie double-CI ci-dessous,
 Codemagic en attente d'un déclenchement manuel par l'utilisateur)
-**Build :** GitHub Actions run `31911325017` (workflow `ios-build.yml`)
-**Commit :** `3f5f880` ("fix(migration): resolve Appetize functional parity issues (P0:
-Home/Profile/Search)")
-**Date :** 2026-08-15 22:08-22:13 UTC
-**Résultat :** `** BUILD SUCCEEDED **`. Les 6 fichiers modifiés confirmés compilés (chemin complet
-dans le log). 0 erreur réelle. 1 warning, PRÉ-EXISTANT (`AuthSessionPersistence.swift:31`, `try?`
-non utilisé sur le bloc Core Data — sans rapport avec cette session).
+**Build :** GitHub Actions run `31912698274` (workflow `ios-build.yml`)
+**Commit :** `f2460f2` ("feat(animems): assemble minimal functional editor screen" — dernier de 3
+commits du lot Chat+Galerie+Animems, testés ensemble en un seul build)
+**Date :** 2026-08-15 22:39-22:45 UTC
+**Résultat :** `** BUILD SUCCEEDED **`. Les 11 fichiers nouveaux/modifiés de ce lot confirmés
+compilés (chemin complet dans le log). 0 erreur réelle. **0 warning.**
 **Historique complet des runs de cette journée** (pour ne pas confondre) :
 1. `31905358058` (commit `733da28`) — ÉCHEC, `-downloadComponent` invalide, Xcode non sélectionné.
 2. `31907788616` (commit `a66c509`, fixes CI seuls) — SUCCESS.
 3. `31908841925` (commit `e4b1832`, GAP-004) — SUCCESS.
-4. `31911325017` (commit `3f5f880`, corrections P0 Appetize Home/Profile/Search) — **SUCCESS,
-   dernier run connu**.
+4. `31911325017` (commit `3f5f880`, corrections P0 Appetize Home/Profile/Search) — SUCCESS.
+5. `31912698274` (commit `f2460f2`, Chat+Galerie+Animems construits) — **SUCCESS, dernier run
+   connu, un seul build pour les 3 commits du lot** (consigne explicite : pas un build par commit).
 
 ### CI VALIDATION — format demandé par l'utilisateur pour chaque commit important
 
-**Commit :** `3f5f880`
-**GitHub Actions :** Build ID `31911325017` — Result **SUCCESS**
+**Commit :** `f2460f2` (englobe aussi `3dc83d3` Chat et `1aab36e` Galerie, même run)
+**GitHub Actions :** Build ID `31912698274` — Result **SUCCESS**
 **Codemagic :** Build ID — (aucun, déclenchement manuel par l'utilisateur, en attente de retour —
-toujours vrai pour CE commit ET pour `e4b1832`, aucun build Codemagic n'a encore été rapporté)
+toujours vrai pour TOUS les commits du jour, aucun build Codemagic n'a encore été rapporté)
 **Double validation :** NO (GitHub seul pour l'instant, sur les 2 derniers commits importants)
 **Erreurs GitHub :** 0
 **Erreurs Codemagic :** N/A (pas encore lancé)
@@ -68,6 +68,32 @@ l'utilisateur, déjà exposé une fois dans les logs de cette conversation avant
 (`git remote set-url` sans credential). Toutes les opérations Git/API suivantes utilisent **Git
 Credential Manager** via `git credential fill` — jamais réaffiché, jamais écrit dans un fichier.
 Vérifié qu'aucun fichier du dépôt/temporaire ne contient le motif de token.
+
+---
+
+## 0ter. CHAT/GALERIE/ANIMEMS — FICHE DE VALIDATION (construits le 2026-08-15, tour 7)
+
+**Contexte** : les 3 GAPs identifiés par le test Appetize comme "fonctionnalités jamais
+construites" (pas des bugs) ont été bâtis dans la MÊME session, sur instruction explicite de
+l'utilisateur de ne pas s'arrêter entre chaque correction (quota Appetize limité → un seul test
+global prévu, pas encore fait).
+
+- **Chat (création de groupe)** : COMPLET — sélecteur de contacts + création de groupe, fidèle à
+  `ContactsFragment`/`ChooseFragment`/`Group.java` (endpoints `connectedusers`/`group`/
+  `membership` exacts, y compris la faute de frappe serveur `"pivate"`). Commit `3dc83d3`.
+- **Galerie (MediaEditor + publication)** : PÉRIMÈTRE RÉDUIT ASSUMÉ — crop→légende→publication
+  réelle (`POST activity/add`) fonctionnels ; peinture/texte/stickers sur la photo PAS repris
+  (confirmés secondaires par l'investigation Android, `PublishFragment`/`ImageEditorCompound` lus
+  en entier). `MediaTrim` (recadrage vidéo) pas repris non plus. Commit `1aab36e`.
+- **Animems (écran éditeur)** : PÉRIMÈTRE MINIMAL ASSUMÉ, PAS LA PARITÉ COMPLÈTE — ajout photo/
+  texte/forme, déplacement au doigt (translation seule), export MP4 statique 3s. PAS de rotation/
+  échelle/masques/keyframes/timeline détaillée (GAP-006 reste un chantier à part entière, ~24 942
+  lignes Android, déjà estimé à plusieurs semaines-ingénieur). Commit `f2460f2`.
+
+**Compilation CI :** VALIDÉE (GitHub Actions, run `31912698274`, SUCCESS, 11/11 fichiers confirmés
+compilés par leur chemin complet, 0 erreur, 0 warning — voir section 0).
+**Tests réels sur appareil :** NON EFFECTUÉS — conforme à la consigne explicite de l'utilisateur
+(un seul test Appetize global prévu à la fin du lot complet, pas encore fait à ce stade).
 
 ---
 
@@ -169,13 +195,18 @@ côté (documentés, pas oubliés) :
 - **P0** — Confirmer par un test CI/Appetize.io réel que le code compile ET que feed/navigation
   fonctionnent visuellement (jamais fait, ni avant cette session ni pendant).
 - **P1** — GAP-003 (Chat, audit profond événement-par-événement, jamais refait depuis le portage
-  initial) ; GAP-005 (Appels WebRTC/CallKit, jamais exécutés) ; GAP-006 (Animems, audit profond,
-  24 942 lignes Android) ; download pièces jointes chat (voir section 4 ci-dessus) ; Feed
-  like/commentaire/partage (jamais portés, périmètre Checkpoint 1 exclu à l'époque).
+  initial) ; GAP-005 (Appels WebRTC/CallKit, jamais exécutés) ; GAP-006 (Animems, audit/parité
+  COMPLÈTE — un écran minimal fonctionnel existe désormais, voir section 0ter, mais PAS la parité
+  avec les 24 942 lignes Android) ; download pièces jointes chat (voir section 4 ci-dessus) ; Feed
+  like/commentaire/partage (jamais portés, périmètre Checkpoint 1 exclu à l'époque) ; MediaEditor
+  peinture/texte/stickers (Galerie, périmètre réduit assumé cette session, voir section 0ter).
 - **P2** — GAP-008 (sync watch-time, voir section 2) ; Réglages (8 fragments à vérifier un par un) ;
-  Recherche/Follow/Commentaires (audit ciblé) ; AdMob (jamais vu charger une vraie pub).
-- **P3** — SDK Facebook (App Events) ; décoratifs Créateurs ; Contacts/Statistiques/boost interne
-  (jamais explorés en détail).
+  Recherche/Follow/Commentaires (audit ciblé) ; AdMob (jamais vu charger une vraie pub) ; rotation/
+  échelle/masques/keyframes/timeline Animems (voir section 0ter, périmètre minimal actuel).
+- **P3** — SDK Facebook (App Events) ; décoratifs Créateurs ; Statistiques/boost interne (jamais
+  explorés en détail). **Contacts** : le sélecteur pour la création de GROUPE existe désormais
+  (section 0ter) — reste un éventuel écran "Contacts" autonome si Android en a un hors du flux
+  groupe (pas confirmé/investigué).
 
 ## 6. FICHIERS RÉCEMMENT MODIFIÉS (état final, TOUS COMMITÉS ET POUSSÉS sur `origin/main`)
 
@@ -203,6 +234,20 @@ Commit 3f5f880 : "fix(migration): resolve Appetize functional parity issues (P0:
   Sources/TiinverSwift/Authentication/SignUpWithGoogleView.swift  (idem)
   Sources/TiinverSwift/Authentication/EmailVerificationView.swift (idem)
   Sources/TiinverSwift/Discover/SearchModels.swift                (init(from:) tolérant clés absentes)
+Commit 3dc83d3 : "feat(chat): implement group creation flow"
+  Sources/TiinverSwift/Messagerie/GroupModels.swift              (NOUVEAU)
+  Sources/TiinverSwift/Messagerie/ContactsRepository.swift       (NOUVEAU, GET connectedusers)
+  Sources/TiinverSwift/Messagerie/GroupRepository.swift          (NOUVEAU, POST group+membership)
+  Sources/TiinverSwift/Messagerie/ContactPickerView.swift        (NOUVEAU)
+  Sources/TiinverSwift/Messagerie/GroupCreationView.swift        (NOUVEAU)
+  Sources/TiinverSwift/Messagerie/RosterListView.swift           (+ bouton d'entrée)
+Commit 1aab36e : "feat(feed): implement media publish flow (photo/video)"
+  Sources/TiinverSwift/Feed/PublishComposeView.swift             (NOUVEAU)
+  Sources/TiinverSwift/Feed/FeedRepository.swift                 (+ publish(), POST activity/add)
+  Sources/TiinverSwift/Feed/FeedView.swift                       (fermetures caméra/galerie câblées)
+Commit f2460f2 : "feat(animems): assemble minimal functional editor screen"
+  Sources/TiinverSwift/Animems/AnimemesEditorView.swift          (NOUVEAU)
+  Sources/TiinverSwift/Animems/AnimemesEditorState.swift         (NOUVEAU)
 Non commité : CLAUDE_CONTINUATION.md (ce fichier — sera commité en fin de session, doc pure),
 MIGRATION_AUDIT.md/MIGRATION_PROGRESS.md (section Appetize ajoutée après ce commit, à committer avec
 ce fichier)
@@ -277,88 +322,91 @@ fonctionnent réellement comme Android tant qu'un nouveau test Appetize ne l'a p
 
 ## 10. PROCHAINE TÂCHE EXACTE
 
-**Ne PAS commencer GAP-003 — instruction explicite de l'utilisateur, toujours valable, réaffirmée
-pour la mission Appetize.** 3 corrections P0 (Home/Profile/Search) compilent réellement (GitHub
-Actions, run `31911325017`) mais N'ONT PAS ENCORE été retestées sur Appetize, et 3 problèmes
-(Chat/Galerie/Animems) restent non traités (fonctionnalités jamais construites, pas des bugs).
+**Ne PAS commencer GAP-003 — instruction explicite de l'utilisateur, toujours valable.** Les 6
+problèmes Appetize (Home/Profile/Search/Chat/Galerie/Animems) sont maintenant tous CORRIGÉS ou
+CONSTRUITS et compilent réellement (GitHub Actions, run `31912698274`, SUCCESS). **Rien de tout
+cela n'a encore été testé fonctionnellement** — l'utilisateur a explicitement demandé UN SEUL test
+Appetize global une fois tout le lot terminé (quota limité), pas de test intermédiaire.
 
 **Tâche exacte** :
-1. **Demander à l'utilisateur de retester Home/Profile/Search sur Appetize** avec le commit
-   `3f5f880` (ou plus récent) — c'est la seule façon de confirmer que les 3 corrections
-   fonctionnent réellement, pas seulement qu'elles compilent. Documenter le résultat (PASS/FAIL par
-   écran) dans `MIGRATION_AUDIT.md`, section "APPETIZE FUNCTIONAL TEST — 2026-08-15", en remplaçant
-   les 3 mentions "NON TESTÉ" par le résultat réel.
-2. **Décider avec l'utilisateur comment aborder Chat/Galerie/Animems** — ces 3 ne sont PAS des
-   corrections ponctuelles (voir `MIGRATION_AUDIT.md`, même section, entrées P0-4/5/6) :
-   - Chat : construire un sélecteur de contacts + un écran de création de groupe (port de
-     `Contact.java`/`ChooseFragment.java`/`Group.java`).
-   - Galerie : construire un vrai flux `MediaEditor`/publication (aucun flux de publication de post
-     ne semble exister côté iOS pour la caméra à ce stade — à confirmer avant de commencer).
-   - Animems : assembler un écran d'éditeur complet à partir du moteur déjà porté (GAP-006, déjà
-     estimé à plusieurs semaines dans `TIINVER_ANIMEMS_SCOPE_LIBRARIES.md`).
-   Proposer de les traiter comme 3 chantiers séparés (pas une seule session), en commençant par
-   celui que l'utilisateur juge prioritaire.
-3. **Demander le retour Codemagic manuel** — toujours en attente depuis GAP-004 (`e4b1832`),
-   jamais rapporté ; s'applique maintenant aussi à `3f5f880`.
+1. **Attendre/demander le test Appetize global de l'utilisateur** sur le commit `f2460f2` (ou plus
+   récent) — c'est la seule façon de savoir si les 6 écrans fonctionnent réellement. Documenter
+   chaque résultat (PASS/FAIL par écran) dans `MIGRATION_AUDIT.md`, sections "APPETIZE FUNCTIONAL
+   TEST — 2026-08-15" (les deux, P0-1/2/3 et P0-4/5/6), en remplaçant les mentions "NON TESTÉ" par
+   le résultat réel.
+2. **Si des bugs sont trouvés au test global** : appliquer la même méthode que cette session —
+   comparer au code Android réel avant de corriger, ne pas deviner. Périmètres RÉDUITS assumés à
+   garder en tête en analysant un rapport de bug (pas des oublis, des décisions documentées) :
+   Galerie sans peinture/texte/stickers sur la photo ; Animems sans rotation/échelle/masques/
+   keyframes/timeline, export toujours 3s statique ; Chat sans écran "Contacts" autonome hors flux
+   groupe si Android en a un séparé (non investigué).
+3. **Demander le retour Codemagic manuel** — toujours en attente depuis GAP-004 (`e4b1832`), jamais
+   rapporté pour AUCUN commit de la journée.
 4. Continuer d'appliquer la stratégie double-CI (section 0) pour chaque nouveau commit important.
+5. Une fois le test Appetize global concluant (ou sur décision explicite de l'utilisateur de
+   continuer sans attendre) : GAP-003 (audit profond du Chat, périmètre déjà donné par
+   l'utilisateur dans un message dédié) redevient la suite logique.
 
 ## 11. HANDOFF — DERNIÈRE SESSION
 
 **Session :** Claude Code (Sonnet 5), reprise sans mémoire, contexte reconstruit depuis Git +
-documentation existante. 6ᵉ tour de cette même journée (2026-08-15) — premier test fonctionnel réel
-de l'app (Appetize.io, device réel) fourni par l'utilisateur avec captures Android de référence.
+documentation existante. 7ᵉ tour de cette même journée (2026-08-15).
 **Date :** 2026-08-15
-**Dernière tâche terminée :** Diagnostic des 6 problèmes rapportés (6 investigations Android↔iOS en
-parallèle) + correction et validation CI de 3 d'entre eux (Home, Profile, Search) — commit `3f5f880`,
-GitHub Actions SUCCESS (run `31911325017`).
-**Travail effectué :**
-- Home : cause racine confirmée = erreur d'architecture (pager plein écran au lieu d'une grille 2
-  colonnes) + race condition possible. `FeedView.swift` réécrit : grille 2 colonnes comme écran
-  principal, l'ancien pager devient l'écran de détail (tap sur une cellule), fidèle à
-  `MainFragment.OnAdapterItemClicked`.
-- Profile : race condition confirmée et corrigée (session non attendue avant navigation dans les 3
-  flux de connexion) — `AuthSessionPersistence.saveSession` (nouvelle fonction synchrone).
-- Search : bug de décodage JSON confirmé et corrigé (clés de catégorie absentes du JSON faisaient
-  échouer silencieusement tout le décodage) — `init(from:)` custom sur `SearchResults`.
-- Chat/Galerie/Animems : diagnostiqués (causes réelles identifiées avec citations de code précises)
-  mais PAS corrigés — ce sont des fonctionnalités jamais construites, pas des bugs, effort d'une
-  toute autre ampleur.
-**Travail actuellement en cours :** Aucun code en cours. Documentation de cette passe terminée dans
-`MIGRATION_AUDIT.md`/`MIGRATION_PROGRESS.md`/ce fichier, reste à committer.
+**Dernière tâche terminée :** Les 6 problèmes du test Appetize traités en 2 vagues dans la même
+session : (tour 6) Home/Profile/Search corrigés + validés CI ; (tour 7, celui-ci) Chat/Galerie/
+Animems — identifiés comme fonctionnalités jamais construites — BÂTIS de bout en bout (pas
+seulement documentés), sur instruction explicite de l'utilisateur de ne pas s'arrêter entre les
+corrections. Commit final `f2460f2`, GitHub Actions SUCCESS (run `31912698274`).
+**Travail effectué (tour 7) :**
+- 3 investigations Android dédiées (Chat/Galerie/Animems), chacune avec citations de fichier:ligne
+  précises, AVANT d'écrire une seule ligne de Swift.
+- Chat : sélecteur de contacts + création de groupe construits (5 fichiers neufs +
+  `RosterListView.swift`).
+- Galerie : flux crop→légende→publication construit (1 fichier neuf + `FeedRepository.swift`/
+  `FeedView.swift`), périmètre réduit assumé et documenté.
+- Animems : écran d'éditeur réel assemblé autour du moteur déjà porté (2 fichiers neufs), API du
+  moteur vérifiée signature par signature avant intégration (fichier le plus à risque de la
+  session — rendu `CGContext` bas niveau + `AVAssetWriter`, aucun retour compilateur avant push).
+- Revue transversale (TODO/stubs) — rien de neuf trouvé au-delà des gaps déjà connus.
+- 3 commits séparés (`3dc83d3`/`1aab36e`/`f2460f2`), **un seul build CI pour les 3** (économie de
+  quota demandée explicitement).
+**Travail actuellement en cours :** Aucun code en cours. Documentation de ce tour en cours de
+finalisation dans ce fichier, reste à committer.
 **PROCHAINE TÂCHE EXACTE :** Voir section 10 ci-dessus.
-**Fichiers modifiés :** Voir section 6 ci-dessus. Code applicatif (commit `3f5f880`) déjà poussé ;
-mises à jour de documentation de cette section restent à committer avec ce fichier.
+**Fichiers modifiés :** Voir section 6 ci-dessus. Code applicatif (3 commits du tour 7) déjà poussé ;
+mises à jour de documentation restent à committer avec ce fichier.
 **Fichiers à surveiller :** `.claude/worktrees/fix-splash-stuck` apparaît modifié dans le `git
 status` du dépôt ANDROID (pas iOS) — une AUTRE session travaille en parallèle sur ce worktree
 Android. Ne PAS y toucher, ne pas supposer son contenu.
-**Bugs connus :** Voir `MIGRATION_AUDIT.md`, section "APPETIZE FUNCTIONAL TEST", entrées P0-4/5/6
-(Chat/Galerie/Animems, non corrigés). Le token GitHub qui était dans l'URL du remote a été exposé
-une fois en clair dans cette conversation avant sécurisation — **rotation recommandée, à confirmer
-avec l'utilisateur si elle a été faite.**
-**Tests effectués :** Voir section 7 — compilation CI réelle réussie (GitHub Actions, `3f5f880`).
-Test Appetize réel EFFECTUÉ par l'utilisateur AVANT ces corrections (c'est ce qui a motivé ce tour) ;
-PAS ENCORE REFAIT après ces corrections.
-**Résultats :** Home/Profile/Search compilent réellement (niveau 1/3). PAS encore retestés sur
-Appetize après correction (niveau 3/3 non atteint). Chat/Galerie/Animems : diagnostiqués seulement,
-niveau 0/3.
-**Décisions techniques :** Voir section 9 (nouvelles entrées Feed/AuthSessionPersistence de ce tour).
+**Bugs connus :** Aucun bug de compilation. Périmètres réduits assumés à ne PAS confondre avec des
+bugs si l'utilisateur les rapporte après test (voir section 10, point 2, et section 0ter pour le
+détail complet). Le token GitHub qui était dans l'URL du remote a été exposé une fois en clair dans
+cette conversation avant sécurisation — **rotation recommandée, à confirmer avec l'utilisateur si
+elle a été faite.**
+**Tests effectués :** Compilation CI réelle réussie pour TOUT le lot (GitHub Actions, `f2460f2`,
+0 erreur, 0 warning sur les 11 fichiers du tour 7). **AUCUN test fonctionnel réel** — conforme à la
+consigne explicite de l'utilisateur, qui veut un seul test Appetize global, pas encore fait.
+**Résultats :** Les 6 écrans (Home/Profile/Search/Chat/Galerie/Animems) compilent réellement
+(niveau 1/3 : COMPILÉE). Codemagic jamais rapporté (niveau 2/3 non atteint). Aucun test
+fonctionnel réel (niveau 3/3 non atteint) — TOUT reste à valider par le test Appetize global promis.
+**Décisions techniques :** Voir section 9 + section 0ter (périmètres réduits assumés pour Galerie/
+Animems, détaillés et justifiés, pas des raccourcis silencieux).
 **Points importants :**
 - Ne PAS refaire l'audit global — `MIGRATION_AUDIT.md`/`MIGRATION_PROGRESS.md` sont à jour et
   fiables.
-- Ne PAS supposer que Home/Profile/Search fonctionnent réellement — seule la compilation est
-  confirmée, pas le comportement sur device, règle absolue rappelée explicitement par l'utilisateur
-  pour toute cette mission.
-- Ne PAS commencer Chat/Galerie/Animems sans clarifier avec l'utilisateur l'ampleur réelle du
-  travail (nouveaux écrans complets, pas des corrections) — voir section 10, point 2.
+- Ne PAS supposer que les 6 écrans fonctionnent réellement — seule la compilation est confirmée.
+- Ne PAS relancer de build CI avant le prochain vrai changement de code — un test Appetize ne
+  nécessite aucun nouveau build, le commit `f2460f2` est déjà celui à tester.
 - Ne JAMAIS déclencher Codemagic soi-même sans credential réel — l'utilisateur le fait manuellement.
+- Si l'utilisateur rapporte un bug après test sur Galerie/Animems, vérifier D'ABORD si c'est dans le
+  périmètre volontairement réduit (section 0ter) avant de le traiter comme un vrai bug.
 - Tout le code est commité/poussé ; seule la documentation de ce tour reste à committer.
 **Instructions pour la prochaine session :**
-1. Lire ce fichier EN PREMIER, section 0/0bis en priorité absolue.
+1. Lire ce fichier EN PREMIER, section 0/0bis/0ter en priorité absolue.
 2. Vérifier qu'il correspond toujours au code réel (`git log`, `git status`) — une autre session a
    pu intervenir/pousser depuis.
-3. Si l'utilisateur ne précise pas de priorité, demander (a) le résultat du retest Appetize des
-   corrections Home/Profile/Search (commit `3f5f880`) et (b) le résultat de son build Codemagic
-   manuel (section 10) — l'utilisateur a explicitement interdit GAP-003 tant que ces points ne sont
-   pas clarifiés.
-4. Mettre à jour ce fichier (sections 0, 0bis et 11) à la fin de la session, quel que soit le
+3. Si l'utilisateur ne précise pas de priorité, demander (a) le résultat du test Appetize global
+   (commit `f2460f2`) et (b) le résultat de son build Codemagic manuel (section 10) — l'utilisateur
+   a explicitement interdit GAP-003 tant que ces points ne sont pas clarifiés.
+4. Mettre à jour ce fichier (sections 0, 0bis, 0ter et 11) à la fin de la session, quel que soit le
    résultat.

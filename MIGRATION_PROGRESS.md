@@ -3604,3 +3604,41 @@ rapport avec les changements). Codemagic : en attente de déclenchement manuel p
 même commit. **Aucun des 3 correctifs n'a encore été retesté sur Appetize** — seule la compilation
 est confirmée à ce stade, pas le comportement réel (règle rappelée explicitement par l'utilisateur
 pour cette mission : ne jamais confondre les deux).
+
+---
+
+**SESSION DU 2026-08-15 (7ᵉ tour, même journée) — P0-4/5/6 (Chat/Galerie/Animems) CONSTRUITS EN
+UN SEUL LOT, sur instruction explicite de l'utilisateur de ne pas s'arrêter entre chaque
+correction (quota Appetize limité, un seul test global prévu à la fin).**
+
+- 3 investigations dédiées menées en parallèle (Android lu en entier pour chacune) avant tout code :
+  Chat (`ContactsFragment`/`ChooseFragment`/`Group.java` → endpoint `connectedusers`/`group`/
+  `membership` précis), Galerie (`MediaEditor`/`PublishFragment` → endpoint `activity/add`
+  identifié, réutilise `APIClient.uploadMultipart` de GAP-004), Animems (API exacte du moteur Swift
+  déjà porté vérifiée fichier par fichier avant d'écrire l'écran assembleur).
+- **Chat** : sélecteur de contacts + création de groupe construits de bout en bout (5 nouveaux
+  fichiers + `RosterListView.swift` modifié). Fidèle à Android y compris une faute de frappe réelle
+  du serveur (`type: "pivate"`).
+- **Galerie** : flux crop→légende→publication construit (1 nouveau fichier + `FeedRepository.swift`/
+  `FeedView.swift` modifiés) — périmètre réduit assumé (pas de peinture/texte/stickers sur la photo,
+  confirmés secondaires par l'investigation Android).
+- **Animems** : écran d'éditeur RÉEL assemblé autour du moteur déjà porté (2 nouveaux fichiers) —
+  périmètre MINIMAL mais FONCTIONNEL assumé et documenté (translation seule, export MP4 statique
+  3s, pas de timeline/keyframes/masques) — PAS la parité complète (GAP-006 reste un chantier à part
+  entière). Point le plus à risque de cette session (rendu `CGContext` bas niveau + `AVAssetWriter`
+  sans aucun retour de compilateur local avant le push) — chaque signature du moteur vérifiée
+  directement dans le code source avant d'écrire une seule ligne d'intégration.
+- **Commit unique par fonctionnalité** (3 commits : `3dc83d3` Chat, `1aab36e` Galerie, `f2460f2`
+  Animems) puis **UN SEUL build CI pour tout le lot** (pas un par commit), conformément à la
+  consigne explicite de l'utilisateur d'économiser le quota CI/Appetize.
+- **Run GitHub Actions `31912698274` (commit `f2460f2`) : SUCCESS.** Vérifié explicitement (pas
+  seulement le statut global) : les 11 fichiers nouveaux/modifiés de ce lot confirmés compilés par
+  leur chemin complet dans le log, 0 erreur réelle, **0 warning** — résultat propre malgré la
+  complexité, en particulier pour Animems.
+- **Codemagic toujours en attente** — aucun résultat rapporté à ce jour pour aucun commit.
+- Revue transversale (TODO/stubs/placeholders) effectuée sur tout `Sources/` — gaps trouvés déjà
+  connus (GIF picker chat, téléchargement pièces jointes reçues, TODOs Core Data routine), rien de
+  nouveau nécessitant une action immédiate.
+- **Aucun test fonctionnel réel effectué** — conforme à la consigne de l'utilisateur (un seul test
+  Appetize global prévu, pas encore fait). Toutes les fonctionnalités de ce tour sont au niveau
+  "compile réellement", pas "fonctionnellement validé".

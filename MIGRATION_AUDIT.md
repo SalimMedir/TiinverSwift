@@ -813,10 +813,82 @@ numéro de version codé en dur (pour ne pas se recasser à la prochaine image d
 jour régulièrement). Log ajouté (`xcodebuild -version`) pour documenter la version réellement
 sélectionnée au prochain run.
 
-### État réel — À NE PAS CONFONDRE AVEC UN SUCCÈS
+### État réel au moment de l'écriture initiale de cette section — À NE PAS CONFONDRE AVEC UN SUCCÈS
 
-**BUILD NON VALIDÉ.** Ni le code actuel de `main` (commit `733da28`), ni a fortiori le code GAP-004
-de cette session (non commité), n'ont été confirmés compilables par un build CI réel. Le fix
-ci-dessus est une hypothèse raisonnable (cause d'erreur claire, correction directe) mais **NON
-CONFIRMÉE** — seul un nouveau run CI après push pourrait le confirmer. Prochaine action exacte : voir
-`CLAUDE_CONTINUATION.md`, section BUILD CI.
+**BUILD NON VALIDÉ** (à ce stade). Ni le code actuel de `main` (commit `733da28`), ni a fortiori le
+code GAP-004 de cette session (non commité), n'ont été confirmés compilables par un build CI réel.
+Le fix ci-dessus est une hypothèse raisonnable (cause d'erreur claire, correction directe) mais
+**NON CONFIRMÉE** — seul un nouveau run CI après push pourrait le confirmer.
+
+**Suite (même session, tours suivants) — voir section 12 ci-dessous pour l'état final.**
+
+---
+
+## 12. GAP-004 — VALIDATION CI RÉELLE (2026-08-15, tours suivants) + STRATÉGIE DOUBLE-CI
+
+### Correctifs CI supplémentaires (2 itérations avant d'atteindre un run propre)
+
+1. **`-downloadComponent` absent de TOUTES les versions Xcode du runner** (15.0 à 16.2 inclus,
+   confirmé par la liste d'options réelle retournée par `xcodebuild` en erreur — le fix de
+   sélection de version (ci-dessus) fonctionnait bien, Xcode 16.2 était correctement sélectionné,
+   mais le flag lui-même n'existe simplement sur aucune version disponible ici). Rendu non
+   bloquant (`|| echo ...`) plutôt que supprimé — reste tenté en best-effort, laisse une vraie
+   erreur de toolchain Metal manquant (si elle survient plus loin dans le build) se manifester
+   d'elle-même plutôt que de la deviner.
+2. **Bug YAML auto-introduit par le fix précédent** — `run: xcodebuild ... || echo "AVERTISSEMENT :
+   ..."` sur une seule ligne (scalaire YAML non bloqué) contenait une séquence ` : ` qui a cassé le
+   parsing du workflow (confirmé par 2 symptômes indépendants : le `name:` du workflow retombé sur
+   son chemin de fichier côté API GitHub, et `workflow_dispatch` refusant le déclenchement avec
+   "Workflow does not have 'workflow_dispatch' trigger" malgré le trigger bien présent dans le
+   fichier). Corrigé en bloc `run: |`, **validé localement avec PyYAML avant de pousser** cette
+   fois — leçon retenue : toujours valider la syntaxe YAML d'un correctif CI avant de le pousser,
+   pas seulement sa logique.
+
+### Run de référence — commit CI-only (avant GAP-004)
+
+- **Run `31907788616`**, commit `a66c509` (fixes CI seuls, PAS encore GAP-004) — **SUCCESS**, les 8
+  étapes vertes, `** BUILD SUCCEEDED **` confirmé dans le log brut. Première preuve que le pipeline
+  lui-même fonctionne de bout en bout.
+
+### Run de référence — commit GAP-004 (upload de fichiers)
+
+- **Run `31908841925`**, commit `e4b1832` ("feat(migration): complete file upload migration
+  (GAP-004)") — **SUCCESS**, `** BUILD SUCCEEDED **` confirmé. **Vérification explicite demandée par
+  l'utilisateur, pas seulement le statut global** : les 10 fichiers GAP-004
+  (`APIClient.swift`/`ProfileRepository.swift`/`ProfileViewModel.swift`/`ProfileView.swift`/
+  `CertificationModels.swift`/`CertificationView.swift`/`ChatMediaUploadService.swift`/
+  `ChatViewModel.swift`/`ChatView.swift`/`MessageRepository.swift`) apparaissent chacun par leur
+  chemin complet dans les invocations réelles du compilateur (log brut, pas une déduction). 0 erreur
+  réelle (3 occurrences du mot "error:" dans le log : 1 message toléré du contournement Metal
+  Toolchain, 2 signatures Objective-C légitimes contenant "error:" comme nom de paramètre — aucune
+  ne bloque le build). **2 warnings au total, tous les deux dans du code PRÉ-EXISTANT de
+  `ChatViewModel.swift`** (`markConversationRead`/`deleteSelectedForEveryone`, présents avant cette
+  session) — **zéro warning dans le code effectivement écrit pour GAP-004**.
+
+### Codemagic — stratégie double-CI adoptée à partir de maintenant
+
+Sur décision explicite de l'utilisateur, **les deux CI (GitHub Actions + Codemagic) font
+désormais partie du workflow permanent** du projet, testant systématiquement le MÊME commit.
+**Contrainte technique actuelle** : aucun credential Codemagic n'est disponible dans cet
+environnement (contrairement à GitHub, où Git Credential Manager fournissait déjà un token
+utilisable) — **l'utilisateur déclenche Codemagic manuellement** depuis son dashboard
+(codemagic.io) sur le même commit que celui validé côté GitHub Actions, et communique le résultat
+pour documentation. `codemagic.yaml` **n'a PAS été modifié cette session** — aucune preuve qu'il
+soit cassé (il utilise `xcode: latest`, potentiellement une version plus récente que le plafond
+16.2 du runner GitHub, qui pourrait très bien supporter `-downloadComponent` nativement) ; règle
+explicite de l'utilisateur : ne pas dupliquer un correctif GitHub-specific vers Codemagic sans
+preuve qu'il en a besoin.
+
+| Commit    | GitHub Actions          | Codemagic                          |
+|-----------|--------------------------|-------------------------------------|
+| `a66c509` | SUCCESS (`31907788616`) | Non déclenché (CI-only, pas de nouvelle feature) |
+| `e4b1832` | SUCCESS (`31908841925`) | **EN ATTENTE** — à déclencher manuellement par l'utilisateur |
+
+### Ce que ce résultat NE dit PAS (rappel explicite de l'utilisateur, à ne jamais oublier)
+
+**"Le code GAP-004 compile réellement dans l'environnement iOS CI (GitHub Actions)."** C'est tout ce
+qui est confirmé. PAS confirmé : fonctionnement réel de l'upload (aucun appel n'a jamais touché un
+vrai serveur/CDN), sélection photo sur simulateur/device, réception du message chat par l'autre
+participant, téléchargement des pièces jointes (non implémenté, gap distinct). Double validation CI
+(GitHub + Codemagic tous les deux SUCCESS) : PAS encore atteinte pour `e4b1832`, en attente du build
+Codemagic manuel.

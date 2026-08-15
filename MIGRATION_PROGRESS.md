@@ -3510,4 +3510,44 @@ GAP-003 avant d'avoir un build CI réel. Détail complet dans `MIGRATION_AUDIT.m
 - **BUILD NON VALIDÉ** — ni `main` actuel ni le code GAP-004 (11 fichiers modifiés + 1 nouveau,
   tous non commités) n'ont été confirmés compilables. Prochaine action : obtenir l'autorisation de
   pousser (au minimum le fix CI seul) pour pouvoir retester, voir `CLAUDE_CONTINUATION.md`.
+
+---
+
+**SESSION DU 2026-08-15 (4ᵉ tour, même journée) — BUILD CI VALIDÉ, GAP-004 poussé et compilé
+réellement. Stratégie double-CI (GitHub Actions + Codemagic) adoptée pour la suite du projet.**
+
+- **Remote Git sécurisé** avant toute opération distante — l'utilisateur avait remarqué (à raison)
+  qu'un token GitHub était en clair dans `git remote -v` (exposé une fois dans cette conversation,
+  signalé pour rotation). Remote nettoyé (`git remote set-url` sans credential) ; toutes les
+  opérations Git/API suivantes utilisent **Git Credential Manager** (déjà configuré et fonctionnel
+  sur cette machine, confirmé par `git ls-remote` immédiat sans prompt) via `git credential fill`
+  — le token n'est jamais réaffiché, jamais écrit dans un fichier, jamais committé. Vérifié qu'aucun
+  fichier du dépôt ni des fichiers temporaires ne contient le motif de token.
+- **2 itérations de correctifs CI supplémentaires** avant un run propre : (1) `-downloadComponent`
+  absent de TOUTES les versions Xcode du runner GitHub (15.0-16.2), pas seulement mal sélectionné —
+  rendu non bloquant plutôt que corrigé par une fausse solution ; (2) bug YAML AUTO-INTRODUIT par ce
+  premier correctif (scalaire non bloqué contenant ` : `, cassait `workflow_dispatch` lui-même) —
+  détecté par 2 symptômes indépendants, corrigé et **validé avec PyYAML localement avant de
+  pousser**. Détail complet dans `MIGRATION_AUDIT.md` section 12.
+- **Run `31907788616` (commit `a66c509`, CI seul) : SUCCESS.** Première confirmation que le
+  pipeline fonctionne de bout en bout.
+- **Code applicatif GAP-004 committé et poussé** (`e4b1832`, "feat(migration): complete file upload
+  migration (GAP-004)") — les 10 fichiers Swift + `MIGRATION_AUDIT.md`/`MIGRATION_PROGRESS.md`,
+  après vérification explicite qu'aucun secret/token/clé n'était présent dans le diff.
+- **Run `31908841925` (commit `e4b1832`) : SUCCESS.** Vérifié explicitement (pas seulement le
+  statut global) : chemin complet des 10 fichiers GAP-004 présent dans les invocations réelles du
+  compilateur, 0 erreur réelle, 2 warnings — les deux dans du code PRÉ-EXISTANT
+  (`ChatViewModel.swift`, `markConversationRead`/`deleteSelectedForEveryone`), zéro dans le code
+  GAP-004 lui-même.
+- **Nouvelle règle permanente du projet, sur décision explicite de l'utilisateur** : à partir de
+  maintenant, chaque modification importante doit être validée par LES DEUX CI (GitHub Actions +
+  Codemagic) sur le MÊME commit. Contrainte actuelle : aucun credential Codemagic disponible dans
+  cet environnement — **l'utilisateur déclenche Codemagic manuellement** sur son dashboard, je
+  prépare/pousse le commit et documente son retour. `codemagic.yaml` non modifié cette session
+  (aucune preuve qu'il soit cassé — `xcode: latest` y est potentiellement plus récent que le
+  plafond 16.2 du runner GitHub ; ne pas dupliquer un correctif GitHub-specific sans preuve).
+- **Important, répété explicitement par l'utilisateur** : "compile réellement" ≠ "fonctionne
+  réellement" ≠ "validé sur device". GAP-004 est maintenant au niveau 1 (compile, confirmé double
+  run GitHub Actions) — PAS encore au niveau 2 (double validation CI, Codemagic manquant) ni au
+  niveau 3 (test fonctionnel réel sur simulateur/device, aucun n'a eu lieu).
   réel — même statut `ÉCRIT (NON COMPILÉ)` que le reste du code depuis le Checkpoint 2.

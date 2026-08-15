@@ -125,16 +125,21 @@ final class RewardedInterstitialAdManager: ObservableObject, AdRewardProvider {
 // MARK: - Native (port de `Activity/service/NativeAdsManager.java`/`ads/TemplateView.java`,
 // analyse §5.5 — pool de préchargement + rendu custom, feed uniquement)
 
-/// Port PARTIEL de `NativeAdsManager.java` (233 lignes, PAS lu en détail cette session — hors
-/// périmètre, le feed vidéo est un module DÉJÀ FERMÉ, module 6) : charge UNE annonce native à la
-/// fois plutôt que le pool de 8 préchargées d'Android (`TemplateView`/`SmallTemplateView`,
-/// équivalent Google Native Templates non maintenu au même niveau côté iOS, confirmé par l'analyse
-/// §5.5) — rendu manuel `NativeAdContentView` ci-dessous plutôt qu'un composant prêt à l'emploi.
-/// **PAS câblé dans le feed** (module 6, déjà fermé sans ce point d'intégration) — posé comme brique
-/// réutilisable, le rattachement réel au flux du feed (tous les 7 posts, cf. Android) est un TODO
-/// explicite plutôt qu'une omission silencieuse.
+/// Port PARTIEL de `NativeAdsManager.java` (233 lignes) : charge UNE annonce native à la fois par
+/// slot plutôt que le pool de 8 préchargées avec retry/cooldown NO_FILL d'Android
+/// (`TemplateView`/`SmallTemplateView`, équivalent Google Native Templates non maintenu au même
+/// niveau côté iOS, confirmé par l'analyse §5.5) — rendu manuel `NativeAdContentView` ci-dessous
+/// plutôt qu'un composant prêt à l'emploi. **Câblé dans le feed le 2026-08-16** (`FeedDetailPagerView`
+/// dans `FeedView.swift`, une instance par position d'annonce, chargée à l'apparition de la page).
 @MainActor
 final class NativeAdLoader: NSObject, ObservableObject {
+    /// Port de `NativeAdsManager.ADS_ON_FEED_POST` — câblé dans `FeedDetailPagerView`
+    /// (`FeedView.swift`, 2026-08-16) : une position d'annonce remplace le post à cette position
+    /// plutôt que d'insérer une page en plus, fidèle à `ViewPagerAdapter.isAdPosition`/`getItemCount`
+    /// (`list.size()+1`, PAS `+adCount`) côté Android — vérifié en lisant `ViewPagerAdapter.java` en
+    /// entier.
+    static let adsOnFeedPost = 7
+
     @Published private(set) var nativeAd: NativeAd?
 
     private var loader: AdLoader?
@@ -145,6 +150,7 @@ final class NativeAdLoader: NSObject, ObservableObject {
     }
 
     func load() {
+        guard loader == nil, nativeAd == nil else { return }
         let loader = AdLoader(adUnitID: adUnitID, rootViewController: topViewController(), adTypes: [.native], options: nil)
         loader.delegate = self
         self.loader = loader

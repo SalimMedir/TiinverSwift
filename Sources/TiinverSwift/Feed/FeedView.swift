@@ -252,7 +252,13 @@ private struct FeedDetailPagerView: View {
             GeometryReader { geo in
                 TabView(selection: $currentIndex) {
                     ForEach(Array(posts.enumerated()), id: \.offset) { index, post in
-                        FeedDetailCell(post: post, isActive: index == currentIndex)
+                        Group {
+                            if Self.isAdPosition(index, count: posts.count) {
+                                FeedAdCell()
+                            } else {
+                                FeedDetailCell(post: post, isActive: index == currentIndex)
+                            }
+                        }
                             .frame(width: geo.size.height, height: geo.size.width)
                             .rotationEffect(.degrees(-90))
                             .tag(index)
@@ -282,6 +288,13 @@ private struct FeedDetailPagerView: View {
             .padding(.top, 8)
             .padding(.leading, 12)
         }
+    }
+
+    /// Port de `ViewPagerAdapter.isAdPosition` (`position > 0 && position < list.size() && position
+    /// % ADS_ON_FEED_POST == 0`) — l'annonce REMPLACE le post à cette position plutôt que d'ajouter
+    /// une page (voir note de `NativeAdLoader.adsOnFeedPost`).
+    private static func isAdPosition(_ index: Int, count: Int) -> Bool {
+        index > 0 && index < count && index % NativeAdLoader.adsOnFeedPost == 0
     }
 
     /// Port de `ExoPlayerManager.smartPreload`/`PreloadScheduler` (fenêtre `currentIndex ± 2`) —
@@ -341,5 +354,25 @@ private struct FeedDetailCell: View {
         }
         .background(Color.black)
         .clipped()
+    }
+}
+
+/// Port de `AdsViewHolder`/`CustomAdsView` — page annonce native plein écran, une instance de
+/// `NativeAdLoader` par position d'annonce (pas un pool partagé, voir note de tête de fichier
+/// `AdMobManager.swift` sur la portée réduite de ce portage).
+private struct FeedAdCell: View {
+    @StateObject private var loader = NativeAdLoader()
+
+    var body: some View {
+        ZStack {
+            Color.black
+            if let nativeAd = loader.nativeAd {
+                NativeAdContentView(nativeAd: nativeAd)
+                    .padding(.horizontal, 24)
+            } else {
+                ProgressView().tint(.white)
+            }
+        }
+        .onAppear { loader.load() }
     }
 }

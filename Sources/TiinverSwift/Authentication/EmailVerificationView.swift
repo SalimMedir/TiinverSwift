@@ -63,6 +63,7 @@ struct EmailVerificationView: View {
         }
         .onChange(of: authViewModel.user) { newUser in
             guard action == "signin", let newUser, newUser.etat == "Login Successful" else { return }
+            AuthSessionPersistence.saveSession(newUser) // voir LoginView.swift, même correction race condition
             Task { await AuthSessionPersistence.persist(newUser) } // port de CreateSyncAccount (EmailVerificatiionCode.java)
             onLoginSuccess(newUser)
         }

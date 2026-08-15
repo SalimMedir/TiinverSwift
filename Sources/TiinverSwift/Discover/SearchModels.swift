@@ -62,10 +62,32 @@ struct SearchPostResult: Codable, Identifiable, Hashable {
 }
 
 /// Port de `parseAndDisplay` — enveloppe complète `{error, results: {users, hashtags, posts}}`.
+///
+/// **`init(from:)` custom ajouté le 2026-08-15 (test Appetize réel, résultats de recherche jamais
+/// affichés)** — `RechercheTiinver.java` garde CHAQUE catégorie avec `results.has("users")`/
+/// `has("hashtags")`/`has("posts")` (`parseAndDisplay`, lignes 474/506/529) : le serveur OMET la
+/// clé entière d'une catégorie non demandée (`tab=posts` → réponse `{"posts":[...]}` SEULEMENT,
+/// pas `"users":[]`/`"hashtags":[]`). Le `Decodable` auto-synthétisé de Swift NE respecte PAS une
+/// valeur par défaut sur un type non-optionnel quand la clé JSON est absente (seul un `Optional`
+/// bénéficie de cette tolérance) — il lève `keyNotFound`, avalé par le `try?` de
+/// `SearchRepository.decodeResults`, qui retombe alors sur `SearchResults()` (vide) MÊME quand le
+/// serveur a réellement renvoyé des résultats dans la seule catégorie demandée. Corrigé en
+/// décodant chaque tableau avec `decodeIfPresent(...) ?? []`, fidèle au `.has(...)` Android.
 struct SearchResults: Codable {
     var users: [SearchUserResult] = []
     var hashtags: [SearchHashtagResult] = []
     var posts: [SearchPostResult] = []
+
+    enum CodingKeys: String, CodingKey { case users, hashtags, posts }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        users = try container.decodeIfPresent([SearchUserResult].self, forKey: .users) ?? []
+        hashtags = try container.decodeIfPresent([SearchHashtagResult].self, forKey: .hashtags) ?? []
+        posts = try container.decodeIfPresent([SearchPostResult].self, forKey: .posts) ?? []
+    }
 }
 
 /// Port de `currentTab`/`getTypesForTab` — 4 onglets réels (vérifié dans `setupTabs`/`selectTab`).

@@ -126,6 +126,10 @@ struct LoginView: View {
     private func handle(_ user: User) {
         switch user.etat {
         case "Login Successful":
+            // Sauvegarde SYNCHRONE de la session AVANT de naviguer (voir `AuthSessionPersistence.
+            // saveSession` — corrige la race condition qui laissait `UserSession.shared.myId` nil
+            // au premier chargement de ProfileView/FeedView, écran Profil vide sur Appetize).
+            AuthSessionPersistence.saveSession(user)
             Task { await AuthSessionPersistence.persist(user) }
             onLoginSuccess(user)
         case "Email not verified":

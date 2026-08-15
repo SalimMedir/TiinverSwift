@@ -67,6 +67,7 @@ struct SignUpWithGoogleView: View {
     private func handle(_ user: User) {
         switch user.etat {
         case "User created successfully":
+            AuthSessionPersistence.saveSession(user) // voir LoginView.swift, même correction race condition
             Task { await AuthSessionPersistence.persist(user) }
             onRegistered(user)
         case "NoInser":

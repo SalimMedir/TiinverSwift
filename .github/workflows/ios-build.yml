@@ -67,7 +67,18 @@ jobs:
           xcodebuild -version
 
       - name: Install Metal Toolchain
-        run: xcodebuild -downloadComponent MetalToolchain
+        # Diagnostic (2026-08-15, run 31907511711) — `-downloadComponent` N'EXISTE SUR AUCUNE
+        # version d'Xcode installée sur ce runner (15.0 à 16.2 inclus, confirmé par la liste
+        # d'options RÉELLE retournée par `xcodebuild` en erreur : seuls `-downloadPlatform`/
+        # `-downloadAllPlatforms` existent, aucun `-downloadComponent`). Ce n'est donc PAS une
+        # erreur de sélection de version (l'étape précédente sélectionne bien la plus récente,
+        # 16.2, confirmée par `xcodebuild -version` dans son propre log) — le flag lui-même est
+        # absent de toute version disponible ici. Rendu NON BLOQUANT (`|| true`) plutôt que
+        # supprimé : reste une tentative best-effort si une future image de runner l'ajoute, sans
+        # bloquer le pipeline sur un flag qui n'a jamais existé sur ce runner. Si le build échoue
+        # PLUS LOIN pour une vraie raison de toolchain Metal manquant (MetalPetal, module 7/8),
+        # CE sera le signal à traiter spécifiquement, pas une supposition préventive ici.
+        run: xcodebuild -downloadComponent MetalToolchain || echo "AVERTISSEMENT : -downloadComponent indisponible sur ce runner (Xcode $(xcodebuild -version | head -1) — voir commentaire de cette étape), poursuite du build sans échec."
 
       - name: Résoudre les dépendances Swift Package Manager
         run: |

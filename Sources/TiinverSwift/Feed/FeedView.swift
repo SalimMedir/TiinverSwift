@@ -21,6 +21,8 @@ struct FeedView: View {
     @State private var showCamera = false
     @State private var showDetail = false
     @State private var detailStartIndex = 0
+    @State private var pendingMedia: PublishMedia?
+    @State private var showAnimems = false
 
     private let columns = [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)]
 
@@ -70,36 +72,52 @@ struct FeedView: View {
         .fullScreenCover(isPresented: $showCamera) {
             CameraView(
                 onClose: { showCamera = false },
-                onPhotoCaptured: { _ in
+                onPhotoCaptured: { image in
                     // Port de `onArticleSelected(2, args)` côté `CameraActivity` → `MediaEditor`
-                    // (module 9, "Éditeur photo simple", PAS encore porté). Referme la caméra
-                    // pour l'instant, sans enchaîner sur un éditeur qui n'existe pas encore —
-                    // TODO explicite à reprendre au module 9, pas une case oubliée.
+                    // (`editor/media/MediaEditor.java`, lu en entier le 2026-08-15) → `PublishFragment`.
                     showCamera = false
+                    pendingMedia = .photo(image)
                 },
-                onVideoRecorded: { _, _ in
-                    // Port de `onArticleSelected(7, args)` côté `CameraActivity` → `MediasDisplay`
-                    // (fragment pas encore identifié dans l'ordre de portage à 18 modules — à
-                    // rattacher au moment venu, comme `Roster.java`/`CreatorFragment.java` au
-                    // module 6). Referme la caméra sans enchaîner, TODO explicite.
+                onVideoRecorded: { url, _ in
+                    // Port de `onArticleSelected(7, args)` — Android route vers un écran de
+                    // prévisualisation avant `PublishFragment` (fragment non identifié précisément
+                    // dans l'ordre de portage) ; ici la vidéo va directement à la légende/publication,
+                    // même destination finale (`PublishFragment`/`activity/add`), juste sans l'étape
+                    // de prévisualisation intermédiaire.
                     showCamera = false
+                    pendingMedia = .video(url)
                 },
-                onImagePickedFromGallery: { _ in
+                onImagePickedFromGallery: { url in
                     // Port de la branche image de `pickMedia` → `onArticleSelected(2, bundle)` →
-                    // `MediaEditor` (module 9, pas encore porté). TODO explicite.
+                    // `MediaEditor` → `PublishFragment`.
                     showCamera = false
+                    if let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
+                        pendingMedia = .photo(image)
+                    }
                 },
-                onVideoPickedFromGallery: { _ in
+                onVideoPickedFromGallery: { url in
                     // Port de la branche vidéo de `pickMedia` → `onArticleSelected(10, bundle)` →
-                    // `MediaTrim` (module non encore identifié dans l'ordre de portage). TODO
-                    // explicite.
+                    // `MediaTrim` → `PublishFragment`. `MediaTrim` (recadrage temporel) PAS reproduit
+                    // dans cette passe — la vidéo choisie est publiée telle quelle, gap documenté.
                     showCamera = false
+                    pendingMedia = .video(url)
                 },
                 onOpenAnimems: {
-                    // Port de `onArticleSelected(5, ...)` côté `CameraActivity` → `MemesFragment`
-                    // (module 8, pas encore commencé à ce stade — voir `CameraView.swift`).
+                    // Port de `onArticleSelected(5, ...)` côté `CameraActivity` → `MemesFragment`.
+                    showCamera = false
+                    showAnimems = true
                 }
             )
+        }
+        .fullScreenCover(item: $pendingMedia) { media in
+            PublishComposeView(
+                media: media,
+                onPublished: { pendingMedia = nil; Task { await viewModel.reset() } },
+                onCancel: { pendingMedia = nil }
+            )
+        }
+        .fullScreenCover(isPresented: $showAnimems) {
+            AnimemesEditorView(onClose: { showAnimems = false })
         }
     }
 

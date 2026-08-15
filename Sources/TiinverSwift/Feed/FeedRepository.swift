@@ -1,4 +1,5 @@
 import CoreData
+import Foundation
 
 /// Port de `Activity/repository/ActivityRepository.getMediasPubFromServer`/
 /// `Http/TransportData.addActivities` (flux réseau + cache local `wk_activities`).
@@ -61,5 +62,30 @@ final class FeedRepository {
 
     func cachedActivities() async throws -> [ActivityEntity] {
         try await activities.query(sortDescriptors: [NSSortDescriptor(key: "stamp", ascending: false)])
+    }
+
+    /// Port de `HttpFileUploader.uploadRequestBody` (`type=0`, cas "publication", déclenché après
+    /// `PublishFragment` côté Android via `MainFragment`/`FeedFragment`, `token="publication"`) —
+    /// POST multipart vers `activity/add`. Champs `category`/`metadata`/`template_id`/`consentAi`
+    /// **délibérément omis** : présents sur `UploadData` côté Android mais jamais inclus dans le
+    /// corps RÉELLEMENT envoyé (vérifié dans `uploadRequestBody`, `HttpFileUploader.java`) — les
+    /// ajouter ici "corrigerait" un comportement qu'Android lui-même n'a pas, pas une fidélité.
+    func publish(actorId: String, object: String, message: String, hashtags: [String], fileData: Data, mimeType: String, filename: String) async throws {
+        let params: [String: String] = [
+            "token": UUID().uuidString,
+            "actor": actorId,
+            "verb": "post",
+            "object": object,
+            "message": message,
+            "hashtags": hashtags.joined(separator: ","),
+            "format": "json",
+        ]
+        let value = try await APIClient.shared.uploadMultipart(
+            endpoint: "activity/add", fields: params, fileFieldName: "object_url",
+            filename: filename, mimeType: mimeType, fileData: fileData
+        )
+        guard value.isBackendSuccess else {
+            throw JSONError.typeMismatch(value.backendErrorMessage ?? "activity/add")
+        }
     }
 }

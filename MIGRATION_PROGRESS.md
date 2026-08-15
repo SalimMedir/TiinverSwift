@@ -2989,6 +2989,97 @@ comme prérequis distinct des bugs de code, pas résolu ici :
    plusieurs passes dédiées ultérieures (voir cadrage en tête de cette section), pas fait ici par
    souci de rigueur plutôt que de rapidité.
 
+## PARTIE 1 — Navigation à 5 items corrigée (2026-08-13)
+
+**Défaut structurel confirmé et corrigé** : `navigation_layout.xml` (le layout RÉEL de
+`NavigationCompound`, jamais lu avant ce tour — seul le `.java` des listeners l'avait été) lu en
+entier — confirme 5 `MenuItemView` dans UNE SEULE barre horizontale (`LinearLayout`, poids égal),
+ordre gauche→droite : Accueil, Chat, Créateurs (Trophée), **Notifications**, **Profil**. Les deux
+tours précédents avaient supposé, à tort et sans avoir lu ce fichier, que Notifications/Profil
+étaient mieux représentés par des boutons de barre d'outils séparés — une interprétation
+raisonnable mais non vérifiée, corrigée maintenant.
+
+**Nuance comportementale réelle, vérifiée dans `NavigationCompound.java` (`click` listener)** :
+SEULS les 3 premiers items participent à la machine d'état `setSelected()` — Notifications/Profil
+déclenchent le listener SANS jamais être marqués sélectionnés (ils lancent un écran séparé qui se
+superpose, puis reviennent à l'onglet précédent). `HomeShellView.swift` reproduit maintenant ceci
+fidèlement : 5 items dans le `TabView` (disposition visuelle réelle), mais sélectionner
+Notifications/Profil présente une `sheet` puis restaure IMMÉDIATEMENT l'onglet précédent — ni un
+vrai 5ᵉ/6ᵉ onglet à contenu permanent, ni des boutons de toolbar séparés, les deux étant des
+trahisons partielles du comportement réel observé.
+
+`NotificationsListView`/`ProfileView` existaient déjà et fonctionnaient (modules 4/17) — uniquement
+un problème de branchement dans la barre de navigation, aucun écran manquant à construire.
+
+## PARTIE 2/3/4 — Audit exhaustif écran par écran (démarré 2026-08-13, travail multi-session)
+
+**Cadrage honnête, à lire avant le tableau** : un audit exhaustif — relecture complète du fichier
+Android de CHAQUE écran, comparaison champ par champ, action par action — est un travail du même
+ordre de grandeur qu'Animems ou la Messagerie en leur temps : plusieurs sessions dédiées, pas une
+passe unique. Ce tour pose le FRAMEWORK complet (inventaire exhaustif des 43 écrans SwiftUI
+existants, système de statut sans ambiguïté demandé) et applique une vérification fraîche aux écrans
+directement concernés par les corrections de ce tour et des tours précédents récents. Pour le reste,
+le statut reflète honnêtement l'état de vérification RÉEL hérité de l'écriture initiale (documentation
+déjà rigoureuse à l'époque, mais jamais revue avec cette grille en 4 niveaux, et jamais vue s'exécuter)
+— PAS une nouvelle relecture ligne à ligne faite ce tour. Chaque ⚠️ ci-dessous est une entrée de
+travail future explicite, pas un statut définitif.
+
+**Légende** : ✅ FIDÈLE ET VÉRIFIÉ (relu contre l'Android réel ET vu s'exécuter/testé) · ⚠️ FIDÈLE MAIS
+NON TESTÉ VISUELLEMENT (code écrit avec vérification à l'époque, jamais vu tourner) · ❌ ÉCART CONNU
+(décrit précisément) · 🚫 MANQUANT (jamais porté).
+
+| Écran (fichier) | Module | Statut | Détail |
+|---|---|---|---|
+| `RootRouterView.swift` | 5 | ✅ | Gate de mise à jour (date Remote Config) CONFIRMÉE fonctionner en conditions réelles sur Appetize.io — première logique métier de tout ce portage vue tourner avec certitude. |
+| `App/UpdateAppView.swift` | 5 | ✅ | Confirmé s'afficher réellement sur Appetize.io (avant la correction de la gate). |
+| `HomeShellView.swift` | 5 | ⚠️ | Barre à 5 items corrigée CE TOUR (Partie 1 ci-dessus) — logique vérifiée par lecture contre `NavigationCompound.java`/`navigation_layout.xml`, PAS encore revu tourner après cette correction précise. |
+| `Feed/FeedView.swift` | 6 | ❌ | Bug réel trouvé et corrigé ce tour (écran vide sans état visible, session silencieuse) — voir entrée dédiée. Corrigé mais PAS encore reconfirmé par un nouveau test. |
+| `Messagerie/RosterListView.swift` | 11 (gap fermé) | ⚠️ | Nouveau ce tour (`Roster.java` relu en entier avant portage) — jamais vu s'exécuter. |
+| `Messagerie/ChatView.swift` | 11 | ⚠️ | Écrit avec vérification à l'époque (`ChatFragmentTest.java`), jamais vu s'exécuter — réserves déjà documentées (upload fichiers, sélecteurs GIF/cadeau, zoom média). |
+| `Messagerie/ChatBubbleViews.swift` | 11 | ⚠️ | Idem, dépend de `ChatView`. |
+| `Creators/CreatorOfWeekView.swift` | — (mini-module ajouté ce tour) | ⚠️ | Nouveau ce tour (`CreatorFragment.java` relu en entier) — jamais vu s'exécuter. |
+| `Notifications/NotificationsListView.swift` | 4 | ⚠️ | Écran ancien, mais son point d'entrée dans la navigation vient de changer ce tour (Partie 1) — pas revu depuis. |
+| `Profile/ProfileView.swift` | 17 | ⚠️ | Consommé par les corrections de ce tour (Créateurs → `ProfileView(userId:)`) sans anomalie relevée à cette occasion, mais pas un audit dédié. |
+| `Profile/EditProfileView.swift` | 17 | ⚠️ | Non revisité depuis l'écriture initiale. |
+| `Profile/EditPersonalInformationView.swift` | 17 | ⚠️ | Idem. |
+| `Settings/SettingsView.swift` | 17 | ⚠️ | Idem — découvertes de code mort déjà documentées à l'écriture (réglages de confidentialité/chat en grande partie inertes côté Android lui-même). |
+| `Settings/SettingSubViews.swift` | 17 | ⚠️ | Idem. |
+| `Discover/SearchView.swift` | 18 | ⚠️ | Non revisité depuis l'écriture initiale. |
+| `Discover/FollowListView.swift` | 18 | ⚠️ | Idem. |
+| `Discover/CommentsView.swift` | 18 | ⚠️ | Idem. |
+| `Discover/ReportView.swift` | 18 | ⚠️ | Idem. |
+| `Discover/CertificationView.swift` | 18 | ❌ | Consultation du statut seule — soumission avec upload de justificatif explicitement pas portée (documenté à l'écriture). |
+| `Wallet/WalletView.swift` | 15 | ⚠️ | Non revisité depuis l'écriture initiale. |
+| `Wallet/BuyCoinsView.swift` | 15 | ❌ | Nécessite des `Product` StoreKit 2 configurés dans App Store Connect (absents) — restera vide tant que non configuré, pas une erreur de code. Audit conformité 3.1.1/3.1.5 toujours en attente d'arbitrage produit. |
+| `Wallet/WithdrawView.swift` | 15 | ⚠️ | Non revisité depuis l'écriture initiale. |
+| `Wallet/TransferCoinsView.swift` | 15 | ⚠️ | Idem. |
+| `Wallet/ConversionView.swift` | 15 | ⚠️ | Idem. |
+| `Wallet/ReferralView.swift` | 15 | ⚠️ | Idem. |
+| `Wallet/EarnCoinsView.swift` | 15/16 | ⚠️ | Dépend d'AdMob rewarded — comportement avec de vraies annonces jamais vu. |
+| `Calls/CallView.swift` | 12 | ⚠️ | Code le plus complexe de tout le portage (WebRTC/CallKit), jamais exécuté — priorité n°1 pour un futur test réel à 2 comptes. |
+| `Shareboard/ShareboardView.swift` | 13 | ⚠️ | Dépend du même moteur WebRTC que #12, même statut. |
+| `Shareboard/PBSCanvasView.swift` | 13 | ⚠️ | Idem. |
+| `Shareboard/MessageGraphicComposeView.swift` | 14 | ⚠️ | Idem. |
+| `Camera/CameraView.swift` | 7 | ⚠️ | Compile sans erreur depuis le Checkpoint 2, jamais vu avec un flux caméra réel. |
+| `PhotoEditor/FreeformCropView.swift` | 9 | ⚠️ | Non revisité depuis l'écriture initiale. |
+| `Animems/BezierEditorView.swift` | 8 | ⚠️ | Chemin bout-en-bout compile, gestes/rendu jamais vus exécutés. |
+| `Authentication/LoginView.swift` | 3 | ⚠️ | Écran ATTEINT sur Appetize.io (confirmé) — mais une connexion réelle bout-en-bout (identifiants → session valide → `myId` peuplé) N'EST PAS confirmée, point resté ouvert depuis l'audit précédent. |
+| `Authentication/RegisterView.swift` | 3 | ⚠️ | Non testé. |
+| `Authentication/OnboardingView.swift` | 3 | ⚠️ | Non testé. |
+| `Authentication/ForgotPasswordRequestView.swift` | 3 | ⚠️ | Non testé. |
+| `Authentication/NewPasswordView.swift` | 3 | ⚠️ | Non testé. |
+| `Authentication/EmailVerificationView.swift` | 3 | ⚠️ | Non testé. |
+| `Authentication/SignUpWithGoogleView.swift` | 3 | ⚠️ | Non testé — dépend en plus du SDK Google Sign-In réel, jamais vu s'authentifier. |
+| `Authentication/PoliticaDemandView.swift` | 3 | ⚠️ | Non testé. |
+| `Navigation/AuthCoordinatorView.swift` | 3 | ⚠️ | Coordinateur de flux — jamais vu piloter un parcours de connexion complet. |
+| `Advertising/AdMobManager.swift` (bannières/natives) | 16 | 🚫 (partiel) | Composants natifs écrits mais PAS câblés dans le feed (module 6, déjà fermé sans ce point d'intégration) — TODO explicite déjà documenté, pas un oubli silencieux. |
+
+**Priorité recommandée pour la suite de cet audit (sessions futures)**, du plus risqué au moins
+risqué : (1) module 12/13/14 (WebRTC/CallKit/Shareboard, code le plus complexe, jamais exécuté) ;
+(2) flux d'authentification complet (#`LoginView`→session valide, condition bloquante identifiée pour
+le Feed ET pour tout écran authentifié) ; (3) Wallet (implications financières/conformité réelles) ;
+(4) le reste des écrans Profil/Réglages/Discover, risque plus faible mais jamais vérifié non plus.
+
 ## CHECKPOINT 2 ATTEINT ET VALIDÉ (2026-08-11)
 
 Les modules 7 et 8 de l'ordre de portage sont marqués `[x]` ci-dessus (Checkpoint 2 validé sur ce

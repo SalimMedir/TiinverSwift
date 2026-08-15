@@ -892,3 +892,136 @@ vrai serveur/CDN), sélection photo sur simulateur/device, réception du message
 participant, téléchargement des pièces jointes (non implémenté, gap distinct). Double validation CI
 (GitHub + Codemagic tous les deux SUCCESS) : PAS encore atteinte pour `e4b1832`, en attente du build
 Codemagic manuel.
+
+---
+
+## APPETIZE FUNCTIONAL TEST — 2026-08-15
+
+**Contexte** : premier test réel de l'app sur Appetize.io (device réel, pas une lecture de code).
+Confirme la mise en garde répétée tout au long de ce document : `CODE PORTÉ` ≠ `CODE COMPILÉ` ≠
+`FONCTIONNALITÉ RÉELLEMENT VALIDÉE`. 6 problèmes fonctionnels identifiés par l'utilisateur avec
+captures d'écran Android de référence à l'appui. Diagnostic fait par comparaison directe du code
+Android réel et du code Swift réel (6 investigations menées en parallèle, PAS de supposition).
+
+### P0-1 — HOME : contenu absent
+
+**Problème observé** : le feed n'affiche aucune donnée, ni en grille ni en liste.
+**Cause réelle** : **double cause**, pas une seule. (1) Erreur d'architecture — `FeedView.swift`
+avait été construit comme un pager plein écran façon Reels/TikTok (`TabView` pivoté, un item à la
+fois), une hypothèse du portage initial explicitement documentée comme "non vérifiée visuellement"
+et jamais recroisée avec le vrai code Android. `MainFragment.java:707`
+(`PreLoadingGridLayoutManager(..., 2, VERTICAL, false)`) montre qu'Android affiche en réalité une
+vraie **grille 2 colonnes** (`RecyclerView`/`GridLayoutManager`), confirmée par capture d'écran
+utilisateur. (2) Race condition de session (voir P0-2) pouvant aussi empêcher tout chargement au
+tout premier lancement après connexion.
+**Fichiers Android comparés** : `Activity/ui/MainFragment.java` (lignes 707-730, 1108-1123 —
+`OnAdapterItemClicked`), `Activity/adapter/ActivityAdapter.java` (types de vue
+`TYPE_HEADER`/`TYPE_ITEM`/`TYPE_ITEM_ADS`, `ViewHolder.video`/`photo`, lignes 386-502).
+**Fichiers iOS modifiés** : `Sources/TiinverSwift/Feed/FeedView.swift` (réécriture complète) —
+`FeedGridCell` (nouvelle cellule de grille, port de `ViewHolder.video`/`photo`) devient l'écran
+principal ; l'ancien pager plein écran devient `FeedDetailPagerView`, un écran de DÉTAIL ouvert au
+tap sur une cellule (port fidèle de `OnAdapterItemClicked` → `onArticleSelected(1, arg)`,
+positionné sur l'item tapé). `FeedViewModel.swift` non modifié (couche données déjà correcte,
+confirmée fidèle à `ActivityRepository.java` par comparaison directe).
+**Correction** : grille 2 colonnes (`LazyVGrid`) avec vignette/nom/compteurs like+commentaire en
+surimpression (fidèle à `ViewHolder.onBindView`), tap → détail plein écran avec bouton retour.
+Bannières décoratives (carrousel Créateurs, promo pièces gratuites) volontairement PAS reproduites
+dans cette passe — hors périmètre du problème "données absentes", pas un oubli.
+**GitHub Actions** : SUCCESS (run `31911325017`, commit `3f5f880`).
+**Codemagic** : en attente (déclenchement manuel utilisateur).
+**Test Appetize après correction** : NON TESTÉ (à refaire par l'utilisateur).
+
+### P0-2 — PROFILE : aucune donnée affichée
+
+**Problème observé** : écran Profil vide, sans erreur visible.
+**Cause réelle** : race condition confirmée dans les 3 flux de connexion. `Task { await
+AuthSessionPersistence.persist(user) }` était lancé SANS être attendu, puis `onLoginSuccess(user)`
+naviguait immédiatement — `UserSession.shared.myId` pouvait donc être encore `nil` au moment où
+`HomeShellView` présentait `ProfileView()`. Aggravant : `ProfileView.init()` fige
+`UserSession.shared.myId ?? ""` dans un `let` AU MOMENT DE LA CONSTRUCTION — si `myId` était nil à
+cet instant, l'écran restait bloqué avec `userId == ""` en permanence, même si la session se
+complétait une fraction de seconde plus tard. `ProfileViewModel.loadProfile()` a ensuite un `guard
+let viewerId = UserSession.shared.myId else { return }` qui sort SANS toucher `isLoadingProfile`,
+donc ni le spinner ni les données ne s'affichent jamais — écran vide sans aucun indice.
+**Fichiers Android comparés** : `uploadPerfilPhoto/UserProfile.java` (endpoint `getuserbyid`),
+confirmé fidèlement porté côté endpoint/JSON (PAS la cause).
+**Fichiers iOS modifiés** : `Sources/TiinverSwift/Authentication/AuthSessionPersistence.swift`
+(nouvelle fonction synchrone `saveSession(_:)`), `LoginView.swift`, `SignUpWithGoogleView.swift`,
+`EmailVerificationView.swift` (appel de `saveSession` AVANT la navigation dans les 3 flux).
+**Correction** : `UserSession.save(user)` (déjà synchrone, pas de `await` interne) appelé
+directement avant `onLoginSuccess`/`onRegistered`, éliminant la fenêtre de race. Le reste de
+`persist` (Core Data, jeton push) reste asynchrone sans bloquer la navigation.
+**GitHub Actions** : SUCCESS (run `31911325017`, commit `3f5f880`).
+**Codemagic** : en attente.
+**Test Appetize après correction** : NON TESTÉ.
+
+### P0-3 — SEARCH : résultats non visibles
+
+**Problème observé** : la recherche ne montre aucun résultat.
+**Cause réelle** : `SearchResults` (tableaux `users`/`hashtags`/`posts`, non-optionnels avec valeur
+par défaut `[]`) échouait silencieusement au décodage : Swift ne respecte PAS une valeur par défaut
+sur un type non-optionnel si la clé JSON est absente. Or `RechercheTiinver.java`
+(`parseAndDisplay`, lignes 474/506/529) garde chaque catégorie avec `results.has("users")`/
+`has("hashtags")`/`has("posts")` — preuve que le serveur OMET la clé entière d'une catégorie non
+demandée (onglet "Publications" → réponse `{"posts":[...]}` SEULEMENT). `JSONDecoder` levait donc
+`keyNotFound`, avalé par le `try?` de `SearchRepository.decodeResults`, qui retombait sur
+`SearchResults()` vide — MÊME quand le serveur renvoyait de vrais résultats dans la catégorie
+demandée.
+**Fichiers Android comparés** : `Recherche/ui/RechercheTiinver.java` (`parseAndDisplay`, lignes
+460-530).
+**Fichiers iOS modifiés** : `Sources/TiinverSwift/Discover/SearchModels.swift` — `init(from:)`
+custom sur `SearchResults` (`decodeIfPresent(...) ?? []` par catégorie, fidèle au `.has(...)`
+Android).
+**GitHub Actions** : SUCCESS (run `31911325017`, commit `3f5f880`).
+**Codemagic** : en attente.
+**Test Appetize après correction** : NON TESTÉ.
+
+### P0-4 — CHAT : bouton créer un groupe absent
+
+**Problème observé** : aucun point d'entrée pour créer un groupe dans la liste des conversations.
+**Cause réelle** : **fonctionnalité jamais construite**, pas un bug — décision de portée déjà
+documentée dans `RosterListView.swift` avant ce test ("module Contacts jamais construit, voir
+module 18"). Android : FAB `GoToContact` (`Roster.java:84,133-144`) → `Contact.java` (hôte 3
+fragments : `ContactsFragment` liste de contacts → `ChooseFragment` sélection multiple → `Group`
+fragment nom/confidentialité/type lucratif → `POST group` + `POST membership` par membre →
+navigation vers le chat du groupe). AUCUN équivalent iOS n'existe (ni sélecteur de membres, ni écran
+de création, ni FAB).
+**Fichiers Android référence** : `roster/ui/Roster.java`, `contacts/Contact.java`,
+`contacts/ChooseFragment.java`, `contacts/Group.java`.
+**Statut** : NON CORRIGÉ cette session — nécessite de construire 2-3 écrans iOS entièrement
+nouveaux (sélecteur de contacts, création de groupe), effort de l'ordre d'une session dédiée,
+pas une correction ponctuelle. Voir `CLAUDE_CONTINUATION.md` pour la décision de priorisation.
+**Test Appetize après correction** : NON TESTÉ (rien à tester, pas encore construit).
+
+### P0-5 — GALERIE : sélection photo sans action
+
+**Problème observé** : sélectionner une photo dans la galerie ne fait rien, pas de bouton "Choisir".
+**Cause réelle** : le sélecteur lui-même fonctionne correctement des deux côtés (Android : tap direct
+sur une vignette confirme la sélection, `GridViewManager.java:275-280`, pas de bouton séparé — iOS :
+`PHPickerViewController` a la même sémantique native, confirmée correcte). Le vrai problème : la
+sélection depuis l'écran Caméra mène vers un écran `MediaEditor` qui **n'a jamais été construit**
+côté iOS (`FeedView.swift`, `onImagePickedFromGallery`/`onVideoPickedFromGallery` étaient des
+fermetures vides ne faisant que refermer la caméra sans aucun retour visuel). Le sélecteur de pièce
+jointe du Chat (`ChatView.swift`, ajouté lors de GAP-004), lui, fonctionne déjà correctement — pas
+concerné par ce problème.
+**Fichiers Android référence** : `engine/.../manager/GridViewManager.java`,
+`CustomGalleryView.java`.
+**Statut** : NON CORRIGÉ cette session — nécessite de construire un véritable écran
+`MediaEditor`/flux de publication (recadrage, légende, publication réelle vers le serveur), qui ne
+semble pas exister du tout côté iOS actuellement pour la caméra. Effort substantiel, pas une
+correction ponctuelle.
+**Test Appetize après correction** : NON TESTÉ.
+
+### P0-6 — ANIMEMES : bouton non fonctionnel
+
+**Problème observé** : le bouton Animems ne fait rien.
+**Cause réelle** : `CameraView.swift`'s `onOpenAnimems` est une fermeture vide (`{}`), ET aucun écran
+composite `AnimemesEditorView` n'existe côté iOS — le dossier `Animems/` (33 fichiers) ne contient
+que les pièces du MOTEUR (`AnimationEngine.swift`, `LayerRenderer.swift`, etc.), jamais assemblées
+en un écran affichable, contrairement à `AnimemesCompound`/`fragment_memes.xml` côté Android.
+**Fichiers Android référence** : `Activity/ui/CameraActivity.java` (case 5),
+`memes/MemesFragment.java`, `com.animems.engine.android.views.AnimemesCompound`.
+**Statut** : NON CORRIGÉ cette session — assembler un écran d'éditeur complet à partir du moteur
+existant est un effort déjà estimé à plusieurs semaines-ingénieur dans `TIINVER_ANIMEMS_SCOPE_
+LIBRARIES.md` (GAP-006). Pas une correction ponctuelle.
+**Test Appetize après correction** : NON TESTÉ.

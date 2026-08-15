@@ -13,31 +13,42 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 **BUILD CI VALIDÉ :** Oui (GitHub Actions uniquement — voir stratégie double-CI ci-dessous,
 Codemagic en attente d'un déclenchement manuel par l'utilisateur)
-**Build :** GitHub Actions run `31908841925` (workflow `ios-build.yml`)
-**Commit :** `e4b1832` ("feat(migration): complete file upload migration (GAP-004)")
-**Date :** 2026-08-15 21:13-21:18 UTC
-**Résultat :** `** BUILD SUCCEEDED **` (ligne littérale du log Xcode). Les 8 étapes du workflow
-vertes. 0 erreur réelle. 2 warnings, tous deux dans du code PRÉ-EXISTANT de `ChatViewModel.swift`
-(pas GAP-004). Vérifié explicitement (pas seulement le statut global) que les 10 fichiers GAP-004
-apparaissent chacun par leur chemin complet dans les invocations réelles du compilateur — voir
-`MIGRATION_AUDIT.md` section 12 pour le détail complet.
-**Historique des 3 runs de cette journée** (pour ne pas confondre) :
-1. `31905358058` (commit `733da28`, avant tout fix) — ÉCHEC, `-downloadComponent` invalide,
-   aucune version Xcode sélectionnée.
-2. `31907788616` (commit `a66c509`, fixes CI seuls) — SUCCESS, confirme le pipeline lui-même.
-3. `31908841925` (commit `e4b1832`, GAP-004 inclus) — SUCCESS, confirme GAP-004 compilable.
-   (Un run intermédiaire sur `e48dbed` a échoué à cause d'un bug YAML auto-introduit par le 1er
-   fix — corrigé avant ce run 3, voir `MIGRATION_AUDIT.md` section 12.)
+**Build :** GitHub Actions run `31911325017` (workflow `ios-build.yml`)
+**Commit :** `3f5f880` ("fix(migration): resolve Appetize functional parity issues (P0:
+Home/Profile/Search)")
+**Date :** 2026-08-15 22:08-22:13 UTC
+**Résultat :** `** BUILD SUCCEEDED **`. Les 6 fichiers modifiés confirmés compilés (chemin complet
+dans le log). 0 erreur réelle. 1 warning, PRÉ-EXISTANT (`AuthSessionPersistence.swift:31`, `try?`
+non utilisé sur le bloc Core Data — sans rapport avec cette session).
+**Historique complet des runs de cette journée** (pour ne pas confondre) :
+1. `31905358058` (commit `733da28`) — ÉCHEC, `-downloadComponent` invalide, Xcode non sélectionné.
+2. `31907788616` (commit `a66c509`, fixes CI seuls) — SUCCESS.
+3. `31908841925` (commit `e4b1832`, GAP-004) — SUCCESS.
+4. `31911325017` (commit `3f5f880`, corrections P0 Appetize Home/Profile/Search) — **SUCCESS,
+   dernier run connu**.
 
 ### CI VALIDATION — format demandé par l'utilisateur pour chaque commit important
 
-**Commit :** `e4b1832`
-**GitHub Actions :** Build ID `31908841925` — Result **SUCCESS**
-**Codemagic :** Build ID — (aucun, déclenchement manuel par l'utilisateur, en attente de retour)
-**Double validation :** NO (GitHub seul pour l'instant)
+**Commit :** `3f5f880`
+**GitHub Actions :** Build ID `31911325017` — Result **SUCCESS**
+**Codemagic :** Build ID — (aucun, déclenchement manuel par l'utilisateur, en attente de retour —
+toujours vrai pour CE commit ET pour `e4b1832`, aucun build Codemagic n'a encore été rapporté)
+**Double validation :** NO (GitHub seul pour l'instant, sur les 2 derniers commits importants)
 **Erreurs GitHub :** 0
 **Erreurs Codemagic :** N/A (pas encore lancé)
 **Prochaine tâche :** voir section 10.
+
+### GAP CI — corrections Appetize non encore testées fonctionnellement
+
+**Compilation Swift atteinte :** OUI (run `31911325017`, SUCCESS)
+**Xcode :** 16.2 (sélection dynamique, dernière version disponible sur le runner)
+**Runner :** `macos-14-arm64`, image GitHub Actions `20260629.0180.1`
+**Erreur éventuelle :** aucune
+**Test fonctionnel réel (Appetize) après ces corrections :** **NON EFFECTUÉ** — rappel explicite de
+l'utilisateur, règle absolue de cette mission : un build vert signifie UNIQUEMENT que le code
+compile, jamais que Home/Profile/Search fonctionnent réellement comme Android. Voir
+`MIGRATION_AUDIT.md`, section "APPETIZE FUNCTIONAL TEST — 2026-08-15" pour le détail complet
+problème par problème.
 
 **Règle permanente adoptée cette session (explicite, utilisateur)** : à partir de maintenant,
 chaque modification importante doit être testée sur le MÊME commit par les deux CI. Aucun
@@ -185,32 +196,48 @@ Commit e4b1832 : "feat(migration): complete file upload migration (GAP-004)"
   Sources/TiinverSwift/Messagerie/ChatViewModel.swift    (+ attachMedia/requestUpload implémenté)
   Sources/TiinverSwift/Messagerie/ChatView.swift         (+ bouton trombone)
   Sources/TiinverSwift/Storage/MessageRepository.swift   (+ updateFileUploaded)
-Non commité : CLAUDE_CONTINUATION.md (ce fichier — sera commité en fin de session, doc pure)
+Commit 3f5f880 : "fix(migration): resolve Appetize functional parity issues (P0: Home/Profile/Search)"
+  Sources/TiinverSwift/Feed/FeedView.swift                       (réécrit : grille 2 colonnes + détail plein écran)
+  Sources/TiinverSwift/Authentication/AuthSessionPersistence.swift (+ saveSession, sync)
+  Sources/TiinverSwift/Authentication/LoginView.swift             (appel saveSession avant navigation)
+  Sources/TiinverSwift/Authentication/SignUpWithGoogleView.swift  (idem)
+  Sources/TiinverSwift/Authentication/EmailVerificationView.swift (idem)
+  Sources/TiinverSwift/Discover/SearchModels.swift                (init(from:) tolérant clés absentes)
+Non commité : CLAUDE_CONTINUATION.md (ce fichier — sera commité en fin de session, doc pure),
+MIGRATION_AUDIT.md/MIGRATION_PROGRESS.md (section Appetize ajoutée après ce commit, à committer avec
+ce fichier)
 ```
 
 ## 7. TESTS EFFECTUÉS
 
 - **Vérification statique** (lecture manuelle) avant push : cohérence des types Swift, signatures
-  d'appel, disponibilité API vs `deploymentTarget: 16.0`. Erreurs trouvées et corrigées AVANT de
-  pousser (voir section 2, point 5).
+  d'appel, disponibilité API vs `deploymentTarget: 16.0`.
 - **Comparaison Android ↔ iOS** : chaque endpoint/champ/header vérifié contre le fichier Android
-  source correspondant, lu en entier (pas deviné).
-- **Compilation CI RÉELLE, GitHub Actions** : run `31908841925`, commit `e4b1832`, **SUCCESS**
-  confirmé (`** BUILD SUCCEEDED **` dans le log brut), 10/10 fichiers GAP-004 confirmés présents
-  dans les invocations de compilation par leur chemin complet. Voir section 0/0bis pour le détail.
+  source correspondant, lu en entier (pas deviné). Pour la mission Appetize (ce tour), 6
+  investigations Android↔iOS menées en parallèle par des agents dédiés, résultats croisés avec
+  lecture directe du code avant toute correction.
+- **Compilation CI RÉELLE, GitHub Actions** : run `31911325017`, commit `3f5f880`, **SUCCESS**
+  confirmé, les 6 fichiers modifiés confirmés présents dans les invocations de compilation par leur
+  chemin complet, 0 erreur, 1 warning pré-existant sans rapport.
+- **Test fonctionnel réel sur Appetize.io (device réel)** — celui qui a RÉVÉLÉ tous les problèmes de
+  cette section : Home vide, Profile vide, Search sans résultats, bouton créer-groupe Chat absent,
+  sélection galerie sans effet, bouton Animems non fonctionnel. C'est ce test, pas une lecture de
+  code, qui a permis de trouver la race condition de session et l'erreur d'architecture du feed.
 
 ## 8. TESTS IMPOSSIBLES/PAS ENCORE EFFECTUÉS
 
-- **Compilation Codemagic** — en attente d'un déclenchement manuel par l'utilisateur sur le commit
-  `e4b1832` (aucun credential Codemagic disponible dans cet environnement, voir section 0).
-- Exécution sur simulateur/device — jamais depuis cet environnement Windows (pas de Xcode local).
-- Test réseau réel (les 3 uploads de GAP-004 n'ont jamais touché un vrai serveur/CDN, seulement
-  compilé).
-- Test visuel (Appetize.io) des écrans modifiés (`ProfileView`, `CertificationView`, `ChatView`).
-- Téléchargement des pièces jointes chat (fonctionnalité non implémentée, gap distinct de GAP-004).
-→ **Rappel permanent de l'utilisateur, à ne jamais oublier** : "compile réellement" (atteint pour
-GitHub Actions) ≠ "double validation CI" (Codemagic manquant) ≠ "fonctionnellement validé" (aucun
-test réel, aucune des 3 fonctionnalités GAP-004 n'a jamais touché un serveur ou été vue à l'écran).
+- **Compilation Codemagic** — en attente d'un déclenchement manuel par l'utilisateur, toujours vrai
+  pour `e4b1832` ET `3f5f880` (aucun credential Codemagic disponible dans cet environnement).
+- Exécution sur simulateur/device DEPUIS CETTE SESSION — jamais (pas de Xcode local) ; SEUL le test
+  Appetize fourni PAR L'UTILISATEUR fait exception, et c'est justement lui qui a motivé cette
+  section.
+- **Retest Appetize des 3 corrections P0 de ce tour (Home/Profile/Search)** — PAS ENCORE FAIT. Le
+  commit `3f5f880` compile (confirmé CI) mais n'a PAS été revu sur un device réel après correction.
+- Chat (création de groupe), Galerie (MediaEditor), Animems (éditeur) — non implémentés, donc rien à
+  tester (voir section "APPETIZE FUNCTIONAL TEST" de `MIGRATION_AUDIT.md`).
+→ **Rappel permanent de l'utilisateur, à ne jamais oublier, règle absolue de la mission Appetize** :
+un build CI vert signifie UNIQUEMENT que le code compile — jamais que Home/Profile/Search
+fonctionnent réellement comme Android tant qu'un nouveau test Appetize ne l'a pas confirmé.
 
 ## 9. DÉCISIONS TECHNIQUES (cette session)
 
@@ -233,84 +260,105 @@ test réel, aucune des 3 fonctionnalités GAP-004 n'a jamais touché un serveur 
 - **`CertificationPlanFragment.tarification()` (re-fetch réseau du prix) PAS porté** — redondant
   avec la valeur déjà disponible via Remote Config (`certificationPrice`), jugé hors périmètre
   strict de GAP-004 (transfert de fichier).
+- **Feed reconstruit : grille = écran principal, pager plein écran = écran de détail** — pas une
+  invention, port fidèle de `MainFragment.OnAdapterItemClicked` (Android ouvre RÉELLEMENT ce même
+  pager plein écran, mais SEULEMENT au tap sur une cellule de la grille, jamais comme écran
+  d'accueil). Le pager iOS pré-existant n'était donc pas à jeter, juste mal positionné dans la
+  hiérarchie d'écrans — code réutilisé presque intégralement (`FeedDetailPagerView`).
+- **Bannières décoratives du Home (carrousel Créateurs, promo pièces gratuites) volontairement PAS
+  reproduites** dans la reconstruction de la grille — visibles sur les captures Android fournies,
+  mais hors du périmètre strict du problème rapporté ("données absentes"/"pas en grille de 2"), pas
+  un oubli. `CreatorOfWeekView.swift`/`EarnCoinsView.swift` existent déjà comme écrans séparés,
+  pourraient alimenter une version compacte de ces bannières dans une passe dédiée.
+- **`AuthSessionPersistence.saveSession` séparé de `persist`** plutôt que de faire attendre tout
+  `persist` (Core Data + jeton push) avant de naviguer — seule la ligne qui affecte réellement le
+  premier rendu de Profile/Feed (`UserSession.shared.myId`) est rendue bloquante ; le reste continue
+  en tâche de fond sans retarder la navigation.
 
 ## 10. PROCHAINE TÂCHE EXACTE
 
-**Ne PAS commencer GAP-003 — instruction explicite de l'utilisateur, toujours valable.** GAP-004
-compile réellement (GitHub Actions), mais la "double validation CI" (règle permanente du projet à
-partir de maintenant) n'est PAS encore atteinte pour le commit `e4b1832` — il manque Codemagic.
+**Ne PAS commencer GAP-003 — instruction explicite de l'utilisateur, toujours valable, réaffirmée
+pour la mission Appetize.** 3 corrections P0 (Home/Profile/Search) compilent réellement (GitHub
+Actions, run `31911325017`) mais N'ONT PAS ENCORE été retestées sur Appetize, et 3 problèmes
+(Chat/Galerie/Animems) restent non traités (fonctionnalités jamais construites, pas des bugs).
 
 **Tâche exacte** :
-1. **Attendre le retour de l'utilisateur sur son build Codemagic manuel** (commit `e4b1832`, même
-   commit que GitHub Actions). Documenter son résultat dans la table CI VALIDATION (section 0) et
-   dans `MIGRATION_AUDIT.md` section 12 dès qu'il est communiqué.
-2. Si Codemagic échoue : appliquer la règle de diagnostic explicite de l'utilisateur — déterminer
-   si c'est spécifique à Codemagic (corriger `codemagic.yaml` uniquement) ou un problème commun
-   (Swift/dépendance/config projet, auquel cas GitHub Actions aurait dû aussi échouer — à
-   réexaminer). Ne PAS dupliquer aveuglément un correctif GitHub-specific vers Codemagic sans
-   preuve qu'il en a besoin.
-3. Si Codemagic réussit aussi : double validation CI atteinte pour `e4b1832` — GAP-004 est alors au
-   niveau maximal atteignable sans test réel (compilation confirmée 2×, toujours PAS "fonctionnel").
-4. **Seulement après double validation** (ou décision explicite de l'utilisateur de continuer sans
-   attendre Codemagic) : passer à GAP-003 (audit profond du Chat — Socket.IO événement par
-   événement, messages texte/audio/photo/vidéo/fichier/statuts/pagination/cache/notifications,
-   appels/WebRTC/CallKit, comportement offline/online — périmètre donné explicitement par
-   l'utilisateur, voir son message dédié).
-
-**Stratégie double-CI permanente à appliquer pour TOUTE la suite de la migration** (pas seulement
-GAP-004) : pour chaque gros GAP, même séquence — implémentation Swift → commit → push → GitHub
-Actions (moi) + Codemagic (utilisateur, manuel) sur le MÊME commit → analyse → correction ciblée
-(le bon fichier CI selon la cause) → répéter jusqu'à double SUCCESS → GAP suivant.
+1. **Demander à l'utilisateur de retester Home/Profile/Search sur Appetize** avec le commit
+   `3f5f880` (ou plus récent) — c'est la seule façon de confirmer que les 3 corrections
+   fonctionnent réellement, pas seulement qu'elles compilent. Documenter le résultat (PASS/FAIL par
+   écran) dans `MIGRATION_AUDIT.md`, section "APPETIZE FUNCTIONAL TEST — 2026-08-15", en remplaçant
+   les 3 mentions "NON TESTÉ" par le résultat réel.
+2. **Décider avec l'utilisateur comment aborder Chat/Galerie/Animems** — ces 3 ne sont PAS des
+   corrections ponctuelles (voir `MIGRATION_AUDIT.md`, même section, entrées P0-4/5/6) :
+   - Chat : construire un sélecteur de contacts + un écran de création de groupe (port de
+     `Contact.java`/`ChooseFragment.java`/`Group.java`).
+   - Galerie : construire un vrai flux `MediaEditor`/publication (aucun flux de publication de post
+     ne semble exister côté iOS pour la caméra à ce stade — à confirmer avant de commencer).
+   - Animems : assembler un écran d'éditeur complet à partir du moteur déjà porté (GAP-006, déjà
+     estimé à plusieurs semaines dans `TIINVER_ANIMEMS_SCOPE_LIBRARIES.md`).
+   Proposer de les traiter comme 3 chantiers séparés (pas une seule session), en commençant par
+   celui que l'utilisateur juge prioritaire.
+3. **Demander le retour Codemagic manuel** — toujours en attente depuis GAP-004 (`e4b1832`),
+   jamais rapporté ; s'applique maintenant aussi à `3f5f880`.
+4. Continuer d'appliquer la stratégie double-CI (section 0) pour chaque nouveau commit important.
 
 ## 11. HANDOFF — DERNIÈRE SESSION
 
 **Session :** Claude Code (Sonnet 5), reprise sans mémoire, contexte reconstruit depuis Git +
-documentation existante. 5ᵉ tour de cette même journée (2026-08-15).
+documentation existante. 6ᵉ tour de cette même journée (2026-08-15) — premier test fonctionnel réel
+de l'app (Appetize.io, device réel) fourni par l'utilisateur avec captures Android de référence.
 **Date :** 2026-08-15
-**Dernière tâche terminée :** GAP-004 (upload de fichiers) implémenté ET compilé réellement avec
-preuve CI (GitHub Actions, run `31908841925`, commit `e4b1832`). Pipeline CI lui-même réparé (2
-bugs trouvés et corrigés : sélection Xcode absente, puis bug YAML auto-introduit par le 1er fix).
-Remote Git sécurisé (token retiré de l'URL, Git Credential Manager utilisé pour toute la suite).
-Stratégie double-CI (GitHub Actions + Codemagic) adoptée comme règle permanente du projet.
-**Travail effectué :** Sécurisation du remote + vérification qu'aucun fichier ne contient le token.
-2 itérations de correctifs CI (commits `8aeb5a6`, `e48dbed`, `a66c509`) jusqu'à un run CI-only vert
-(`31907788616`). Commit + push du code applicatif GAP-004 (`e4b1832`, après vérification explicite
-qu'aucun secret n'était présent dans le diff). Build CI déclenché et suivi jusqu'au résultat réel :
-SUCCESS, vérifié explicitement fichier par fichier (pas seulement le statut global).
-**Travail actuellement en cours :** Aucun code en cours — en attente du retour utilisateur sur le
-build Codemagic manuel (commit `e4b1832`).
+**Dernière tâche terminée :** Diagnostic des 6 problèmes rapportés (6 investigations Android↔iOS en
+parallèle) + correction et validation CI de 3 d'entre eux (Home, Profile, Search) — commit `3f5f880`,
+GitHub Actions SUCCESS (run `31911325017`).
+**Travail effectué :**
+- Home : cause racine confirmée = erreur d'architecture (pager plein écran au lieu d'une grille 2
+  colonnes) + race condition possible. `FeedView.swift` réécrit : grille 2 colonnes comme écran
+  principal, l'ancien pager devient l'écran de détail (tap sur une cellule), fidèle à
+  `MainFragment.OnAdapterItemClicked`.
+- Profile : race condition confirmée et corrigée (session non attendue avant navigation dans les 3
+  flux de connexion) — `AuthSessionPersistence.saveSession` (nouvelle fonction synchrone).
+- Search : bug de décodage JSON confirmé et corrigé (clés de catégorie absentes du JSON faisaient
+  échouer silencieusement tout le décodage) — `init(from:)` custom sur `SearchResults`.
+- Chat/Galerie/Animems : diagnostiqués (causes réelles identifiées avec citations de code précises)
+  mais PAS corrigés — ce sont des fonctionnalités jamais construites, pas des bugs, effort d'une
+  toute autre ampleur.
+**Travail actuellement en cours :** Aucun code en cours. Documentation de cette passe terminée dans
+`MIGRATION_AUDIT.md`/`MIGRATION_PROGRESS.md`/ce fichier, reste à committer.
 **PROCHAINE TÂCHE EXACTE :** Voir section 10 ci-dessus.
-**Fichiers modifiés :** Voir section 6 ci-dessus — TOUT est commité et poussé sauf ce fichier
-(`CLAUDE_CONTINUATION.md`, doc pure, sera commité en fin de session).
+**Fichiers modifiés :** Voir section 6 ci-dessus. Code applicatif (commit `3f5f880`) déjà poussé ;
+mises à jour de documentation de cette section restent à committer avec ce fichier.
 **Fichiers à surveiller :** `.claude/worktrees/fix-splash-stuck` apparaît modifié dans le `git
 status` du dépôt ANDROID (pas iOS) — une AUTRE session travaille en parallèle sur ce worktree
 Android. Ne PAS y toucher, ne pas supposer son contenu.
-**Bugs connus :** Voir section 5 (GAPs restants) + section 4 (download pièces jointes chat, pas
-implémenté). Le token GitHub qui était dans l'URL du remote a été exposé une fois en clair dans
-cette conversation avant sécurisation — **rotation recommandée, à confirmer avec l'utilisateur si
-elle a été faite.**
-**Tests effectués :** Voir section 7 — 1 compilation CI réelle réussie (GitHub Actions). AUCUN test
-fonctionnel réel (section 8).
-**Résultats :** GAP-004 compile réellement (niveau 1/3 : COMPILÉE). Pas encore DOUBLE VALIDATION CI
-(niveau 2/3, Codemagic manquant). Pas encore FONCTIONNELLEMENT VALIDÉE (niveau 3/3, aucun test réel).
-**Décisions techniques :** Voir section 9 + section 0/12 (stratégie double-CI, pourquoi
-`codemagic.yaml` n'a pas été touché sans preuve qu'il soit cassé).
+**Bugs connus :** Voir `MIGRATION_AUDIT.md`, section "APPETIZE FUNCTIONAL TEST", entrées P0-4/5/6
+(Chat/Galerie/Animems, non corrigés). Le token GitHub qui était dans l'URL du remote a été exposé
+une fois en clair dans cette conversation avant sécurisation — **rotation recommandée, à confirmer
+avec l'utilisateur si elle a été faite.**
+**Tests effectués :** Voir section 7 — compilation CI réelle réussie (GitHub Actions, `3f5f880`).
+Test Appetize réel EFFECTUÉ par l'utilisateur AVANT ces corrections (c'est ce qui a motivé ce tour) ;
+PAS ENCORE REFAIT après ces corrections.
+**Résultats :** Home/Profile/Search compilent réellement (niveau 1/3). PAS encore retestés sur
+Appetize après correction (niveau 3/3 non atteint). Chat/Galerie/Animems : diagnostiqués seulement,
+niveau 0/3.
+**Décisions techniques :** Voir section 9 (nouvelles entrées Feed/AuthSessionPersistence de ce tour).
 **Points importants :**
 - Ne PAS refaire l'audit global — `MIGRATION_AUDIT.md`/`MIGRATION_PROGRESS.md` sont à jour et
   fiables.
-- Ne PAS supposer qu'une fonctionnalité "DONE" a été testée fonctionnellement — voir section 0bis/8,
-  seule la COMPILATION est confirmée pour GAP-004, jamais l'exécution réelle.
-- Ne JAMAIS déclencher Codemagic soi-même sans credential réel — l'utilisateur le fait manuellement
-  par choix explicite, ne pas prétendre l'avoir fait ou vérifié.
-- Ne PAS dupliquer un correctif GitHub Actions vers `codemagic.yaml` sans preuve que Codemagic en a
-  besoin (règle explicite de l'utilisateur).
-- Tout est commité/poussé sauf ce fichier de continuité.
+- Ne PAS supposer que Home/Profile/Search fonctionnent réellement — seule la compilation est
+  confirmée, pas le comportement sur device, règle absolue rappelée explicitement par l'utilisateur
+  pour toute cette mission.
+- Ne PAS commencer Chat/Galerie/Animems sans clarifier avec l'utilisateur l'ampleur réelle du
+  travail (nouveaux écrans complets, pas des corrections) — voir section 10, point 2.
+- Ne JAMAIS déclencher Codemagic soi-même sans credential réel — l'utilisateur le fait manuellement.
+- Tout le code est commité/poussé ; seule la documentation de ce tour reste à committer.
 **Instructions pour la prochaine session :**
 1. Lire ce fichier EN PREMIER, section 0/0bis en priorité absolue.
 2. Vérifier qu'il correspond toujours au code réel (`git log`, `git status`) — une autre session a
    pu intervenir/pousser depuis.
-3. Si l'utilisateur ne précise pas de priorité, demander le résultat de son build Codemagic manuel
-   sur le commit `e4b1832` (section 10) — c'est la seule chose qui manque à la double validation CI,
-   et l'utilisateur a explicitement interdit GAP-003 tant qu'elle n'est pas discutée/atteinte.
+3. Si l'utilisateur ne précise pas de priorité, demander (a) le résultat du retest Appetize des
+   corrections Home/Profile/Search (commit `3f5f880`) et (b) le résultat de son build Codemagic
+   manuel (section 10) — l'utilisateur a explicitement interdit GAP-003 tant que ces points ne sont
+   pas clarifiés.
 4. Mettre à jour ce fichier (sections 0, 0bis et 11) à la fin de la session, quel que soit le
    résultat.

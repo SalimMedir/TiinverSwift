@@ -3551,3 +3551,56 @@ réellement. Stratégie double-CI (GitHub Actions + Codemagic) adoptée pour la 
   run GitHub Actions) — PAS encore au niveau 2 (double validation CI, Codemagic manquant) ni au
   niveau 3 (test fonctionnel réel sur simulateur/device, aucun n'a eu lieu).
   réel — même statut `ÉCRIT (NON COMPILÉ)` que le reste du code depuis le Checkpoint 2.
+
+---
+
+**SESSION DU 2026-08-15 (6ᵉ tour, même journée) — PREMIER TEST FONCTIONNEL RÉEL SUR APPETIZE.IO,
+3 CORRECTIONS P0 APPLIQUÉES ET VALIDÉES PAR CI, 3 GAPS FONCTIONNELS DE FOND DÉCOUVERTS.**
+
+L'utilisateur a fourni le premier vrai test de l'app sur Appetize.io (device réel) avec captures
+Android de référence. Confirme brutalement l'avertissement répété tout au long de ce document :
+`CODE PORTÉ` ≠ `CODE COMPILÉ` ≠ `FONCTIONNALITÉ RÉELLEMENT VALIDÉE`. 6 problèmes rapportés,
+diagnostiqués par 6 investigations en parallèle (comparaison directe Android réel ↔ Swift réel,
+aucune supposition) :
+
+- **Home vide** : cause racine à deux niveaux — (1) `FeedView.swift` avait été construit comme un
+  pager plein écran façon Reels/TikTok, une hypothèse du portage jamais vérifiée visuellement
+  (littéralement marquée comme telle dans son propre commentaire d'origine), alors qu'Android
+  affiche une vraie grille 2 colonnes (`MainFragment.java:707`,
+  `PreLoadingGridLayoutManager(...,2,...)`) ; (2) possible interaction avec la race condition
+  ci-dessous au tout premier lancement. **Reconstruit** : `FeedView.swift` réécrit en entier —
+  grille 2 colonnes (`LazyVGrid`, port de `ActivityAdapter.ViewHolder`) comme écran principal,
+  l'ancien pager plein écran devient l'écran de DÉTAIL ouvert au tap sur une cellule (fidèle à
+  `MainFragment.OnAdapterItemClicked` → `onArticleSelected(1, arg)`, qui fait exactement ça côté
+  Android — le pager n'était pas un mauvais composant, juste au mauvais endroit dans la hiérarchie
+  d'écrans).
+- **Profile vide** : race condition confirmée dans les 3 flux de connexion
+  (`LoginView`/`SignUpWithGoogleView`/`EmailVerificationView`) — `Task { await
+  AuthSessionPersistence.persist(user) }` lancé SANS être attendu, puis navigation immédiate ;
+  `UserSession.shared.myId` pouvait être encore `nil` au premier chargement de `ProfileView`, ET
+  `ProfileView.init()` fige `myId ?? ""` dans un `let` au moment de la construction (jamais
+  réévalué). **Corrigé** : nouvelle fonction synchrone `AuthSessionPersistence.saveSession(_:)`
+  (juste `UserSession.shared.save(user)`, déjà synchrone) appelée AVANT la navigation dans les 3
+  flux ; le reste (Core Data, jeton push) reste asynchrone sans bloquer.
+- **Search sans résultats** : `SearchResults` (tableaux non-optionnels avec valeur par défaut `[]`)
+  échouait silencieusement au décodage quand le serveur omet une catégorie absente de l'onglet actif
+  (`RechercheTiinver.java` garde chaque catégorie avec `results.has(...)` — le serveur OMET la clé
+  entière, il ne renvoie pas un tableau vide). Swift ne respecte PAS une valeur par défaut sur un
+  type non-optionnel si la clé JSON manque — `keyNotFound`, avalé par un `try?`, résultats
+  systématiquement vides même quand le serveur en renvoyait de vrais. **Corrigé** : `init(from:)`
+  custom sur `SearchResults` (`decodeIfPresent(...) ?? []`).
+- **Chat (bouton créer groupe), Galerie (MediaEditor), Animems (éditeur)** : les 3 diagnostiqués
+  comme des **fonctionnalités jamais construites**, pas des bugs — déjà documenté pour Chat/Animems
+  dans des sessions précédentes (module Contacts jamais fait, Animems GAP-006 estimé à plusieurs
+  semaines), nouvellement confirmé pour Galerie (le sélecteur lui-même fonctionne, c'est l'écran de
+  destination "MediaEditor" après sélection qui n'existe pas). **PAS corrigés cette session** —
+  effort d'une ampleur différente (nouveaux écrans complets) des 3 corrections ci-dessus,
+  nécessitent une décision de priorisation explicite avec l'utilisateur avant d'être entamés.
+
+**Commit `3f5f880`** — "fix(migration): resolve Appetize functional parity issues (P0:
+Home/Profile/Search)", 6 fichiers. **GitHub Actions run `31911325017` : SUCCESS**, les 6 fichiers
+confirmés compilés (chemin complet dans le log), 0 erreur, 1 seul warning et pré-existant (sans
+rapport avec les changements). Codemagic : en attente de déclenchement manuel par l'utilisateur,
+même commit. **Aucun des 3 correctifs n'a encore été retesté sur Appetize** — seule la compilation
+est confirmée à ce stade, pas le comportement réel (règle rappelée explicitement par l'utilisateur
+pour cette mission : ne jamais confondre les deux).

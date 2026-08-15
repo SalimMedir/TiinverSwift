@@ -78,7 +78,8 @@ jobs:
         # bloquer le pipeline sur un flag qui n'a jamais existé sur ce runner. Si le build échoue
         # PLUS LOIN pour une vraie raison de toolchain Metal manquant (MetalPetal, module 7/8),
         # CE sera le signal à traiter spécifiquement, pas une supposition préventive ici.
-        run: xcodebuild -downloadComponent MetalToolchain || echo "AVERTISSEMENT : -downloadComponent indisponible sur ce runner (Xcode $(xcodebuild -version | head -1) — voir commentaire de cette étape), poursuite du build sans échec."
+        run: |
+          xcodebuild -downloadComponent MetalToolchain || echo "AVERTISSEMENT - downloadComponent indisponible sur ce runner, poursuite du build sans echec (voir commentaire de cette etape)."
 
       - name: Résoudre les dépendances Swift Package Manager
         run: |

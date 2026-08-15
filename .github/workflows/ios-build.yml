@@ -46,6 +46,26 @@ jobs:
       - name: xcodegen generate
         run: xcodegen generate
 
+      - name: Sélectionner la version Xcode la plus récente disponible sur le runner
+        # Diagnostic (2026-08-15) — 1er build CI post-GAP-004 : échec immédiat avec
+        # "xcodebuild: error: invalid option '-downloadComponent'". Cause : le runner
+        # macos-14-arm64 (image 20260629.0180) a plusieurs Xcode installés côte à côte
+        # (/Applications/Xcode_*.app), mais AUCUNE sélection explicite n'était faite ici — le
+        # symlink par défaut `xcode-select` pointait vers une version trop ancienne pour supporter
+        # `-downloadComponent MetalToolchain` (flag introduit avec la séparation du toolchain
+        # Metal, Xcode 16+). Sélectionne la version la plus récente disponible plutôt qu'un
+        # numéro codé en dur, pour ne pas se recasser à la prochaine image de runner.
+        run: |
+          echo "Versions Xcode disponibles :"
+          ls -d /Applications/Xcode*.app
+          LATEST_XCODE=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$LATEST_XCODE" ]; then
+            LATEST_XCODE="/Applications/Xcode.app"
+          fi
+          echo "Sélection : $LATEST_XCODE"
+          sudo xcode-select -s "$LATEST_XCODE"
+          xcodebuild -version
+
       - name: Install Metal Toolchain
         run: xcodebuild -downloadComponent MetalToolchain
 

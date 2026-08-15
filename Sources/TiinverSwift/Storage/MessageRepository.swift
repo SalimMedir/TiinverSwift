@@ -254,6 +254,18 @@ final class MessageRepository {
         }
     }
 
+    /// Port de `DownloadReceiver.getDownloadedFilePath` (GAP-003, 2026-08-16) —
+    /// `ContentValues{isFileDownloaded=1, object_url=<chemin local>}` appliqué à `wk_messages`
+    /// après un téléchargement réussi (voir `ChatViewModel.requestDownload`). Contrairement à
+    /// l'upload, `object_url` est ici RÉÉCRIT avec le chemin LOCAL (Android : `Uri.fromFile(file)`,
+    /// même colonne que l'URL distante — un seul champ sert aux deux, fidèle à l'original).
+    func updateFileDownloaded(messageId: String, localURL: URL) async throws {
+        try await messages.update(predicate: NSPredicate(format: "messageId == %@", messageId)) { entity in
+            entity.objectUrl = localURL.absoluteString
+            entity.isFileDownloaded = 1
+        }
+    }
+
     /// Port de `UploadFileOrDataService.saveMediaUrls`/`uploadMediaToBunny` (GAP-004, 2026-08-15) —
     /// `ContentValues{object_url, isFileUploaded=1[, thumbnail_uri]}` appliqué à `wk_messages`
     /// après un upload BunnyCDN réussi (voir `ChatMediaUploadService`). `thumbnailUri` optionnel :

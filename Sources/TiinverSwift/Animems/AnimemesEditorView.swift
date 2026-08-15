@@ -6,9 +6,9 @@ import SwiftUI
 /// layout.xml`, PAS une réécriture du moteur. Barre du haut minimale (`close_animemes`/
 /// `save_animemes2`), rangée d'ajout d'objet (`ic_add`/`ic_text`/`btn_shape`, PAS `ic_sticker` —
 /// nécessiterait le catalogue d'émojis/stickers, hors périmètre de cette passe), `undo`, canevas
-/// avec déplacement au doigt (translation seule — rotation/échelle/masques/keyframes/timeline
-/// détaillée PAS reproduits dans cette passe, voir `MIGRATION_AUDIT.md` pour le périmètre exact
-/// laissé de côté).
+/// avec déplacement/rotation/échelle réels au doigt (2026-08-16, `AnimemesGestureController` —
+/// masques/keyframes/timeline détaillée PAS reproduits dans cette passe, voir `MIGRATION_AUDIT.md`
+/// pour le périmètre exact laissé de côté).
 struct AnimemesEditorView: View {
     var onClose: () -> Void
 
@@ -17,8 +17,8 @@ struct AnimemesEditorView: View {
     @State private var showGalleryPicker = false
     @State private var showTextPrompt = false
     @State private var newText = ""
-    @State private var draggingObjectId: String?
-    @State private var lastDragTranslation: CGSize = .zero
+    @State private var lastMagnification: CGFloat = 1.0
+    @State private var isPinching = false
     @State private var exportedURL: URL?
 
     var body: some View {
@@ -98,7 +98,7 @@ struct AnimemesEditorView: View {
                 }
             }
             .background(Color(white: 0.08))
-            .gesture(dragGesture)
+            .gesture(combinedGesture)
             .onAppear { canvasSize = geo.size }
             .onChange(of: geo.size) { newSize in canvasSize = newSize }
             // `version` force un redraw explicite après mutation des calques (le moteur Animems
@@ -108,30 +108,72 @@ struct AnimemesEditorView: View {
         }
     }
 
-    /// Déplacement au doigt — port SIMPLIFIÉ de la capture de geste Android (translation SEULE,
-    /// pas de rotation/échelle combinées comme `AnimemesGestureController`/`MemesView2` le
-    /// permettent en entier). `obj.bound` est rempli par le DERNIER passage de rendu
-    /// (`LayerRenderer.drawLastTransform`/`drawText`, effet de bord sur l'objet lui-même) — utilisé
-    /// ici pour la détection de calque touché, sans duplication de la logique de hit-test.
+    /// Port RÉEL de `MemesView2.onTouchEvent` (translation/rotation/échelle simultanées, 2026-08-16)
+    /// — délègue entièrement à `AnimemesGestureController` via `AnimemesEditorState`. `obj.bound`
+    /// est rempli par le DERNIER passage de rendu (`LayerRenderer.drawLastTransform`/`drawText`,
+    /// effet de bord sur l'objet lui-même) — utilisé ici pour la détection de calque touché, sans
+    /// duplication de la logique de hit-test.
+    ///
+    /// Les trois gestes sont combinés via `SimultaneousGesture` pour permettre pincer+pivoter+
+    /// glisser en une seule interaction (comme les deux doigts d'Android le permettent nativement).
+    /// `RotationGesture`/`MagnificationGesture` rapportent des valeurs CUMULATIVES depuis le début
+    /// du geste — voir les commentaires de `beginPinchRotate()`/`rotationChanged(to:)`/
+    /// `scaleChanged(incrementalFactor:)` dans `AnimemesEditorState` pour la réconciliation avec
+    /// l'API par delta d'`AnimemesGestureController`.
+    private var combinedGesture: some Gesture {
+        SimultaneousGesture(SimultaneousGesture(dragGesture, magnificationGesture), rotationGesture)
+    }
+
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                if draggingObjectId == nil {
-                    draggingObjectId = state.layers.last { $0.bound?.contains(value.startLocation) ?? false }?.id
-                    lastDragTranslation = .zero
+                // `translation == .zero` marque le PREMIER callback d'un nouveau geste
+                // (`minimumDistance: 0`) — ré-arme la sélection à chaque nouveau toucher plutôt
+                // qu'une seule fois, sinon `selectedId` resterait bloqué sur le premier calque
+                // touché et tous les gestes suivants continueraient à le déplacer, même après un
+                // toucher ailleurs sur le canevas.
+                if value.translation == .zero {
+                    _ = state.selectObject(at: value.startLocation)
                 }
-                guard let id = draggingObjectId, let obj = state.layers.first(where: { $0.id == id }) else { return }
-                let delta = CGSize(
-                    width: value.translation.width - lastDragTranslation.width,
-                    height: value.translation.height - lastDragTranslation.height
-                )
-                lastDragTranslation = value.translation
-                state.moveObject(obj, by: delta)
+                state.dragMoved(to: value.location)
             }
             .onEnded { _ in
-                draggingObjectId = nil
-                lastDragTranslation = .zero
+                state.dragEnded()
             }
+    }
+
+    private var magnificationGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                guard state.selectedId != nil else { return }
+                beginPinchIfNeeded()
+                state.scaleChanged(incrementalFactor: value / lastMagnification)
+                lastMagnification = value
+            }
+            .onEnded { _ in
+                lastMagnification = 1.0
+                isPinching = false
+            }
+    }
+
+    private var rotationGesture: some Gesture {
+        RotationGesture()
+            .onChanged { value in
+                guard state.selectedId != nil else { return }
+                beginPinchIfNeeded()
+                state.rotationChanged(to: value.degrees)
+            }
+            .onEnded { _ in isPinching = false }
+    }
+
+    /// `MagnificationGesture`/`RotationGesture` n'exposent pas de callback "début de geste" distinct
+    /// — le premier `onChanged` de L'UN OU L'AUTRE sert de déclencheur pour amorcer
+    /// `AnimemesGestureController.pointerDown` (voir `AnimemesEditorState.beginPinchRotate()`),
+    /// une seule fois par geste à deux doigts.
+    private func beginPinchIfNeeded() {
+        guard !isPinching else { return }
+        isPinching = true
+        state.beginPinchRotate()
     }
 
     private var toolbar: some View {

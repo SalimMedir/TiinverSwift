@@ -253,7 +253,14 @@ final class WebRTCConnection: NSObject {
             let munged = Self.preferCodec(message.sdp ?? "", codec: Self.AUDIO_CODEC_OPUS)
             let description = RTCSessionDescription(type: sdpType, sdp: munged)
             peerConnection.setRemoteDescription(description) { [weak self] error in
-                guard let self, error == nil else { return }
+                guard let self else { return }
+                // Port de `RTConnection2.onSetFailure` (`RTConnection2.java:657-661`) : Android
+                // remet `makingOffer=false` MÊME en cas d'échec, sinon un pair resterait bloqué
+                // indéfiniment sans pouvoir jamais recréer d'offre après un seul échec SDP.
+                guard error == nil else {
+                    self.makingOffer = false
+                    return
+                }
                 if sdpType == .answer { self.makingOffer = false }
                 if sdpType == .offer { self.doAnswer() }
             }

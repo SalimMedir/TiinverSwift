@@ -436,12 +436,47 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    /// Port de `MessageActionListener.onDowload`/`checkAndDownloadFile`/`downloadFile(...)` —
-    /// **transfert réel PAS implémenté**, même raison que `requestUpload` (`DownloadReceiver.java`
-    /// pas lu cette passe).
+    /// Port de `MessageActionListener.onDowload`/`checkAndDownloadFile`/`downloadFile(...)` →
+    /// `DownloadReceiver.getDownloadedFilePath` (lu en entier, GAP-003, 2026-08-16) — **implémenté**.
+    /// Android utilise `DownloadManager` (GET simple, pas d'en-tête d'auth : les URL CDN
+    /// BunnyCDN/backend Tiinver déjà stockées dans `objectUrl` sont publiquement lisibles une fois
+    /// uploadées — confirmé, `DownloadManager.Request` n'attache aucun header dans le fichier lu).
+    /// Port fidèle via `URLSession.download(from:)`, pas de service `WorkManager`/notification
+    /// système équivalents (pas de notifications système de progression téléchargement portées —
+    /// écart d'UX mineur assumé, le spinner déjà affiché par `ChatBubbleViews` suffit).
     private func requestDownload(_ mlib: MessageLib) {
-        // TODO(module 11 suite) : lire DownloadReceiver.java, implémenter via URLSession download
-        // task vers Caches/media/<dossier>, puis isFileDownloaded=1 + objectUrl local.
+        guard let messageId = mlib.messageId, let remoteURLString = mlib.objectUrl,
+              let remoteURL = URL(string: remoteURLString), remoteURL.scheme?.hasPrefix("http") == true
+        else { return }
+        Task {
+            do {
+                let (tempURL, response) = try await URLSession.shared.download(from: remoteURL)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                    try? FileManager.default.removeItem(at: tempURL)
+                    return
+                }
+                let mediaDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                    .appendingPathComponent("ChatMedia", isDirectory: true)
+                try FileManager.default.createDirectory(at: mediaDirectory, withIntermediateDirectories: true)
+                let ext = remoteURL.pathExtension.isEmpty ? "bin" : remoteURL.pathExtension
+                let localURL = mediaDirectory.appendingPathComponent(messageId).appendingPathExtension(ext)
+                if FileManager.default.fileExists(atPath: localURL.path) {
+                    try FileManager.default.removeItem(at: localURL)
+                }
+                try FileManager.default.moveItem(at: tempURL, to: localURL)
+
+                try await messages.updateFileDownloaded(messageId: messageId, localURL: localURL)
+                guard let index = items.firstIndex(where: { $0.messageId == messageId }),
+                      case .message(var updated) = items[index]
+                else { return }
+                updated.objectUrl = localURL.absoluteString
+                updated.isFileDownloaded = 1
+                items[index] = .message(updated)
+            } catch {
+                // `isFileDownloaded` reste à 0 — un prochain `handleAppear` relance l'essai, comme
+                // côté upload (`requestUpload`), même politique de retry sans compteur de tentatives.
+            }
+        }
     }
 
     // MARK: - Citation (port de `showQuotedMessage`/`hideReplyLayout`/`MessageSwipeController`)

@@ -11,10 +11,16 @@ final class AnimemesEditorState: ObservableObject {
     let composer = AnimationComposer()
     let bitmapCache = BitmapCacheManager()
     let textRect: TextRect
+    /// Port de la logique de geste tactile (`MemesView2.java`, voir `AnimemesGestureController`) —
+    /// ajouté le 2026-08-16 (continuation post-Appetize) : translation/rotation/échelle réelles au
+    /// lieu de la seule translation `offsetX`/`offsetY` de la version initiale.
+    let gestureController = AnimemesGestureController()
+    private let gestureEngine = AnimationEngine() // port de `touchUp` (lissage Chaikin), pas de lecture réelle utilisée ici
 
     @Published private(set) var version = 0
     @Published var isExporting = false
     @Published var exportError: String?
+    @Published var selectedId: String?
 
     /// Port SIMPLIFIÉ de la durée d'un calque — 3s à 30 fps (`AnimemesExporter.frameRate`), tenu
     /// statique via `holdLast=true` plutôt qu'animé. Pas de timeline/keyframes détaillées dans
@@ -95,9 +101,75 @@ final class AnimemesEditorState: ObservableObject {
         version += 1
     }
 
-    func moveObject(_ obj: AnimationObjectData, by translation: CGSize) {
-        obj.offsetX += Int(translation.width)
-        obj.offsetY += Int(translation.height)
+    // MARK: - Gestes (port de `MemesView2.java` via `AnimemesGestureController`, 2026-08-16)
+
+    /// Port de `touchDown` — teste si `point` tombe dans un calque (du dernier au premier, ordre
+    /// d'affichage = ordre de dessin, le dernier dessiné est visuellement au-dessus) et l'arme pour
+    /// le geste en cours.
+    func selectObject(at point: CGPoint) -> String? {
+        guard let index = layers.lastIndex(where: { $0.bound?.contains(point) ?? false }) else {
+            selectedId = nil
+            return nil
+        }
+        selectedId = layers[index].id
+        gestureController.touchDown(at: point, objectIndex: index, composer: composer)
+        return selectedId
+    }
+
+    private func index(of id: String) -> Int? { layers.firstIndex { $0.id == id } }
+
+    /// Port de `touchMove` (translation à un doigt) — délègue à `AnimemesGestureController.
+    /// touchMoveTranslate`, qui opère directement sur la matrice de la dernière `Transform` (PAS
+    /// `offsetX`/`offsetY`, corrigé le 2026-08-16 — la version initiale mutait `offsetX`/`offsetY`
+    /// directement, une simplification qui aurait mal composé avec la rotation/l'échelle ajoutées
+    /// ici : Android ne touche JAMAIS `offsetX`/`offsetY` par geste, tout passe par la matrice).
+    func dragMoved(to point: CGPoint) {
+        guard let id = selectedId, let idx = index(of: id) else { return }
+        gestureController.touchMoveTranslate(to: point, objectIndex: idx, composer: composer)
+        version += 1
+    }
+
+    func dragEnded() {
+        guard let id = selectedId, let idx = index(of: id) else { return }
+        gestureController.touchUp(objectIndex: idx, composer: composer, engine: gestureEngine)
+    }
+
+    /// Port de `touchPointerDown` — amorce un geste rotation/pincement, pivot = centre du calque
+    /// sélectionné (Android utilise le point milieu RÉEL des deux doigts ; `RotationGesture`/
+    /// `MagnificationGesture` de SwiftUI ne donnent pas accès aux coordonnées de contact
+    /// individuelles, seulement des valeurs scalaires cumulatives depuis le début du geste — le
+    /// centre du calque est un pivot raisonnable et fidèle en pratique, écart assumé faute d'accès
+    /// à la position réelle des doigts).
+    func beginPinchRotate() {
+        guard let id = selectedId, let idx = index(of: id), let bound = layers[idx].bound else { return }
+        let center = CGPoint(x: bound.midX, y: bound.midY)
+        // Points synthétiques choisis pour que `AnimemesGestureController.degrees(p0,p1) == 0` et
+        // `midPoint == center` (voir le calcul dans `AnimemesGestureController.swift` :
+        // `atan2(p0.x-p1.x, p0.y-p1.y)` — `p0`/`p1` alignés verticalement sur `center`, `p0` en
+        // dessous de `p1`, donne `atan2(0, +) == 0`). Sert UNIQUEMENT à initialiser l'angle de
+        // référence à 0°, cohérent avec `RotationGesture`, qui rapporte aussi un angle cumulatif
+        // débutant à 0° — voir `rotationChanged(to:)` ci-dessous.
+        gestureController.pointerDown(point0: CGPoint(x: center.x, y: center.y + 1), point1: CGPoint(x: center.x, y: center.y - 1))
+    }
+
+    /// Port de `rotate` — `newDegrees` est l'angle CUMULATIF rapporté par `RotationGesture`
+    /// (identique en sémantique à `oldAngleDegrees` initialisé à 0 dans `beginPinchRotate`, voir
+    /// note ci-dessus) : `AnimemesGestureController.rotate(to:)` calcule lui-même le delta interne,
+    /// pas besoin de le calculer ici.
+    func rotationChanged(to newDegrees: CGFloat) {
+        guard let id = selectedId, let idx = index(of: id) else { return }
+        gestureController.rotate(to: newDegrees, objectIndex: idx, composer: composer)
+        version += 1
+    }
+
+    /// Port de `scale`/`ScaleListener.onScale` — `incrementalFactor` est le ratio ENTRE deux
+    /// valeurs cumulatives successives de `MagnificationGesture` (calculé par l'appelant SwiftUI,
+    /// voir `AnimemesEditorView` — `AnimemesGestureController.scale` attend un facteur PAR
+    /// ÉVÉNEMENT, pas cumulatif, voir sa documentation).
+    func scaleChanged(incrementalFactor: CGFloat) {
+        guard let id = selectedId, let idx = index(of: id), let bound = layers[idx].bound else { return }
+        let clamped = AnimemesGestureController.clampPerEventScaleFactor(incrementalFactor)
+        gestureController.scale(factor: clamped, focus: CGPoint(x: bound.midX, y: bound.midY), objectIndex: idx, composer: composer)
         version += 1
     }
 

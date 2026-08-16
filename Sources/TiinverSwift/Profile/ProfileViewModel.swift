@@ -23,8 +23,11 @@ final class ProfileViewModel: ObservableObject {
     /// audit "silent try? = symptôme identique au bug Feed déjà corrigé" à Profile, qui ne l'avait
     /// jamais reçu.
     @Published var errorMessage: String?
+    /// Diagnostic AFFICHÉ À L'ÉCRAN (pas seulement console, potentiellement inaccessible depuis
+    /// Appetize) — même motif que `FeedViewModel.diagnostics`, demande explicite de l'utilisateur.
+    @Published var diagnostics: String = ""
 
-    let userId: String
+    private(set) var userId: String
     let isCurrentUser: Bool
     private let repository = ProfileRepository.shared
     private let limit = 15
@@ -36,24 +39,55 @@ final class ProfileViewModel: ObservableObject {
         self.isCurrentUser = isCurrentUser
     }
 
+    /// Filet de sécurité défensif : si CETTE instance a été construite avec un `userId` vide (le
+    /// piège de capture figée documenté sur `loadProfile()` — `ProfileView()` construit avant que
+    /// la session ne soit peuplée), et que la session contient bien un `myId` maintenant, on se
+    /// corrige au lieu de rester bloqué indéfiniment sur `userId=""`. Sans coût si le piège ne se
+    /// produit pas (no-op dans ce cas).
+    private func healStaleUserIdIfNeeded() {
+        guard isCurrentUser, userId.isEmpty, let myId = UserSession.shared.myId, !myId.isEmpty else { return }
+        userId = myId
+    }
+
     func loadProfile() async {
-        print("SESSION: userId(param)=\(userId) myId=\(UserSession.shared.myId ?? "nil") apiKey.isEmpty=\(UserSession.shared.apiKey?.isEmpty ?? true) authenticated=\(UserSession.shared.isLoggedIn)")
+        healStaleUserIdIfNeeded()
+        // `userId` est figé à la CONSTRUCTION de cette instance (`@StateObject`, jamais réévalué
+        // ensuite) — port sensible si `ProfileView()` (init sans argument, capture
+        // `UserSession.shared.myId ?? ""` UNE SEULE FOIS) est construit avant que la session ne
+        // soit peuplée. Log explicite pour trancher : si `userId(param)` est vide ici alors que
+        // `myId` (relu maintenant) ne l'est PAS, c'est la preuve de ce piège précis.
+        let sessionLine = "SESSION: userId(param, figé à la construction)=\"\(userId)\" myId(relu maintenant)=\(UserSession.shared.myId ?? "nil") authenticated=\(UserSession.shared.isLoggedIn)"
+        print(sessionLine)
+        diagnostics = sessionLine
         guard let viewerId = UserSession.shared.myId else {
             errorMessage = "Aucune session active — reconnexion nécessaire."
-            print("PROFILE REQUEST: aborted — UserSession.shared.myId is nil")
+            let line = "PROFILE REQUEST: aborted — UserSession.shared.myId is nil"
+            print(line)
+            diagnostics += "\n" + line
             return
+        }
+        if userId.isEmpty {
+            let line = "PROFILE REQUEST: WARNING — userId(param) is EMPTY despite myId being set (\(viewerId)) — this IS the stale-capture bug, ProfileView() was constructed before session existed"
+            print(line)
+            diagnostics += "\n" + line
         }
         isLoadingProfile = true
         errorMessage = nil
         defer { isLoadingProfile = false }
-        print("PROFILE REQUEST: endpoint=getuserbyid/\(userId)/\(viewerId) userId=\(userId) viewerId=\(viewerId)")
+        let requestLine = "PROFILE REQUEST: getuserbyid/\(userId)/\(viewerId)"
+        print(requestLine)
+        diagnostics += "\n" + requestLine
         do {
             profile = try await repository.fetchProfile(userId: userId, viewerId: viewerId)
-            print("PROFILE RESPONSE: success username=\(profile?.username ?? "nil") id=\(profile?.id.map(String.init) ?? "nil")")
+            let responseLine = "PROFILE RESPONSE: success username=\(profile?.username ?? "nil") id=\(profile?.id.map(String.init) ?? "nil")"
+            print(responseLine)
+            diagnostics += "\n" + responseLine
         } catch {
             profile = nil
             errorMessage = "Impossible de charger le profil : \(error.localizedDescription)"
-            print("PROFILE RESPONSE: error=\(error)")
+            let errorLine = "PROFILE RESPONSE: error=\(error)"
+            print(errorLine)
+            diagnostics += "\n" + errorLine
         }
         isFollowing = profile?.isFollowed ?? false
         if let username = profile?.username {

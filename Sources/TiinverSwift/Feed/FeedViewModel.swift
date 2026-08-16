@@ -12,6 +12,10 @@ final class FeedViewModel: ObservableObject {
     @Published var posts: [FeedActivity] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    /// Diagnostic AFFICHÉ À L'ÉCRAN (pas seulement dans la console, potentiellement inaccessible
+    /// depuis Appetize) — demande explicite de l'utilisateur suite à plusieurs tours de rapports
+    /// "Home vide" non résolus par la seule lecture de code. Retiré une fois la cause confirmée.
+    @Published var diagnostics: String = ""
 
     private let repository = FeedRepository()
     private let profileRepository = ProfileRepository.shared
@@ -45,29 +49,42 @@ final class FeedViewModel: ObservableObject {
         // Logs de diagnostic temporaires (2026-08-16, demande explicite de l'utilisateur suite au
         // test Appetize "le Home n'affiche toujours aucun feed") — à retirer une fois la cause
         // confirmée par un run réel. Format demandé : SESSION / FEED REQUEST / FEED RESPONSE / FEED UI.
-        print("SESSION: myId=\(UserSession.shared.myId ?? "nil") token exists=\(UserSession.shared.apiKey != nil) authenticated=\(UserSession.shared.isLoggedIn)")
+        let sessionLine = "SESSION: myId=\(UserSession.shared.myId ?? "nil") token=\(UserSession.shared.apiKey != nil ? "present" : "nil") authenticated=\(UserSession.shared.isLoggedIn)"
+        print(sessionLine)
+        diagnostics = sessionLine
         guard let myIdString = UserSession.shared.myId, let userId = Int(myIdString) else {
             errorMessage = "Aucune session active — reconnexion nécessaire."
-            print("FEED REQUEST: aborted — myId nil or non-numeric (raw=\(UserSession.shared.myId ?? "nil"))")
+            let line = "FEED REQUEST: aborted — myId nil or non-numeric (raw=\(UserSession.shared.myId ?? "nil"))"
+            print(line)
+            diagnostics += "\n" + line
             return
         }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
 
-        print("FEED REQUEST: endpoint=feedtimeline/\(userId)/\(pageSize)/\(offset) userId=\(userId) limit=\(pageSize) offset=\(offset) authHeaderPresent=\(UserSession.shared.apiKey != nil)")
+        let requestLine = "FEED REQUEST: feedtimeline/\(userId)/\(pageSize)/\(offset) authHeader=\(UserSession.shared.apiKey != nil ? "present" : "nil")"
+        print(requestLine)
+        diagnostics += "\n" + requestLine
         do {
-            let page = try await repository.fetchTimeline(userId: userId, limit: pageSize, offset: offset)
-            print("FEED RESPONSE: success number of posts=\(page.count)")
+            let result = try await repository.fetchTimeline(userId: userId, limit: pageSize, offset: offset)
+            let page = result.activities
+            let responseLine = "FEED RESPONSE: server sent \(result.receivedCount) activities, \(page.count) decoded successfully" + (result.receivedCount != page.count ? " — \(result.receivedCount - page.count) DROPPED BY DECODE FAILURE" : "")
+            print(responseLine)
+            diagnostics += "\n" + responseLine
             try? await repository.cache(page)
             let hidden = hiddenPostIDs
             let visible = page.filter { !hidden.contains($0.id) }
             posts.append(contentsOf: visible)
             offset += page.count
-            print("FEED UI: received posts=\(page.count) hiddenFiltered=\(page.count - visible.count) displayed total=\(posts.count)")
+            let uiLine = "FEED UI: hiddenFiltered=\(page.count - visible.count) displayedTotal=\(posts.count)"
+            print(uiLine)
+            diagnostics += "\n" + uiLine
         } catch {
             errorMessage = error.localizedDescription
-            print("FEED RESPONSE: error=\(error)")
+            let errorLine = "FEED RESPONSE: error=\(error)"
+            print(errorLine)
+            diagnostics += "\n" + errorLine
         }
     }
 

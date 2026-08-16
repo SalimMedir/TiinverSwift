@@ -77,6 +77,7 @@ struct AnimemesEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
+            gestureDiagnosticsHUD
             canvasArea
             playbackBar
             if state.isMaskEditMode, let selectedId = state.selectedId, let obj = state.layers.first(where: { $0.id == selectedId }) {
@@ -225,6 +226,25 @@ struct AnimemesEditorView: View {
         .padding(.top, 8)
         .padding(.bottom, 8)
         .background(Color(.systemBackground))
+    }
+
+    /// HUD de diagnostic AFFICHÉ À L'ÉCRAN (pas seulement console) — demande explicite de
+    /// l'utilisateur suite au rapport "les transformations ne fonctionnent pas réellement dans
+    /// Appetize". Trace GESTURE → CONTROLLER → STATE → TRANSFORM en direct, TEMPORAIRE, à retirer
+    /// une fois la cause racine confirmée par un run réel.
+    private var gestureDiagnosticsHUD: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("selectedId=\(state.selectedId ?? "nil") · calques=\(state.layers.count) · canvasSize=\(Int(canvasSize.width))×\(Int(canvasSize.height))")
+                .font(.system(size: 9, design: .monospaced))
+            Text(state.gestureDiagnostics)
+                .font(.system(size: 9, design: .monospaced))
+                .lineLimit(2)
+        }
+        .foregroundStyle(.green)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.black)
     }
 
     private var saveButton: some View {

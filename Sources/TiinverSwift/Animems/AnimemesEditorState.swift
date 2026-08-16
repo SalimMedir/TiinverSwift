@@ -56,6 +56,11 @@ final class AnimemesEditorState: ObservableObject {
     /// son, fidèle au comportement par défaut d'Android (aucun son tant que l'utilisateur n'en
     /// choisit pas un).
     @Published var audioURL: URL?
+    /// Diagnostic AFFICHÉ À L'ÉCRAN (HUD temporaire) — demande explicite de l'utilisateur suite au
+    /// rapport "les transformations ne fonctionnent pas réellement dans Appetize" : trace la chaîne
+    /// GESTURE → CONTROLLER → STATE → TRANSFORM à chaque étape, visible sans accès console.
+    @Published var gestureDiagnostics: String = "Aucun geste reçu pour l'instant."
+    private var gestureEventCount = 0
 
     /// Port de `configureNewObject`/durée par défaut d'un nouveau calque — 3s à 30 fps
     /// (`AnimemesExporter.frameRate`), point de départ ÉDITABLE ensuite via la timeline
@@ -203,12 +208,19 @@ final class AnimemesEditorState: ObservableObject {
     /// d'affichage = ordre de dessin, le dernier dessiné est visuellement au-dessus) et l'arme pour
     /// le geste en cours.
     func selectObject(at point: CGPoint) -> String? {
+        gestureEventCount += 1
         guard let index = layers.lastIndex(where: { $0.bound?.contains(point) ?? false }) else {
             selectedId = nil
+            // Diagnostic AFFICHÉ À L'ÉCRAN — si CE message apparaît en tapant directement sur un
+            // objet visible, la cause est soit `obj.bound` jamais rempli (aucun rendu réussi
+            // avant ce tap), soit un décalage de repère de coordonnées entre le geste et le rendu.
+            let boundsDump = layers.map { "\($0.objectType?.rawValue ?? "?"):\($0.bound.map { String(describing: $0) } ?? "bound=nil")" }.joined(separator: " | ")
+            gestureDiagnostics = "TAP #\(gestureEventCount) at \(point) → AUCUNE sélection. \(layers.count) calque(s) : \(boundsDump.isEmpty ? "aucun" : boundsDump)"
             return nil
         }
         selectedId = layers[index].id
         gestureController.touchDown(at: point, objectIndex: index, composer: composer)
+        gestureDiagnostics = "TAP #\(gestureEventCount) at \(point) → SÉLECTIONNÉ calque #\(index) (\(layers[index].objectType?.rawValue ?? "?"), id=\(selectedId ?? "?"))"
         return selectedId
     }
 
@@ -220,15 +232,23 @@ final class AnimemesEditorState: ObservableObject {
     /// directement, une simplification qui aurait mal composé avec la rotation/l'échelle ajoutées
     /// ici : Android ne touche JAMAIS `offsetX`/`offsetY` par geste, tout passe par la matrice).
     func dragMoved(to point: CGPoint) {
-        guard let id = selectedId, let idx = index(of: id) else { return }
+        guard let id = selectedId, let idx = index(of: id) else {
+            gestureDiagnostics = "DRAG at \(point) → IGNORÉ, aucun calque sélectionné (selectedId=\(selectedId ?? "nil"))"
+            return
+        }
         gestureController.touchMoveTranslate(to: point, objectIndex: idx, composer: composer)
         version += 1
+        let values = layers[idx].transforms.last?.matrixValues ?? []
+        let tx = values.count > 2 ? values[2] : -1
+        let ty = values.count > 5 ? values[5] : -1
+        gestureDiagnostics = "DRAG at \(point) → calque #\(idx) déplacé, matrice tx=\(tx) ty=\(ty)"
     }
 
     func dragEnded() {
         guard let id = selectedId, let idx = index(of: id) else { return }
         gestureController.touchUp(objectIndex: idx, composer: composer, engine: engine)
         if autoCaptureEnabled { recordKeyframe() }
+        gestureDiagnostics += " | DRAG END sur calque #\(idx)"
     }
 
     /// Port de `touchPointerDown` — amorce un geste rotation/pincement, pivot = centre du calque
@@ -257,6 +277,7 @@ final class AnimemesEditorState: ObservableObject {
         guard let id = selectedId, let idx = index(of: id) else { return }
         gestureController.rotate(to: newDegrees, objectIndex: idx, composer: composer)
         version += 1
+        gestureDiagnostics = "ROTATE calque #\(idx) → \(String(format: "%.1f", newDegrees))°"
     }
 
     /// Port de `scale`/`ScaleListener.onScale` — `incrementalFactor` est le ratio ENTRE deux
@@ -264,10 +285,16 @@ final class AnimemesEditorState: ObservableObject {
     /// voir `AnimemesEditorView` — `AnimemesGestureController.scale` attend un facteur PAR
     /// ÉVÉNEMENT, pas cumulatif, voir sa documentation).
     func scaleChanged(incrementalFactor: CGFloat) {
-        guard let id = selectedId, let idx = index(of: id), let bound = layers[idx].bound else { return }
+        guard let id = selectedId, let idx = index(of: id), let bound = layers[idx].bound else {
+            gestureDiagnostics = "SCALE ignoré — selectedId=\(selectedId ?? "nil"), bound présent=\(selectedId.flatMap { index(of: $0) }.flatMap { layers[$0].bound } != nil)"
+            return
+        }
         let clamped = AnimemesGestureController.clampPerEventScaleFactor(incrementalFactor)
         gestureController.scale(factor: clamped, focus: CGPoint(x: bound.midX, y: bound.midY), objectIndex: idx, composer: composer)
         version += 1
+        let values = layers[idx].transforms.last?.matrixValues ?? []
+        let scaleX = values.count > 0 ? values[0] : -1
+        gestureDiagnostics = "SCALE calque #\(idx) → facteur=\(String(format: "%.3f", clamped)) scaleX résultant=\(String(format: "%.3f", scaleX))"
     }
 
     // MARK: - Masques (port de `MaskAddPanel`/`MaskPreviewEditorPanel`, `AnimemesCompound.java:

@@ -113,8 +113,38 @@ struct ProfileView: View {
                 Text(errorMessage).multilineTextAlignment(.center).foregroundStyle(.secondary)
                 Button("Réessayer") { Task { await viewModel.loadProfile() } }
                     .buttonStyle(.borderedProminent)
+                diagnosticsPanel
             }
             .padding()
+        } else {
+            // Cas auparavant NON couvert (profil nil, pas de chargement, pas d'erreur) — écran
+            // blanc silencieux possible avant le premier `.task`, ou si `loadProfile()` retourne
+            // sans jamais toucher `errorMessage`/`profile`. Rendu visible plutôt que supposé
+            // impossible.
+            VStack(spacing: 12) {
+                Text("En attente du chargement…").foregroundStyle(.secondary)
+                diagnosticsPanel
+            }
+            .padding()
+        }
+    }
+
+    /// Panneau de diagnostic AFFICHÉ À L'ÉCRAN (pas seulement console) — voir
+    /// `ProfileViewModel.diagnostics`, même motif que `FeedView`.
+    @ViewBuilder
+    private var diagnosticsPanel: some View {
+        if !viewModel.diagnostics.isEmpty {
+            ScrollView {
+                Text(viewModel.diagnostics)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+            .frame(maxHeight: 160)
+            .padding(8)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 

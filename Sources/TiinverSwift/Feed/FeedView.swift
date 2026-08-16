@@ -222,6 +222,24 @@ struct FeedView: View {
                 Image(systemName: "film").font(.system(size: 40)).foregroundStyle(.secondary)
                 Text("Aucune vidéo à afficher pour le moment").foregroundStyle(.secondary)
             }
+            // Panneau de diagnostic AFFICHÉ À L'ÉCRAN (pas seulement console, potentiellement
+            // inaccessible depuis Appetize) — demande explicite de l'utilisateur suite à plusieurs
+            // tours de rapports "Home vide" non résolus par la seule lecture de code. TEMPORAIRE,
+            // à retirer une fois la cause racine confirmée par un run réel.
+            if !viewModel.diagnostics.isEmpty {
+                ScrollView {
+                    Text(viewModel.diagnostics)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+                .frame(maxHeight: 160)
+                .padding(8)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+                .padding(.horizontal)
+            }
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)

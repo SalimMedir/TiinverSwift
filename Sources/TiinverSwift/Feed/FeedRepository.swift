@@ -17,7 +17,15 @@ final class FeedRepository {
     /// diffère de ce qu'attend `FeedActivity`), produisant un tableau final PLUS PETIT que le
     /// nombre d'éléments réellement reçus, SANS aucune erreur visible — symptôme indiscernable côté
     /// UI d'un flux réellement vide. Rendu visible ici plutôt que supposé correct.
-    func fetchTimeline(userId: Int, limit: Int, offset: Int) async throws -> [FeedActivity] {
+    struct TimelineResult {
+        var activities: [FeedActivity]
+        /// Nombre RÉEL d'éléments reçus dans le tableau "activities" AVANT tout filtrage de
+        /// décodage — permet à l'appelant (`FeedViewModel`) d'afficher à l'écran la distinction
+        /// "reçu N, affiché M" plutôt que de ne connaître que M (voir note ci-dessous).
+        var receivedCount: Int
+    }
+
+    func fetchTimeline(userId: Int, limit: Int, offset: Int) async throws -> TimelineResult {
         let json = try await APIClient.shared.get("feedtimeline/\(userId)/\(limit)/\(offset)")
         let array = try json.jsonArray("activities")
         let decoded = array.compactMap { item -> FeedActivity? in
@@ -35,7 +43,7 @@ final class FeedRepository {
         if decoded.count != array.count {
             print("FEED RESPONSE: received=\(array.count) activities, only \(decoded.count) decoded successfully — \(array.count - decoded.count) silently dropped, see decode failures above")
         }
-        return decoded
+        return TimelineResult(activities: decoded, receivedCount: array.count)
     }
 
     /// Port de `ShareActivity.getPost`/`connectToServeur` (`getactivity/{token}`, clé de réponse

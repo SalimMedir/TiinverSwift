@@ -69,64 +69,66 @@ struct ProfileView: View {
         }
     }
 
+    /// **Correction UX (2026-08-16, retour explicite de l'utilisateur)** : cet écran affichait
+    /// AUPARAVANT soit le profil complet (données présentes), soit UNIQUEMENT un message d'erreur
+    /// (données absentes) — les deux étaient mutuellement exclusifs (`if let profile = ... else
+    /// if error ... else ...`), ce qui masquait TOUT le chrome de l'écran (avatar, abonnés,
+    /// boutons "MODIFIER LE PROFIL"/portefeuille/monétisation) dès qu'une erreur survenait, y
+    /// compris une simple absence de session. Android affiche TOUJOURS la structure complète de
+    /// l'écran avec des valeurs vides/placeholder tant que les données n'ont pas encore chargé —
+    /// reproduit ici : le chrome se construit désormais à partir de `viewModel.profile`
+    /// (`Optional`) directement, avec des replis explicites (`?? "0"`, avatar en cercle vide),
+    /// PLUTÔT que de conditionner l'affichage ENTIER de l'écran sur sa présence. L'erreur/le
+    /// diagnostic s'affichent maintenant comme un bandeau EN PLUS de ce chrome, jamais à sa place.
     @ViewBuilder
     private var header: some View {
-        if let profile = viewModel.profile {
-            VStack(spacing: 8) {
-                avatar(profile)
+        VStack(spacing: 8) {
+            avatar(viewModel.profile)
 
-                HStack(spacing: 4) {
-                    Text(profile.firstname ?? "").font(.headline)
-                    Text(profile.displayLastname).font(.headline)
-                    if profile.certified == "1" { Image(systemName: "checkmark.seal.fill").foregroundStyle(.blue) }
-                }
-                if let warning = profile.warning, !warning.isEmpty {
-                    Text(warning).font(.caption).foregroundStyle(.orange) // R.id.warning
-                }
-
-                HStack(spacing: 32) {
-                    NavigationLink { FollowListView(userId: viewModel.userId, type: .followers) } label: { // R.id.follower
-                        stat(profile.followers ?? "0", "Abonnés")
-                    }
-                    NavigationLink { FollowListView(userId: viewModel.userId, type: .following) } label: { // R.id.following
-                        stat(profile.following ?? "0", "Abonnements")
-                    }
-                }
-                .buttonStyle(.plain)
-
-                if let bio = profile.biography, !bio.isEmpty { Text(bio).font(.subheadline).multilineTextAlignment(.center) }
-                if let link = profile.link, !link.isEmpty {
-                    Link(link, destination: URL(string: link.hasPrefix("http") ? link : "https://\(link)") ?? URL(string: "https://tiinver.com")!)
-                        .font(.caption)
-                }
-
-                actionRow
+            HStack(spacing: 4) {
+                Text(viewModel.profile?.firstname ?? "").font(.headline)
+                Text(viewModel.profile?.displayLastname ?? " ").font(.headline)
+                if viewModel.profile?.certified == "1" { Image(systemName: "checkmark.seal.fill").foregroundStyle(.blue) }
             }
-            .padding()
-        } else if viewModel.isLoadingProfile {
-            ProgressView().padding()
-        } else if let errorMessage = viewModel.errorMessage {
-            // Port du même correctif que `FeedView.emptyOrStatusState` — rend visible ce qui
-            // était auparavant un écran blanc indiscernable d'un profil vide (voir
-            // `ProfileViewModel.errorMessage`).
-            VStack(spacing: 12) {
-                Text(errorMessage).multilineTextAlignment(.center).foregroundStyle(.secondary)
-                Button("Réessayer") { Task { await viewModel.loadProfile() } }
-                    .buttonStyle(.borderedProminent)
-                diagnosticsPanel
+            if let warning = viewModel.profile?.warning, !warning.isEmpty {
+                Text(warning).font(.caption).foregroundStyle(.orange) // R.id.warning
             }
-            .padding()
-        } else {
-            // Cas auparavant NON couvert (profil nil, pas de chargement, pas d'erreur) — écran
-            // blanc silencieux possible avant le premier `.task`, ou si `loadProfile()` retourne
-            // sans jamais toucher `errorMessage`/`profile`. Rendu visible plutôt que supposé
-            // impossible.
-            VStack(spacing: 12) {
-                Text("En attente du chargement…").foregroundStyle(.secondary)
-                diagnosticsPanel
+
+            HStack(spacing: 32) {
+                NavigationLink { FollowListView(userId: viewModel.userId, type: .followers) } label: { // R.id.follower
+                    stat(viewModel.profile?.followers ?? "0", "Abonnés")
+                }
+                NavigationLink { FollowListView(userId: viewModel.userId, type: .following) } label: { // R.id.following
+                    stat(viewModel.profile?.following ?? "0", "Abonnements")
+                }
             }
-            .padding()
+            .buttonStyle(.plain)
+
+            if let bio = viewModel.profile?.biography, !bio.isEmpty { Text(bio).font(.subheadline).multilineTextAlignment(.center) }
+            if let link = viewModel.profile?.link, !link.isEmpty {
+                Link(link, destination: URL(string: link.hasPrefix("http") ? link : "https://\(link)") ?? URL(string: "https://tiinver.com")!)
+                    .font(.caption)
+            }
+
+            actionRow
+
+            if viewModel.isLoadingProfile {
+                ProgressView().padding(.top, 4)
+            } else if let errorMessage = viewModel.errorMessage {
+                // Port du même correctif que `FeedView.emptyOrStatusState` — rend visible ce qui
+                // était auparavant un écran blanc indiscernable d'un profil vide (voir
+                // `ProfileViewModel.errorMessage`). Bandeau EN PLUS du chrome ci-dessus, plus à sa
+                // place — voir note de tête de `header`.
+                VStack(spacing: 12) {
+                    Text(errorMessage).multilineTextAlignment(.center).foregroundStyle(.secondary)
+                    Button("Réessayer") { Task { await viewModel.loadProfile() } }
+                        .buttonStyle(.borderedProminent)
+                    diagnosticsPanel
+                }
+                .padding(.top, 4)
+            }
         }
+        .padding()
     }
 
     /// Panneau de diagnostic AFFICHÉ À L'ÉCRAN (pas seulement console) — voir
@@ -210,13 +212,21 @@ struct ProfileView: View {
     /// d'autrui, `UserProfile.java`, n'a pas ce bouton) — `PhotosPicker` enveloppe l'avatar
     /// directement plutôt qu'un bouton "crayon" séparé superposé, comportement équivalent
     /// (un seul point de tap pour changer la photo) avec moins de vues.
+    /// `profile: User?` (2026-08-16) — voir note de tête de `header` : l'avatar doit rester visible
+    /// (cercle placeholder gris + icône silhouette, comme Android affiche un avatar générique tant
+    /// que l'image réelle n'a pas chargé) même quand `viewModel.profile` est encore `nil`.
     @ViewBuilder
-    private func avatar(_ profile: User) -> some View {
-        let image = AsyncImage(url: URL(string: profile.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+    private func avatar(_ profile: User?) -> some View {
+        let image = AsyncImage(url: URL(string: profile?.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
             if viewModel.isUploadingPhoto {
                 ProgressView()
             } else {
                 Color(.secondarySystemBackground)
+                    .overlay {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.secondary)
+                    }
             }
         }
         .frame(width: 84, height: 84).clipShape(Circle())

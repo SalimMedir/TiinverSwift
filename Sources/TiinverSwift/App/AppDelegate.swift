@@ -63,6 +63,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         return true
     }
 
+    /// Port de la conformité App Tracking Transparency (GAP-018, audit du 2026-08-16) — voir
+    /// `AdMobManager.requestTrackingAuthorizationIfNeeded()` pour le détail complet. Déclenché ici
+    /// (PAS `didFinishLaunching`) car la fenêtre principale n'est garantie "key" qu'à ce stade,
+    /// condition requise pour que le prompt système ATT s'affiche de façon fiable.
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        Task { @MainActor in requestTrackingAuthorizationIfNeeded() }
+    }
+
     /// Port de `MainActivity`/`SplashActivity` gérant le retour du flux Google (Credential
     /// Manager côté Android n'a pas de callback URL équivalent, mais `GoogleSignIn-iOS` en a un
     /// standard) — requis par `GIDSignIn` pour compléter le flux OAuth.

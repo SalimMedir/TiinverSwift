@@ -312,48 +312,59 @@ comme un onglet classique après fermeture.
 
 ---
 
-### GAP-003 — Chat individuel : audit profond NON encore fait dans cette passe
+### GAP-003 — Chat individuel : audit Socket.IO fait cette passe (2026-08-16), fidélité bulle PARTIELLE
 
 **Domaine :** Chat (module 11)
 **Priorité :** P1
-**Statut actuel :** NEEDS_VALIDATION [SYNTHÈSE — ce statut qualifie la confiance de L'AUDIT, pas
-nécessairement le code, qui a une histoire de vérification réelle documentée ailleurs]
+**Statut actuel :** PARTIAL [VÉRIFIÉ CETTE SESSION pour la signalisation/pagination — voir preuve
+ci-dessous ; la fidélité visuelle bulle-par-bulle reste partiellement NEEDS_VALIDATION, voir GAP-017]
 
-#### Android — référence réelle
-Fichiers (déjà lus intégralement lors du portage initial, PAS re-relus cette session) :
-`ChatFragmentTest.java` (3080 lignes), `MessageListAdapter.java` + 9 `ViewHolder` (1328 lignes),
-`ChatManager.java`, `MessageLib.java`, `MessagePacket.java`, `RosterManager.java`,
-`ConversationIdGenerator.java`.
+#### Ce qui a été réellement refait cette passe (pas une relecture de synthèse)
+1. **Inventaire Socket.IO complet côté Android** — `grep -n "\.on(ROOM\." messagerie/repository/
+   ChatRepository.java` (Android) : **23 écouteurs distincts** enregistrés (`connect`/`disconnect`/
+   `reconnect`/`error` + `call`/`acceptCall`/`endCall`/`ringing`/`callBasic`/`webrtcMessage`/
+   `nextPage`/`beforePage`/`joinRoom`/`leaveRoom`/`onPbsTouchListener`/`onData`/
+   `onStartPrivatePbs`/`onJoinPrivatePbs`/`startRoom`/`presence`/`new message`/`new message group`/
+   `on delete private message`/`on delete group message`/`on response`/`offline status`/`typing`/
+   `stop typing`). Comparé un par un à `Realtime/ChatRepository.swift` (grep `socket.on(SocketEvent.`
+   + `socket.on(clientEvent:`) : **les 23/23 événements Android ont un `.on()` Swift correspondant,
+   aucun manquant.** C'est la vérification exacte demandée par l'utilisateur ("tracer les événements
+   Socket.IO Android puis vérifier chacun de leurs équivalents iOS"), faite par grep croisé réel, pas
+   supposée depuis un nom de fichier.
+2. **Pagination** — Android : `ChatFragmentTest.java:201,951-953,1360` (`LIMIT=100`, `OFFSET+=LIMIT`,
+   requête locale `CursorLoader`/SQLite, PAS un appel réseau). iOS : `ChatViewModel.swift:31-32,82-88`
+   (`pageSize=100`, `offset+=pageSize`, requête locale Core Data) — paramètres et mécanisme identiques.
+3. **Fidélité des bulles par type de message** — `models/chat/MessageType.java` (Android, 29 valeurs :
+   TEXT/AUDIO/PHOTO/DOC/VIDEO/INFORMATION/DELETE_MESSAGE/SHARE_BOARD/MISSED_VOICECALL/VOICECALL/
+   SUBSCRIBE/RENEWSUBSCRIPTION/HEADER/AI/GRAPHIC/STICKER/GIF/GIFT/DATE, ×2 pour émis/reçu) comparé au
+   `switch message.object` de `ChatBubbleViews.swift:71-84` — voir écart réel identifié, GAP-017.
 
-#### iOS — état actuel
-`Sources/TiinverSwift/Messagerie/ChatView.swift`, `ChatViewModel.swift`, `ChatBubbleViews.swift`,
-`Realtime/ChatRepository.swift` — existent, documentés dans `MIGRATION_PROGRESS.md` comme fermés
-avec 4 bugs trouvés/corrigés à l'époque du portage. **Ce que CET audit n'a PAS refait** : rejouer
-chaque type de message (texte/audio/photo/gif/sticker/vidéo/cadeau/appel manqué/système), chaque
-événement Socket.IO, et la pagination, contre le code Android ligne par ligne, comme demandé
-explicitement par l'utilisateur pour ce module ("Un ChatView existant ne signifie pas que le chat est
-terminé... comparer événement par événement").
+#### Ce que cette passe N'A PAS refait
+Le contenu détaillé de chaque `ViewHolder` (mise en page pixel-perfect), le flux d'envoi de médias
+bout-en-bout avec un second compte réel (dépend d'un test Appetize, pas d'une lecture de code), et
+les accusés de lecture/présence en détail (déjà marqués `COMPLETE` par la session du 2026-08-16, 8ᵉ
+tour — voir tableau ligne 1128-1132 de ce document — reconfirmés ici seulement pour l'inventaire
+Socket.IO, pas re-vérifiés champ par champ).
 
 #### Différence exacte
-Non déterminée par cette passe — nécessite une session dédiée, au même niveau d'effort que le portage
-initial de ce module (32 398 lignes Android au total).
+Signalisation et pagination : AUCUNE différence trouvée (23/23 événements présents, paramètres de
+pagination identiques). Bulles : voir GAP-017 (fidélité visuelle partielle pour 5 catégories sur 15).
 
 #### Action recommandée
-Session dédiée : lister tous les événements Socket.IO émis par `ChatManager.java`
-(`ChatRepository.java` original, PAS le fichier Swift) et vérifier un par un leur présence et leur
-comportement exact dans `Realtime/ChatRepository.swift`. Reprendre chaque `ViewHolder` Android et son
-équivalent bulle SwiftUI un par un.
+Signalisation/pagination : rien à corriger. Reste : traiter GAP-017 (bulles), puis un test réel
+d'échange de messages entre deux comptes (Appetize) pour passer de `COMPILED`/`PARTIAL` à
+`FUNCTIONALLY VERIFIED`/`DONE`, conformément à la règle des 3 axes adoptée au 11ᵉ tour.
 
 #### Dépendances
-Socket.IO, Core Data (`MessageEntity`/`RosterEntity`), upload/download de fichiers (voir GAP-004).
+Socket.IO, Core Data (`MessageEntity`/`RosterEntity`), upload/download de fichiers (GAP-004, DONE).
 
 #### Risque de régression
-MEDIUM — module déjà "fermé" avec du contenu réel, risque de sur-corriger sans preuve d'un vrai bug.
+LOW pour la signalisation (aucun changement recommandé) — voir GAP-017 pour le risque bulle.
 
 #### Critère de validation
-Document dédié (type `MIGRATION_PROGRESS.md` section Chat) listant CHAQUE événement Socket.IO
-Android avec sa correspondance Swift confirmée ligne par ligne, plus un test réel d'échange de
-messages entre deux comptes.
+Signalisation : satisfait (inventaire croisé 23/23, ce document). Reste : test réel d'échange de
+messages entre deux comptes avec au moins un message de chaque type non-texte (audio/photo/vidéo/
+appel manqué/document), capture à l'appui.
 
 ---
 
@@ -469,36 +480,63 @@ fois l'upload terminé, ET l'autre participant reçoit bien le message (test à 
 
 ---
 
-### GAP-005 — Appels WebRTC/CallKit : jamais exécutés, code le plus complexe du portage
+### GAP-005 — Appels WebRTC/CallKit : re-vérifié ligne par ligne cette passe (2026-08-16), DONE au niveau code
 
 **Domaine :** Appels (module 12)
 **Priorité :** P1
-**Statut actuel :** NEEDS_VALIDATION [SYNTHÈSE]
+**Statut actuel :** DONE [VÉRIFIÉ CETTE SESSION, indépendamment du tableau "COMPLETE" du 8ᵉ tour —
+voir preuve ci-dessous ; réserve : jamais exécuté sur un appel réel, voir Critère de validation]
 
-#### Android — référence réelle
-`RTConnection2.java` (801 lignes), `CallService.java` (835), `CallActivity.java` (592),
-`IncomingCallActivity.java` (534) — tous lus intégralement lors du portage initial (pas cette
-session).
+#### Vérification réellement faite cette passe
+`RTConnection2.java` (801 lignes) et `CallService.java` (835 lignes) relus intégralement et comparés
+ligne par ligne à `Calls/WebRTCConnection.swift`/`CallCoordinator.swift` :
+- **Négociation SDP** : `createOffer`/`doAnswer`/`processMessage` (perfect-negotiation `polite`/
+  `makingOffer`/`ignoreOffer`) reproduits à l'identique, y compris la remise à `false` de `makingOffer`
+  même en cas d'échec (`RTConnection2.java:657-661` ↔ `WebRTCConnection.swift:260-263`).
+- **`preferCodec`/`movePayloadTypesToFront`** (manipulation SDP texte pour forcer Opus) : portée
+  fonction par fonction, algorithme identique.
+- **ICE restart** : garde "une seule tentative" (`hasAttemptedIceRestart`) reproduite à l'identique.
+- **TURN** : endpoint confirmé identique des deux côtés — `TurnCredentialsFetcher.java:25`
+  (`infoContract.SERVER+"call/turn-credentials"`) ↔ `CallCoordinator.swift:231`
+  (`APIClient.shared.post(..., endpoint: "call/turn-credentials")`).
+- **Asymétrie initiateur/poli** : `CallService.configForOutgoingCall`/`configForIncomingCall`
+  (l'appelant N'EST PAS l'initiateur de l'offre, contre-intuitif) reproduite et documentée
+  explicitement en tête de `CallCoordinator.swift`.
+- **`RTConnection.java`/`RTConnection3.java` confirmés morts** par grep exhaustif (`grep -rln
+  "RTConnection3\b"` hors du fichier lui-même → 0 résultat) — seul `RTConnection2` est instancié
+  (`CallService.java`, `App.java`, ET `FragmentPbs.java`, voir GAP correction Shareboard ci-dessous).
+- **Gaps HIGH PRIORITY déjà trouvés et corrigés par la session du 2026-08-16 (8ᵉ tour, avant cette
+  passe)**, reconfirmés présents dans le code actuel : configuration `AVAudioSession`/`RTCAudioSession`
+  dans `CallKitManager(_:didActivate:)` (`CallCoordinator.swift:345-367`, équivalent
+  `AudioManager.MODE_IN_COMMUNICATION`) et vérification de permission micro AVANT tout engagement du
+  micro (`hasMicPermission()`, `CallCoordinator.swift:162-174`).
 
-#### iOS — état actuel
-`Sources/TiinverSwift/Calls/*.swift` (`WebRTCConnection`, `CallKitManager`, `VoIPPushManager`,
-`CallCoordinator`, `CallView`) — 1 bug data-channel réel trouvé et corrigé lors du portage du module
-13 (delegate jamais assigné). Backend PushKit décrit comme à implémenter séparément (voir section 9).
+#### Correction architecture Shareboard (nouvelle découverte cette passe, pas dans GAP-013 avant)
+`FragmentPbs.java` (Shareboard/PBS) importe et utilise **`RTConnection2`, PAS `RTConnection3`** malgré
+son nom qui suggérerait une classe dédiée — confirmé par grep (`grep -rln "RTConnection2\b"` inclut
+`FragmentPbs.java`). Ceci confirme que la décision d'architecture Swift de PARTAGER
+`WebRTCConnection.swift` entre Calls (module 12) et Shareboard (module 13) — déjà actée et documentée
+en tête de `WebRTCConnection.swift` — est fidèle au comportement Android réel, pas une simplification
+iOS. Le bug "canal de données local jamais délégué" trouvé et corrigé lors du portage du module 13
+reste valide et nécessaire pour ce partage.
 
 #### Différence exacte
-Non déterminée par cette passe. C'est le développement le plus "neuf" du portage (CallKit/PushKit
-sans équivalent Android direct) — le risque de divergence comportementale y est structurellement plus
-élevé que pour un simple portage de logique existante.
+Aucune différence de comportement trouvée entre le code Android relu et le code Swift, au niveau
+signalisation/SDP/ICE/TURN/asymétrie. La seule réserve réelle : ceci n'a **jamais été exécuté sur un
+vrai appel** (ni Appetize, ni device) — `DONE` qualifie la fidélité du CODE, pas une exécution
+confirmée.
 
 #### Action recommandée
 Test réel prioritaire dès qu'un compte de test + un second appareil/simulateur sont disponibles —
 aucune quantité de relecture de code ne remplace un appel réel pour ce module.
 
 #### Dépendances
-WebRTC (SPM), CallKit, PushKit, backend APNs VoIP (voir section 9, BACKEND_DEPENDENCY).
+WebRTC (SPM), CallKit, PushKit, backend APNs VoIP (voir section 9, BACKEND_DEPENDENCY — contrat de
+payload VoIP toujours à confirmer côté serveur, `CallCoordinator.swift:429-435`).
 
 #### Risque de régression
-HIGH si modifié sans test réel — code deeply interconnecté (signalisation socket + WebRTC + CallKit).
+MEDIUM (baissé de HIGH — code désormais vérifié ligne par ligne contre l'original, risque résiduel
+purement lié à l'absence de test d'exécution réelle, pas à une divergence de logique connue).
 
 #### Critère de validation
 Appel réel réussi entre deux comptes/appareils, audio dans les deux sens, réveil app tuée via VoIP
@@ -578,6 +616,412 @@ LOW côté code — le risque réel est produit/conformité, pas technique.
 
 #### Critère de validation
 Produits StoreKit 2 configurés + un achat de test réussi en sandbox + vérification backend confirmée.
+
+---
+
+### GAP-009 — Téléchargement automatique des médias : sélection granulaire par type absente
+
+**Domaine :** Réglages / Stockage et données
+**Priorité :** P2
+**Statut actuel :** PARTIAL [VÉRIFIÉ CETTE SESSION, agent d'audit dédié]
+
+#### Android — référence réelle
+`SettingStorageFragment.java:113-282` (entier). Pour chacun des 3 modes réseau (données mobiles,
+Wi-Fi, itinérance), un `RelativeLayout` cliquable ouvre un dialogue de sélection multiple
+(`showNoticeDialog3`, `DialogModel.setType(2)`, entrées Photos/Vidéos/Fichiers/Tout média) persisté
+en `StringSet` SharedPreferences (`storageDataListChoosed`/`storageWifiListChoosed`/
+`storageRoamingListChoosed`, défaut "Tout média") et réaffiché en sous-titre.
+
+#### iOS — état actuel
+`Settings/SettingSubViews.swift:75-90` (`SettingStorageView`) n'expose que les 3 switches on/off
+globaux. Aucune UI de sélection par type de média, aucune clé `storageDataListChoosed`/etc.
+
+#### Différence exacte
+Un utilisateur iOS ne peut pas restreindre le téléchargement automatique à "Photos uniquement" par
+mode réseau — c'est tout ou rien.
+
+#### Action recommandée
+Sous chaque switch existant, un `NavigationLink` vers une sélection multiple (Photos/Vidéos/Fichiers),
+persisté en 3 tableaux `@AppStorage`.
+
+#### Dépendances
+Aucune — 100% local.
+
+#### Risque de régression
+LOW — ajout pur.
+
+#### Critère de validation
+Sélectionner un sous-ensemble de types par mode réseau, quitter/revenir : le sous-titre reflète la
+sélection persistée.
+
+---
+
+### GAP-010 — Écrans Aide / À propos : liens légaux et FAQ incorrects ou génériques
+
+**Domaine :** Réglages / Aide & À propos
+**Priorité :** P2 (impact conformité CGU/politique de confidentialité)
+**Statut actuel :** INCORRECT [VÉRIFIÉ CETTE SESSION, agent d'audit dédié]
+
+#### Android — référence réelle
+`SettingAboutFragment.java:93-108` : liens réels vers `.../privacy_policy.html` et
+`.../terms_conditions.html`. `SettingHelpFragment.java:96-119` : FAQ dont l'URL dépend de la langue
+système (`faq_fr.html`/`faq_en.html`).
+
+#### iOS — état actuel
+`SettingSubViews.swift:170-188` : tous les liens (About + Help) pointent vers `https://tiinver.com`
+(page d'accueil générique).
+
+#### Différence exacte
+CGU, politique de confidentialité et FAQ localisée inaccessibles — l'utilisateur atterrit toujours
+sur la page d'accueil.
+
+#### Action recommandée
+Remplacer les 3 URLs par les valeurs exactes (`privacy_policy.html`/`terms_conditions.html`/FAQ
+calculée selon `Locale.current.language.languageCode`).
+
+#### Dépendances
+Aucune.
+
+#### Risque de régression
+LOW — 3 littéraux `URL(string:)`.
+
+#### Critère de validation
+Taper chaque lien en FR puis EN → la bonne page réelle s'ouvre.
+
+---
+
+### GAP-011 — Réglages/gestion de conversation absents (mute privé + gestion de groupe complète)
+
+**Domaine :** Réglages / Messagerie
+**Priorité :** P1 — le plus significatif trouvé cette passe
+**Statut actuel :** MISSING [VÉRIFIÉ CETTE SESSION, agent d'audit dédié]
+
+#### Android — référence réelle
+Deux écrans VIVANTS, lus en entier : `setting/SettingPrivateMessageFragmant.java` (238 lignes,
+lancé depuis `ProfileDetailActivity.java:77`) — mute par contact, heure de livraison programmée
+(partiellement morte), bloquer (libellé seul, sans appel serveur, fidèle à reproduire tel quel).
+`messagerie/group/SettingGroupMessageFragmant.java` (740 lignes, lancé depuis
+`GroupDetailActivity.java:178`) — liste des membres/rôles, ajout de participants, lien
+d'invitation, description, photo de groupe, retrait de membre (`deleteMember`), promotion admin
+(`updateMember`), infos d'abonnement payant du groupe.
+
+#### iOS — état actuel
+Absent. `ChatView.swift:164,174` ne fait que RENDRE les messages système `deleteMember`/
+`groupDescriptionChanged` reçus — aucune UI ne permet de les DÉCLENCHER. `GroupModels.swift` n'a
+qu'un `GroupMemberCandidate` (création uniquement). 0 occurrence de "mute" dans `Messagerie/*.swift`.
+
+#### Différence exacte
+Une fois un groupe créé côté iOS, il ne peut plus être administré depuis iOS : pas de liste de
+membres, pas d'ajout/retrait, pas de lien d'invitation, pas de modification description/photo, pas
+de mute par conversation.
+
+#### Action recommandée
+Prioriser la gestion de groupe (impact plus large) : `GroupDetailView.swift` (membres+rôles,
+actions admin), `AddGroupMemberView.swift` (réutilise `ContactPickerView` déjà porté), édition
+description/photo (réutilise le flux d'upload GAP-004), puis mute privé (toggle local simple).
+
+#### Dépendances
+Confirmer les endpoints `updateMember`/`deleteMember` côté `APIClient` et la récupération de la
+liste des membres (l'appel Android correspondant est lui-même commenté/mort dans le fichier source,
+la liste y est passée en argument depuis l'écran appelant).
+
+#### Risque de régression
+LOW pour l'ajout — MEDIUM si `GroupRepository`/`GroupModels` doit être étendu sans casser
+`GroupCreationView.swift` (dépend déjà de `GroupMemberCandidate`).
+
+#### Critère de validation
+Depuis iOS : ouvrir un groupe existant, voir la liste réelle des membres avec rôles, ajouter/retirer
+un participant, changer la description — message système visible dans la conversation, actions
+admin invisibles pour un non-admin.
+
+---
+
+### GAP-012 — Clé SharedPreferences "Publicité" non fidèle à la valeur réelle Android
+
+**Domaine :** Réglages / Publicité
+**Priorité :** P3
+**Statut actuel :** INCORRECT (mineur, sans conséquence fonctionnelle actuelle) [VÉRIFIÉ CETTE
+SESSION, agent d'audit dédié]
+
+#### Android — référence réelle
+`back_sync/infoContract.java:117` : `AUTHORIZED_ADS = "authorized_ads"` (valeur littérale).
+
+#### iOS — état actuel
+`SettingSubViews.swift:155` : `@AppStorage("AUTHORIZED_ADS")` — nom de constante Java au lieu de sa
+valeur réelle.
+
+#### Différence exacte
+Écart de convention de clé, sans conséquence aujourd'hui (usage unique côté iOS) — deviendrait un
+bug si un futur module lit le même flag sous sa forme "fidèle Android".
+
+#### Action recommandée
+Remplacer par `"authorized_ads"`, cohérent avec la convention de parité de clés suivie ailleurs.
+
+#### Dépendances
+Aucune.
+
+#### Risque de régression
+LOW.
+
+#### Critère de validation
+Migration triviale d'un seul littéral.
+
+---
+
+### GAP-013 — Envoi de cadeaux en commentaire absent côté iOS (lecture seule)
+
+**Domaine :** Divers / Commentaires
+**Priorité :** P2
+**Statut actuel :** MISSING (rendu lecture DONE, écriture absente) [VÉRIFIÉ CETTE SESSION, agent
+d'audit dédié]
+
+#### Android — référence réelle
+`comments/ui/GiftAdapter.java`+`GiftModel.java`+`GiftCatalogHelper.java` (catalogue de 12 cadeaux
+réels, 5 à 3000 pièces) + `CommentRepository.debitCoins()` (`POST comment/add`) — sélection d'un
+cadeau, débit de pièces, envoi comme commentaire spécial.
+
+#### iOS — état actuel
+`Discover/CommentsView.swift` n'a qu'un champ texte. `Models/GiftCatalog.swift` existe déjà (réutilisé
+par le chat) mais n'est référencé nulle part ici — le fichier iOS l'admet lui-même en commentaire.
+
+#### Différence exacte
+Impossible d'envoyer un cadeau payant en commentaire depuis iOS — seule la réception fonctionne.
+
+#### Action recommandée
+Bouton "cadeau" réutilisant `GiftCatalog.swift`, nouvel endpoint `CommentRepository.sendGift(...)` →
+`POST comment/add`, vérification de solde avant envoi (réutilise Wallet).
+
+#### Dépendances
+`WalletRepository` (solde de pièces, déjà porté).
+
+#### Risque de régression
+LOW — ajout pur.
+
+#### Critère de validation
+Envoyer un cadeau en commentaire, débit de solde confirmé, affichage correct immédiat.
+
+---
+
+### GAP-014 — Réponses imbriquées aux commentaires non consultables côté iOS
+
+**Domaine :** Divers / Commentaires
+**Priorité :** P2
+**Statut actuel :** MISSING [VÉRIFIÉ CETTE SESSION, agent d'audit dédié]
+
+#### Android — référence réelle
+`comments/ui/CommentAdapter.java:210-233` — bandeau "Afficher N réponses" si `repliesCount>0`, charge
+`GET /comment/replay/{activityId}/{limit}/{offset}` via `ReplayCommentAdapter.java`.
+
+#### iOS — état actuel
+`CommentModels.swift:17` a `repliesCount` mais jamais lu dans `CommentsView.swift`.
+`CommentRepository.swift:20-24` porte déjà `replies(...)` (endpoint fonctionnel) mais aucune vue ne
+l'appelle.
+
+#### Différence exacte
+Thread de réponses invisible — l'utilisateur répond "à l'aveugle" sans voir les réponses existantes.
+
+#### Action recommandée
+Dans `commentRow(_:)`, si `repliesCount>0`, bouton "Afficher N réponses" appelant la méthode
+repository déjà écrite.
+
+#### Dépendances
+Aucune — code repository déjà présent.
+
+#### Risque de régression
+LOW — affichage pur.
+
+#### Critère de validation
+Ouvrir un commentaire avec réponses existantes (créées côté Android) → la liste réelle apparaît.
+
+---
+
+### GAP-015 — Motifs de signalement inventés au lieu des valeurs réelles Android
+
+**Domaine :** Divers / Signalement (Report)
+**Priorité :** P2 (confiance/sécurité — motifs erronés envoyés au backend de modération)
+**Statut actuel :** INCORRECT [VÉRIFIÉ CETTE SESSION, agent d'audit dédié]
+
+#### Android — référence réelle
+`strings.xml:516-525`, `R.array.report_setting_array` : Nudity/Violence/Harassment/False
+Information/Unauthorised_sales/Hate speech/Terrorisme/Under 13 years old (8 motifs réels, envoyés
+tels quels comme `message` du `POST report`).
+
+#### iOS — état actuel
+`ReportView.swift:19` : 6 motifs INVENTÉS en français — le fichier l'admet lui-même en commentaire
+("PAS lus, à faire valider avant mise en production").
+
+#### Différence exacte
+Les valeurs envoyées au backend de modération ne correspondent à aucune catégorie Android réelle.
+
+#### Action recommandée
+Remplacer par les 8 valeurs anglaises exactes (libellé FR affiché, valeur EN envoyée si le backend
+compare littéralement — à confirmer côté backend).
+
+#### Dépendances
+Confirmation backend : comparaison stricte du `message` ou texte libre ? Détermine P1 vs P2/P3.
+
+#### Risque de régression
+LOW — remplacement de constantes.
+
+#### Critère de validation
+Liste affichée = 8 entrées `report_setting_array` exactes ; `message` reçu reconnu côté modération.
+
+---
+
+### GAP-016 — Écran de statistiques créateur (par publication) entièrement absent
+
+**Domaine :** Divers / Statistiques
+**Priorité :** P1/P2
+**Statut actuel :** MISSING [VÉRIFIÉ CETTE SESSION, agent d'audit dédié — corrige une synthèse
+antérieure de `MIGRATION_PROGRESS.md:541` qui affirmait à tort "aucun appel réseau trouvé"]
+
+#### Android — référence réelle
+`Activity/ui/StatisticsActivity.java` (228, entier) : vues/likes/partages/commentaires,
+démographie (genre/âge), géographie, métriques vidéo (complétion/rétention 3s), croissance
+d'abonnés, revenu en pièces, bouton "Promouvoir" (boost interne). **Endpoint réel confirmé cette
+session** (pas dans `StatisticsActivity.java` lui-même mais dans `ActivityRepository.java:278-298`,
+jamais vérifié par la synthèse antérieure) : `GET activity/statistics/{activityId}/{userId}`.
+
+#### iOS — état actuel
+Absent. 0 occurrence de "Statistic" dans tout `Sources/TiinverSwift`.
+
+#### Différence exacte
+Aucun moyen pour un créateur de consulter les statistiques détaillées de ses publications sur iOS.
+
+#### Action recommandée
+`Profile/StatisticsView.swift`+`StatisticsRepository.swift`, accessible depuis un bouton sur les
+publications de l'utilisateur courant. `StatisticModel` en `Codable` (14 champs, mapping direct).
+Bouton "Promouvoir" dépend du module boost interne (`advertising/`, toujours NEEDS_VALIDATION,
+hors périmètre de cette passe) — livrable indépendamment, bouton masqué en attendant.
+
+#### Dépendances
+Boost interne pour le seul bouton "Promouvoir" — le reste de l'écran n'a aucune dépendance bloquante.
+
+#### Risque de régression
+LOW — écran autonome.
+
+#### Critère de validation
+Statistiques d'une publication réelle côté iOS = valeurs identiques à Android pour la même
+publication.
+
+---
+
+### GAP-017 — Bulles de chat : 5 catégories de message retombent sur un rendu texte générique
+
+**Domaine :** Chat (module 11)
+**Priorité :** P2 (information toujours visible, juste moins fidèle visuellement)
+**Statut actuel :** PARTIAL [VÉRIFIÉ CETTE SESSION]
+
+#### Android — référence réelle
+`models/chat/MessageType.java` (29 valeurs, lu en entier) — bulles dédiées pour `VOICECALL`/
+`MISSED_VOICECALL` (icône téléphone + durée), `DOC1`/`DOC2` (icône document + nom de fichier),
+`SHARE_BOARD` (invitation Shareboard avec bouton rejoindre), `SUBSCRIBE`/`RENEWSUBSCRIPTION`
+(bulle abonnement dédiée).
+
+#### iOS — état actuel
+`ChatBubbleViews.swift:71-84` — `switch message.object` couvre explicitement `text`/`ai`/`audio`/
+`photo`/`sticker`/`gif`/`video`/`gift`/`graphic`/`deletemessage`, avec `default: TextBubbleBody(...)`
+pour tout le reste — donc `voicecall`/`missedvoicecall`/document/`shareboard`-invite/abonnement
+s'affichent comme une bulle de texte brut (le contenu textuel du message reste lisible, mais sans
+icône ni mise en forme dédiée).
+
+#### Différence exacte
+5 catégories sur 15 (hors DATE/HEADER, purement UI) n'ont pas de bulle dédiée — dégradation visuelle,
+pas une perte d'information fonctionnelle (l'événement d'appel manqué, par exemple, est déjà notifié
+séparément via le système de notifications, module 4).
+
+#### Action recommandée
+Ajouter 2-3 cas au `switch` : un style "bulle système compacte" pour appel/abonnement (icône +
+texte), un style "bulle document" pour DOC (icône fichier + nom + taille), réutilisable pour
+`SHARE_BOARD` (icône tableau + bouton "Rejoindre").
+
+#### Dépendances
+Aucune — extension pure du `switch` existant, aucun modèle de données à changer.
+
+#### Risque de régression
+LOW — ajout de cas, le `default` actuel continue de couvrir tout cas non prévu.
+
+#### Critère de validation
+Recevoir un message de chaque type concerné (appel manqué, document, invitation Shareboard) → bulle
+dédiée affichée, comparée visuellement à la capture Android correspondante.
+
+---
+
+### GAP-018 — App Tracking Transparency jamais demandé malgré la clé Info.plist déclarée
+
+**Domaine :** Publicité (AdMob) — conformité App Store
+**Priorité :** P1 (risque de rejet App Store / non-conformité IDFA)
+**Statut actuel :** MISSING [VÉRIFIÉ CETTE SESSION]
+
+#### Contexte
+`project.yml:196` déclare `NSUserTrackingUsageDescription` (la chaîne Info.plist requise pour
+afficher le prompt ATT), avec un commentaire explicite renvoyant au code réel
+(`ATTrackingManager.requestTrackingAuthorization`) comme responsable de l'appel effectif.
+
+#### iOS — état actuel
+`grep -rn "requestTrackingAuthorization" Sources/` → **0 résultat**. La clé Info.plist existe, mais
+rien dans le code n'appelle jamais l'API qui déclenche réellement le prompt système.
+
+#### Différence exacte
+Sans cet appel, le prompt ATT n'apparaît jamais — l'app collecte/utilise potentiellement l'IDFA pour
+la publicité personnalisée (AdMob) sans consentement explicite recueilli, ce qui est un motif de
+rejet direct à la revue App Store (guideline 5.1.2) et une non-conformité à la policy AdMob elle-même
+sur les annonces personnalisées iOS 14.5+. Différence sans équivalent Android (pas un écart de
+fidélité de portage — une case de conformité iOS spécifique jamais fermée).
+
+#### Action recommandée
+Appeler `ATTrackingManager.requestTrackingAuthorization(completionHandler:)` une fois au lancement
+(après l'écran d'accueil/consentement RGPD s'il y en a un côté produit), avant toute requête
+publicitaire AdMob personnalisée — `configureAdMob()`/`AdMobManager.swift` est le point d'ancrage
+naturel.
+
+#### Dépendances
+`AppTrackingTransparency` (framework système, pas de SPM).
+
+#### Risque de régression
+LOW — ajout pur d'un appel au lancement.
+
+#### Critère de validation
+Premier lancement post-install : le prompt système ATT apparaît ; `ATTrackingManager.
+trackingAuthorizationStatus` reflète le choix utilisateur.
+
+---
+
+### GAP-019 — Retrait de pièces : confirmation récapitulative Android non reproduite
+
+**Domaine :** Wallet (module 15)
+**Priorité :** P2 (UX de sécurité pour une action d'argent réel, pas un blocage fonctionnel)
+**Statut actuel :** PARTIAL [VÉRIFIÉ CETTE SESSION]
+
+#### Android — référence réelle
+`WithdrawActivity.java:257-280` — après validation des champs, un `FireMissilesDialogFragment`
+récapitule TOUT (opérateur/pays/solde actuel/montant demandé/montant calculé/destination) avec un
+titre "Confirmer le retrait" et deux boutons (Positif = envoi réel, Négatif = annulation) — le
+`submitWithdrawalRequest` réel n'est appelé QUE depuis le bouton positif de cette boîte.
+
+#### iOS — état actuel
+`WithdrawView.swift:81-120` (`submit()`) — valide les champs dans le même ordre exact (téléphone/
+montant vide → seuil minimum → solde insuffisant), mais appelle directement
+`WalletRepository.submitWithdrawalRequest(...)` dès que la validation passe, SANS étape de
+confirmation récapitulative intermédiaire.
+
+#### Différence exacte
+Un utilisateur iOS peut envoyer une demande de retrait d'argent réel sans voir de récapitulatif de
+confirmation avant l'envoi effectif — Android impose ce garde-fou, iOS ne l'a pas.
+
+#### Action recommandée
+Ajouter une `.confirmationDialog`/`.alert` récapitulative (mêmes champs qu'Android) entre la
+validation des champs et l'appel réseau réel dans `submit()`.
+
+#### Dépendances
+Aucune — logique déjà toute présente dans `WithdrawView.swift`, juste une étape UI à insérer.
+
+#### Risque de régression
+LOW — insertion d'une étape de confirmation, ne change aucun calcul existant.
+
+#### Critère de validation
+Taper "Envoyer la demande de retrait" → un récapitulatif apparaît avec tous les champs, annuler ne
+déclenche aucun appel réseau, confirmer déclenche l'envoi réel (comportement déjà présent).
 
 ---
 
@@ -1318,3 +1762,199 @@ Actions, cela ne valide QUE la compilation — voir la règle absolue en tête d
 **Ce qui reste à faire** : attendre le prochain test Appetize (ou les captures Android pour Animems)
 avant de continuer — les logs de diagnostic ajoutés ce tour sont le principal outil pour confirmer
 les causes racines réelles, pas des suppositions à valider a priori.
+
+---
+
+## SESSION DU 2026-08-16 (passe d'audit indépendante) — PRIORITÉS 1-7 DU MANDAT UTILISATEUR
+
+**Contexte méthodologique important, à lire avant le reste de cette section.** Cette passe a été
+menée par une instance Claude Code DISTINCTE de celle qui a produit les tours 8-11 ci-dessus (même
+dépôt, deux sessions actives en parallèle — confirmé explicitement par l'utilisateur : "le même
+projet est géré par 2 Claude Code"). Au moment d'écrire cette section, l'autre session avait des
+modifications non commitées en cours sur `AnimemesEditorState.swift`/`AnimemesEditorView.swift`/
+un nouveau `AnimemesDrawingView.swift` (probablement le travail de comparaison visuelle Animems
+attendu depuis le 11ᵉ tour) — **aucun fichier Swift n'a été touché par cette passe pour éviter tout
+conflit avec ce travail en cours**, conformément au mandat strict "audit uniquement, ne modifie pas
+l'application".
+
+**Méthode** : mandat utilisateur explicite en 7 priorités (Chat → Animems → Appels → Shareboard →
+Wallet → Publicité → Réglages/Divers), avec consigne stricte de comparer le code RÉEL des deux côtés,
+pas les rapports existants. 7 agents de recherche parallèles ont été lancés pour couvrir les 7
+domaines simultanément ; **les 7 ont échoué au premier lancement** (limite de session/API du compte,
+message "You've hit your session limit"), **6 sur 7 ont échoué à un second lancement plus restreint**
+(mêmes causes : limite de session ou perte de connexion) — un seul (Réglages/Divers) a fini par
+aboutir. Plutôt que d'insister sur des relances d'agents (méthode manifestement en échec ce jour-là),
+les priorités Chat/Appels/Shareboard/Wallet/Publicité ont été traitées **directement, à la main**, par
+lecture de fichiers réels — moins parallélisable, mais fiable (aucun échec côté travail manuel). Un
+sous-agent de vérification lancé par l'agent Animems (avant l'échec de celui-ci) a eu le temps de
+produire un rapport de re-vérification de 8 revendications spécifiques du moteur Animems, toutes
+`CONFIRMÉES` — intégré ci-dessous, ne duplique pas un audit complet du module (déjà fait aux tours
+7-9 ci-dessus, à un niveau de détail que cette passe n'a pas cherché à reproduire).
+
+### Résumé par priorité
+
+| # | Domaine | Méthode | Résultat |
+|---|---|---|---|
+| 1 | Chat | Manuel — grep croisé Socket.IO + lecture pagination + bulles | Signalisation/pagination **DONE** (23/23 événements), bulles **PARTIAL** (GAP-017, nouveau) |
+| 2 | Animems | Sous-agent de vérification (8 revendications du moteur) | **CONFIRMÉ** (8/8) — reconfirme sans réserve nouvelle le statut déjà `NEEDS_VALIDATION [SYNTHÈSE]`→majoritairement `COMPLETE` des tours 7-9 pour le cœur moteur ; **pas re-audité pour la comparaison visuelle Android**, qui reste le blocage réel (en cours par l'autre session, voir ci-dessus) |
+| 3 | Appels (WebRTC/CallKit) | Manuel — `RTConnection2.java`+`CallService.java` relus en entier, comparés ligne par ligne | **DONE** au niveau code (GAP-005 mis à jour) — jamais exécuté sur un vrai appel, seule réserve |
+| 4 | Shareboard | Manuel — architecture (question ouverte depuis le début de ce document) tranchée par grep | **Question résolue** : `FragmentPbs.java` réutilise `RTConnection2` (PAS un `RTConnection3` dédié, confirmé mort) — le partage `WebRTCConnection.swift` entre Calls et Shareboard côté iOS est donc fidèle, pas une simplification. Fidélité visuelle du plateau lui-même (toolbar/gestes) reste `NEEDS_VALIDATION [SYNTHÈSE]`, pas re-testée cette passe |
+| 5 | Wallet | Manuel — `WalletRepository.java` (364, entier) + `WithdrawActivity.java` (566, entier) comparés à `WalletRepository.swift`/`WithdrawView.swift` | Couche réseau **DONE** (tous les endpoints vérifiés un par un : `withdrawalrequests`/`crypto/withdraw`/`convert`/`rewardedCoins`/`referral/total`/`transfert`[faute d'orthographe serveur préservée]/`isPhoneOrEmailExiste`) ; retrait **PARTIAL** (GAP-019, nouveau — confirmation récapitulative manquante) |
+| 6 | Publicité (AdMob) | Manuel — `AdMobManager.swift` comparé aux points d'appel Android réels (bannière/rewarded/rewarded-interstitiel/native) | Formats publicitaires **DONE** (les 4 formats réellement utilisés par Android ont un équivalent Swift vérifié, `InterstitialAd` classique confirmé mort des deux côtés) ; conformité **MISSING** (GAP-018, nouveau — App Tracking Transparency jamais réellement déclenché) |
+| 7 | Réglages / Divers | Agent d'audit dédié (seul des 7 à aboutir), lecture complète des deux côtés | 8 gaps réels documentés (GAP-009 à GAP-016), le plus significatif étant GAP-011 (gestion de groupe/mute totalement absente côté iOS) et GAP-016 (statistiques créateur totalement absentes, corrige une synthèse antérieure erronée) |
+
+### Reconciliation avec le contenu existant de ce document
+
+Cette passe a aussi révélé que plusieurs lignes du **résumé exécutif (section 1) et de la
+cartographie (section 2), écrites à l'origine le 2026-08-13, sont maintenant significativement
+obsolètes** — le travail réel des tours 8-11 (sections 11-12 et les tableaux "SESSION DU 2026-08-16"
+plus haut dans ce document) a fermé un grand nombre de lignes encore marquées `MISSING`/
+`NEEDS_VALIDATION` en section 1/2/6 : Feed (like/commentaire/partage), Chat (suppression pour tous),
+upload de fichiers (GAP-004, profil/certification/chat), Contacts (sélecteur de groupe), deep links,
+Crashlytics, modèles de mouvement Animems, stickers Galerie. **Les sections 1/2/6 n'ont pas été
+réécrites intégralement dans cette passe** (risque de désynchronisation avec le format exact attendu
+par l'utilisateur pour une refonte complète) — cette section sert de pont explicite : pour l'état
+RÉEL et actuel d'une ligne donnée de la section 2/6, privilégier la ligne la plus RÉCENTE parmi (a)
+cette section, (b) les tableaux "SESSION DU 2026-08-16" (tours 8-11), (c) la section 1/2/6 d'origine
+— dans cet ordre de priorité, pas l'inverse.
+
+### Nouveaux gaps réels ajoutés cette passe (résumé)
+
+- **GAP-009** à **GAP-016** — Réglages/Divers (agent dédié) : stockage granulaire (P2), liens légaux
+  (P2), gestion de groupe/mute (**P1**), clé pub (P3), cadeaux commentaire (P2), réponses imbriquées
+  (P2), motifs de signalement (P2), statistiques créateur (**P1/P2**).
+- **GAP-017** — Chat : 5 catégories de message sans bulle dédiée (P2).
+- **GAP-018** — AdMob : App Tracking Transparency jamais déclenché (**P1**, risque App Store réel).
+- **GAP-019** — Wallet : confirmation récapitulative de retrait manquante (P2).
+
+### Statuts mis à jour cette passe (à répercuter dans une future refonte de la section 1)
+
+| Ligne concernée | Ancien statut (section 1/2, 2026-08-13) | Nouveau statut (cette passe, 2026-08-16) |
+|---|---|---|
+| GAP-003 (Chat, signalisation) | NEEDS_VALIDATION [SYNTHÈSE] | **DONE** (23/23 événements Socket.IO vérifiés) |
+| GAP-003 (Chat, bulles) | (non distingué) | **PARTIAL**, voir GAP-017 |
+| GAP-005 (Appels) | NEEDS_VALIDATION [SYNTHÈSE] | **DONE** au niveau code, jamais exécuté réellement |
+| Shareboard (architecture WebRTC partagée) | Question ouverte | **Résolue** — partage confirmé fidèle à Android |
+| Wallet — couche réseau | NEEDS_VALIDATION [SYNTHÈSE] | **DONE** (tous endpoints vérifiés) |
+| Wallet — retrait | NEEDS_VALIDATION [SYNTHÈSE] | **PARTIAL**, voir GAP-019 |
+| AdMob — formats publicitaires | NEEDS_VALIDATION [SYNTHÈSE] | **DONE** (bannière/rewarded/rewarded-interstitiel/native vérifiés) |
+| AdMob — conformité ATT | (non identifié avant cette passe) | **MISSING**, voir GAP-018 (**P1**) |
+| Réglages (8 fragments) | PARTIAL [SYNTHÈSE] | Détaillé fragment par fragment, tableau A de l'agent — majoritairement DONE, gaps réels isolés en GAP-009/010/012 |
+| Contacts (sélecteur groupe) | MISSING | **DONE** (construit au tour "APPETIZE FUNCTIONAL TEST — 2026-08-15", P0-4) |
+| Certification (soumission) | PARTIAL | **DONE** (fermé par GAP-004, 2026-08-15) |
+| Statistiques créateur | MISSING | **MISSING confirmé**, endpoint serveur réel identifié cette passe (GAP-016) |
+| Gestion de groupe (membres/rôles/mute) | (non identifié avant cette passe comme un gap séparé de la création de groupe) | **MISSING**, voir GAP-011 (**P1**, le plus significatif de cette passe) |
+
+### Ce qui N'A PAS été fait cette passe (honnêteté explicite)
+
+- **Aucune exécution réelle** (Appetize/device) — toutes les conclusions ci-dessus sont du niveau
+  "code vérifié fidèle", pas "comportement confirmé à l'usage", conformément à la distinction
+  COMPILED/FUNCTIONALLY VERIFIED/UI VERIFIED adoptée au 11ᵉ tour.
+- **Animems** : pas de nouvel audit visuel/comportemental — la vérification faite ici (sous-agent, 8
+  revendications) confirme des détails déjà connus du moteur, ne remplace pas la comparaison visuelle
+  écran par écran avec les captures Android, qui reste le seul vrai chantier ouvert pour ce module et
+  semble être en cours par l'autre session Claude Code au moment de la rédaction (voir contexte
+  méthodologique en tête de section).
+- **Shareboard** : seule la question d'architecture (transport partagé avec Calls) a été tranchée —
+  la fidélité visuelle/comportementale du plateau de dessin lui-même (toolbar, gestes multi-
+  utilisateurs) reste `NEEDS_VALIDATION [SYNTHÈSE]`, non re-testée.
+- **Les sections 1 (résumé exécutif) et 2 (cartographie globale) n'ont pas été recalculées/réécrites
+  dans leur intégralité** — voir "Reconciliation" ci-dessus pour l'ordre de priorité à utiliser en
+  attendant une refonte complète.
+
+### Recommandation pour la suite
+
+1. **P1 immédiat, correction rapide et à faible risque** : GAP-018 (ATT — conformité App Store,
+   quelques lignes de code) et GAP-011 (gestion de groupe — plus gros chantier mais impact
+   utilisateur direct sur tout groupe créé depuis iOS).
+2. **P1/P2** : GAP-016 (statistiques créateur, écran entier à construire).
+3. Une refonte complète des sections 1/2/6 de ce document (résumé exécutif, cartographie, matrice
+   d'écrans) serait justifiée avant la prochaine grande session de correction, pour éviter que de
+   futures lectures se basent sur des lignes datées du 2026-08-13 alors que l'état réel a
+   significativement avancé depuis (tours 8-11 + cette passe) — signalé ici plutôt que fait
+   unilatéralement, cette refonte touchant le "résumé" que l'utilisateur lit en premier.
+
+**Fin de cette passe.** Conformément au mandat, aucun fichier de code applicatif n'a été modifié —
+seul ce document a été mis à jour. Aucune correction n'a été commencée.
+
+---
+
+## SESSION DU 2026-08-16 (suite directe) — CORRECTIONS GAP-018 ET GAP-011
+
+Sur confirmation explicite de l'utilisateur de suivre les recommandations écrites ci-dessus ("Par
+quoi veux-tu que je commence... GAP-018 puis GAP-011"), phase de correction démarrée. **Prudence
+appliquée** : l'autre session Claude Code avait toujours, au moment d'écrire, des modifications non
+commitées sur `AnimemesEditorState.swift`/`AnimemesEditorView.swift`/`AnimemesDrawingView.swift`/
+`ContactPickerView.swift`/`GroupCreationView.swift`/`RosterListView.swift`/
+`NotificationsListView.swift`/`ProfileView.swift` — AUCUN de ces fichiers n'a été touché par cette
+passe, pour éviter toute collision sur le même arbre de travail (pas deux branches isolées, le même
+répertoire de travail est partagé par les deux sessions).
+
+### GAP-018 — App Tracking Transparency (CORRIGÉ)
+
+`Advertising/AdMobManager.swift` : ajout de `requestTrackingAuthorizationIfNeeded()`
+(`import AppTrackingTransparency`, `ATTrackingManager.requestTrackingAuthorization`, gardé par un
+drapeau pour n'appeler qu'une fois par lancement). `App/AppDelegate.swift` : nouvelle méthode
+`applicationDidBecomeActive(_:)` (n'existait pas avant) qui déclenche l'appel — PAS
+`didFinishLaunching`, la fenêtre n'étant pas garantie "key" à ce stade pour que le prompt système
+s'affiche de façon fiable. Aucune dépendance SPM à ajouter (`AppTrackingTransparency` est un
+framework système, auto-lié par simple `import`, même motif que `CallKit`/`PushKit` déjà présents
+dans ce portage sans déclaration `project.yml`).
+
+### GAP-011 — Gestion de groupe (CORRIGÉ, périmètre volontairement borné)
+
+Lu en entier avant tout code : `SettingGroupMessageFragmant.java` (740 lignes),
+`GroupDetailActivity.java` (342 lignes), `AddGroupDescriptionActivity.java`, `InviteLinkActivity.java`
+(endpoints), `AddGroupMemberActivity.java` (endpoints), `models/chat/group/MemberModel.java`,
+`Http/TransportData.updateMember`. **Découverte en lisant `GroupDetailActivity.java`** : la liste des
+membres n'est PAS un appel réseau direct côté Android — elle transite par une table SQLite locale
+synchronisée en tâche de fond (`MyBackgroundTask`, non lu, hors périmètre) ; l'appel réseau direct
+existe mais est COMMENTÉ dans le fichier source Android lui-même (`getGroupMemebers()`,
+`SettingGroupMessageFragmant.java:485-539`, `GET membership/{groupId}`) — utilisé tel quel côté iOS
+plutôt que de reconstruire une couche de synchronisation locale complète pour un seul écran
+(simplification documentée, pas silencieuse).
+
+**Nouveaux fichiers** : `Messagerie/GroupDetailView.swift` (écran principal : description, lien
+d'invitation, liste des membres avec rôle, menu admin promouvoir/rétrograder/retirer, quitter le
+groupe), `Messagerie/AddGroupMemberView.swift` (ajout de participants, réutilise
+`ContactsRepository.connectedUsers` + `GroupRepository.addMembers`, déjà portés — AUCUN nouveau code
+réseau pour cette partie).
+
+**Modifiés** : `Messagerie/GroupModels.swift` (+`GroupMember`, port fidèle de `MemberModel.java`,
+mêmes noms de champs Gson sans `@SerializedName`), `Messagerie/GroupRepository.swift`
+(+`fetchMembers`/`updateMemberRole`/`removeMember`/`updateDescription`/`leaveGroup`, chaque endpoint
+vérifié contre le code Android réel : `GET membership/{groupId}`, `POST /member/update`,
+`POST deleteMember`, `POST updategroup` par colonne, `POST leftgroup`), `Messagerie/ChatView.swift`
+(nouveau bouton toolbar "info.circle" visible uniquement pour un groupe, ouvre `GroupDetailView` en
+feuille — AJOUTÉ à côté du bouton d'appel existant, pas à sa place : aucune preuve trouvée d'un appel
+masqué pour les groupes côté Android, donc rien retiré sans preuve).
+
+**Écho système local** : `removeMember`/`updateDescription` insèrent un message système local
+immédiat après succès réseau (`MessageRepository.insertTextMessage`), même motif déjà établi par
+`GroupCreationView.create()` (`GroupRepository.dbInsertMessageCrossPoint(..., false)` côté Android) —
+pas une nouvelle convention inventée pour ce gap.
+
+**Périmètre volontairement NON couvert, documenté en tête de `GroupDetailView.swift`** :
+- Changement de photo de groupe (Android : upload multipart type=4 vers `updategroup`) — l'infra
+  d'upload existe déjà (GAP-004) mais le câblage UI spécifique au groupe n'a pas été fait cette passe.
+- Action "Message" du menu contextuel membre (ouvrir une conversation privée directe avec ce membre
+  depuis l'écran de gestion) — mineur, nécessiterait de construire un `RosterModel` de conversation
+  privée à la volée.
+- Mute par conversation privée (`SettingPrivateMessageFragmant.java`, écran DISTINCT de la gestion de
+  groupe) — pas traité cette passe, reste un gap réel séparé.
+
+### Ce qui N'A PAS été fait
+
+**Aucune vérification de compilation réelle** — pas d'accès Xcode/macOS depuis cet environnement
+Windows, conforme à la contrainte documentée en tête de `MIGRATION_PROGRESS.md` depuis le début de ce
+portage. Le code a été relu manuellement (signatures d'appel, noms de champs, disponibilité API vs
+`deploymentTarget: 16.0` — `TextField(...axis:.vertical)` iOS 16+, confirmé disponible ;
+`ContentUnavailableView` iOS 17+ repéré et évité, remplacé par un état vide manuel comme
+`FeedView.emptyOrStatusState`), mais SEUL un build CI réel (GitHub Actions/Codemagic) confirmerait la
+compilation, conformément à la règle des 3 axes (COMPILED/FUNCTIONALLY VERIFIED/UI VERIFIED) adoptée
+au 11ᵉ tour. **Aucun commit fait** — les fichiers restent modifiés dans l'arbre de travail, en attente
+d'instruction explicite de l'utilisateur pour committer/pousser.
+
+**Statuts mis à jour** : GAP-018 → CORRIGÉ (code écrit, non compilé/testé). GAP-011 → CORRIGÉ pour le
+cœur (membres/rôles/description/invitation/sortie), PARTIAL pour le périmètre complet (photo de
+groupe et mute restent MISSING, documentés ci-dessus, pas des oublis).

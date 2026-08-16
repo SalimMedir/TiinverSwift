@@ -101,4 +101,59 @@ final class GroupRepository {
             _ = try? await APIClient.shared.post(params, endpoint: "membership")
         }
     }
+
+    // MARK: - Gestion de groupe (GAP-011, audit du 2026-08-16) — port de
+    // `messagerie/group/SettingGroupMessageFragmant.java`/`GroupDetailActivity.java`/
+    // `AddGroupDescriptionActivity.java`, tous lus en entier.
+
+    /// **Simplification de portage documentée, pas une invention.** Côté Android, la liste des
+    /// membres n'est PAS un appel réseau direct dans l'écran de gestion : `GroupDetailActivity`
+    /// lit une table SQLite locale (`infoContract.USER_URI`) synchronisée en tâche de fond
+    /// (`MyBackgroundTask`, non porté — infrastructure de synchronisation locale hors périmètre de
+    /// ce gap). L'appel réseau direct existe bel et bien mais est COMMENTÉ dans le fichier source
+    /// Android lui-même (`getGroupMemebers()`, `SettingGroupMessageFragmant.java:485-539` :
+    /// `GET membership/{groupId}`, réponse `{error, data: "<MemberModel[] JSON>"}`) — utilisé ici
+    /// directement plutôt que de reconstruire toute une couche de synchronisation locale pour un
+    /// seul écran.
+    func fetchMembers(groupId: String) async throws -> [GroupMember] {
+        let value = try await APIClient.shared.get("membership/\(groupId)")
+        guard value.isBackendSuccess, let data = try? value.stringEncodedJSON("data").rawData else { return [] }
+        return (try? JSONDecoder().decode([GroupMember].self, from: data)) ?? []
+    }
+
+    /// Port de `TransportData.updateMember` (`Http/TransportData.java:175-190`) — `POST
+    /// /member/update`, `column="roles"`, `value="admin"`/`"user"`.
+    func updateMemberRole(userId: Int, groupId: String, creatorId: String, makeAdmin: Bool) async throws {
+        let params: [String: String] = [
+            "creator": creatorId, "groupId": groupId, "value": makeAdmin ? "admin" : "user", "column": "roles",
+            "userId": String(userId),
+        ]
+        _ = try await APIClient.shared.post(params, endpoint: "/member/update")
+    }
+
+    /// Port de `SettingGroupMessageFragmant.deleteGroupMemebers` (lignes 542-548 pour les
+    /// paramètres réseau — le reste de la méthode Android insère un message système local, déjà
+    /// géré côté iOS par le rendu existant des messages système reçus via Socket.IO, pas dupliqué
+    /// ici).
+    func removeMember(userId: Int, groupId: String, creatorId: String) async throws {
+        let params: [String: String] = ["userId": String(userId), "creator": creatorId, "groupId": groupId]
+        _ = try await APIClient.shared.post(params, endpoint: "deleteMember")
+    }
+
+    /// Port de `AddGroupDescriptionActivity.updateGroup` (lignes 95-105) — endpoint générique
+    /// `updategroup` par colonne, réutilisé aussi par le changement de photo côté Android
+    /// (`sendFotoPerfilToServer`, type=4 multipart — pas porté ici, périmètre texte uniquement pour
+    /// ce gap, voir avertissement `GroupDetailView.swift`).
+    func updateDescription(_ description: String, groupId: String, creatorId: String, apiKey: String) async throws {
+        let params: [String: String] = [
+            "creator": creatorId, "id": groupId, "value": description, "column": "description", "apiKey": apiKey,
+        ]
+        _ = try await APIClient.shared.post(params, endpoint: "updategroup")
+    }
+
+    /// Port de `GroupDetailActivity.exit()` (lignes 260-271) — `POST leftgroup`.
+    func leaveGroup(groupId: String, userId: String, apiKey: String) async throws {
+        let params: [String: String] = ["groupId": groupId, "userId": userId, "apiKey": apiKey]
+        _ = try await APIClient.shared.post(params, endpoint: "leftgroup")
+    }
 }

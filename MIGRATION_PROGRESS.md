@@ -4164,3 +4164,38 @@ sur ce commit précis, zéro capture Android reçue).
 
 **Aucun test fonctionnel réel effectué sur ce commit** — conforme à la consigne explicite de
 l'utilisateur de n'en faire qu'un seul, à la fin de ce lot de corrections complet.
+
+---
+
+## SESSION DU 2026-08-16 (session distincte, "protocole de continuité") — AUDIT 7 PRIORITÉS + GAP-018/GAP-011
+
+Session Claude Code séparée de celle des tours 8-11 ci-dessus (deux sessions actives en parallèle
+sur le même dépôt, confirmé par l'utilisateur). Détail complet dans `MIGRATION_AUDIT.md` ("SESSION
+DU 2026-08-16 (passe d'audit indépendante)" et "SESSION DU 2026-08-16 (suite directe) — CORRECTIONS
+GAP-018 ET GAP-011") et dans `CLAUDE_CONTINUATION.md` (section `# CURRENT HANDOFF`, ajoutée en tête
+de fichier). Résumé :
+
+1. **Audit indépendant** des 7 priorités explicites de l'utilisateur (Chat/Animems/Appels/
+   Shareboard/Wallet/Publicité/Réglages-Divers) — re-vérification réelle du code Android vs iOS,
+   pas une synthèse. Chat (Socket.IO 23/23 événements vérifiés), Appels (WebRTC relu ligne par
+   ligne), Shareboard (architecture WebRTC partagée confirmée), Wallet (couche réseau vérifiée),
+   AdMob (formats vérifiés), Réglages/Divers (8 gaps réels documentés, GAP-009 à GAP-016).
+2. **GAP-018 corrigé** : App Tracking Transparency jamais déclenché malgré la clé Info.plist
+   présente — `ATTrackingManager.requestTrackingAuthorization` ajouté dans un nouveau
+   `AppDelegate.applicationDidBecomeActive`.
+3. **GAP-011 corrigé pour le cœur** : gestion de groupe (membres/rôles/description/invitation/
+   sortie) entièrement absente côté iOS malgré des écrans Android vivants et fonctionnels —
+   `GroupDetailView.swift`/`AddGroupMemberView.swift` (nouveaux), `GroupModels.swift`/
+   `GroupRepository.swift` étendus, bouton d'entrée dans `ChatView.swift`.
+4. **Re-vérification fraîche de Home/Feed et Galerie/Publier** (P0 signalés persistants par
+   l'utilisateur malgré les correctifs du 11ᵉ tour) — aucun nouveau bug statique trouvé au-delà de
+   ce qui est déjà corrigé/instrumenté. Conclusion honnête : la suite nécessite des logs Appetize
+   réels, pas une 3ᵉ relecture de code sans preuve nouvelle.
+
+**Prudence de collision appliquée** : une autre session avait, en parallèle, des modifications non
+commitées sur Animems/Roster/Profile/Contacts/Créateurs/Recherche (reconstruction de parité UI à
+partir de captures Android reçues) — aucun de ces fichiers n'a été touché par cette session pour
+éviter une collision d'écriture sur le même arbre de travail.
+
+**Rien commité par cette session** — en attente d'instruction pour committer/pousser, conforme à la
+politique du projet (ne committer que sur demande explicite).

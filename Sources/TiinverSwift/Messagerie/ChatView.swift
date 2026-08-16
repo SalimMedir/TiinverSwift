@@ -14,6 +14,7 @@ struct ChatView: View {
     @State private var showShareboard = false
     @State private var showMessageGraphicCompose = false
     @State private var showDeleteOptions = false
+    @State private var showGroupDetail = false
     @FocusState private var inputFocused: Bool
 
     init(target: RosterModel) {
@@ -68,6 +69,18 @@ struct ChatView: View {
         // Port du point d'entrée `FragmentMessageGraphic` (module 14).
         .sheet(isPresented: $showMessageGraphicCompose) {
             MessageGraphicComposeView { payload in viewModel.sendGraphic(payload: payload) }
+        }
+        // Port du point d'entrée "infos du groupe" (`GroupDetailActivity`, GAP-011, audit du
+        // 2026-08-16) — tap sur le titre de la conversation pour un groupe, comme
+        // `ChatFragmentTest`'s en-tête de toolbar cliquable menant vers `GroupDetailActivity`.
+        .sheet(isPresented: $showGroupDetail) {
+            NavigationStack {
+                GroupDetailView(
+                    groupId: viewModel.target.groupId ?? "", groupName: viewModel.target.groupName ?? "",
+                    groupToken: viewModel.target.token ?? "", groupType: viewModel.target.groupType ?? "",
+                    groupDescription: viewModel.target.description, groupProfile: viewModel.target.profile
+                )
+            }
         }
         .safeAreaInset(edge: .top, alignment: .center) {
             if let typing = viewModel.typingUsername {
@@ -279,6 +292,17 @@ struct ChatView: View {
                 } label: { Image(systemName: "trash") }
             }
         } else {
+            if viewModel.target.isGroup {
+                // Port de l'en-tête cliquable de `ChatFragmentTest`/`ActivityMsg` menant à
+                // `GroupDetailActivity` (GAP-011) — ajouté EN PLUS du bouton d'appel existant, pas à
+                // sa place : le point d'entrée réel du bouton d'appel n'a jamais été localisé dans
+                // les 3080 lignes lues de `ChatFragmentTest.java` (voir commentaire de
+                // `outgoingCallProfile` plus bas), donc aucune preuve qu'il soit masqué pour un
+                // groupe côté Android — ne pas le retirer sans preuve.
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { showGroupDetail = true } label: { Image(systemName: "info.circle") }
+                }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     callCoordinator.startOutgoingCall(profile: outgoingCallProfile, chatType: viewModel.target.type)

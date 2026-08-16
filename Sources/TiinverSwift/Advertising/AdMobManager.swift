@@ -1,3 +1,4 @@
+import AppTrackingTransparency
 import GoogleMobileAds
 import SwiftUI
 
@@ -25,6 +26,27 @@ import SwiftUI
 @MainActor
 func configureAdMob() {
     MobileAds.shared.start(completionHandler: nil)
+}
+
+/// Port de la conformité App Tracking Transparency (AUCUN équivalent Android — Google Play n'a pas
+/// cette exigence, seul l'App Store la requiert depuis iOS 14.5) — **trouvé manquant par l'audit du
+/// 2026-08-16 (GAP-018)** : `NSUserTrackingUsageDescription` était déjà déclarée dans `project.yml`,
+/// mais `ATTrackingManager.requestTrackingAuthorization` n'était appelé nulle part, donc le prompt
+/// système n'apparaissait jamais et l'app utilisait potentiellement l'IDFA pour la publicité
+/// personnalisée AdMob sans consentement recueilli — un motif de rejet direct à la revue App Store
+/// (guideline 5.1.2). Appelé depuis `AppDelegate.applicationDidBecomeActive`, PAS `didFinishLaunching`
+/// (la fenêtre n'est pas encore key à ce stade, le prompt système risquerait de ne pas s'afficher —
+/// pratique documentée dans les guides d'intégration ATT officiels). Ne montre une UI QUE si le
+/// statut est `.notDetermined` (comportement natif de l'API) — sûr à appeler plusieurs fois, mais
+/// gardé par un drapeau pour n'émettre l'appel qu'une seule fois par lancement d'app.
+@MainActor
+private var hasRequestedTrackingAuthorization = false
+
+@MainActor
+func requestTrackingAuthorizationIfNeeded() {
+    guard !hasRequestedTrackingAuthorization else { return }
+    hasRequestedTrackingAuthorization = true
+    ATTrackingManager.requestTrackingAuthorization { _ in }
 }
 
 @MainActor

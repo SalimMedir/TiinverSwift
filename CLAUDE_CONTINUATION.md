@@ -9,7 +9,32 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-16, mise à jour APRÈS captures Appetize réelles — priorise ceci)
+# CURRENT HANDOFF (2026-08-16, mise à jour APRÈS confirmation utilisateur "login email, pas Google")
+
+**L'utilisateur a confirmé** (répondant à 3 questions ciblées, PAS un nouveau test Appetize) :
+compte **existant**, **login email** (pas Google/inscription), **transition immédiate et propre**
+vers Home après connexion. Ceci **élimine** la cause `registerWithProvider` ci-dessous comme
+explication de CES captures précises (le bug reste réel et corrigé, juste pas responsable ici).
+
+**Nouvelle conclusion, la SEULE compatible avec "transition propre + session vide"** :
+`AuthEndpoints.parseLoginResponse` décode le "user" SANS lever d'exception (sinon pas de
+transition propre) mais `user.id` reste `nil` — possible UNIQUEMENT si la clé JSON réelle de
+l'identifiant sur l'endpoint `login` n'est ni `"id"` ni `"userId"` (les deux champs candidats sont
+`Optional`, donc une clé absente/différente ne fait PAS échouer le décodage, elle produit
+silencieusement `nil`). Impossible à confirmer par lecture de code seule — aucun exemple de réponse
+JSON réelle n'est documenté nulle part dans le dépôt Android (vérifié). **Corrigé en ajoutant un
+diagnostic** (pas une hypothèse de plus) : `AuthEndpoints.parseLoginResponse` capture maintenant le
+dictionnaire JSON brut du "user" reçu dans EXACTEMENT ce scénario (`error=="false"` + `user.id ==
+nil`), persisté via `UserSession.debugLastLoginRawUserJSON`, et affiché dans les panneaux de
+diagnostic déjà visibles de `FeedViewModel`/`ProfileViewModel`. **Au prochain test réel, ce panneau
+donnera la clé JSON exacte** — corriger alors `User.id`/`.userId` (ou ajouter un `CodingKey`
+alternatif) en UNE SEULE passe, sans deviner une 5ᵉ fois.
+
+**CI VALIDÉ pour ce lot** : run `31965293572`, commit `26b278d`, **SUCCESS**.
+
+---
+
+# HANDOFF PRÉCÉDENT (2026-08-16, après première lecture des captures Appetize — pour mémoire)
 
 **NOUVELLE PREUVE REÇUE CE TOUR** : l'utilisateur a fourni 6 captures d'écran d'un VRAI test
 Appetize (pas des hypothèses). Panneaux de diagnostic (ajoutés au tour précédent) VISIBLES dessus :

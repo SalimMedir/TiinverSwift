@@ -47,8 +47,36 @@ struct NotificationsListView: View {
     }
 }
 
+/// **Parité UI avec Android corrigée par capture d'écran (2026-08-16)** — la ligne affichait
+/// seulement `verb` brut (ex. "follow") au lieu d'un texte formaté, et n'avait ni bouton
+/// "Suivre en Retour" (notifications `follow`) ni vignette de la publication concernée
+/// (notifications `like`/`comment`/`share`) — les deux visibles sur la capture Android réelle.
+/// Texte formaté réutilise EXACTEMENT le même mapping verb→phrase que
+/// `LocalNotificationBuilder.activityNotificationContent` (déjà porté), pas un texte réinventé.
 private struct NotificationRow: View {
     let noti: NotiEntity
+    @State private var justFollowedBack = false
+
+    private var thumbnailURL: URL? {
+        let raw = noti.cdnThumbnailUrl ?? noti.cdnContentUrl ?? noti.objectUrl
+        guard let raw, !raw.isEmpty else { return nil }
+        return URL(string: raw)
+    }
+
+    /// Port de `LocalNotificationBuilder.activityNotificationContent`'s switch sur `verb` — même
+    /// texte, réutilisé ici pour la liste plutôt que dupliqué.
+    private var bodyText: String {
+        switch noti.verb {
+        case "like": return "a aimé votre publication"
+        case "share": return "a partagé votre publication"
+        case "comment":
+            if let text = noti.commentText, !text.isEmpty { return "a commenté : « \(text) »" }
+            return "a commenté votre publication"
+        case "follow": return "a commencé à te suivre"
+        case "transfert": return "vous a transféré des coins"
+        default: return noti.commentText ?? noti.verb ?? ""
+        }
+    }
 
     var body: some View {
         HStack {
@@ -56,14 +84,37 @@ private struct NotificationRow: View {
                 .frame(width: 44, height: 44)
                 .clipShape(Circle())
 
-            VStack(alignment: .leading) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text("\(noti.firstname ?? "") \(noti.lastname == "null" ? "" : (noti.lastname ?? ""))")
                     .font(.subheadline.bold())
-                Text(noti.commentText ?? noti.verb ?? "")
+                Text(bodyText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
+
+            if noti.verb == "follow" {
+                Button {
+                    Task {
+                        guard let myId = UserSession.shared.myId else { return }
+                        justFollowedBack = true
+                        try? await ProfileRepository.shared.follow(userId: String(noti.userId), followerId: myId)
+                    }
+                } label: {
+                    Text(justFollowedBack ? "Suivi" : "Suivre en Retour")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(justFollowedBack ? Color(.secondarySystemBackground) : Color.accentColor)
+                        .foregroundStyle(justFollowedBack ? Color.primary : Color.white)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.borderless)
+                .disabled(justFollowedBack)
+            } else if let thumbnailURL {
+                AsyncImage(url: thumbnailURL) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color(.secondarySystemBackground) }
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
         }
         .opacity(noti.isRead == 0 ? 1 : 0.6)
     }

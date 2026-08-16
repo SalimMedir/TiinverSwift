@@ -121,11 +121,28 @@ struct ProfileView: View {
     @ViewBuilder
     private var actionRow: some View {
         if viewModel.isCurrentUser {
-            HStack {
-                Button("Modifier le profil") { showEditProfile = true } // R.id.EditProfileBut
-                NavigationLink("Portefeuille") { WalletView() } // R.id.container_wallet
+            // Parité UI avec Android corrigée par capture d'écran (2026-08-16) : 2 boutons ronds
+            // "portefeuille"/"monétisation" côte à côte, PUIS un large bouton "MODIFIER LE PROFIL"
+            // en dessous — pas 2 boutons texte côte à côte comme la version précédente de ce
+            // fichier. "monétisation" route vers `WalletView` (même écran que "portefeuille") :
+            // aucun écran Android dédié à la monétisation seule n'a été identifié/porté séparément
+            // à ce jour, `WalletView` couvre déjà les fonctionnalités financières du profil.
+            VStack(spacing: 12) {
+                HStack(spacing: 32) {
+                    NavigationLink { WalletView() } label: { // R.id.container_wallet
+                        roundIconButton(systemImage: "creditcard.fill", label: "portefeuille", tint: .blue)
+                    }
+                    NavigationLink { WalletView() } label: {
+                        roundIconButton(systemImage: "dollarsign.circle.fill", label: "monétisation", tint: .green)
+                    }
+                }
+                Button {
+                    showEditProfile = true // R.id.EditProfileBut
+                } label: {
+                    Text("MODIFIER LE PROFIL").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
             }
-            .buttonStyle(.bordered)
         } else {
             HStack {
                 Button(viewModel.isFollowing ? "Abonné" : "Suivre") { Task { await viewModel.follow() } } // R.id.butSeguir
@@ -195,9 +212,20 @@ struct ProfileView: View {
         }
     }
 
+    private func roundIconButton(systemImage: String, label: String, tint: Color) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: systemImage)
+                .font(.title3)
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(tint))
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
     @ViewBuilder
     private func postCell(_ post: FeedActivity) -> some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .bottomLeading) {
             if let thumb = post.thumbnailURL {
                 AsyncImage(url: thumb) { $0.resizable().aspectRatio(1, contentMode: .fill).clipped() } placeholder: {
                     Color(.secondarySystemBackground).aspectRatio(1, contentMode: .fill)
@@ -205,7 +233,18 @@ struct ProfileView: View {
             } else {
                 Color(.secondarySystemBackground).aspectRatio(1, contentMode: .fill)
             }
-            if post.isVideo { Image(systemName: "play.fill").foregroundStyle(.white).padding(4) }
+            if post.isVideo {
+                Image(systemName: "play.fill")
+                    .foregroundStyle(.white)
+                    .padding(4)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
+            // Parité UI avec Android (capture d'écran 2026-08-16) — compteur de vues en surimpression
+            // bas-gauche de chaque vignette, icône œil, `post.views` déjà porté mais jamais affiché.
+            Label("\(post.views ?? 0)", systemImage: "eye.fill")
+                .font(.caption2).foregroundStyle(.white)
+                .padding(4)
+                .shadow(radius: 2)
         }
     }
 

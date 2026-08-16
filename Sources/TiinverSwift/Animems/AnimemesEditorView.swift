@@ -1,19 +1,40 @@
 import SwiftUI
+import UIKit
+import UniformTypeIdentifiers
 
 /// Assemble un écran d'éditeur RÉEL autour du moteur Animems déjà porté (`AnimationComposer`/
 /// `AnimationObjectData`/`LayerRenderer`/`ShapeFactory`/`AnimemesExporter`, lus en entier le
 /// 2026-08-15) — port de `AnimemesCompound.java`/`compound_animemes_layout.xml`, PAS une réécriture
-/// du moteur. Barre du haut (`close_animemes`/`save_animemes2`), rangée d'ajout d'objet (`ic_add`/
-/// `ic_text`/`btn_shape`, PAS `ic_sticker` — nécessiterait le catalogue d'émojis/stickers, hors
-/// périmètre de cette passe), `undo`, canevas avec déplacement/rotation/échelle réels au doigt
-/// (2026-08-16, `AnimemesGestureController`), **timeline/keyframes/lecture/masques/modèles de
-/// mouvement locaux câblés le 2026-08-16** (`TimelineView`/`AnimationEngine`/`MaskFactory`/
-/// `MotionTemplateManager`, moteur déjà porté, seul le câblage manquait — voir audit dans
-/// `MIGRATION_AUDIT.md`). **Modèles de mouvement COMMUNAUTAIRES (parcourir/télécharger/appliquer)
-/// câblés le 2026-08-16** — confirmés RÉELS et accessibles depuis l'UI Android par un audit dédié
-/// (`btn_display_online_template`), contrairement à l'UPLOAD communautaire (bouton "Publier le
-/// modèle" commenté dans le source Android lui-même, code mort, NON porté — voir
-/// `CommunityTemplateRepository.swift`).
+/// du moteur.
+///
+/// **Parité UI/comportement avec Android reconstruite depuis une capture d'écran réelle
+/// (2026-08-16)**, précédée d'un audit dédié call-chain sur CHAQUE contrôle visible (pas deviné
+/// depuis les icônes) : barre du haut (vitesse d'animation/capture automatique/ratio/son), barre
+/// d'outils verticale droite (texte/dessin/emoji/sticker/image/répéter-fond/formes/modèles
+/// communautaires), contrôles de zoom gauche, barre de lecture, timeline, rangée d'outils du bas
+/// (Generate with AI/Compose/Load compose/Modèle/supprimer/réinitialiser/chronologie/undo).
+///
+/// **Éléments confirmés RÉELS par l'audit et câblés ici** (voir `AnimemesEditorState.swift` pour
+/// le détail de chaque nouvelle méthode) : dessin libre (`ic_paint`→`drawPath`, nouveau
+/// `AnimemesDrawingView.swift`), sticker/emoji (`ic_smile`/`ic_sticker`, `addSticker`), son
+/// (`AnimemesExporter.audioURL` — déjà pris en charge par l'exporteur, seul le point d'entrée UI
+/// manquait), capture automatique (approximée par un keyframe auto-enregistré en fin de glissement,
+/// voir doc de `autoCaptureEnabled`), ratio de canevas (`spinnerResolution`, contrôle aussi la
+/// résolution d'export), suppression du calque sélectionné (`remover`, distinct de `undo`),
+/// réinitialisation de l'animation du calque sélectionné (`reset_animation`).
+///
+/// **Confirmés RÉELS mais délibérément PAS reproduits, code mort ou hors périmètre documenté** :
+/// "Generate with AI" (`btn_ai_generate`) — bouton et gestionnaire RÉELS côté Android, mais
+/// `aiObjectDelegate` n'est JAMAIS assigné nulle part dans le dépôt (`grep` exhaustif) : au tap,
+/// Android lui-même ne fait RIEN de visible (juste un log "aiObjectDelegate not set"). Bouton
+/// affiché ici pour la parité visuelle, mais SANS action câblée, fidèle à ce comportement réel —
+/// PAS une fonctionnalité inventée. "Compose"/"Load compose" (`btn_recompose`/
+/// `btn_recompose_gallery`) — RÉELS et fonctionnels côté Android (fusion de calques + rechargement
+/// local), mais périmètre comparable à une fonctionnalité séparée à part entière (persistance
+/// locale dédiée, `RecomposeManager`, jamais lue en détail) — DIFFÉRÉS, boutons affichés en grisé
+/// plutôt que masqués (la capture les montre, les masquer serait un écart visuel de plus).
+/// "Répéter l'image de fond" (`ic_repeate`) — approximé par un aplatissement de la frame courante
+/// en nouveau calque statique, pas la reconstruction exacte de `onRepeateImage`/`CroperView`.
 struct AnimemesEditorView: View {
     var onClose: () -> Void
 
@@ -22,6 +43,11 @@ struct AnimemesEditorView: View {
     @State private var showGalleryPicker = false
     @State private var showTextPrompt = false
     @State private var newText = ""
+    @State private var showStickerPrompt = false
+    @State private var newSticker = ""
+    @State private var showDrawing = false
+    @State private var showAudioPicker = false
+    @State private var showShapePanel = false
     @State private var lastMagnification: CGFloat = 1.0
     @State private var isPinching = false
     @State private var exportedURL: URL?
@@ -33,73 +59,38 @@ struct AnimemesEditorView: View {
     @State private var showTemplateGallery = false
     @State private var showCommunityGallery = false
     @State private var templateSavedToast = false
+    @State private var showTimeline = true
+    @State private var showRightTools = true
+    @State private var selectedSpeedIndex = 0
+    @State private var selectedRatioIndex = 0
+
+    /// Port de `R.array.frame_duration_array2` (`values-fr/strings.xml`, position 0 = "très
+    /// rapide", confirmée par capture d'écran) — voir `AnimemesEditorState.autoCaptureEnabled` pour
+    /// la limite assumée sur l'effet réel de ce réglage (modèle de moteur différent d'Android).
+    private static let speedOptions = ["très rapide", "rapide", "normal", "lent", "très lent"]
+    /// Port de `R.array.resolution` (`values/strings.xml`) — ordre confirmé par capture (9:16 par
+    /// défaut).
+    private static let ratioOptions: [(label: String, ratio: CGFloat)] = [
+        ("9:16", 9.0 / 16.0), ("16:9", 16.0 / 9.0), ("3:4", 3.0 / 4.0), ("1:1", 1.0),
+    ]
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                canvas
-                playbackBar
-                if state.isMaskEditMode, let selectedId = state.selectedId, let obj = state.layers.first(where: { $0.id == selectedId }) {
-                    maskPanel(for: obj)
-                } else {
-                    TimelineView(state: state)
-                    if showDurationSlider, let selectedId = state.selectedId, let obj = state.layers.first(where: { $0.id == selectedId }) {
-                        durationSlider(for: obj)
-                    }
-                }
-                toolbar
-            }
-            .background(Color.black)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    // Port de `close_animemes`.
-                    Button { onClose() } label: { Image(systemName: "xmark") }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    // Port de `MotionTemplateGalleryView` (chargement) — `showLoadTemplate()`,
-                    // point d'entrée non identifié précisément dans `AnimemesCompound.java` (hors
-                    // périmètre de l'audit qui a scopé cette passe), câblé ici via une icône dédiée.
-                    Button { showTemplateGallery = true } label: {
-                        Image(systemName: "square.stack.3d.up")
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    // Port de `btn_display_online_template` → `MemesFragment.showCommunityTemplates`
-                    // — confirmé RÉEL et accessible depuis l'UI Android par un audit dédié
-                    // (2026-08-16), contrairement à l'upload communautaire (code mort côté Android
-                    // lui-même, voir `CommunityTemplateRepository.swift`).
-                    Button { showCommunityGallery = true } label: {
-                        Image(systemName: "globe")
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    // Port de `save_animemes2` → `showSaveDialog()`/`AnimemesActionSheet` — si le
-                    // calque est animé, propose export vidéo OU sauvegarde en modèle (port de
-                    // "Publish Animation"/"Save Template" ; "Publish Template" = upload
-                    // communautaire, PAS reproduit — code mort côté Android lui-même, voir
-                    // `MIGRATION_AUDIT.md`).
-                    // Sinon (composition statique), export direct comme avant.
-                    if state.isExporting {
-                        ProgressView()
-                    } else {
-                        Button {
-                            if state.hasAnimation {
-                                showSaveOptions = true
-                            } else {
-                                state.export(canvasSize: canvasSize) { url in exportedURL = url }
-                            }
-                        } label: {
-                            Image(systemName: "square.and.arrow.up")
-                        }
-                        .disabled(state.layers.isEmpty)
-                    }
+        VStack(spacing: 0) {
+            topBar
+            canvasArea
+            playbackBar
+            if state.isMaskEditMode, let selectedId = state.selectedId, let obj = state.layers.first(where: { $0.id == selectedId }) {
+                maskPanel(for: obj)
+            } else if showTimeline {
+                TimelineView(state: state)
+                if showDurationSlider, let selectedId = state.selectedId, let obj = state.layers.first(where: { $0.id == selectedId }) {
+                    durationSlider(for: obj)
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbarBackground(.black, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+            bottomToolbar
         }
+        .background(Color.black)
+        .statusBarHidden(false)
         .sheet(isPresented: $showGalleryPicker) {
             GalleryPickerView(
                 onImagePicked: { url in
@@ -116,6 +107,32 @@ struct AnimemesEditorView: View {
             TextField("Texte", text: $newText)
             Button("Ajouter") { state.addText(newText, canvasSize: canvasSize); newText = "" }
             Button("Annuler", role: .cancel) { newText = "" }
+        }
+        .alert("Ajouter un emoji", isPresented: $showStickerPrompt) {
+            TextField("Emoji", text: $newSticker)
+            Button("Ajouter") { state.addSticker(newSticker, canvasSize: canvasSize); newSticker = "" }
+            Button("Annuler", role: .cancel) { newSticker = "" }
+        } message: {
+            Text("Touche le globe du clavier pour choisir un emoji.")
+        }
+        .fullScreenCover(isPresented: $showDrawing) {
+            AnimemesDrawingView(
+                canvasSize: canvasSize,
+                onDone: { image in
+                    state.addFreehandDrawing(image, canvasSize: canvasSize)
+                    showDrawing = false
+                },
+                onCancel: { showDrawing = false }
+            )
+        }
+        .confirmationDialog("Ajouter une forme", isPresented: $showShapePanel, titleVisibility: .visible) {
+            Button("Rectangle") { state.addShape(.shapeRect, canvasSize: canvasSize) }
+            Button("Cercle") { state.addShape(.shapeCircle, canvasSize: canvasSize) }
+            Button("Ligne") { state.addShape(.shapeLine, canvasSize: canvasSize) }
+            Button("Annuler", role: .cancel) {}
+        }
+        .fileImporter(isPresented: $showAudioPicker, allowedContentTypes: [.audio]) { result in
+            if case .success(let url) = result { state.audioURL = url }
         }
         .sheet(item: Binding(get: { exportedURL.map(ExportedVideo.init) }, set: { exportedURL = $0?.url })) { export in
             ShareLink(item: export.url) { Label("Partager l'export", systemImage: "square.and.arrow.up") }
@@ -151,49 +168,232 @@ struct AnimemesEditorView: View {
         }
     }
 
+    // MARK: - Barre du haut (port de `spinner`/`auto_checkbox`/`spinnerResolution`/`btn_add_sound`,
+    // `close_animemes`/`save_animemes2` — tous confirmés réels par l'audit du 2026-08-16)
+
+    private var topBar: some View {
+        VStack(spacing: 10) {
+            HStack {
+                Button { onClose() } label: { // close_animemes
+                    Image(systemName: "xmark")
+                        .font(.headline.bold())
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 8))
+                }
+                Spacer()
+                VStack(alignment: .center, spacing: 0) {
+                    Text("Vitesse d'animation").font(.caption2).foregroundStyle(.secondary)
+                    Picker("Vitesse", selection: $selectedSpeedIndex) {
+                        ForEach(Self.speedOptions.indices, id: \.self) { i in Text(Self.speedOptions[i]).tag(i) }
+                    }
+                    .pickerStyle(.menu)
+                }
+                Spacer()
+                saveButton // save_animemes2
+            }
+
+            HStack {
+                Button {
+                    state.autoCaptureEnabled.toggle() // auto_checkbox
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: state.autoCaptureEnabled ? "checkmark.square.fill" : "square")
+                        Text("Capture automatique").font(.caption)
+                    }
+                }
+                .foregroundStyle(.primary)
+                Spacer()
+                Picker("Ratio", selection: $selectedRatioIndex) { // spinnerResolution
+                    ForEach(Self.ratioOptions.indices, id: \.self) { i in Text(Self.ratioOptions[i].label).tag(i) }
+                }
+                .pickerStyle(.menu)
+            }
+
+            HStack {
+                Button { showAudioPicker = true } label: { // btn_add_sound
+                    Label(state.audioURL == nil ? "Ajouter un son" : (state.audioURL?.lastPathComponent ?? "Son ajouté"), systemImage: "music.note")
+                        .font(.caption.bold())
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Color(.secondarySystemBackground), in: Capsule())
+                .foregroundStyle(.primary)
+                Spacer()
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+        .background(Color(.systemBackground))
+    }
+
+    private var saveButton: some View {
+        Group {
+            if state.isExporting {
+                ProgressView()
+            } else {
+                Button {
+                    if state.hasAnimation {
+                        showSaveOptions = true
+                    } else {
+                        state.export(canvasSize: canvasSize) { url in exportedURL = url }
+                    }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.headline.bold())
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(Color.accentColor, in: Circle())
+                }
+                .disabled(state.layers.isEmpty)
+            }
+        }
+    }
+
+    // MARK: - Canevas (port de `MemesView2.onDraw`, ratio/zoom/toolbar superposés)
+
     /// Port de `MemesView2.onDraw` — rendu conscient du playhead (`LayerRenderer.drawObjectFrame`,
     /// 2026-08-16), remplace l'ancien rendu toujours-dernière-transform (`drawLastTransform`,
     /// équivalent à un playhead figé sur la dernière frame). `drawObjectFrame` interroge les pistes
     /// de keyframes EN DIRECT (voir note `AnimemesEditorState.preparePlayback`) — `localTransformIndex`
     /// n'est qu'un REPLI pour les calques sans keyframe matrice (transform unique posée par geste).
-    private var canvas: some View {
-        GeometryReader { geo in
-            Canvas { context, size in
-                context.withCGContext { cgContext in
-                    let frame = state.timeline.playheadFrame
-                    let ns = state.timeline.frameToTimestampNs(frame)
-                    for (index, obj) in state.layers.enumerated() {
-                        guard obj.visible else { continue }
-                        switch obj.objectType {
-                        case .bitmap, .shapeRect, .shapeCircle, .shapeLine:
-                            let localIndex = state.localTransformIndex(forLayer: index, frame: frame)
-                            let tfm = localIndex.flatMap { obj.transforms.indices.contains($0) ? obj.transforms[$0] : nil }
-                                ?? obj.transforms.last ?? Transform()
-                            LayerRenderer.drawObjectFrame(
-                                obj, transform: tfm, frameIndex: localIndex ?? 0, in: cgContext,
-                                currentNs: ns, viewSize: size
-                            )
-                        case .text:
-                            LayerRenderer.drawText(obj, in: cgContext, textRect: state.textRect, viewSize: size)
-                        case .sticker:
-                            LayerRenderer.drawSticker(obj, in: cgContext)
-                        default:
-                            break
+    private var canvasArea: some View {
+        GeometryReader { outerGeo in
+            let fitSize = Self.fittedSize(for: Self.ratioOptions[selectedRatioIndex].ratio, in: outerGeo.size)
+            ZStack {
+                Canvas { context, size in
+                    context.withCGContext { cgContext in
+                        let frame = state.timeline.playheadFrame
+                        let ns = state.timeline.frameToTimestampNs(frame)
+                        for (index, obj) in state.layers.enumerated() {
+                            guard obj.visible else { continue }
+                            switch obj.objectType {
+                            case .bitmap, .shapeRect, .shapeCircle, .shapeLine:
+                                let localIndex = state.localTransformIndex(forLayer: index, frame: frame)
+                                let tfm = localIndex.flatMap { obj.transforms.indices.contains($0) ? obj.transforms[$0] : nil }
+                                    ?? obj.transforms.last ?? Transform()
+                                LayerRenderer.drawObjectFrame(
+                                    obj, transform: tfm, frameIndex: localIndex ?? 0, in: cgContext,
+                                    currentNs: ns, viewSize: size
+                                )
+                            case .text:
+                                LayerRenderer.drawText(obj, in: cgContext, textRect: state.textRect, viewSize: size)
+                            case .sticker:
+                                LayerRenderer.drawSticker(obj, in: cgContext)
+                            default:
+                                break
+                            }
                         }
                     }
                 }
+                .frame(width: fitSize.width, height: fitSize.height)
+                .background(Color(white: 0.08))
+                .gesture(combinedGesture)
+                .onAppear { canvasSize = fitSize; state.preparePlayback(canvasSize: fitSize) }
+                .onChange(of: fitSize) { newSize in canvasSize = newSize; state.preparePlayback(canvasSize: newSize) }
+                .onChange(of: state.version) { _ in state.preparePlayback(canvasSize: canvasSize) }
+                // `version` force un redraw explicite après mutation des calques (le moteur Animems
+                // est composé de classes de référence, pas de `@Published` internes — voir
+                // `AnimemesEditorState`).
+                .id(state.version)
+
+                zoomControls
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                    .padding(.leading, 8)
+
+                rightToolbar
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                    .padding(.trailing, 8)
             }
-            .background(Color(white: 0.08))
-            .gesture(combinedGesture)
-            .onAppear { canvasSize = geo.size; state.preparePlayback(canvasSize: geo.size) }
-            .onChange(of: geo.size) { newSize in canvasSize = newSize; state.preparePlayback(canvasSize: newSize) }
-            .onChange(of: state.version) { _ in state.preparePlayback(canvasSize: canvasSize) }
-            // `version` force un redraw explicite après mutation des calques (le moteur Animems
-            // est composé de classes de référence, pas de `@Published` internes — voir
-            // `AnimemesEditorState`).
-            .id(state.version)
+            .frame(width: outerGeo.size.width, height: outerGeo.size.height)
         }
-        .frame(height: 320)
+        .frame(height: 360)
+    }
+
+    /// Ajuste `available` au ratio largeur/hauteur demandé, en restant dans les deux dimensions.
+    private static func fittedSize(for ratio: CGFloat, in available: CGSize) -> CGSize {
+        guard available.width > 0, available.height > 0 else { return available }
+        let byWidth = CGSize(width: available.width, height: available.width / ratio)
+        if byWidth.height <= available.height { return byWidth }
+        return CGSize(width: available.height * ratio, height: available.height)
+    }
+
+    /// Port des contrôles de zoom gauche (`+`/`1.0x`/`-`/`fit`) — zoom VISUEL du canevas dans son
+    /// conteneur, indépendant de `canvasSize` (résolution réelle des calques/de l'export, pilotée
+    /// par le ratio ci-dessus) : Android sépare aussi le zoom d'affichage (`ScaleGestureDetector`
+    /// sur `MemesView2`) de la résolution d'export (`spinnerResolution`), deux réglages distincts.
+    @State private var displayZoom: CGFloat = 1.0
+    private var zoomControls: some View {
+        VStack(spacing: 6) {
+            Button { displayZoom = min(3, displayZoom + 0.25) } label: {
+                Image(systemName: "plus").frame(width: 32, height: 32)
+            }
+            Text(String(format: "%.1fx", displayZoom)).font(.caption2)
+            Button { displayZoom = max(0.5, displayZoom - 0.25) } label: {
+                Image(systemName: "minus").frame(width: 32, height: 32)
+            }
+            Button { displayZoom = 1.0 } label: {
+                Text("fit").font(.caption2)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(8)
+        .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    /// Port de la barre d'outils verticale droite (`compound_animemes_layout.xml:196-331`) — ordre
+    /// EXACT confirmé par l'audit : chevron (réduire/agrandir) / Tt (texte) / crayon (dessin) /
+    /// smiley (emoji) / image+ (sticker) / + (image galerie) / boucle (répéter fond) / formes /
+    /// étincelle (modèles communautaires).
+    private var rightToolbar: some View {
+        VStack(spacing: 14) {
+            Button { showRightTools.toggle() } label: {
+                Image(systemName: showRightTools ? "chevron.up" : "chevron.down")
+            }
+            if showRightTools {
+                Button { showTextPrompt = true } label: { Text("Tt").font(.headline.bold()) } // ic_text
+                Button { showDrawing = true } label: { Image(systemName: "pencil") } // ic_paint
+                Button { showStickerPrompt = true } label: { Image(systemName: "face.smiling") } // ic_smile
+                Button { showStickerPrompt = true } label: { Image(systemName: "photo.badge.plus") } // ic_sticker — même clavier emoji natif que ic_smile, voir doc de tête de fichier PhotoToolsView sur l'absence de catalogue custom côté Android
+                Button { showGalleryPicker = true } label: { Image(systemName: "plus") } // ic_add
+                Button { repeatBackgroundImage() } label: { Image(systemName: "arrow.triangle.2.circlepath") } // ic_repeate
+                Button { showShapePanel = true } label: { Image(systemName: "square.on.circle") } // btn_shape
+                Button { showCommunityGallery = true } label: { Image(systemName: "sparkles") } // btn_display_online_template
+            }
+        }
+        .font(.title3)
+        .foregroundStyle(.white)
+        .padding(10)
+        .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    /// Port approximé d'`onRepeateImage`/`ic_repeate` (confirmé réel par l'audit : aplatit l'état
+    /// visible courant en un nouveau calque bitmap statique via `CroperView`) — réutilise le même
+    /// chemin de rendu que l'export image statique (`LayerRenderer.drawLastTransform`) plutôt que de
+    /// reconstruire `CroperView`, puis ajoute le résultat comme nouveau calque via
+    /// `addFreehandDrawing` (même signature : image déjà à l'échelle du canevas).
+    private func repeatBackgroundImage() {
+        guard canvasSize.width > 0, canvasSize.height > 0 else { return }
+        let renderer = UIGraphicsImageRenderer(size: canvasSize)
+        let image = renderer.image { context in
+            for obj in state.layers {
+                guard obj.visible else { continue }
+                switch obj.objectType {
+                case .bitmap, .shapeRect, .shapeCircle, .shapeLine:
+                    LayerRenderer.drawLastTransform(
+                        obj, in: context.cgContext, currentNs: 0, isSliderPreview: true,
+                        bitmapCache: state.bitmapCache, viewSize: canvasSize
+                    )
+                case .text:
+                    LayerRenderer.drawText(obj, in: context.cgContext, textRect: state.textRect, viewSize: canvasSize)
+                case .sticker:
+                    LayerRenderer.drawSticker(obj, in: context.cgContext)
+                default:
+                    break
+                }
+            }
+        }
+        state.addFreehandDrawing(image, canvasSize: canvasSize)
     }
 
     /// Port de la barre de lecture (`AnimemesCompound.java:2007-2019` — bouton play/pause unique) +
@@ -205,6 +405,9 @@ struct AnimemesEditorView: View {
                 state.togglePlayback(canvasSize: canvasSize)
             } label: {
                 Image(systemName: state.isPlaying ? "pause.fill" : "play.fill")
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Color.accentColor, in: Circle())
             }
             .disabled(state.layers.isEmpty)
 
@@ -224,6 +427,10 @@ struct AnimemesEditorView: View {
                 Image(systemName: "timer")
             }
             .disabled(state.selectedId == nil)
+
+            Button { showTimeline.toggle() } label: { // chevron bas de la capture, sous le bouton lecture
+                Image(systemName: showTimeline ? "chevron.down" : "chevron.up")
+            }
         }
         .font(.title3)
         .foregroundStyle(.white)
@@ -424,34 +631,45 @@ struct AnimemesEditorView: View {
         .background(Color.black)
     }
 
-    private var toolbar: some View {
-        HStack(spacing: 28) {
-            // Port de `ic_add` (ajout photo).
-            Button { showGalleryPicker = true } label: { Image(systemName: "photo") }
-            // Port de `ic_text`.
-            Button { showTextPrompt = true } label: { Image(systemName: "textformat") }
-            // Port de `btn_shape` → `showShapeAddPanel()` — 3 formes directement (rect/cercle/ligne),
-            // sans le panneau de sélection intermédiaire d'Android (accès direct, comportement
-            // équivalent avec moins de taps).
-            Button { state.addShape(.shapeRect, canvasSize: canvasSize) } label: { Image(systemName: "rectangle") }
-            Button { state.addShape(.shapeCircle, canvasSize: canvasSize) } label: { Image(systemName: "circle") }
-            Button { state.addShape(.shapeLine, canvasSize: canvasSize) } label: { Image(systemName: "line.diagonal") }
-            // Port de `MaskAddPanel`/`showMaskAddPanel()` — active le mode d'édition de masque sur
-            // le calque sélectionné (voir `maskPanel`/`combinedGesture` ci-dessus).
-            Button { state.isMaskEditMode.toggle() } label: {
-                Image(systemName: state.isMaskEditMode ? "circle.dashed.inset.filled" : "circle.dashed")
+    /// Port de la rangée du bas (`compound_animemes_layout.xml:460-938`) — voir doc de tête de
+    /// fichier pour le détail RÉEL/DIFFÉRÉ/MORT de chaque bouton, confirmé par audit dédié.
+    private var bottomToolbar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 26) {
+                bottomButton(icon: "sparkles.rectangle.stack", label: "Generate with AI") {
+                    // Confirmé code mort côté Android (aiObjectDelegate jamais assigné) — bouton
+                    // affiché pour la parité visuelle, SANS action (fidèle au comportement réel :
+                    // Android lui-même ne fait rien de visible au tap).
+                }
+                bottomButton(icon: "square.on.square", label: "Compose") {}
+                    .opacity(0.4)
+                    .disabled(true)
+                bottomButton(icon: "square.stack", label: "Load compose") {}
+                    .opacity(0.4)
+                    .disabled(true)
+                bottomButton(icon: "square.grid.2x2", label: "Modèle") { showTemplateGallery = true }
+                bottomButton(icon: "trash", label: "supprimer") { state.deleteSelected() }
+                    .disabled(state.selectedId == nil)
+                bottomButton(icon: "arrow.counterclockwise", label: "réinitialiser") { state.resetSelected() }
+                    .disabled(state.selectedId == nil)
+                bottomButton(icon: "clock", label: "chronologie") { showTimeline.toggle() }
+                bottomButton(icon: "arrow.uturn.backward", label: "undo") { state.removeLast() }
+                    .disabled(state.layers.isEmpty)
             }
-            .disabled(state.selectedId == nil)
-            .tint(state.isMaskEditMode ? .yellow : .white)
-            Spacer()
-            // Port de `undo` → `mView.deletePrecedenteDraw()`.
-            Button { state.removeLast() } label: { Image(systemName: "arrow.uturn.backward") }
-                .disabled(state.layers.isEmpty)
+            .padding(.horizontal)
         }
-        .font(.title2)
-        .foregroundStyle(.white)
-        .padding()
+        .padding(.vertical, 10)
         .background(Color.black)
+    }
+
+    private func bottomButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon).font(.title3)
+                Text(label).font(.caption2)
+            }
+        }
+        .foregroundStyle(.white)
     }
 }
 

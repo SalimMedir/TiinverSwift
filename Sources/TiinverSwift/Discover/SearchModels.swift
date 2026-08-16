@@ -120,11 +120,13 @@ enum SearchTab: String, CaseIterable {
         }
     }
 
+    // Parité UI avec Android corrigée par capture d'écran (2026-08-16) : "Tous" (pas "Tout"),
+    // "Utilisateur" (pas "Comptes") — libellés exacts des onglets vus sur la capture réelle.
     var label: String {
         switch self {
-        case .all: return "Tout"
+        case .all: return "Tous"
         case .posts: return "Publications"
-        case .users: return "Comptes"
+        case .users: return "Utilisateur"
         case .hashtags: return "Hashtags"
         }
     }

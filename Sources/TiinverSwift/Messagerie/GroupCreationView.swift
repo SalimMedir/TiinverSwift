@@ -26,65 +26,82 @@ struct GroupCreationView: View {
     private let priceOptions = [100, 200, 400, 500, 700, 800, 1000]
 
     var body: some View {
-        Form {
-            Section {
-                TextField("Tapez le sujet du groupe ici..", text: $groupName)
-            }
-
-            Section("Type de groupe") {
-                Picker("Type de groupe", selection: $isPrivate) {
-                    Text("privé").tag(true)
-                    Text("public").tag(false)
-                }
-                .pickerStyle(.inline)
-                .labelsHidden()
-
-                Toggle("groupe à but lucratif", isOn: $isLucrative)
-                if isLucrative {
-                    Picker("Prix (pièces/mois)", selection: $price) {
-                        ForEach(priceOptions, id: \.self) { Text("\($0)") }
+        ZStack(alignment: .bottomTrailing) {
+            Form {
+                Section {
+                    HStack {
+                        // Port de l'icône appareil-photo affichée dans le champ de nom (capture
+                        // d'écran) — Android n'a pas de vraie action de sélection d'avatar de
+                        // groupe dans ce formulaire (confirmé, `GroupRepository.createGroup`
+                        // envoie toujours `profile_picture` vide), purement décoratif ici aussi.
+                        Image(systemName: "camera.fill").foregroundStyle(.secondary)
+                        TextField("Tapez le sujet du groupe ici..", text: $groupName)
                     }
                 }
-            }
 
-            Section {
-                LabeledContent("Lien d'invitation") {
-                    Text("https://tiinver.com/group/\(localToken)")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .multilineTextAlignment(.trailing)
-                }
-            }
+                Section("type de groupe") {
+                    Picker("Type de groupe", selection: $isPrivate) {
+                        Text("privé").tag(true)
+                        Text("public").tag(false)
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
 
-            Section("Membres (\(members.count))") {
-                ForEach(members) { member in
-                    HStack(spacing: 10) {
-                        AsyncImage(url: URL(string: member.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
-                            Circle().fill(Color(.secondarySystemBackground))
+                    Toggle("groupe à but lucratif", isOn: $isLucrative)
+                    if isLucrative {
+                        Picker("Prix (pièces/mois)", selection: $price) {
+                            ForEach(priceOptions, id: \.self) { Text("\($0)") }
                         }
-                        .frame(width: 32, height: 32).clipShape(Circle())
-                        Text(member.displayName)
                     }
+                }
+
+                Section {
+                    LabeledContent("Lien d'invitation:") {
+                        Text("https://tiinver.com/group/\(localToken)")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+
+                Section("Membres (\(members.count))") {
+                    ForEach(members) { member in
+                        HStack(spacing: 10) {
+                            AsyncImage(url: URL(string: member.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+                                Circle().fill(Color(.secondarySystemBackground))
+                            }
+                            .frame(width: 32, height: 32).clipShape(Circle())
+                            Text(member.displayName)
+                        }
+                    }
+                }
+
+                if let errorText {
+                    Text(errorText).foregroundStyle(.red)
                 }
             }
 
-            if let errorText {
-                Text(errorText).foregroundStyle(.red)
+            // Port du FAB `btnCreateGrp` (capture d'écran : bouton rond rose bas-droite, icône
+            // flèche d'envoi) — remplace l'icône de barre d'outils d'une version antérieure de ce
+            // fichier, écart visuel réel corrigé.
+            if isCreating {
+                ProgressView()
+                    .frame(width: 56, height: 56)
+                    .background(Circle().fill(Color(.systemBackground)))
+                    .padding(.trailing, 20).padding(.bottom, 24)
+            } else if !groupName.trimmingCharacters(in: .whitespaces).isEmpty {
+                Button { Task { await create() } } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.title3.bold())
+                        .foregroundStyle(.white)
+                        .frame(width: 56, height: 56)
+                        .background(Circle().fill(Color.accentColor))
+                        .shadow(radius: 4)
+                }
+                .padding(.trailing, 20).padding(.bottom, 24)
             }
         }
         .navigationTitle("Nouveau groupe")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if isCreating {
-                    ProgressView()
-                } else {
-                    Button { Task { await create() } } label: {
-                        Image(systemName: "paperplane.fill")
-                    }
-                    .disabled(groupName.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-        }
         .navigationDestination(isPresented: $showCreatedChat) {
             if let createdTarget { ChatView(target: createdTarget) }
         }

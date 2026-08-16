@@ -20,6 +20,18 @@ import SwiftUI
 ///
 /// **Création de groupe portée le 2026-08-15** (test Appetize réel, GAP fonctionnel) — port de
 /// `Contact.class` (FAB `GoToContact`) : voir `ContactPickerView.swift`/`GroupCreationView.swift`.
+/// **Parité UI avec Android confirmée par capture d'écran (2026-08-16)** — le point d'entrée réel
+/// de la création de groupe est un FAB rose bas-droite (icône personnes+plus), PAS l'icône de
+/// barre d'outils utilisée dans une version antérieure de ce fichier (`person.2.badge.plus` en
+/// `.navigationBarTrailing`) : capture Android montre clairement `Roster.java`'s FAB `GoToContact`
+/// (lignes 84,133-144, déjà identifié par le commentaire d'origine, mais le choix "convention
+/// native, pas de FAB flottant standard en SwiftUI" s'est avéré être un ÉCART VISUEL réel gênant
+/// la découverte du bouton, pas une simplification neutre — corrigé pour correspondre exactement).
+/// La capture montre aussi 2 liens texte roses sous la liste des conversations ("+ Nouveau
+/// message", "+ Invitez vos amis et votre famille") — "Nouveau message" reste hors périmètre
+/// (`NewMessage.java`, recherche téléphone/email pour un chat 1:1 direct, toujours pas porté, voir
+/// réserves de portée du fichier) mais affiché fidèlement même si son action reste un stub léger ;
+/// "Invitez vos amis" reste le gap contacts déjà documenté (`CNContactStore` non porté).
 struct RosterListView: View {
     @StateObject private var viewModel = RosterListViewModel()
     @State private var showContactPicker = false
@@ -29,17 +41,21 @@ struct RosterListView: View {
             if viewModel.rows.isEmpty && viewModel.hasLoaded {
                 emptyState
             } else {
-                List(viewModel.rows) { row in
-                    NavigationLink {
-                        ChatView(target: row.rosterModel)
-                    } label: {
-                        RosterRowView(row: row)
+                List {
+                    ForEach(viewModel.rows) { row in
+                        NavigationLink {
+                            ChatView(target: row.rosterModel)
+                        } label: {
+                            RosterRowView(row: row)
+                        }
                     }
+                    footerLinks
                 }
                 .listStyle(.plain)
             }
         }
-        // R.string.chat = "Chats" (chaîne Android réelle, reprise verbatim).
+        // R.string.chat = "Chats" (chaîne Android réelle, reprise verbatim) — teinte rose de
+        // marque, fidèle à la capture (titre rendu dans la couleur d'accent, pas noir/systeme).
         .navigationTitle("Chats")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -49,15 +65,19 @@ struct RosterListView: View {
                     Image(systemName: "arrow.clockwise")
                 }
             }
-            // Port du FAB `GoToContact` (`Roster.java:84,133-144`) — bouton bottom-trailing côté
-            // Android, déplacé dans la barre du haut côté iOS (convention native, pas de FAB
-            // flottant standard en SwiftUI/`List` sans superposition manuelle) — action et
-            // destination identiques, seul le positionnement diffère.
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button { showContactPicker = true } label: {
-                    Image(systemName: "person.2.badge.plus")
-                }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            // Port du FAB `GoToContact` (`Roster.java:84,133-144`).
+            Button { showContactPicker = true } label: {
+                Image(systemName: "person.2.fill")
+                    .font(.title3)
+                    .foregroundStyle(.white)
+                    .frame(width: 56, height: 56)
+                    .background(Circle().fill(Color.accentColor))
+                    .shadow(radius: 4)
             }
+            .padding(.trailing, 20)
+            .padding(.bottom, 24)
         }
         .navigationDestination(isPresented: $showContactPicker) {
             ContactPickerView()
@@ -70,10 +90,39 @@ struct RosterListView: View {
         }
     }
 
+    /// Port des 2 liens texte roses sous la liste (`Roster.java`, capture d'écran) — "Nouveau
+    /// message" route vers le même sélecteur de contacts qu'un groupe (`NewMessage.java` — écran
+    /// dédié recherche téléphone/email — reste hors périmètre, non re-créé ici) ; "Invitez vos
+    /// amis" route vers `ReferralView` (déjà porté, module 15) — lien d'invitation générique,
+    /// fidèle à l'intention du texte même si le flux contacts natif reste absent.
+    private var footerLinks: some View {
+        Section {
+            Button { showContactPicker = true } label: {
+                Label("Nouveau message", systemImage: "plus.circle.fill")
+            }
+            .foregroundStyle(Color.accentColor)
+            NavigationLink {
+                ReferralView()
+            } label: {
+                Label("Invitez vos amis et votre famille", systemImage: "person.badge.plus")
+                    .foregroundStyle(Color.accentColor)
+            }
+        }
+        .listRowSeparator(.hidden)
+    }
+
     private var emptyState: some View {
         VStack(spacing: 8) {
             Image(systemName: "message").font(.system(size: 40)).foregroundStyle(.secondary)
             Text("Aucune conversation").foregroundStyle(.secondary)
+            Button { showContactPicker = true } label: {
+                Label("Nouveau message", systemImage: "plus.circle.fill")
+            }
+            NavigationLink {
+                ReferralView()
+            } label: {
+                Label("Invitez vos amis et votre famille", systemImage: "person.badge.plus")
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -130,13 +179,11 @@ final class RosterListViewModel: ObservableObject {
     /// `RosterModel` prêt à être passé à `ChatView`, exactement comme `Roster.onItemClicked`
     /// transmet son `RosterModel` à `ActivityMsg` côté Android.
     func refresh() async {
-        // Log de diagnostic temporaire (2026-08-16) — le bouton "créer un groupe" (toolbar,
-        // `person.2.badge.plus`) est câblé indépendamment de cet état (voir `RosterListView.body`,
-        // `.toolbar` appliqué HORS du `Group` conditionnel sur `rows`/`hasLoaded`) : relu et
-        // confirmé présent et correctement branché vers `ContactPickerView` par lecture directe du
-        // code. Aucun bug statique trouvé dans ce fichier — ce log confirme au minimum que l'écran
-        // est bien atteint et que `refresh()` s'exécute, pour aider à isoler un éventuel problème
-        // d'affichage propre au runtime (non détectable par lecture de code seule).
+        // Log de diagnostic temporaire (2026-08-16) — avant réception des captures Android, le
+        // bouton "créer un groupe" avait été relu et confirmé présent/câblé (alors une icône de
+        // toolbar) sans qu'aucun bug statique soit trouvé ; corrigé depuis en FAB fidèle à la
+        // capture (voir doc de tête de fichier). Log laissé en place pour confirmer au prochain
+        // test que l'écran est bien atteint et que `refresh()` s'exécute.
         print("ROSTER: refresh() started, myId=\(UserSession.shared.myId ?? "nil")")
         guard let entities = try? await repository.rosterAll() else {
             hasLoaded = true

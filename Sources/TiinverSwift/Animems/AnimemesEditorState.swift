@@ -42,6 +42,20 @@ final class AnimemesEditorState: ObservableObject {
     /// `maskEditGesture`, qui pilote `maskOffsetX/Y`/`maskScale`/`maskRotation` au lieu de la
     /// matrice de transformation de l'objet.
     @Published var isMaskEditMode = false
+    /// Port de `auto_checkbox`/`automateCapture` (`AnimemesCompound.java:1900-1904`, confirmé réel
+    /// par audit dédié du 2026-08-16 sur les captures Android) — Android enregistre en continu de
+    /// nouvelles frames pendant le geste quand actif. **Approximation assumée, documentée** : le
+    /// moteur ici utilise un modèle "keyframe explicite" (bouton ◆, voir `recordKeyframe()`) plutôt
+    /// que la capture continue frame-par-frame d'Android — activer ce bouton enregistre
+    /// automatiquement un keyframe à la FIN de chaque glissement (`dragEnded()`) au lieu d'exiger un
+    /// tap manuel sur ◆, ce qui rapproche le comportement observable sans réécrire le moteur vers un
+    /// modèle de capture continue distinct.
+    @Published var autoCaptureEnabled = false
+    /// Port du fichier `.tmpl`/piste audio de l'export (`AnimemesExporter.audioURL`, déjà pris en
+    /// charge par l'exporteur — seul le point d'entrée UI "Ajouter un son" manquait). `nil` = pas de
+    /// son, fidèle au comportement par défaut d'Android (aucun son tant que l'utilisateur n'en
+    /// choisit pas un).
+    @Published var audioURL: URL?
 
     /// Port de `configureNewObject`/durée par défaut d'un nouveau calque — 3s à 30 fps
     /// (`AnimemesExporter.frameRate`), point de départ ÉDITABLE ensuite via la timeline
@@ -214,6 +228,7 @@ final class AnimemesEditorState: ObservableObject {
     func dragEnded() {
         guard let id = selectedId, let idx = index(of: id) else { return }
         gestureController.touchUp(objectIndex: idx, composer: composer, engine: engine)
+        if autoCaptureEnabled { recordKeyframe() }
     }
 
     /// Port de `touchPointerDown` — amorce un geste rotation/pincement, pivot = centre du calque
@@ -324,6 +339,79 @@ final class AnimemesEditorState: ObservableObject {
     func removeLast() {
         guard !composer.layers.isEmpty else { return }
         composer.setLayers(Array(composer.layers.dropLast()))
+        syncTimeline()
+        version += 1
+    }
+
+    /// Port de `remover` (rangée du bas, confirmé réel par audit du 2026-08-16) — supprime le calque
+    /// SÉLECTIONNÉ précisément, PAS forcément le dernier ajouté (distinct de `removeLast()`/`undo`
+    /// ci-dessus, qui reste le bouton `undo` séparé de la rangée d'outils du haut).
+    func deleteSelected() {
+        guard let id = selectedId, let idx = index(of: id) else { return }
+        var updated = composer.layers
+        updated.remove(at: idx)
+        composer.setLayers(updated)
+        selectedId = nil
+        syncTimeline()
+        version += 1
+    }
+
+    /// Port de `reset_animation` (confirmé réel par audit : réinitialise l'animation du calque
+    /// SÉLECTIONNÉ à une frame unique / efface ses keyframes, PAS une réinitialisation de tout le
+    /// document) — collapse `transforms` à la dernière transform courante et vide toutes les pistes
+    /// de keyframes (`AnimationObjectData.clearAllKeyframes()`, déjà porté).
+    func resetSelected() {
+        guard let id = selectedId, let obj = layers.first(where: { $0.id == id }) else { return }
+        if let last = obj.transforms.last { obj.transforms = [last] }
+        obj.clearAllKeyframes()
+        syncTimeline()
+        engine.prepare(composer: composer)
+        version += 1
+    }
+
+    /// Port de `displayStickerListener.onDisplay(EMOJI/STICKER)` (confirmé réel par audit :
+    /// `ic_smile`/`ic_sticker`) — même approche que la Galerie (`PhotoToolsView.addSticker`, clavier
+    /// emoji natif iOS plutôt qu'un catalogue d'assets, voir audit dédié 2026-08-16 confirmant
+    /// qu'Android lui-même n'a pas de catalogue custom ici) : l'emoji est rasterisé en bitmap via
+    /// `UIGraphicsImageRenderer` (même stratégie que `ShapeFactory` pour les formes) puis ajouté
+    /// comme calque `.sticker` (déjà pris en charge par `LayerRenderer.drawSticker`, jamais câblé
+    /// à un point d'ajout avant ce tour).
+    func addSticker(_ emoji: String, canvasSize: CGSize) {
+        let trimmed = emoji.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let size = CGSize(width: 96, height: 96)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { _ in
+            let font = UIFont.systemFont(ofSize: 72)
+            let attrs: [NSAttributedString.Key: Any] = [.font: font]
+            let textSize = trimmed.size(withAttributes: attrs)
+            let origin = CGPoint(x: (size.width - textSize.width) / 2, y: (size.height - textSize.height) / 2)
+            trimmed.draw(at: origin, withAttributes: attrs)
+        }
+        guard let cgImage = image.cgImage else { return }
+        let obj = AnimationObjectData()
+        obj.objectType = .sticker
+        obj.addBitmap(cgImage)
+        configureNewObject(obj, canvasSize: canvasSize, size: size)
+        composer.addLayer(obj)
+        syncTimeline()
+        version += 1
+    }
+
+    /// Port du crayon (`ic_paint` → `mView.setAction("drawPath")`, confirmé réel par audit :
+    /// dessin libre directement sur le canevas Animems, DISTINCT du peintre de la Galerie) — reçoit
+    /// le tracé déjà rasterisé en image (fond transparent) par la vue (réutilise le même mécanisme
+    /// de tracé que `FreeformCropView`, module Galerie, plutôt qu'un nouveau moteur de dessin) et
+    /// l'ajoute comme un calque bitmap ordinaire, animable comme n'importe quel autre calque.
+    func addFreehandDrawing(_ image: UIImage, canvasSize: CGSize) {
+        guard let cgImage = image.cgImage else { return }
+        let obj = AnimationObjectData()
+        obj.objectType = .bitmap
+        obj.addBitmap(cgImage)
+        configureNewObject(obj, canvasSize: canvasSize, size: image.size)
+        obj.offsetX = 0
+        obj.offsetY = 0
+        composer.addLayer(obj)
         syncTimeline()
         version += 1
     }
@@ -456,6 +544,7 @@ final class AnimemesEditorState: ObservableObject {
         let exporter = AnimemesExporter(composer: composer)
         exporter.outputSize = canvasSize
         exporter.viewSize = canvasSize
+        exporter.audioURL = audioURL // port de "Ajouter un son" — déjà pris en charge par l'exporteur.
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString).appendingPathExtension("mp4")
         exporter.export(to: url) { [weak self] result in

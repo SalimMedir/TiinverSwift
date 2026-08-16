@@ -121,7 +121,7 @@ struct AnimemesEditorView: View {
                 }
             }
             .background(Color(white: 0.08))
-            .gesture(state.isMaskEditMode ? maskEditGesture : combinedGesture)
+            .gesture(combinedGesture)
             .onAppear { canvasSize = geo.size; state.preparePlayback(canvasSize: geo.size) }
             .onChange(of: geo.size) { newSize in canvasSize = newSize; state.preparePlayback(canvasSize: newSize) }
             .onChange(of: state.version) { _ in state.preparePlayback(canvasSize: canvasSize) }
@@ -201,27 +201,34 @@ struct AnimemesEditorView: View {
     /// du geste — voir les commentaires de `beginPinchRotate()`/`rotationChanged(to:)`/
     /// `scaleChanged(incrementalFactor:)` dans `AnimemesEditorState` pour la réconciliation avec
     /// l'API par delta d'`AnimemesGestureController`.
-    /// Type explicite PARTAGÉ avec `maskEditGesture` — deux propriétés `some Gesture` distinctes
-    /// sont deux types opaques DIFFÉRENTS pour le compilateur même avec une composition
-    /// structurellement identique (`AnyGesture((some Gesture).Value)` ne s'unifie PAS entre deux
-    /// déclarations `some Gesture` séparées dans un ternaire — trouvé par le premier build réel
-    /// couvrant ce fichier : `error: conflicting arguments to generic parameter 'T'`, corrigé en
-    /// donnant aux DEUX gestes ce même type nommé explicite au lieu de deux `some Gesture` opaques).
-    private typealias ObjectGestureValue = SimultaneousGesture<
-        SimultaneousGesture<AnyGesture<DragGesture.Value>, AnyGesture<CGFloat>>, AnyGesture<Angle>
-    >.Value
-
-    private var combinedGesture: AnyGesture<ObjectGestureValue> {
-        let dragAndZoom: SimultaneousGesture<AnyGesture<DragGesture.Value>, AnyGesture<CGFloat>> =
-            SimultaneousGesture(AnyGesture(dragGesture), AnyGesture(magnificationGesture))
-        let full: SimultaneousGesture<SimultaneousGesture<AnyGesture<DragGesture.Value>, AnyGesture<CGFloat>>, AnyGesture<Angle>> =
-            SimultaneousGesture(dragAndZoom, AnyGesture(rotationGesture))
-        return AnyGesture(full)
+    ///
+    /// **Mode masque (2026-08-16) fusionné DANS ces mêmes gestes plutôt que dans un second jeu de
+    /// gestes séparé** — une première tentative câblait `combinedGesture`/`maskEditGesture` comme
+    /// deux compositions `SimultaneousGesture` DISTINCTES, choisies par ternaire selon `isMaskEditMode`
+    /// (`.gesture(cond ? maskEditGesture : combinedGesture)`). Le premier build réel couvrant ce
+    /// fichier a échoué à répétition sur cette approche (`some Gesture` opaque non unifiable entre
+    /// deux déclarations distinctes malgré une structure identique, PUIS ambiguïté de type-checking
+    /// même après érasure explicite via `AnyGesture` — deux échecs de compilation successifs, jamais
+    /// vérifiables localement faute d'environnement macOS). Corrigé en éliminant le problème à la
+    /// racine : UN SEUL jeu de gestes (`some Gesture` simple, pas d'érasure de type nécessaire), dont
+    /// chaque `onChanged`/`onEnded` bascule sur `state.isMaskEditMode` À L'EXÉCUTION plutôt que le
+    /// type du geste lui-même changeant selon le mode.
+    private var combinedGesture: some Gesture {
+        SimultaneousGesture(SimultaneousGesture(dragGesture, magnificationGesture), rotationGesture)
     }
 
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
+                if state.isMaskEditMode {
+                    let delta = CGSize(
+                        width: value.translation.width - lastMaskDragTranslation.width,
+                        height: value.translation.height - lastMaskDragTranslation.height
+                    )
+                    lastMaskDragTranslation = value.translation
+                    state.maskOffsetChanged(deltaTranslation: delta, canvasSize: canvasSize)
+                    return
+                }
                 // `translation == .zero` marque le PREMIER callback d'un nouveau geste
                 // (`minimumDistance: 0`) — ré-arme la sélection à chaque nouveau toucher plutôt
                 // qu'une seule fois, sinon `selectedId` resterait bloqué sur le premier calque
@@ -233,96 +240,76 @@ struct AnimemesEditorView: View {
                 state.dragMoved(to: value.location)
             }
             .onEnded { _ in
-                state.dragEnded()
+                if state.isMaskEditMode {
+                    lastMaskDragTranslation = .zero
+                } else {
+                    state.dragEnded()
+                }
             }
     }
 
     private var magnificationGesture: some Gesture {
         MagnificationGesture()
             .onChanged { value in
+                if state.isMaskEditMode {
+                    state.maskScaleChanged(incrementalFactor: value / lastMaskMagnification)
+                    lastMaskMagnification = value
+                    return
+                }
                 guard state.selectedId != nil else { return }
                 beginPinchIfNeeded()
                 state.scaleChanged(incrementalFactor: value / lastMagnification)
                 lastMagnification = value
             }
             .onEnded { _ in
-                lastMagnification = 1.0
-                isPinching = false
+                if state.isMaskEditMode {
+                    lastMaskMagnification = 1.0
+                } else {
+                    lastMagnification = 1.0
+                    isPinching = false
+                }
             }
     }
 
     private var rotationGesture: some Gesture {
         RotationGesture()
             .onChanged { value in
+                if state.isMaskEditMode {
+                    let delta = value.degrees - lastMaskRotationDegrees
+                    lastMaskRotationDegrees = value.degrees
+                    state.maskRotationChanged(deltaDegrees: delta)
+                    return
+                }
                 guard state.selectedId != nil else { return }
                 beginPinchIfNeeded()
                 state.rotationChanged(to: value.degrees)
             }
-            .onEnded { _ in isPinching = false }
+            .onEnded { _ in
+                if state.isMaskEditMode {
+                    lastMaskRotationDegrees = 0
+                } else {
+                    isPinching = false
+                }
+            }
     }
 
     /// `MagnificationGesture`/`RotationGesture` n'exposent pas de callback "début de geste" distinct
     /// — le premier `onChanged` de L'UN OU L'AUTRE sert de déclencheur pour amorcer
     /// `AnimemesGestureController.pointerDown` (voir `AnimemesEditorState.beginPinchRotate()`),
-    /// une seule fois par geste à deux doigts.
+    /// une seule fois par geste à deux doigts. Mode masque uniquement — `maskRotationChanged`/
+    /// `maskScaleChanged` n'ont pas besoin d'un tel amorçage (deltas directs, pas de matrice
+    /// `AnimemesGestureController` à réinitialiser).
     private func beginPinchIfNeeded() {
         guard !isPinching else { return }
         isPinching = true
         state.beginPinchRotate()
     }
 
-    // MARK: - Geste d'édition de masque (port de `MaskEditController`/`maskApplyDrag`, 2026-08-16)
-    //
-    // MÊME composition que `combinedGesture` (glisser+pincer+pivoter simultanés) mais ciblant
-    // `maskOffsetX/Y`/`maskScale`/`maskRotation` au lieu de la matrice de l'objet — type
-    // `AnyGesture<ObjectGestureValue>` explicite PARTAGÉ avec `combinedGesture` (voir sa note),
-    // requis pour que le ternaire de `canvas` (`isMaskEditMode ? maskEditGesture : combinedGesture`)
-    // type-check.
-
-    private var maskEditGesture: AnyGesture<ObjectGestureValue> {
-        let dragAndZoom: SimultaneousGesture<AnyGesture<DragGesture.Value>, AnyGesture<CGFloat>> =
-            SimultaneousGesture(AnyGesture(maskDragGesture), AnyGesture(maskMagnificationGesture))
-        let full: SimultaneousGesture<SimultaneousGesture<AnyGesture<DragGesture.Value>, AnyGesture<CGFloat>>, AnyGesture<Angle>> =
-            SimultaneousGesture(dragAndZoom, AnyGesture(maskRotationGesture))
-        return AnyGesture(full)
-    }
-
-    private var maskDragGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                let delta = CGSize(
-                    width: value.translation.width - lastMaskDragTranslation.width,
-                    height: value.translation.height - lastMaskDragTranslation.height
-                )
-                lastMaskDragTranslation = value.translation
-                state.maskOffsetChanged(deltaTranslation: delta, canvasSize: canvasSize)
-            }
-            .onEnded { _ in lastMaskDragTranslation = .zero }
-    }
-
-    private var maskMagnificationGesture: some Gesture {
-        MagnificationGesture()
-            .onChanged { value in
-                state.maskScaleChanged(incrementalFactor: value / lastMaskMagnification)
-                lastMaskMagnification = value
-            }
-            .onEnded { _ in lastMaskMagnification = 1.0 }
-    }
-
-    private var maskRotationGesture: some Gesture {
-        RotationGesture()
-            .onChanged { value in
-                let delta = value.degrees - lastMaskRotationDegrees
-                lastMaskRotationDegrees = value.degrees
-                state.maskRotationChanged(deltaDegrees: delta)
-            }
-            .onEnded { _ in lastMaskRotationDegrees = 0 }
-    }
-
     /// Port de `MaskAddPanel` (choix du type) + `MaskPreviewEditorPanel` (inversion/flou/écart
     /// miroir) — le décalage/l'échelle/la rotation se pilotent par geste direct sur le canevas
-    /// (`maskEditGesture` ci-dessus), pas par ce panneau (fidèle à Android : `MaskEditController`
-    /// pilote CE sous-ensemble via le canevas, le panneau ne porte que les réglages scalaires).
+    /// (`combinedGesture`, branche `isMaskEditMode` ci-dessus), pas par ce panneau (fidèle à
+    /// Android : `MaskEditController` pilote CE sous-ensemble via le canevas, le panneau ne porte
+    /// que les réglages scalaires).
     private func maskPanel(for obj: AnimationObjectData) -> some View {
         VStack(spacing: 10) {
             ScrollView(.horizontal, showsIndicators: false) {
@@ -387,7 +374,7 @@ struct AnimemesEditorView: View {
             Button { state.addShape(.shapeCircle, canvasSize: canvasSize) } label: { Image(systemName: "circle") }
             Button { state.addShape(.shapeLine, canvasSize: canvasSize) } label: { Image(systemName: "line.diagonal") }
             // Port de `MaskAddPanel`/`showMaskAddPanel()` — active le mode d'édition de masque sur
-            // le calque sélectionné (voir `maskPanel`/`maskEditGesture` ci-dessus).
+            // le calque sélectionné (voir `maskPanel`/`combinedGesture` ci-dessus).
             Button { state.isMaskEditMode.toggle() } label: {
                 Image(systemName: state.isMaskEditMode ? "circle.dashed.inset.filled" : "circle.dashed")
             }

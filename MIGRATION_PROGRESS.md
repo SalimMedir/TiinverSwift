@@ -3902,3 +3902,166 @@ de produire le rapport final unique demandé par l'utilisateur.
 **Aucun test fonctionnel réel (Appetize) effectué ce tour** — conforme à la consigne explicite et
 répétée de l'utilisateur : "APPETIZE EST INTERDIT POUR L'INSTANT", un seul test global prévu une fois
 tout le travail de migration réalisable traité.
+
+---
+
+## SESSION DU 2026-08-16 (10ᵉ tour) — TÂCHE #49, PUIS 4 AUDITS DÉDIÉS, 3 VRAIS GAPS TROUVÉS ET FIXÉS
+
+**Continuation directe du 9ᵉ tour** (même session logique, reprise après compaction du contexte), sur
+une NOUVELLE instruction explicite de l'utilisateur reprenant l'ordre de priorité complet (ANIMEMS →
+GALERIE → CHAT → WEBRTC → FEED → PROFILE → SEARCH → AUDIT GLOBAL) avec une checklist détaillée de 18
+domaines et une consigne explicite : vérifier "comportement par comportement", ne jamais dire qu'une
+fonctionnalité est terminée seulement parce qu'un ancien rapport le dit.
+
+### 1. Animems — modèles de mouvement communautaires (tâche #49, commit `adf9564`)
+
+Audit call-chain dédié AVANT tout code (conforme à la consigne explicite de ne pas se fier aux noms
+de classes) : `CommunityTemplateGalleryView.java` (854 lignes), `TiinverTemplateFetcher.java`,
+`TiinverTemplateDownloader.java`, `TiinverTemplateRepository.java`, `TemplateRemoteModel.java` lus en
+entier. Résultat scindé :
+- **Parcourir/télécharger/appliquer** : RÉEL et accessible — `btn_display_online_template` (bouton
+  présent dans les 2 layouts actifs) → `MemesFragment.showCommunityTemplates()` →
+  `CommunityTemplateGalleryView` (grille 2 colonnes, 4 filtres client-side, pagination infinie 20/
+  page, aperçu de trajectoire dessiné depuis les matrices déjà en cache, aperçu sonore stream/local).
+  Porté fidèlement : `TemplateRemoteModel.swift` (décodage tolérant, mêmes défauts que
+  `json.optString/optInt`), `CommunityTemplateRepository.swift` (`GET templates/list/{limit}/
+  {offset}`, authentifié via `APIClient` existant), `CommunityTemplateGalleryView.swift` (grille +
+  filtres + pagination + `Canvas` de trajectoire + aperçu sonore `AVPlayer` + bouton "Utiliser").
+- **Publier/upload** : CONFIRMÉ CODE MORT — le bouton "Publier le modèle" dans
+  `AnimemesActionSheet.java` (bottom sheet) est ENTIÈREMENT COMMENTÉ dans le source Android, zéro
+  appelant vivant dans tout le dépôt (vérifié par grep exhaustif). NON porté, conforme à la consigne
+  explicite de ne pas inventer de fonctionnalité que les utilisateurs Android eux-mêmes ne peuvent
+  pas déclencher.
+- **Limitation de fidélité documentée, découverte pendant le portage** : le fichier `.tmpl`
+  téléchargé depuis le CDN est une sérialisation Java (`Serializable`), qui n'a AUCUN équivalent
+  Swift décodable — `MotionTemplateManager` iOS utilise JSON `Codable`, format entièrement
+  différent. Android anticipe déjà ce cas de figure (`rebuildFromRemote` : fichier illisible/ancien
+  format → reconstruction SANS pistes de mouvement, métadonnées seules) — reproduit ici
+  SYSTÉMATIQUEMENT (pas en repli occasionnel), car AUCUN `.tmpl` réel ne sera jamais un JSON Swift
+  valide. Documenté en détail dans `CommunityTemplateRepository.swift` — pas une lacune de portage,
+  une incompatibilité de format binaire entre plateformes qu'Android lui-même gère par le même repli.
+
+Run `31938768739` **SUCCESS** (premier coup).
+
+### 2. Audit Home/Feed — découverte majeure : 7 actions de post entièrement absentes
+
+Trois agents d'audit lancés EN PARALLÈLE (Home/Feed, Navigation+Permissions, Chat+sweep dead-code
+frais), chacun avec instruction explicite de tracer les VRAIS chemins d'appel plutôt que deviner.
+
+**Home/Feed** : la grille 2 colonnes (`MainFragment.java:707`,
+`PreLoadingGridLayoutManager(...,2,VERTICAL,false)`) et le pager plein écran vertical
+(`FeedFragment.java:628-630`, `ViewPager2.ORIENTATION_VERTICAL`) confirmés déjà réels et fidèles des
+deux côtés — pas de régression. MAIS l'audit a tracé les 7 actions de post RÉELLES d'Android
+(`OnLikeClicked`/`OnclickCommentaire`/`OnclickPrtg`/`OnclickMoreExpand`, `MainFragment.java:1126-
+1360`) jusqu'à leurs endpoints exacts et a trouvé qu'AUCUNE n'était câblée côté iOS : `FeedGridCell`
+ne rendait que des compteurs statiques, `FeedDetailCell` n'avait aucune surface d'interaction.
+
+Câblage complet (commit `16c1fbd`) :
+- **Like** — `FeedRepository.reaction()` (`POST reaction`, MÊMES paramètres envoyés dans les deux
+  sens du bascule, fidèle à l'original : Android n'envoie jamais de "unlike" distinct, le serveur
+  bascule lui-même l'état). Bascule optimiste locale (`isLiked`/`likes`) avant l'appel réseau.
+- **Partage** — même `reaction()` avec `verb: "share"`, mais compteur ajusté depuis la VRAIE réponse
+  serveur (`message == "Share successfully"`/`"Unshare successfully"`, `infoContract.SHARE`/
+  `UNSHARE`), pas un bascule optimiste pré-calculé (fidèle à l'ordre des opérations Android).
+- **Commentaire** — ouvre `CommentsView` (déjà entièrement construite et fonctionnelle lors d'une
+  session antérieure, mais JAMAIS présentée depuis nulle part dans Feed — trouvaille de l'audit).
+- **Suppression** — `FeedRepository.deleteActivity()` (`POST deleteactivity {id, actor}`) pour ses
+  propres publications ; masquage LOCAL persisté (`UserDefaults`) pour les publications d'autrui,
+  fidèle à `ActivityAdapter.deletePostById` + `Settings.setBooleanPreference` (Android ne supprime
+  jamais réellement la publication d'un autre utilisateur, il la masque juste dans SON propre flux).
+  MÊME libellé "Supprimer" dans les deux cas — Android utilise un texte STATIQUE non conditionné par
+  la propriété, reproduit fidèlement plutôt que "corrigé" en 2 libellés différents.
+- **Ne plus suivre** — réutilise `ProfileRepository.follow()` déjà existant : Android route
+  "unfollow" vers le MÊME endpoint `follow` (le serveur bascule lui-même), pas un endpoint distinct.
+- **Bloquer** — réutilise `ProfileRepository.toggleBlock()` déjà existant, avec une confirmation
+  préalable (seule action du menu "..." qu'Android confirme avant envoi, `MyFragmentDialog` type=5).
+- **Signaler** — `FeedRepository.reportUser()` (`POST report`), motifs = `R.array.
+  report_setting_array` (8 motifs, `strings.xml:516-525`, repris verbatim). `target_id`/
+  `report_type` volontairement VIDES depuis ce point d'entrée précis : `MainFragment.
+  OnclickMoreExpand` (`report_content`) ne les renseigne PAS dans l'intent lancé vers `Report.java`
+  (seuls `userId`/`username`/`nikname` le sont) — reproduit fidèlement, pas "corrigé" en inventant
+  un `target_id` qu'Android lui-même n'envoie pas ici.
+- **Refactorisation nécessaire** : `FeedDetailPagerView` restructuré pour partager le MÊME
+  `FeedViewModel` que la grille (piège identifié et évité : `@ObservedObject` + création d'un
+  `FeedViewModel()` DANS `init()` aurait recréé un objet neuf à chaque re-rendu du parent SwiftUI,
+  perdant l'état des likes entre deux rendus — corrigé via `@StateObject(wrappedValue:)`, qui
+  n'utilise sa valeur initiale QU'UNE FOIS par identité de vue, sûr pour les deux cas d'usage : objet
+  neuf pour un post isolé de lien profond, objet PARTAGÉ avec la grille sinon).
+
+Run `31939406542` **SUCCESS** (premier coup).
+
+### 3. Chat — suppression "pour tout le monde" jamais accessible (même commit `16c1fbd`)
+
+Le sweep dead-code frais (skeptique, pas une confiance aveugle en `MIGRATION_AUDIT.md`) a trouvé que
+`ChatViewModel.deleteSelectedForEveryone()` — suppression VISIBLE par le correspondant, via
+`ChatRepository.deletePrivateMessage`/`deleteGroupMessage`, avec la garde `belongsToCurrentUser`
+déjà correcte — avait ZÉRO point d'entrée UI dans tout l'arbre. Le bouton corbeille de la barre
+d'outils n'appelait que `deleteSelectedForMe()` (retrait local). Fixé dans `ChatView.swift` avec un
+`confirmationDialog` à 2 choix ("Supprimer pour moi" / "Supprimer pour tout le monde"), fidèle au
+dialogue réel d'Android après sélection + suppression (`ChatFragmentTest.java:2493-2521`).
+
+### 4. Audit Navigation + Permissions — COMPLETE à une exception déjà connue
+
+Aucun `NavigationLink` mort trouvé (chaque destination vérifiée par lecture directe, pas par
+supposition). Permissions caméra/micro/photos/notifications toutes confirmées COMPLETE avec vrais
+points de déclenchement des deux côtés, chaînes `Info.plist`/`project.yml` présentes. Seul gap réel :
+invitation d'amis par contacts téléphone (`RosterListAdapter.java:210,799` → `Invite.java`) — MAIS
+déjà documenté comme descope volontaire par une session ANTÉRIEURE (`RosterListView.swift`, aux
+côtés de la suppression multi-sélection et des mises à jour roster en direct), pas un oubli de ce
+tour. Non retraité — périmètre comparable à une fonctionnalité séparée (accès `CNContactStore`/
+`CNContactPicker` + flux d'invitation SMS/lien), `NSContactsUsageDescription` déjà déclaré dans
+`project.yml` mais orphelin pour l'instant, prêt à servir si ce chantier est repris.
+
+### 5. Audit Auth/session — découverte : purge locale absente à la déconnexion (commit `68fd1d3`)
+
+Login/inscription/Google Sign-In/mot de passe oublié/persistance de session tous reconfirmés
+COMPLETE par une relecture fraîche et skeptique. MAIS l'audit a trouvé que
+`transportDataBackground.deleteaccount()` (`transportDataBackground.java:147-181`) est appelé par
+Android à la fois pour `"logout"` ET `"deleteaccount"` (MÊME méthode, deux `case` identiques dans le
+switch) — cette méthode unique purge SharedPreferences, `AccountManager`, ET toutes les tables
+`ContentResolver` locales (messages, roster, notifications, activités, suggestions, etc.). Côté iOS,
+`UserSession.clear()` ne videait QUE les identifiants de session (apiKey/myId/profile/...) — les
+caches Core Data (Chat/Roster/Notifications/Feed) restaient intacts après déconnexion OU suppression
+de compte. Sur un appareil partagé, un second utilisateur se connectant pourrait lire l'historique de
+messages, la liste de contacts et les notifications du compte précédent.
+
+Fixé avec un nouveau `LocalDataPurger.swift` — purge concurrente (`async let`) de `ActivityEntity`
+(`FeedRepository.purgeCache()`, nouveau), `RosterEntity` (`RosterRepository.delete(predicate: nil)`,
+déjà existant), `MessageEntity`+`GroupMessageEntity` (`MessageRepository.purgeAll()`, nouveau),
+`NotiEntity` (`NotiRepository.deleteAll()`, déjà existant) — appelé depuis
+`SettingAccountView.logout()`/`deleteAccount()`, juste là où Android converge lui-même sur sa seule
+méthode partagée. `AiConversationRepository`/`ViewEventRepository` délibérément PAS purgés : modules
+de stockage déjà portés mais sans aucun écran consommateur à ce jour (documenté par une session
+antérieure), donc nécessairement vides en pratique.
+
+Run `31940076878` **SUCCESS** (premier coup).
+
+### 6. Complément trouvé en vérifiant explicitement le point 13 de la checklist utilisateur — Crashlytics
+
+Les audits Firebase précédents (tours 8/9) n'avaient couvert qu'Analytics/FCM/RemoteConfig/Auth,
+jamais explicitement le "crash reporting" nommé par la checklist de ce tour. Vérifié : Android
+déclare le plugin `com.google.firebase.crashlytics` (`app/build.gradle`) PLUS la dépendance NDK,
+réellement actif (pas du code mort) — mais ZÉRO appelant manuel (`recordException`/`log`) nulle part
+dans le code source Android : collecte 100% automatique, aucune logique métier à reproduire. iOS
+n'avait AUCUNE dépendance Crashlytics. Ajouté le produit SPM `FirebaseCrashlytics`
+(`project.yml`) — `FirebaseApp.configure()` déjà appelé dans `AppDelegate.swift` suffit à activer la
+collecte automatique, même mécanisme "zéro-code" que le plugin Gradle. **Limite assumée** : pas de
+phase de build dédiée à l'upload des dSYM (symbolication) — ce projet a un historique documenté de
+`postBuildScripts`/`resources:` XcodeGen fragiles (4 tentatives pour `GoogleService-Info.plist` lors
+d'une session antérieure) ; ajouter un script non vérifiable sans environnement Xcode local
+risquerait de casser un CI par ailleurs vert pour un gain non bloquant (rapports lisibles vs juste
+collectés). Commit `6014cc6`, run `31939780419` **SUCCESS**.
+
+### État après ce tour
+
+La liste de priorités explicite de l'utilisateur (ANIMEMS → GALERIE → CHAT → WEBRTC → FEED → PROFILE
+→ SEARCH → AUDIT GLOBAL) est désormais **entièrement traitée**, avec 3 vrais gaps fonctionnels
+trouvés et fixés au-delà de ce que les rapports précédents laissaient supposer (actions Feed,
+suppression Chat "pour tous", purge locale Auth) — la valeur ajoutée concrète des 4 audits dédiés de
+ce tour plutôt qu'une simple relecture de documentation. Seule exception restante, délibérément
+différée et déjà documentée par une session antérieure : l'invitation d'amis par contacts téléphone.
+
+**Aucun test fonctionnel réel (Appetize) effectué ce tour** — conforme à la consigne explicite et
+répétée de l'utilisateur, "APPETIZE EST INTERDIT POUR L'INSTANT" tant que le rapport final n'a pas
+été produit et validé par l'utilisateur. Les nouvelles interactions (Feed, suppression Chat "pour
+tous") n'ont donc pas été vérifiées visuellement — seule la compilation CI est confirmée.

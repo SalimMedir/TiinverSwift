@@ -1202,3 +1202,57 @@ pas par oubli) : modèles de mouvement communautaires Animems (tâche #49) et ex
 (confirmé non pertinent, code mort côté Android). Tout le reste de la liste de priorités explicite
 de l'utilisateur (Animems local, Galerie stickers, Payments, Deep Links, Firebase, audit transversal)
 est désormais traité.
+
+---
+
+## SESSION DU 2026-08-16 (10ᵉ tour) — 4 AUDITS DÉDIÉS, 3 VRAIS GAPS TROUVÉS ET FIXÉS
+
+Nouvelle instruction explicite de l'utilisateur reprenant l'ordre de priorité complet et une
+checklist de 18 domaines, avec consigne explicite de vérifier "comportement par comportement" (pas
+se fier à un ancien rapport). Ce tour a traité la tâche #49 (dernière connue MISSING), puis lancé 4
+audits dédiés call-chain-vérifiés (Home/Feed, Navigation+Permissions, Chat+dead-code frais,
+Auth/session) qui ont trouvé 3 vrais gaps fonctionnels réels — au-delà de ce que les rapports
+précédents laissaient supposer.
+
+| Fonctionnalité | Statut | Détail |
+|---|---|---|
+| Animems — modèles de mouvement COMMUNAUTAIRES : parcourir/télécharger/appliquer | COMPLETE (nouveau) | Audit call-chain dédié a confirmé cette moitié RÉELLE et accessible (`btn_display_online_template` → `CommunityTemplateGalleryView.java`, lu en entier). Nouveaux `TemplateRemoteModel.swift`/`CommunityTemplateRepository.swift`/`CommunityTemplateGalleryView.swift`. Commit `adf9564` |
+| Animems — modèles de mouvement COMMUNAUTAIRES : upload/publication | DEAD CODE ANDROID, non porté | Le bouton "Publier le modèle" (`AnimemesActionSheet.java`) est ENTIÈREMENT COMMENTÉ dans le source Android lui-même — zéro appelant vivant. Ne pas porter une fonctionnalité que les utilisateurs Android eux-mêmes ne peuvent pas déclencher |
+| Animems — fidélité du format `.tmpl` communautaire | INTENTIONALLY DIFFERENT (limitation documentée) | Le fichier téléchargé depuis le CDN est une sérialisation Java sans équivalent Swift décodable — reproduit le repli `rebuildFromRemote` d'Android (métadonnées seules, sans pistes de mouvement) SYSTÉMATIQUEMENT, pas occasionnellement, car AUCUN `.tmpl` réel ne sera jamais un JSON Swift valide |
+| Home/Feed — grille 2 colonnes / pager plein écran vertical / pagination | COMPLETE (reconfirmé) | Audit frais de `MainFragment.java:707`/`FeedFragment.java:628-630` : architecture déjà correcte des deux côtés, confirmée par lecture directe (pas supposée) |
+| Feed — like/commentaire/partage/suppression/ne-plus-suivre/blocage/signalement | **MISSING → COMPLETE** | Trouvaille majeure de ce tour : ces 7 actions (`OnLikeClicked`/`OnclickCommentaire`/`OnclickPrtg`/`OnclickMoreExpand`, `MainFragment.java:1126-1360`) étaient ENTIÈREMENT absentes côté iOS malgré des endpoints déjà identifiables (`reaction`/`deleteactivity`/`report`, `follow`/`block` déjà dans `ProfileRepository`). `FeedGridCell`/`FeedDetailCell` ont maintenant de vrais boutons. Commit `16c1fbd` |
+| Chat — suppression "pour tout le monde" | **MISSING → COMPLETE** | `deleteSelectedForEveryone()` était entièrement câblé côté ViewModel/Repository (garde `belongsToCurrentUser` déjà correcte) mais SANS AUCUN point d'entrée UI — le bouton corbeille n'appelait que la suppression locale. Commit `16c1fbd` |
+| Chat — pagination / read-receipts | COMPLETE (reconfirmé) | Audit frais : les deux déjà réels et fonctionnels des deux côtés, aucune régression |
+| Navigation globale | COMPLETE (à 1 exception déjà documentée) | Aucun `NavigationLink` mort trouvé. Seul gap réel : invitation d'amis par contacts téléphone — DÉJÀ descopé par une session antérieure (`RosterListView.swift`), pas un oubli de ce tour |
+| Permissions (caméra/micro/photos/notifications/contacts) | COMPLETE (à la même exception) | 4 sur 5 confirmées COMPLETE avec vrais points de déclenchement des deux côtés. Contacts : jamais demandée côté iOS, cohérent avec l'absence du flux d'invitation — `NSContactsUsageDescription` déjà déclaré dans `project.yml` mais orphelin |
+| Auth — login/inscription/Google Sign-In/mot de passe oublié/persistance session | COMPLETE (reconfirmé) | Audit frais des 5 flux, tous confirmés fidèles avec citations précises des deux côtés |
+| Auth — purge locale à la déconnexion/suppression de compte | **MISSING → COMPLETE** | Android route "logout" ET "deleteaccount" vers LA MÊME méthode qui purge tout le cache local (messages/roster/notifications/activités). iOS ne vidait que les identifiants de session — sur un appareil partagé, les données du compte précédent restaient lisibles. Nouveau `LocalDataPurger.swift`. Commit `68fd1d3` |
+| Firebase/Analytics — crash reporting (Crashlytics) | **MISSING → COMPLETE** | Trouvé en vérifiant explicitement le point 13 de la checklist utilisateur (jamais confirmé par les audits Firebase précédents, qui ne couvraient qu'Analytics/FCM/RemoteConfig). Plugin Android réellement actif, zéro appelant manuel (collecte 100% automatique) — ajout de la seule dépendance nécessaire côté iOS, `FirebaseApp.configure()` déjà appelé suffit. Commit `6014cc6` |
+
+### Build CI de ce tour
+
+`adf9564` → run `31938768739`, **SUCCESS** (premier coup). `16c1fbd` → run `31939406542`,
+**SUCCESS** (premier coup). `6014cc6` → run `31939780419`, **SUCCESS**. `68fd1d3` → run
+`31940076878`, **SUCCESS** (premier coup). Les 4 commits de ce tour ont réussi du premier coup,
+aucun échec.
+
+### Codemagic
+
+Toujours en attente d'un déclenchement manuel par l'utilisateur — aucun résultat rapporté à ce jour
+pour AUCUN commit du projet.
+
+### Ce qui reste réellement MISSING/différé après ce tour
+
+- **Invitation d'amis par contacts téléphone** — descope volontaire déjà acté par une session
+  antérieure (`RosterListView.swift`, aux côtés de la suppression multi-sélection et des mises à
+  jour roster en direct), pas retraité ce tour faute de signal fort qu'il faille le reconsidérer.
+  Périmètre comparable à une fonctionnalité séparée (accès `CNContactStore`/`CNContactPicker` +
+  flux d'invitation SMS/lien).
+- **Modèles de mouvement communautaires Animems, moitié upload** — code mort côté Android, PAS un
+  gap de portage.
+- **Export GIF Animems** — code mort côté Android, PAS un gap de portage.
+- **Symbolication dSYM Crashlytics** — collecte de crash fonctionnelle, lisibilité des stack traces
+  différée faute d'environnement Xcode local pour vérifier un script de build avant de l'ajouter.
+
+Après ce tour, la liste de priorités explicite de l'utilisateur ET les 4 audits dédiés n'ont plus de
+gap réalisable identifié en attente de code.

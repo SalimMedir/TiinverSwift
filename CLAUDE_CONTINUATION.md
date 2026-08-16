@@ -13,12 +13,13 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 **BUILD CI VALIDÉ :** Oui (GitHub Actions uniquement — voir stratégie double-CI ci-dessous,
 Codemagic en attente d'un déclenchement manuel par l'utilisateur, jamais rapporté à ce jour)
-**Build :** GitHub Actions run `31936056808` (workflow `ios-build.yml`)
-**Commit :** `f2012a1` ("feat(galerie,navigation): sticker/emoji support + full deep-link routing"
-— dernier commit de la session, 9ᵉ tour, voir points 12-13 ci-dessous)
+**Build :** GitHub Actions run `31940076878` (workflow `ios-build.yml`)
+**Commit :** `68fd1d3` ("fix(session): purge local Chat/Roster/Notification caches on
+logout/delete" — dernier commit de la session, 10ᵉ tour, voir section 11ter ci-dessous)
 **Date :** 2026-08-16
 **Résultat :** `** BUILD SUCCEEDED **`. Confirmé via l'API GitHub Actions (`status: completed,
-conclusion: success`), pas seulement supposé.
+conclusion: success`) — les 4 commits de ce tour (`adf9564`/`16c1fbd`/`6014cc6`/`68fd1d3`) sont
+TOUS confirmés `SUCCESS`, aucun échec ce tour.
 **Historique complet des runs depuis le dernier point de reprise** (pour ne pas confondre) :
 1. `31912698274` (commit `f2460f2`, Chat+Galerie+Animems minimal construits) — SUCCESS (session
    précédente, voir section 0ter).
@@ -53,7 +54,16 @@ conclusion: success`), pas seulement supposé.
     suppression/galerie, port fidèle de `MotionTemplateManager.java`) — **SUCCESS.**
 12. `31936056808` (commit `f2012a1`, stickers/emoji Galerie via clavier emoji natif + routage
     complet des liens profonds `myapp://parrainage`/`tiinver://{user,post,group,...}`) —
-    **SUCCESS.** Dernier run connu.
+    **SUCCESS.**
+13. `31938768739` (commit `adf9564`, modèles de mouvement COMMUNAUTAIRES Animems — parcourir/
+    télécharger/appliquer, portion upload confirmée code mort côté Android donc non portée) —
+    **SUCCESS.**
+14. `31939406542` (commit `16c1fbd`, interactions Feed like/commentaire/partage/suppression/
+    ne-plus-suivre/blocage/signalement + suppression "pour tout le monde" côté Chat) —
+    **SUCCESS.**
+15. `31939780419` (commit `6014cc6`, dépendance `FirebaseCrashlytics`) — **SUCCESS.**
+16. `31940076878` (commit `68fd1d3`, purge des caches locaux Chat/Roster/Notifications à la
+    déconnexion/suppression de compte) — **SUCCESS.** Dernier run connu.
 
 ### CI VALIDATION — format demandé par l'utilisateur pour chaque commit important
 
@@ -350,58 +360,68 @@ fonctionnent réellement comme Android tant qu'un nouveau test Appetize ne l'a p
 
 ## 10. PROCHAINE TÂCHE EXACTE
 
-**Instruction explicite et répétée de l'utilisateur (8ᵉ ET 9ᵉ tour, 2026-08-16) : NE PAS s'arrêter,
-NE PAS demander/attendre de test Appetize — un seul test global prévu APRÈS avoir traité tout ce qui
-est réalisable, quota conservé.** Cette règle reste valable pour la prochaine session tant que
-l'utilisateur ne dit pas explicitement le contraire.
+**Instruction explicite et répétée de l'utilisateur (8ᵉ, 9ᵉ ET 10ᵉ tour, 2026-08-16) : NE PAS
+s'arrêter, NE PAS demander/attendre de test Appetize — un seul test global prévu APRÈS avoir traité
+tout ce qui est réalisable, quota conservé.** Cette règle reste valable pour la prochaine session
+tant que l'utilisateur ne dit pas explicitement le contraire.
 
-**État réel après le 9ᵉ tour** — voir `MIGRATION_PROGRESS.md` (entrée "SESSION DU 2026-08-16, 9ᵉ
-tour") et `MIGRATION_AUDIT.md` (section "SESSION DU 2026-08-16 (9ᵉ tour)") pour le détail complet.
-Résumé : la liste de priorités explicite de l'utilisateur (ANIMEMS → GALERIE → PAYMENTS → DEEP LINKS
-→ FIREBASE → AUDIT TRANSVERSAL) est désormais **entièrement traitée**, à une seule exception
-délibérément différée :
-- **Animems — modèles de mouvement LOCAUX** : COMPLETE. Port fidèle de `MotionTemplateManager.java`
-  (551 lignes lues en entier), y compris la non-reconstruction des keyframes de matrice au chargement
-  (fidélité au bug/limitation réel d'Android, pas "corrigé"). Commit `ac67c79`.
-- **Animems — modèles de mouvement COMMUNAUTAIRES (upload/parcourir)** : **MISSING, explicitement
-  différé** — tâche #49, périmètre comparable à une fonctionnalité séparée entière (upload BunnyCDN
-  + endpoints backend dédiés + galerie paginée). Documenté plutôt que bâclé.
-- **Animems — export GIF** : confirmé (re-confirmé) code mort côté Android — intentionnellement PAS
-  implémenté, conforme à "ne pas inventer de fonctionnalité absente d'Android".
-- **Galerie — stickers/emoji** : COMPLETE. Android utilise son propre clavier emoji Unicode standard
-  (pas un catalogue custom) — porté via le clavier emoji natif iOS. Commit `f2012a1`.
-- **Deep links** : COMPLETE (nouveau — était TOTALEMENT absent côté iOS avant ce tour, zéro schéma
-  déclaré). `myapp://parrainage` + `tiinver://{user,post,group,myaccount,animemes,update,offer}`.
-  Ferme aussi une vraie lacune trouvée : `REFERRED_BY` était déjà LU par 2 écrans d'inscription mais
-  jamais ÉCRIT nulle part avant ce tour. Commit `f2012a1`.
-- **Payments/Monétisation** : audité, confirme GAP-007 déjà connu (StoreKit 2 = divergence produit
-  intentionnelle déjà actée) — aucune implémentation nécessaire.
-- **Firebase/Analytics** : audité, déjà porté fidèlement lors de sessions antérieures — aucune
-  implémentation nécessaire, pas de duplication ajoutée.
-- **Audit transversal final** : repasse dédiée faite, aucune nouvelle trouvaille actionnable au-delà
-  de la tâche #49 déjà connue.
+**État réel après le 10ᵉ tour** — voir `MIGRATION_PROGRESS.md` (entrée "SESSION DU 2026-08-16, 10ᵉ
+tour") et `MIGRATION_AUDIT.md` (section "SESSION DU 2026-08-16 (10ᵉ tour)") pour le détail complet.
+Résumé : le 10ᵉ tour a repris la liste de priorités EXPLICITE et RÉPÉTÉE de l'utilisateur (ANIMEMS →
+GALERIE → CHAT → WEBRTC → FEED → PROFILE → SEARCH → AUDIT GLOBAL) avec 3 audits dédiés en parallèle
+(Home/Feed, Navigation+Permissions, Chat+dead-code, puis Auth/session) qui ont trouvé et fait
+corriger **3 vrais gaps fonctionnels réels**, en plus de traiter la tâche #49 :
+- **Animems — modèles de mouvement COMMUNAUTAIRES (parcourir/télécharger/appliquer)** : COMPLETE
+  (tâche #49 close). Audit dédié call-chain a confirmé la moitié "browse" RÉELLE et accessible côté
+  Android (`btn_display_online_template`), contrairement à la moitié "upload" (bouton commenté dans
+  le source Android lui-même, code mort, NON porté). **Limitation de fidélité documentée, pas un
+  bug** : le fichier `.tmpl` téléchargé est une sérialisation Java sans équivalent Swift décodable —
+  reproduit le repli `rebuildFromRemote` d'Android (métadonnées seules, sans pistes de mouvement).
+  Commit `adf9564`.
+- **Feed — like/commentaire/partage/suppression/ne-plus-suivre/blocage/signalement** : COMPLETE
+  (nouveau — un audit dédié a trouvé ces 7 actions ENTIÈREMENT absentes côté iOS malgré des endpoints
+  déjà identifiables). `FeedGridCell`/`FeedDetailCell` ont maintenant de vrais boutons, `FeedView`
+  gère le menu "...", les motifs de signalement, et la confirmation de blocage. Commit `16c1fbd`.
+- **Chat — suppression "pour tout le monde"** : COMPLETE (nouveau — `deleteSelectedForEveryone()`
+  était entièrement câblé côté ViewModel/Repository mais SANS AUCUN point d'entrée UI). Commit
+  `16c1fbd`.
+- **Firebase/Analytics — crash reporting (Crashlytics)** : COMPLETE (nouveau — Android a le plugin
+  `com.google.firebase.crashlytics` réellement actif, zéro appelant manuel donc zéro logique à
+  porter, seulement une dépendance manquante côté iOS). Commit `6014cc6`. **Limite assumée** : pas de
+  script d'upload dSYM (symbolication) ajouté, risque jugé disproportionné sans environnement Xcode
+  local pour le vérifier — collecte de crash fonctionnelle dès ce commit, lisibilité des stack traces
+  un suivi possible.
+- **Auth/session — purge locale à la déconnexion/suppression de compte** : COMPLETE (nouveau — un
+  audit dédié a trouvé qu'Android purge TOUT le cache local ContentResolver (messages/roster/
+  notifications/etc.) à la fois pour "logout" ET "deleteaccount" (même méthode partagée côté
+  Android), alors qu'iOS ne vidait que les identifiants de session. Risque réel sur appareil
+  partagé : les données du compte précédent restaient lisibles). Nouveau `LocalDataPurger.swift`.
+  Commit `68fd1d3`.
+- **Navigation globale + Permissions** : audités, COMPLETE à une exception près déjà documentée par
+  une session antérieure (invitation d'amis via les contacts du téléphone — `RosterListView.swift`
+  en-tête, descope volontaire aux côtés de la suppression multi-sélection et des mises à jour roster
+  en direct). Pas retraité ce tour : périmètre comparable à une fonctionnalité séparée (accès
+  contacts + flux d'invitation SMS/lien), décision déjà actée plutôt que réouverte sans signal fort.
+- **Home/Feed (grille/pager/pagination)** : audité, structure déjà COMPLETE (confirmé par lecture
+  fraîche de `MainFragment.java`/`FeedFragment.java` — grille 2 colonnes réelle, pager plein écran
+  vertical réel) — seules les ACTIONS de post manquaient (voir ci-dessus).
+- **Chat — pagination/read-receipts** : audités, reconfirmés COMPLETE (déjà réel des deux côtés).
 
 **Tâche exacte pour la suite** :
-1. **Il ne reste plus de gap réalisable sans travail hors-périmètre** identifié par la liste de
-   priorités de l'utilisateur, hormis la tâche #49 (modèles de mouvement communautaires Animems,
-   volontairement différée pour sa taille — un portage de fonctionnalité séparée à part entière). Si
-   une prochaine session reprend ce chantier, lire d'abord `MotionTemplateManager.
-   saveAndUploadTemplate`/les endpoints `templates/add`/`templates/list` côté Android avant
-   d'écrire quoi que ce soit.
-2. **Demander le retour Codemagic manuel** — toujours en attente depuis GAP-004, jamais rapporté
+1. **Tous les commits de ce tour sont confirmés `SUCCESS`** (`adf9564`/`16c1fbd`/`6014cc6`/
+   `68fd1d3`, voir historique ci-dessus) — rien à corriger.
+2. **Il ne reste plus de gap réalisable identifié** par la liste de priorités de l'utilisateur ni par
+   les 4 audits dédiés de ce tour, hormis l'invitation d'amis par contacts (descope déjà acté, pas
+   un oubli). Si une prochaine session reprend ce chantier : lire `RosterListAdapter.java:206-212`/
+   `Invite.java` avant d'écrire quoi que ce soit — `NSContactsUsageDescription` est déjà déclaré dans
+   `project.yml` mais orphelin (jamais utilisé), prêt à servir le jour où ce chantier est repris.
+3. **Demander le retour Codemagic manuel** — toujours en attente depuis GAP-004, jamais rapporté
    pour AUCUN commit à ce jour, y compris ceux de ce tour.
-3. Continuer d'appliquer la stratégie double-CI (section 0) pour chaque nouveau commit important —
-   **attention à la lenteur/instabilité du téléchargement de log `xcodebuild` via l'API GitHub
-   Actions pour ce projet précis** (voir section 0, point 7 : `curl` timeouts fréquents sur les logs
-   complets ~25-27k lignes, toujours relancer en arrière-plan avec `--max-time 590`, jamais en
-   commande synchrone bloquante). Non nécessaire ce tour : les deux commits (`ac67c79`, `f2012a1`)
-   ont réussi du premier coup, contrairement au lot Animems timeline/masques du tour 8.
 4. **Le cycle de continuation demandé par l'utilisateur est maintenant fonctionnellement clos** —
-   plus de gap réalisable en attente de code, seulement la tâche #49 différée par choix et le test
-   Appetize global, toujours sur décision de l'utilisateur, à ne jamais demander proactivement.
-   Produire le rapport final unique demandé par l'utilisateur (COMPLETE/PARTIAL/MISSING/UNVERIFIED,
-   raisons des gaps restants, commits, dernier commit testé, statut GitHub Actions/Codemagic,
-   fonctionnalités nécessitant un test Appetize/appareil réel) est désormais approprié.
+   plus de gap réalisable en attente de code. Produire le rapport final unique demandé par
+   l'utilisateur (COMPLETE/PARTIAL/MISSING/UNVERIFIED, raisons des gaps restants, commits, dernier
+   commit testé, statut GitHub Actions/Codemagic, fonctionnalités nécessitant un test
+   Appetize/appareil réel) est désormais approprié.
 
 ## 11. HANDOFF — DERNIÈRE SESSION
 
@@ -578,3 +598,96 @@ l'utilisateur a confirmé de l'ignorer complètement, résolu.
 4. Si l'utilisateur redemande explicitement la tâche #49 (modèles de mouvement communautaires), la
    traiter comme un chantier à part entière (lire d'abord le code Android d'upload/liste avant
    d'écrire quoi que ce soit), pas comme un ajout rapide.
+
+---
+
+## 11ter. HANDOFF — 10ᵉ TOUR (2026-08-16, suite directe du 9ᵉ tour)
+
+**Session :** Claude Code (Sonnet 5), continuation directe (même session logique, reprise après
+compaction du contexte) sur une nouvelle instruction explicite de l'utilisateur reprenant l'ordre de
+priorité complet (ANIMEMS → GALERIE → CHAT → WEBRTC → FEED → PROFILE → SEARCH → AUDIT GLOBAL) avec
+une checklist de 18 domaines à vérifier "comportement par comportement", PAS en se fiant à un ancien
+rapport.
+**Travail effectué, dans l'ordre chronologique réel :**
+- **Phase A/B/C/D** : relu l'état Git réel avant toute décision (conforme à la consigne explicite de
+  l'utilisateur), puis audité en détail la fonctionnalité MISSING explicitement désignée (modèles de
+  mouvement communautaires Animems). Un agent dédié a tracé la vraie chaîne d'appel (pas juste les
+  noms de classes) et a trouvé un résultat scindé : la moitié "parcourir/télécharger/appliquer" est
+  RÉELLE et accessible (`btn_display_online_template` → `MemesFragment.showCommunityTemplates` →
+  `CommunityTemplateGalleryView.java`, lu en entier), la moitié "publier/upload" est CODE MORT
+  (bouton `AnimemesActionSheet` entièrement commenté dans le source Android). Porté fidèlement :
+  `TemplateRemoteModel.swift`/`CommunityTemplateRepository.swift`/`CommunityTemplateGalleryView.swift`
+  (nouveaux), avec une note de fidélité importante sur l'incompatibilité de format binaire
+  `.tmpl` (sérialisation Java, aucun équivalent Swift décodable — repli `rebuildFromRemote`
+  systématique, PAS un bug). Commit `adf9564`, run `31938768739` **SUCCESS** (premier coup).
+- **Phase F/G** : 3 audits dédiés lancés EN PARALLÈLE (Home/Feed profond, Navigation+Permissions,
+  Chat+sweep dead-code frais) puis un 4ᵉ (Auth/session) — tous avec instruction explicite de tracer
+  les VRAIS chemins d'appel, pas de deviner depuis les noms. Résultats :
+  - **Home/Feed** : structure (grille 2 colonnes/pager vertical/pagination) confirmée déjà réelle
+    des deux côtés, MAIS les 7 actions de post (`OnLikeClicked`/`OnclickCommentaire`/`OnclickPrtg`/
+    `OnclickMoreExpand` → delete/copy-link/unfollow/block/report) étaient ENTIÈREMENT absentes côté
+    iOS malgré des endpoints déjà identifiables. Le plus gros morceau de code de ce tour :
+    `FeedRepository.swift` (+`reaction`/`deleteActivity`/`reportUser`), `FeedViewModel.swift`
+    (+7 méthodes d'action, persistance des posts masqués via `UserDefaults`), `FeedView.swift`
+    (boutons réels sur `FeedGridCell`/`FeedDetailCell`, menu "...", dialogue de motifs de
+    signalement, confirmation de blocage). `FeedDetailPagerView` restructuré pour partager le MÊME
+    `FeedViewModel` que la grille (`@StateObject(wrappedValue:)`, piège `@ObservedObject`+init
+    identifié et évité — recréerait un ViewModel à chaque re-rendu du parent).
+  - **Navigation + Permissions** : COMPLETE, un seul gap réel confirmé (invitation d'amis par
+    contacts téléphone) — DÉJÀ documenté comme descope volontaire par une session antérieure
+    (`RosterListView.swift`), pas un oubli de ce tour, non retraité.
+  - **Chat + dead-code** : sweep frais n'a rien trouvé de nouveau, MAIS a trouvé que
+    `deleteSelectedForEveryone()` (suppression visible par le correspondant) était entièrement câblé
+    côté ViewModel/Repository SANS AUCUN point d'entrée UI (le bouton corbeille n'appelait que
+    `deleteSelectedForMe()`). Fixé dans `ChatView.swift` avec un dialogue à 2 choix.
+  - **Auth/session** : COMPLETE sur les 5 premiers points (login/inscription/Google/mot de passe
+    oublié/persistance de session), MAIS a trouvé qu'Android route "logout" ET "deleteaccount" vers
+    la MÊME méthode qui purge tout le cache local (messages/roster/notifications), alors qu'iOS ne
+    videait que les identifiants de session — risque réel sur appareil partagé. Fixé avec un nouveau
+    `LocalDataPurger.swift` (purge `ActivityEntity`/`RosterEntity`/`MessageEntity`+
+    `GroupMessageEntity`/`NotiEntity` en parallèle via `async let`), appelé depuis
+    `SettingSubViews.logout()`/`deleteAccount()`.
+  - Ces deux derniers correctifs (Chat + Auth) commités ensemble avec les actions Feed :
+    commit `16c1fbd`, run `31939406542` **SUCCESS** (premier coup) pour Feed+Chat ;
+    commit `68fd1d3` pour la purge Auth/session, run `31940076878` **SUCCESS** (premier coup).
+- **Complément trouvé en passant** : Android a le plugin `com.google.firebase.crashlytics`
+  réellement actif (pas du code mort — vérifié dans `app/build.gradle`) avec ZÉRO appelant manuel
+  dans tout le code source (collecte 100% automatique). iOS n'avait aucune dépendance Crashlytics.
+  Ajouté (`project.yml`, produit SPM `FirebaseCrashlytics`) — aucun code applicatif nécessaire,
+  `FirebaseApp.configure()` déjà appelé suffit à activer la collecte. Script d'upload dSYM
+  délibérément PAS ajouté (risque jugé disproportionné sans environnement Xcode local pour le
+  vérifier, historique documenté de fragilité `postBuildScripts`/`resources:` XcodeGen sur ce projet
+  précis — voir `GoogleService-Info.plist`). Commit `6014cc6`, run `31939780419` **SUCCESS**.
+**Travail actuellement en cours :** Aucun — tous les commits de ce tour sont poussés ET confirmés
+`SUCCESS` (`adf9564`/`16c1fbd`/`6014cc6`/`68fd1d3`).
+**PROCHAINE TÂCHE EXACTE :** Voir section 10 — il ne reste plus de gap réalisable identifié par la
+liste de priorités de l'utilisateur ni les 4 audits de ce tour, hormis l'invitation d'amis par
+contacts (descope déjà acté). Le rapport final unique devient approprié.
+**Fichiers modifiés :** Voir `MIGRATION_PROGRESS.md` (entrée 10ᵉ tour) pour la liste complète. Tout
+le code applicatif est commité et poussé (`adf9564`, `16c1fbd`, `6014cc6`, `68fd1d3`).
+**Bugs connus :** Aucun bug de compilation — les 4 commits de ce tour sont tous confirmés `SUCCESS`.
+Aucun nouveau bug fonctionnel introduit à ma connaissance — les 3 vrais gaps trouvés par les audits
+(actions Feed, suppression Chat "pour tous", purge locale Auth) sont désormais fixés, pas de
+régression identifiée dans le code existant qu'ils touchent.
+**Tests effectués :** Compilation CI réelle réussie pour les 4 commits de ce tour (GitHub Actions,
+SUCCESS confirmés via l'API pour `adf9564`/`16c1fbd`/`6014cc6`/`68fd1d3`). **AUCUN test fonctionnel
+réel (Appetize)**
+— conforme à la consigne explicite et répétée de l'utilisateur, "APPETIZE EST INTERDIT POUR
+L'INSTANT" tant que le rapport final n'a pas été produit et validé par l'utilisateur. Les nouvelles
+interactions Feed (like/comment/partage/suppression/etc.) et le menu Chat à 2 choix de suppression
+n'ont donc PAS été vérifiés visuellement — seule la compilation est confirmée, comme pour tout le
+reste de cette migration tant qu'Appetize n'a pas tourné.
+**Instructions pour la prochaine session :**
+1. Lire ce fichier EN PREMIER (section 0 pour le CI, cette section 11ter pour l'état le plus récent),
+   puis `MIGRATION_AUDIT.md` (section "SESSION DU 2026-08-16, 10ᵉ tour") et `MIGRATION_PROGRESS.md`
+   (entrée 10ᵉ tour).
+2. Vérifier qu'il correspond toujours au code réel (`git log`, `git status`) avant toute action —
+   en particulier confirmer le résultat du run `31940076878` s'il n'était pas encore connu à la fin
+   de ce tour.
+3. S'il ne reste vraiment plus de gap réalisable listé nulle part, ne PAS inventer de travail — soit
+   proposer/produire le rapport final demandé par l'utilisateur, soit attendre une nouvelle
+   instruction. Ne PAS lancer Appetize ni Codemagic soi-même.
+4. Si l'utilisateur redemande explicitement l'invitation d'amis par contacts téléphone, lire
+   `RosterListAdapter.java:206-212`/`Invite.java` avant d'écrire quoi que ce soit —
+   `NSContactsUsageDescription` est déjà déclaré dans `project.yml` (orphelin pour l'instant), prêt à
+   servir.

@@ -21,4 +21,32 @@ enum MaskType: CaseIterable {
         case .star: return "Star"
         }
     }
+
+    /// Nom de constante `enum` Android (`MaskType.valueOf(String)`/`.name()`) — requis pour la
+    /// sérialisation `MotionTemplate` (`MotionTemplateManager.swift`), qui doit produire/lire
+    /// exactement les mêmes chaînes que le modèle Android pour rester compatible.
+    var androidName: String {
+        switch self {
+        case .circle: return "CIRCLE"
+        case .square: return "SQUARE"
+        case .rectangle: return "RECTANGLE"
+        case .horizontal: return "HORIZONTAL"
+        case .mirror: return "MIRROR"
+        case .heart: return "HEART"
+        case .star: return "STAR"
+        }
+    }
+
+    init?(androidName: String) {
+        switch androidName.uppercased() {
+        case "CIRCLE": self = .circle
+        case "SQUARE": self = .square
+        case "RECTANGLE": self = .rectangle
+        case "HORIZONTAL": self = .horizontal
+        case "MIRROR": self = .mirror
+        case "HEART": self = .heart
+        case "STAR": self = .star
+        default: return nil
+        }
+    }
 }

@@ -406,6 +406,41 @@ final class AnimemesEditorState: ObservableObject {
         composer.layers.contains { $0.hasKeyframes }
     }
 
+    // MARK: - Modèles de mouvement (port de `saveAsMotionTemplate`/`MotionTemplateManager`,
+    // 2026-08-16) — sauvegarde/réapplication LOCALE uniquement, voir `MotionTemplateManager.swift`
+    // pour la partie communautaire/upload PAS portée dans cette passe (ampleur comparable à un
+    // portage de fonctionnalité complet à part entière, voir `MIGRATION_AUDIT.md`).
+
+    /// Port de `saveAsMotionTemplate(name)` (le nom du modèle Android n'a pas d'équivalent stocké
+    /// ici — `MotionTemplate` n'a pas de champ `name` dans le modèle Java relu, seulement `id`/
+    /// `createdAt` ; la date de création sert d'étiquette d'affichage côté iOS, voir
+    /// `MotionTemplateGalleryView`).
+    @discardableResult
+    func saveAsTemplate(canvasSize: CGSize) -> Bool {
+        guard !composer.layers.isEmpty else { return false }
+        let template = MotionTemplateManager.extract(
+            composer: composer, canvasWidth: Int(canvasSize.width), canvasHeight: Int(canvasSize.height),
+            hasAudio: false, audioLocalPath: nil
+        )
+        MotionTemplateManager.save(template)
+        return true
+    }
+
+    /// Port de `MotionTemplateGalleryView.OnTemplateActionListener.onTemplateSelected` →
+    /// `MotionTemplateManager.apply` — applique la piste (mouvement/keyframes/masque) au calque
+    /// SÉLECTIONNÉ, sans toucher à son bitmap/texte propre (fidèle à `apply()`, qui ne reconstruit
+    /// une bitmap QUE pour les pistes forme/masque, jamais bitmap/texte — un modèle de mouvement
+    /// anime le contenu de L'UTILISATEUR, il ne le remplace pas). **Simplification assumée** : un
+    /// modèle à plusieurs pistes n'expose que la piste 0 ici — l'UI Android de sélection parmi
+    /// plusieurs pistes n'a pas été relue en détail (hors périmètre de l'audit qui a scopé cette
+    /// passe), la plupart des modèles réels étant des animations mono-calque.
+    func applyTemplate(_ template: MotionTemplate, canvasSize: CGSize) {
+        guard let id = selectedId, let obj = layers.first(where: { $0.id == id }) else { return }
+        MotionTemplateManager.apply(template, to: obj, trackIndex: 0, targetCanvasWidth: Int(canvasSize.width), targetCanvasHeight: Int(canvasSize.height))
+        syncTimeline()
+        version += 1
+    }
+
     /// Port de `save_animemes2` → `showSaveDialog()`/`saveBitmapDrawed()` — branche sur
     /// `isAnimation()` comme l'original : export vidéo réel si au moins un calque est animé, sinon
     /// sauvegarde d'une image statique (JPEG, qualité 70 comme `BitmapManager.fromBitmapToImage`

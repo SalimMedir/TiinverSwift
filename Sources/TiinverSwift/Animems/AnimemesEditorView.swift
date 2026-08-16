@@ -6,9 +6,11 @@ import SwiftUI
 /// du moteur. Barre du haut (`close_animemes`/`save_animemes2`), rangée d'ajout d'objet (`ic_add`/
 /// `ic_text`/`btn_shape`, PAS `ic_sticker` — nécessiterait le catalogue d'émojis/stickers, hors
 /// périmètre de cette passe), `undo`, canevas avec déplacement/rotation/échelle réels au doigt
-/// (2026-08-16, `AnimemesGestureController`), **timeline/keyframes/lecture/masques câblés le
-/// 2026-08-16** (`TimelineView`/`AnimationEngine`/`MaskFactory`, moteur déjà porté, seul le câblage
-/// manquait — voir audit dans `MIGRATION_AUDIT.md`). Stickers/emoji PAS reproduits dans cette passe.
+/// (2026-08-16, `AnimemesGestureController`), **timeline/keyframes/lecture/masques/modèles de
+/// mouvement locaux câblés le 2026-08-16** (`TimelineView`/`AnimationEngine`/`MaskFactory`/
+/// `MotionTemplateManager`, moteur déjà porté, seul le câblage manquait — voir audit dans
+/// `MIGRATION_AUDIT.md`). Stickers/emoji et modèles COMMUNAUTAIRES (upload/partage) PAS reproduits
+/// dans cette passe.
 struct AnimemesEditorView: View {
     var onClose: () -> Void
 
@@ -24,6 +26,9 @@ struct AnimemesEditorView: View {
     @State private var lastMaskDragTranslation: CGSize = .zero
     @State private var lastMaskMagnification: CGFloat = 1.0
     @State private var lastMaskRotationDegrees: CGFloat = 0
+    @State private var showSaveOptions = false
+    @State private var showTemplateGallery = false
+    @State private var templateSavedToast = false
 
     var body: some View {
         NavigationStack {
@@ -47,12 +52,28 @@ struct AnimemesEditorView: View {
                     Button { onClose() } label: { Image(systemName: "xmark") }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    // Port de `save_animemes2` — `showSaveDialog()`/export réel.
+                    // Port de `MotionTemplateGalleryView` (chargement) — `showLoadTemplate()`,
+                    // point d'entrée non identifié précisément dans `AnimemesCompound.java` (hors
+                    // périmètre de l'audit qui a scopé cette passe), câblé ici via une icône dédiée.
+                    Button { showTemplateGallery = true } label: {
+                        Image(systemName: "square.stack.3d.up")
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    // Port de `save_animemes2` → `showSaveDialog()`/`AnimemesActionSheet` — si le
+                    // calque est animé, propose export vidéo OU sauvegarde en modèle (port de
+                    // "Publish Animation"/"Save Template" ; "Publish Template" = upload
+                    // communautaire, PAS reproduit dans cette passe, voir `MIGRATION_AUDIT.md`).
+                    // Sinon (composition statique), export direct comme avant.
                     if state.isExporting {
                         ProgressView()
                     } else {
                         Button {
-                            state.export(canvasSize: canvasSize) { url in exportedURL = url }
+                            if state.hasAnimation {
+                                showSaveOptions = true
+                            } else {
+                                state.export(canvasSize: canvasSize) { url in exportedURL = url }
+                            }
                         } label: {
                             Image(systemName: "square.and.arrow.up")
                         }
@@ -85,6 +106,25 @@ struct AnimemesEditorView: View {
         .sheet(item: Binding(get: { exportedURL.map(ExportedVideo.init) }, set: { exportedURL = $0?.url })) { export in
             ShareLink(item: export.url) { Label("Partager l'export", systemImage: "square.and.arrow.up") }
                 .padding()
+        }
+        .confirmationDialog("Enregistrer", isPresented: $showSaveOptions, titleVisibility: .visible) {
+            Button("Exporter la vidéo") { state.export(canvasSize: canvasSize) { url in exportedURL = url } }
+            Button("Enregistrer comme modèle") {
+                if state.saveAsTemplate(canvasSize: canvasSize) { templateSavedToast = true }
+            }
+            Button("Annuler", role: .cancel) {}
+        }
+        .sheet(isPresented: $showTemplateGallery) {
+            MotionTemplateGalleryView(
+                onSelect: { template in
+                    state.applyTemplate(template, canvasSize: canvasSize)
+                    showTemplateGallery = false
+                },
+                onClose: { showTemplateGallery = false }
+            )
+        }
+        .alert("Modèle enregistré", isPresented: $templateSavedToast) {
+            Button("OK", role: .cancel) {}
         }
     }
 

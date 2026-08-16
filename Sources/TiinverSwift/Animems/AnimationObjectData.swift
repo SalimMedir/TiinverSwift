@@ -112,6 +112,9 @@ final class AnimationObjectData {
     func keyframeTrack(_ propertyName: String) -> KeyframeTrack? { keyframeTracks[propertyName] }
     func removeTrack(_ propertyName: String) { keyframeTracks.removeValue(forKey: propertyName) }
     var hasKeyframes: Bool { keyframeTracks.values.contains { !$0.isEmpty } }
+    /// Port de `getKeyframeTracks().clear()` (appelé par `MotionTemplateManager.apply` avant de
+    /// réappliquer les keyframes d'un modèle) — pas un besoin apparu ailleurs jusqu'ici.
+    func clearAllKeyframes() { keyframeTracks.removeAll() }
 
     private func addKeyframe(_ propertyName: String, timestampNs: Int64, value: [Float]) {
         var track = getOrCreateTrack(propertyName)

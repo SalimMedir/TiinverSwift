@@ -207,9 +207,23 @@ final class AnimemesEditorState: ObservableObject {
     /// Port de `touchDown` — teste si `point` tombe dans un calque (du dernier au premier, ordre
     /// d'affichage = ordre de dessin, le dernier dessiné est visuellement au-dessus) et l'arme pour
     /// le geste en cours.
+    ///
+    /// **CAUSE RACINE RÉELLE trouvée et corrigée ici (2026-08-16)** : cette méthode comparait
+    /// directement `point` (repère écran) à `$0.bound` (repère LOCAL du calque, confirmé par
+    /// `LayerRenderer` : `context.concatenate(tfm.cgAffineTransform)` PUIS `obj.bound =
+    /// CGRect(offsetX, offsetY, ...)` — le repère local, exactement comme Android
+    /// `drawBitmapLastTransform` : `canvas.concat(matrix)` puis `obj.getBound().set(offsetX,
+    /// offsetY, ...)`, JAMAIS pré-multiplié par la matrice). Dès qu'un calque a été déplacé/
+    /// pivoté/redimensionné ne serait-ce qu'une fois, son repère local ne coïncide plus avec le
+    /// repère écran — un tap sur sa position VISIBLE ne retombait plus dans `bound` non-transformé,
+    /// donc la resélection (et par extension tout geste suivant) échouait silencieusement. La
+    /// même classe de bug que le hit-test Android `touchDown`/`isPointInsideObject`, qui inverse
+    /// TOUJOURS la matrice du calque avant de comparer au `bound` local — logique déjà correctement
+    /// portée dans `AnimemesGestureController.isPoint(_:insideObjectAt:composer:)` mais jamais
+    /// utilisée ici, qui réimplémentait sa propre version (fausse) au lieu d'en déléguer le test.
     func selectObject(at point: CGPoint) -> String? {
         gestureEventCount += 1
-        guard let index = layers.lastIndex(where: { $0.bound?.contains(point) ?? false }) else {
+        guard let index = (0..<layers.count).reversed().first(where: { gestureController.isPoint(point, insideObjectAt: $0, composer: composer) }) else {
             selectedId = nil
             // Diagnostic AFFICHÉ À L'ÉCRAN — si CE message apparaît en tapant directement sur un
             // objet visible, la cause est soit `obj.bound` jamais rempli (aucun rendu réussi

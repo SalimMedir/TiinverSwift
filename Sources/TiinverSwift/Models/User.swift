@@ -70,4 +70,63 @@ struct User: Codable, Equatable {
         guard let lastname, lastname != "null" else { return " " }
         return lastname
     }
+
+    /// Décodage manuel : `id`/`userId` doivent tolérer une chaîne numérique en plus d'un `Int` JSON
+    /// natif — MÊME cause racine que `FeedActivity` (voir `LenientDecoding.swift`), confirmée comme
+    /// cause du Profile systématiquement vide (`getuserbyid` échouait à décoder `id` dès que le
+    /// serveur l'envoyait en chaîne, `ProfileViewModel.loadProfile()` capturait l'exception, l'écran
+    /// restait vide). `encode(to:)` reste synthétisé automatiquement (ce modèle sert aussi de corps
+    /// de requête ailleurs — voir `AuthEndpoints`/`AuthSessionPersistence`, non affecté : ce sont
+    /// des champs `String` construits manuellement, pas un `JSONEncoder().encode(user)`).
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = container.decodeLenientIntIfPresent(forKey: .id)
+        userId = container.decodeLenientIntIfPresent(forKey: .userId)
+        email = try container.decodeIfPresent(String.self, forKey: .email)
+        firstname = try container.decodeIfPresent(String.self, forKey: .firstname)
+        lastname = try container.decodeIfPresent(String.self, forKey: .lastname)
+        fullname = try container.decodeIfPresent(String.self, forKey: .fullname)
+        nikname = try container.decodeIfPresent(String.self, forKey: .nikname)
+        location = try container.decodeIfPresent(String.self, forKey: .location)
+        school = try container.decodeIfPresent(String.self, forKey: .school)
+        qualification = try container.decodeIfPresent(String.self, forKey: .qualification)
+        birthday = try container.decodeIfPresent(String.self, forKey: .birthday)
+        work = try container.decodeIfPresent(String.self, forKey: .work)
+        apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey)
+        apikey = try container.decodeIfPresent(String.self, forKey: .apikey)
+        phone = try container.decodeIfPresent(String.self, forKey: .phone)
+        password = try container.decodeIfPresent(String.self, forKey: .password)
+        subscribe = try container.decodeIfPresent(String.self, forKey: .subscribe)
+        profile = try container.decodeIfPresent(String.self, forKey: .profile)
+        message = try container.decodeIfPresent(String.self, forKey: .message)
+        stamp = try container.decodeIfPresent(String.self, forKey: .stamp)
+        error = try container.decodeIfPresent(String.self, forKey: .error)
+        username = try container.decodeIfPresent(String.self, forKey: .username)
+        followers = try container.decodeIfPresent(String.self, forKey: .followers)
+        following = try container.decodeIfPresent(String.self, forKey: .following)
+        emailVerified = try container.decodeIfPresent(String.self, forKey: .emailVerified)
+        certified = try container.decodeIfPresent(String.self, forKey: .certified)
+        isCertified = container.decodeLenientBoolIfPresent(forKey: .isCertified)
+        isFollowed = container.decodeLenientBoolIfPresent(forKey: .isFollowed)
+        etat = try container.decodeIfPresent(String.self, forKey: .etat)
+        warning = try container.decodeIfPresent(String.self, forKey: .warning)
+        gender = try container.decodeIfPresent(String.self, forKey: .gender)
+        coinsAmount = container.decodeLenientDoubleIfPresent(forKey: .coinsAmount)
+        gems = container.decodeLenientDoubleIfPresent(forKey: .gems)
+        gemsAmount = container.decodeLenientDoubleIfPresent(forKey: .gemsAmount)
+        type = try container.decodeIfPresent(String.self, forKey: .type)
+        provider = try container.decodeIfPresent(String.self, forKey: .provider)
+        providerId = try container.decodeIfPresent(String.self, forKey: .providerId)
+        verificationCode = try container.decodeIfPresent(String.self, forKey: .verificationCode)
+        link = try container.decodeIfPresent(String.self, forKey: .link)
+        biography = try container.decodeIfPresent(String.self, forKey: .biography)
+        category = try container.decodeIfPresent(String.self, forKey: .category)
+        referredBy = try container.decodeIfPresent(String.self, forKey: .referredBy)
+        referralCode = try container.decodeIfPresent(String.self, forKey: .referralCode)
+        userStatus = try container.decodeIfPresent(String.self, forKey: .userStatus)
+        hasProgram = container.decodeLenientBoolIfPresent(forKey: .hasProgram)
+        programs = try container.decodeIfPresent([Program].self, forKey: .programs)
+        username_blocked = try container.decodeIfPresent(String.self, forKey: .username_blocked)
+        blocked_users = try container.decodeIfPresent([BlockLib].self, forKey: .blocked_users)
+    }
 }

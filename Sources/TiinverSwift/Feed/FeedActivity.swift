@@ -51,4 +51,40 @@ struct FeedActivity: Codable, Identifiable, Equatable {
     var isVideo: Bool {
         object?.caseInsensitiveCompare("videos") == .orderedSame
     }
+
+    /// Décodage manuel : `id` (seul champ non-optionnel) doit tolérer une chaîne numérique en plus
+    /// d'un `Int` JSON natif — voir `LenientDecoding.swift` pour la cause racine confirmée (le
+    /// backend ne garantit pas le type JSON de ses champs numériques, déjà géré côté `JSONValue`
+    /// mais jamais ici, ce qui faisait échouer le décodage de CHAQUE activité dès que le serveur
+    /// envoyait `"id"` en chaîne, produisant un feed vide sans erreur visible). `encode(to:)` reste
+    /// synthétisé automatiquement par le compilateur (jamais utilisé — ce modèle n'est que reçu).
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeLenientInt(forKey: .id)
+        actor = try container.decodeIfPresent(String.self, forKey: .actor)
+        token = try container.decodeIfPresent(String.self, forKey: .token)
+        verified = container.decodeLenientBoolIfPresent(forKey: .verified)
+        verb = try container.decodeIfPresent(String.self, forKey: .verb)
+        lastname = try container.decodeIfPresent(String.self, forKey: .lastname)
+        firstname = try container.decodeIfPresent(String.self, forKey: .firstname)
+        object = try container.decodeIfPresent(String.self, forKey: .object)
+        likes = container.decodeLenientIntIfPresent(forKey: .likes)
+        views = container.decodeLenientIntIfPresent(forKey: .views)
+        isLiked = try container.decodeIfPresent(String.self, forKey: .isLiked)
+        stamp = try container.decodeIfPresent(String.self, forKey: .stamp)
+        comment = container.decodeLenientIntIfPresent(forKey: .comment)
+        share = container.decodeLenientIntIfPresent(forKey: .share)
+        object_url = try container.decodeIfPresent(String.self, forKey: .object_url)
+        message = try container.decodeIfPresent(String.self, forKey: .message)
+        userId = container.decodeLenientIntIfPresent(forKey: .userId)
+        profile = try container.decodeIfPresent(String.self, forKey: .profile)
+        location = try container.decodeIfPresent(String.self, forKey: .location)
+        certified = try container.decodeIfPresent(String.self, forKey: .certified)
+        followers = try container.decodeIfPresent(String.self, forKey: .followers)
+        following = try container.decodeIfPresent(String.self, forKey: .following)
+        username = try container.decodeIfPresent(String.self, forKey: .username)
+        cdn_content_id = try container.decodeIfPresent(String.self, forKey: .cdn_content_id)
+        cdn_content_url = try container.decodeIfPresent(String.self, forKey: .cdn_content_url)
+        cdn_thumbnail_url = try container.decodeIfPresent(String.self, forKey: .cdn_thumbnail_url)
+    }
 }

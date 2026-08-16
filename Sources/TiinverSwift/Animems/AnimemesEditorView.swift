@@ -212,7 +212,11 @@ struct AnimemesEditorView: View {
     >.Value
 
     private var combinedGesture: AnyGesture<ObjectGestureValue> {
-        AnyGesture(SimultaneousGesture(SimultaneousGesture(AnyGesture(dragGesture), AnyGesture(magnificationGesture)), AnyGesture(rotationGesture)))
+        let dragAndZoom: SimultaneousGesture<AnyGesture<DragGesture.Value>, AnyGesture<CGFloat>> =
+            SimultaneousGesture(AnyGesture(dragGesture), AnyGesture(magnificationGesture))
+        let full: SimultaneousGesture<SimultaneousGesture<AnyGesture<DragGesture.Value>, AnyGesture<CGFloat>>, AnyGesture<Angle>> =
+            SimultaneousGesture(dragAndZoom, AnyGesture(rotationGesture))
+        return AnyGesture(full)
     }
 
     private var dragGesture: some Gesture {
@@ -276,7 +280,11 @@ struct AnimemesEditorView: View {
     // type-check.
 
     private var maskEditGesture: AnyGesture<ObjectGestureValue> {
-        AnyGesture(SimultaneousGesture(SimultaneousGesture(AnyGesture(maskDragGesture), AnyGesture(maskMagnificationGesture)), AnyGesture(maskRotationGesture)))
+        let dragAndZoom: SimultaneousGesture<AnyGesture<DragGesture.Value>, AnyGesture<CGFloat>> =
+            SimultaneousGesture(AnyGesture(maskDragGesture), AnyGesture(maskMagnificationGesture))
+        let full: SimultaneousGesture<SimultaneousGesture<AnyGesture<DragGesture.Value>, AnyGesture<CGFloat>>, AnyGesture<Angle>> =
+            SimultaneousGesture(dragAndZoom, AnyGesture(maskRotationGesture))
+        return AnyGesture(full)
     }
 
     private var maskDragGesture: some Gesture {

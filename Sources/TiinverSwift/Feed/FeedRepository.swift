@@ -20,6 +20,17 @@ final class FeedRepository {
         }
     }
 
+    /// Port de `ShareActivity.getPost`/`connectToServeur` (`getactivity/{token}`, clé de réponse
+    /// `"activity"`) — résolution d'un lien profond `/post/{token}` (`DeepLinkRouter.swift`,
+    /// 2026-08-16).
+    func fetchPost(byToken token: String) async throws -> FeedActivity {
+        let value = try await APIClient.shared.get("getactivity/\(token)")
+        guard value.isBackendSuccess, let data = try? value.stringEncodedJSON("activity"),
+              let raw = data.rawData
+        else { throw JSONError.typeMismatch(value.backendErrorMessage ?? "getactivity") }
+        return try JSONDecoder().decode(FeedActivity.self, from: raw)
+    }
+
     /// Port de `TransportData.addActivities` : cache local plafonné à 10 lignes. Reproduit
     /// FIDÈLEMENT la politique observée (pas "corrigée") — au-delà de 10 lignes déjà en cache,
     /// TOUTES les lignes existantes sont supprimées avant de réinsérer le nouveau lot, plutôt que

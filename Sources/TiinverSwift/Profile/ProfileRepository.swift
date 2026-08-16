@@ -17,6 +17,19 @@ final class ProfileRepository {
         return try JSONDecoder().decode(User.self, from: data)
     }
 
+    /// Port de `ShareActivity.getUser`/`connectToServeur` (`getuser/{username}`, résolution d'un
+    /// lien profond `/user/{username}`, `DeepLinkRouter.swift`, 2026-08-16) — clé de réponse
+    /// `"userData"` JSON-encodée en CHAÎNE sur CET endpoint précis (`object.getString("userData")`
+    /// côté Android), contrairement à `getuserbyid` ci-dessus où `userData` est un objet JSON
+    /// imbriqué : deux endpoints différents, vérifiés séparément plutôt que supposés identiques.
+    func fetchUser(byUsername username: String) async throws -> User {
+        let value = try await APIClient.shared.get("getuser/\(username)")
+        guard value.isBackendSuccess, let data = try? value.stringEncodedJSON("userData"), let raw = data.rawData else {
+            throw JSONError.typeMismatch(value.backendErrorMessage ?? "getuser")
+        }
+        return try JSONDecoder().decode(User.self, from: raw)
+    }
+
     /// Port de `getMediasPubFromServer(actor, userId, limit, offset)` — posts d'UN profil
     /// spécifique (`actor`), PAS le fil personnalisé du visiteur (`FeedRepository.fetchTimeline`,
     /// module 6, endpoint différent à 3 segments).

@@ -45,6 +45,46 @@ final class GroupRepository {
         )
     }
 
+    /// Port de `GroupModel` (`ShareActivity.joinGroup`'s champ source) — champs RÉELLEMENT lus par
+    /// `joinGroup()` pour construire le `RosterModel` de la conversation, voir `DeepLinkRouter.swift`.
+    struct GroupInfo {
+        var id: Int
+        var token: String
+        var name: String
+        var nikname: String?
+        var description: String?
+        var profile: String?
+        var price: Int
+        var lucrative: Int
+        var isMember: Bool
+        var creator: String
+        var type: String
+    }
+
+    /// Port de `ShareActivity.getGroup`/`connectToServeur` (`group/{myId}/{token}`, clé de réponse
+    /// `"data"` — MÊME clé que `createGroup` ci-dessus, format cohérent entre les deux endpoints
+    /// `group`) — résolution d'un lien profond `/group/{token}` (`DeepLinkRouter.swift`,
+    /// 2026-08-16).
+    func fetchGroup(token: String, myId: String) async throws -> GroupInfo {
+        let value = try await APIClient.shared.get("group/\(myId)/\(token)")
+        guard value.isBackendSuccess, let data = try? value.stringEncodedJSON("data") else {
+            throw JSONError.typeMismatch(value.backendErrorMessage ?? "group")
+        }
+        return GroupInfo(
+            id: (try? data.int("id")) ?? 0,
+            token: data.optionalString("token") ?? token,
+            name: data.optionalString("name") ?? "",
+            nikname: data.optionalString("nikname"),
+            description: data.optionalString("description"),
+            profile: data.optionalString("profile"),
+            price: (try? data.int("price")) ?? 0,
+            lucrative: (try? data.int("lucrative")) ?? 0,
+            isMember: (try? data.bool("isMember")) ?? false,
+            creator: data.optionalString("creator") ?? "",
+            type: data.optionalString("type") ?? "public"
+        )
+    }
+
     /// Port de la boucle `POST membership` (un appel par membre sélectionné, ligne 389-458) —
     /// échecs individuels ignorés (Android ne bloque pas la création de groupe si l'invitation d'UN
     /// membre échoue, chaque appel est indépendant dans la boucle d'origine).

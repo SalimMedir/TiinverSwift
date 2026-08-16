@@ -54,6 +54,12 @@ struct HomeShellView: View {
     @State private var showNotifications = false
     @State private var showProfile = false
     @State private var showSearch = false
+    @State private var deepLinkUserId: String?
+    @State private var deepLinkPost: FeedActivity?
+    @State private var deepLinkRoster: RosterModel?
+    @State private var showSettings = false
+    @State private var showAnimems = false
+    @State private var showReferral = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -106,6 +112,32 @@ struct HomeShellView: View {
         .sheet(isPresented: $showSearch) {
             NavigationStack { SearchView() }
         }
+        // Port des destinations de `ShareActivity.processUrl`/`joinGroup` (`DeepLinkRouter.swift`,
+        // 2026-08-16) — même motif `sheet(item:)`/`fullScreenCover` que le reste de l'écran.
+        .sheet(isPresented: Binding(get: { deepLinkUserId != nil }, set: { if !$0 { deepLinkUserId = nil } })) {
+            if let userId = deepLinkUserId {
+                NavigationStack { ProfileView(userId: userId, isCurrentUser: false) }
+            }
+        }
+        .fullScreenCover(isPresented: Binding(get: { deepLinkPost != nil }, set: { if !$0 { deepLinkPost = nil } })) {
+            if let post = deepLinkPost {
+                FeedDetailPagerView(posts: [post], startIndex: 0, onClose: { deepLinkPost = nil })
+            }
+        }
+        .fullScreenCover(isPresented: Binding(get: { deepLinkRoster != nil }, set: { if !$0 { deepLinkRoster = nil } })) {
+            if let roster = deepLinkRoster {
+                NavigationStack { ChatView(target: roster) }
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            NavigationStack { SettingsView() }
+        }
+        .fullScreenCover(isPresented: $showAnimems) {
+            AnimemesEditorView(onClose: { showAnimems = false })
+        }
+        .sheet(isPresented: $showReferral) {
+            NavigationStack { ReferralView() }
+        }
         .task {
             await notificationsViewModel.refresh()
             await refreshChatUnreadCount()
@@ -140,6 +172,12 @@ struct HomeShellView: View {
             case .notifications: showNotifications = true
             case .profile: showProfile = true
             case .chat: selectedTab = 1
+            case .userProfile(let userId): deepLinkUserId = userId
+            case .post(let post): deepLinkPost = post
+            case .groupChat(let roster): deepLinkRoster = roster
+            case .settings: showSettings = true
+            case .animems: showAnimems = true
+            case .referral: showReferral = true
             }
         }
     }

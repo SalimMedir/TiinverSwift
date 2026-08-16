@@ -204,6 +204,23 @@ targets:
         # côté iOS, pour ne pas fabriquer une liste non vérifiée.
         SKAdNetworkItems:
           - SKAdNetworkIdentifier: cstr6suwn9.skadnetwork
+        # Port des `<intent-filter>` de `AndroidManifest.xml` (deep links, audit dédié du
+        # 2026-08-16 — iOS n'avait AUCUNE gestion de lien profond avant ce tour, confirmé par grep
+        # exhaustif). `myapp` = schéma EXACT d'Android (`android:scheme="myapp"`,
+        # `android:host="parrainage"`, lien de parrainage). `tiinver` = schéma PROPRE à ce portage
+        # iOS, repli pour les liens `https://tiinver.com/{user,post,group,myaccount,animemes,
+        # update,offer}/...` (`android:scheme="https" android:host="tiinver.com"`,
+        # `android:autoVerify="true"`) : un VRAI "Universal Link" `https://` nécessiterait un
+        # fichier `apple-app-site-association` hébergé côté serveur ET l'entitlement "Associated
+        # Domains", NI L'UN NI L'AUTRE ne peut être ajouté/vérifié depuis ce dépôt Swift seul (pas
+        # de contrôle sur le serveur `tiinver.com`) — voir `MIGRATION_AUDIT.md`. La logique de
+        # ROUTAGE (`DeepLinkRouter.swift`) est cependant écrite pour fonctionner IDENTIQUEMENT via
+        # les deux transports, dès qu'un AASA sera éventuellement hébergé.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.tiinver.ios.deeplink
+            CFBundleURLSchemes:
+              - myapp
+              - tiinver
     settings:
       base:
         # CONFIRMÉ (pas une supposition) par Resources/GoogleService-Info.plist, clé BUNDLE_ID

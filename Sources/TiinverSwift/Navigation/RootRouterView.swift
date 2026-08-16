@@ -48,6 +48,14 @@ struct RootRouterView: View {
         .task {
             await checkForceUpdate()
         }
+        // Port de `ShareActivity`/`SplashActivity` (réception d'un lien profond) — monté ICI (pas
+        // dans `HomeShellView`) pour capter un lien reçu AVANT authentification (parrainage
+        // notamment, lu dès l'inscription — voir `RegisterView.swift`/`SignUpWithGoogleView.swift`),
+        // pas seulement une fois connecté. `DeepLinkCenter` bufferise déjà les destinations qui
+        // nécessitent une session (même mécanisme que les notifications push).
+        .onOpenURL { url in
+            DeepLinkRouter.handle(url)
+        }
     }
 
     private func checkForceUpdate() async {

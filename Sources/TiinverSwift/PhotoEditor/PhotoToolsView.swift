@@ -2,10 +2,20 @@ import SwiftUI
 
 /// Port de la portion "outils" de `CroperView.java` (`handleFlip`/`handleRemoveBackground`) et du
 /// sous-ensemble PRINCIPAL d'`ImageEditorCompound.java` (peinture libre `ic_paint`, texte
-/// `containerEditText`) — écran intercalé entre le recadrage (`PhotoCropView`/`FreeformCropView`)
-/// et la légende dans `PublishComposeView`, 2026-08-16. Périmètre volontairement réduit vs Android :
-/// PAS de glisser-déposer du texte une fois placé (Android le permet), PAS de stickers/emoji, PAS
-/// d'image composée (ajout d'une seconde image) — voir `MIGRATION_AUDIT.md`.
+/// `containerEditText`, stickers/emoji `ic_smile`/`EmojiView`) — écran intercalé entre le
+/// recadrage (`PhotoCropView`/`FreeformCropView`) et la légende dans `PublishComposeView`,
+/// 2026-08-16. Périmètre volontairement réduit vs Android : PAS de glisser-déposer du texte/
+/// sticker une fois placé (Android le permet), PAS d'image composée (ajout d'une seconde image) —
+/// voir `MIGRATION_AUDIT.md`.
+///
+/// **Stickers (2026-08-16, câblés après audit dédié)** : Android n'a PAS de catalogue de stickers
+/// custom sur cet écran — `MediaEditor.java:30-32` importe `com.vanniktech.emoji.EmojiView`, un
+/// clavier emoji Unicode STANDARD tiers (`emoji-google-compat`), pas un système d'assets/backend.
+/// `onEmojiClick` (`MediaEditor.java:101-109`) rasterise le glyphe choisi (`BitmapManager.
+/// getBitmapFromText`) et l'ajoute comme un calque bitmap ordinaire, positionné par défaut puis
+/// déplaçable — CE portage réutilise directement le clavier emoji SYSTÈME d'iOS (via un `TextField`,
+/// bouton globe pour basculer dessus) plutôt qu'une grille custom, fidèle au principe "clavier
+/// emoji standard", pas une grille d'assets à maintenir.
 struct PhotoToolsView: View {
     var onDone: (UIImage) -> Void
     var onCancel: () -> Void
@@ -19,6 +29,8 @@ struct PhotoToolsView: View {
     @State private var drawColor: Color = .red
     @State private var showTextPrompt = false
     @State private var newText = ""
+    @State private var showStickerPrompt = false
+    @State private var newSticker = ""
     @State private var canvasSize: CGSize = .zero
     @State private var errorText: String?
 
@@ -43,7 +55,7 @@ struct PhotoToolsView: View {
                     .allowsHitTesting(false)
                     ForEach(texts) { item in
                         Text(item.text)
-                            .font(.system(size: 30, weight: .bold))
+                            .font(.system(size: item.isSticker ? 64 : 30, weight: item.isSticker ? .regular : .bold))
                             .foregroundStyle(item.color)
                             .position(item.position)
                     }
@@ -79,6 +91,15 @@ struct PhotoToolsView: View {
                 Button("Ajouter") { addText() }
                 Button("Annuler", role: .cancel) { newText = "" }
             }
+            // Port d'`onEmojiClick` — la sélection se fait via le clavier emoji SYSTÈME d'iOS
+            // (bouton globe du `TextField`), voir note de tête de fichier.
+            .alert("Ajouter un sticker", isPresented: $showStickerPrompt) {
+                TextField("Emoji", text: $newSticker)
+                Button("Ajouter") { addSticker() }
+                Button("Annuler", role: .cancel) { newSticker = "" }
+            } message: {
+                Text("Touche le globe du clavier pour choisir un emoji.")
+            }
         }
         .background(Color.black)
     }
@@ -113,6 +134,8 @@ struct PhotoToolsView: View {
                 .tint(isDrawMode ? .yellow : .white)
                 // Port de `containerEditText`/`ic_text`.
                 Button { showTextPrompt = true } label: { Image(systemName: "textformat") }
+                // Port de `ic_smile`/`EmojiView` — clavier emoji système, voir tête de fichier.
+                Button { showStickerPrompt = true } label: { Image(systemName: "face.smiling") }
                 if !strokes.isEmpty || !texts.isEmpty {
                     Button { undo() } label: { Image(systemName: "arrow.uturn.backward") }
                 }
@@ -131,6 +154,18 @@ struct PhotoToolsView: View {
         let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2 + offset)
         texts.append(PlacedText(text: trimmed, position: center, color: drawColor))
         newText = ""
+    }
+
+    /// Port d'`onEmojiClick` → `BitmapManager.getBitmapFromText` + `addBitmap` — un emoji est un
+    /// calque comme un autre (ici : un `PlacedText` avec `isSticker=true`, rendu SANS tinte de
+    /// couleur puisqu'un glyphe emoji porte déjà sa propre couleur, contrairement au texte).
+    private func addSticker() {
+        let trimmed = newSticker.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let offset = CGFloat(texts.count) * 24
+        let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2 + offset)
+        texts.append(PlacedText(text: trimmed, position: center, color: .primary, isSticker: true))
+        newSticker = ""
     }
 
     private func undo() {
@@ -201,7 +236,7 @@ struct PhotoToolsView: View {
             }
             ForEach(texts) { item in
                 Text(item.text)
-                    .font(.system(size: 30, weight: .bold))
+                    .font(.system(size: item.isSticker ? 64 : 30, weight: item.isSticker ? .regular : .bold))
                     .foregroundStyle(item.color)
                     .position(item.position)
             }
@@ -224,4 +259,7 @@ struct PlacedText: Identifiable {
     var text: String
     var position: CGPoint
     var color: Color
+    /// `true` pour un emoji ajouté via `PhotoToolsView.addSticker` — rendu plus grand, sans
+    /// pertinence de `color` (un glyphe emoji ignore `.foregroundStyle`).
+    var isSticker: Bool = false
 }

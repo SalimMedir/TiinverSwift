@@ -35,6 +35,11 @@ final class CallCoordinator: ObservableObject {
     @Published private(set) var state: State = .idle
     @Published private(set) var isMuted = false
     @Published private(set) var isSpeakerOn = false
+    /// Port de `Utils/PermissionRequest.java:62-99` (vérification/demande explicite AVANT l'appel)
+    /// — trouvé MANQUANT par l'audit WebRTC complet du 2026-08-16 : rien ne vérifiait la permission
+    /// micro avant de démarrer WebRTC, laissant l'OS afficher son invite implicite au milieu de la
+    /// mise en place de l'appel plutôt qu'un contrôle explicite en amont côté app.
+    @Published private(set) var micPermissionDenied = false
 
     var activeCallUUID: UUID? { callUUID }
 
@@ -122,6 +127,18 @@ final class CallCoordinator: ObservableObject {
     /// `ChatProfile` (module 11).
     func startOutgoingCall(profile: ChatProfile, chatType: String) {
         guard state == .idle else { return }
+        micPermissionDenied = false
+        Task {
+            guard await Self.hasMicPermission() else {
+                self.micPermissionDenied = true
+                return
+            }
+            self.beginOutgoingCall(profile: profile, chatType: chatType)
+        }
+    }
+
+    private func beginOutgoingCall(profile: ChatProfile, chatType: String) {
+        guard state == .idle else { return }
         let uuid = UUID()
         callUUID = uuid
         self.profile = profile
@@ -131,6 +148,29 @@ final class CallCoordinator: ObservableObject {
         isRinging = false
         state = .outgoing(callerName: profile.nikname ?? profile.username ?? "")
         callKit.requestStartCall(uuid: uuid, calleeName: profile.nikname ?? profile.username ?? "")
+    }
+
+    /// Acquitte l'alerte de permission refusée (voir `CallView.swift`) — l'utilisateur a vu le
+    /// message, `micPermissionDenied` peut redevenir `false` sans relancer de demande système.
+    func acknowledgeMicPermissionDenied() {
+        micPermissionDenied = false
+    }
+
+    /// Port de `PermissionRequest.checkAndRequestPermission` — chemin rapide si déjà déterminé,
+    /// sinon invite système. `AVAudioSession.requestRecordPermission` (PAS `AVAudioApplication`,
+    /// iOS 17+ uniquement — incompatible avec `deploymentTarget: 16.0`, `project.yml`).
+    private static func hasMicPermission() async -> Bool {
+        switch AVAudioSession.sharedInstance().recordPermission {
+        case .granted: return true
+        case .denied: return false
+        case .undetermined:
+            return await withCheckedContinuation { continuation in
+                AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                    continuation.resume(returning: granted)
+                }
+            }
+        @unknown default: return true
+        }
     }
 
     // MARK: - Appel entrant (port de `lunchcall`/`onStartCommand(callType == INCOMINGCALL)`)
@@ -157,8 +197,17 @@ final class CallCoordinator: ObservableObject {
         messageId = profile.messageId
         isOutgoingCall = false
         state = .incoming(callerName: profile.nikname ?? profile.username ?? "")
+        // `reportIncomingCall` DOIT être appelé inconditionnellement (contrat CallKit : un push
+        // VoIP reçu sans `reportNewIncomingCall` immédiat expose l'app à des pénalités système) —
+        // la vérification de permission micro vient APRÈS, avant `fetchTurnAndStart` (le point réel
+        // d'engagement du micro), pas avant le report lui-même.
         try? await callKit.reportIncomingCall(uuid: uuid, callerName: profile.nikname ?? profile.username ?? "")
         onReported?()
+        guard await Self.hasMicPermission() else {
+            micPermissionDenied = true
+            callKit.requestEndCall(uuid: uuid)
+            return
+        }
         await fetchTurnAndStart(isOutgoing: false)
     }
 

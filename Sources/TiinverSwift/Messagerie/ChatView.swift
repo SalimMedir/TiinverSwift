@@ -39,6 +39,20 @@ struct ChatView: View {
         .fullScreenCover(isPresented: Binding(get: { callCoordinator.state != .idle }, set: { _ in })) {
             CallView(coordinator: callCoordinator)
         }
+        // Port de `PermissionRequest.java:62-99` (refus explicite signalé à l'utilisateur) — l'appel
+        // sortant refusé pour permission micro ne quitte jamais `.idle` (voir
+        // `CallCoordinator.startOutgoingCall`), donc `CallView` (gardé par `state != .idle`
+        // ci-dessus) ne s'affiche jamais pour ce cas : l'alerte doit vivre ICI, pas dans `CallView`.
+        .alert(
+            "Micro requis", isPresented: Binding(
+                get: { callCoordinator.micPermissionDenied },
+                set: { if !$0 { callCoordinator.acknowledgeMicPermissionDenied() } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Autorise l'accès au micro dans Réglages pour passer ou recevoir des appels.")
+        }
         // Port du point d'entrée Shareboard (`R.id.shareboard`/`mListener.onArticleSelected(9,…)`,
         // pas plus identifié que celui de l'appel dans les 3080 lignes lues de
         // `ChatFragmentTest.java` — câblé directement sur `FragmentPbs.newInstance`, module 13).

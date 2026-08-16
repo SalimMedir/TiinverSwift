@@ -121,7 +121,7 @@ struct AnimemesEditorView: View {
                 }
             }
             .background(Color(white: 0.08))
-            .gesture(state.isMaskEditMode ? AnyGesture(maskEditGesture) : AnyGesture(combinedGesture))
+            .gesture(state.isMaskEditMode ? maskEditGesture : combinedGesture)
             .onAppear { canvasSize = geo.size; state.preparePlayback(canvasSize: geo.size) }
             .onChange(of: geo.size) { newSize in canvasSize = newSize; state.preparePlayback(canvasSize: newSize) }
             .onChange(of: state.version) { _ in state.preparePlayback(canvasSize: canvasSize) }
@@ -201,8 +201,18 @@ struct AnimemesEditorView: View {
     /// du geste — voir les commentaires de `beginPinchRotate()`/`rotationChanged(to:)`/
     /// `scaleChanged(incrementalFactor:)` dans `AnimemesEditorState` pour la réconciliation avec
     /// l'API par delta d'`AnimemesGestureController`.
-    private var combinedGesture: some Gesture {
-        SimultaneousGesture(SimultaneousGesture(dragGesture, magnificationGesture), rotationGesture)
+    /// Type explicite PARTAGÉ avec `maskEditGesture` — deux propriétés `some Gesture` distinctes
+    /// sont deux types opaques DIFFÉRENTS pour le compilateur même avec une composition
+    /// structurellement identique (`AnyGesture((some Gesture).Value)` ne s'unifie PAS entre deux
+    /// déclarations `some Gesture` séparées dans un ternaire — trouvé par le premier build réel
+    /// couvrant ce fichier : `error: conflicting arguments to generic parameter 'T'`, corrigé en
+    /// donnant aux DEUX gestes ce même type nommé explicite au lieu de deux `some Gesture` opaques).
+    private typealias ObjectGestureValue = SimultaneousGesture<
+        SimultaneousGesture<AnyGesture<DragGesture.Value>, AnyGesture<CGFloat>>, AnyGesture<Angle>
+    >.Value
+
+    private var combinedGesture: AnyGesture<ObjectGestureValue> {
+        AnyGesture(SimultaneousGesture(SimultaneousGesture(AnyGesture(dragGesture), AnyGesture(magnificationGesture)), AnyGesture(rotationGesture)))
     }
 
     private var dragGesture: some Gesture {
@@ -260,12 +270,13 @@ struct AnimemesEditorView: View {
     // MARK: - Geste d'édition de masque (port de `MaskEditController`/`maskApplyDrag`, 2026-08-16)
     //
     // MÊME composition que `combinedGesture` (glisser+pincer+pivoter simultanés) mais ciblant
-    // `maskOffsetX/Y`/`maskScale`/`maskRotation` au lieu de la matrice de l'objet — types de geste
-    // structurellement identiques exprès, pour que `AnyGesture(maskEditGesture)`/
-    // `AnyGesture(combinedGesture)` (voir `canvas`) partagent le même `Value` associé.
+    // `maskOffsetX/Y`/`maskScale`/`maskRotation` au lieu de la matrice de l'objet — type
+    // `AnyGesture<ObjectGestureValue>` explicite PARTAGÉ avec `combinedGesture` (voir sa note),
+    // requis pour que le ternaire de `canvas` (`isMaskEditMode ? maskEditGesture : combinedGesture`)
+    // type-check.
 
-    private var maskEditGesture: some Gesture {
-        SimultaneousGesture(SimultaneousGesture(maskDragGesture, maskMagnificationGesture), maskRotationGesture)
+    private var maskEditGesture: AnyGesture<ObjectGestureValue> {
+        AnyGesture(SimultaneousGesture(SimultaneousGesture(AnyGesture(maskDragGesture), AnyGesture(maskMagnificationGesture)), AnyGesture(maskRotationGesture)))
     }
 
     private var maskDragGesture: some Gesture {

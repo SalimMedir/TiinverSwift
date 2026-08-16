@@ -9,6 +9,165 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
+# CURRENT HANDOFF (2026-08-16, mise à jour par la session de DIAGNOSTIC RUNTIME P0 — priorise ceci)
+
+**RÈGLE ABSOLUE EN VIGUEUR DEPUIS LE MESSAGE "STOP" DE L'UTILISATEUR (2026-08-16, après un VRAI test
+Appetize sur build Codemagic)** : le test réel a contredit le rapport "COMPLETE" précédent.
+**NE PLUS JAMAIS déclarer HOME/FEED, PROFILE ou ANIMEMS "COMPLETE" ou "FUNCTIONALLY VALIDATED" sur
+la seule base d'un audit statique ou d'un build vert.** Statuts imposés tant qu'un nouveau test réel
+ne les contredit pas :
+- **HOME/FEED = CI VALIDATED, FUNCTIONALLY FAILED** (feed vide sur Appetize)
+- **PROFILE = CI VALIDATED, FUNCTIONALLY FAILED** (écran vide sur Appetize)
+- **ANIMEMS CANVAS/TRANSFORMATIONS = CI VALIDATED, FUNCTIONALLY FAILED** (gestes/transformations ne
+  fonctionnent pas comme la référence Android sur Appetize)
+
+**AVANT DE CONTINUER : une AUTRE session Claude Code a TOUJOURS des modifications NON commitées EN
+COURS** (confirmé par `git status` au moment d'écrire ceci) sur : `Advertising/AdMobManager.swift`,
+`App/AppDelegate.swift`, `Messagerie/ChatView.swift`, `Messagerie/GroupModels.swift`,
+`Messagerie/GroupRepository.swift`, `Messagerie/AddGroupMemberView.swift` (nouveau, non suivi),
+`Messagerie/GroupDetailView.swift` (nouveau, non suivi) — GAP-018 (App Tracking Transparency) et
+GAP-011 (gestion de groupe). `MIGRATION_AUDIT.md`/`MIGRATION_PROGRESS.md` sont ÉGALEMENT modifiés/non
+commités (probablement par cette même autre session). **Vérifier `git status`/`git diff` AVANT de
+toucher un de ces fichiers** — ne pas les modifier en parallèle, ne pas les committer à la place de
+l'autre session (même arbre de travail, pas des branches isolées — une collision ici n'est pas un
+conflit git résolvable).
+
+## Last confirmed state
+- Branch: `main`
+- HEAD commit: `328f7ad` ("fix(profile): heal stale-captured userId; add on-screen runtime
+  diagnostics for Feed/Profile/Animems P0s") — poussé sur `origin/main`, confirmé par `git fetch`.
+  Précédé de `f634788` ("feat(animems,chat,profile,ui): rebuild toolbars/screens to match real
+  Android screenshots").
+- Dernier run GitHub Actions confirmé : `31951566226` sur commit `328f7ad`, **SUCCESS** (compilation
+  seule — voir règle absolue ci-dessus, ceci ne valide PAS le fonctionnement réel).
+- Dernier build Codemagic confirmé fonctionnellement testé (par l'utilisateur, PAS par cette
+  session) : celui qui a produit le rapport "STOP" ci-dessus — build sur un commit antérieur à
+  `f634788`/`328f7ad` (probablement `60818bc` ou `b485f34`), compile avec succès, MAIS Home/Feed,
+  Profile, Animems FONCTIONNELLEMENT ÉCHOUÉS. **Le travail de ce tour (`f634788`+`328f7ad`) n'a PAS
+  encore été testé sur Appetize** — voir section 11quinquies pour le détail complet de ce qui a été
+  ajouté pour permettre au PROCHAIN test de révéler la cause racine exacte.
+
+## Actually completed cette session (audit + 2 corrections, PAS commité)
+1. **Audit indépendant des 7 priorités utilisateur (Chat/Animems/Appels/Shareboard/Wallet/
+   Publicité/Réglages-Divers)** — voir `MIGRATION_AUDIT.md`, section "SESSION DU 2026-08-16 (passe
+   d'audit indépendante)". Résultat : Chat (signalisation Socket.IO 23/23 vérifiée, DONE), Appels
+   (WebRTC re-vérifié ligne par ligne, DONE au niveau code), Shareboard (architecture WebRTC
+   partagée confirmée fidèle), Wallet (couche réseau DONE, retrait PARTIAL), AdMob (formats DONE,
+   ATT MISSING), Réglages/Divers (8 nouveaux gaps réels documentés GAP-009 à GAP-016).
+2. **GAP-018 (App Tracking Transparency) CORRIGÉ** — `Advertising/AdMobManager.swift` +
+   `App/AppDelegate.swift` (nouveau `applicationDidBecomeActive`).
+3. **GAP-011 (gestion de groupe) CORRIGÉ pour le cœur** — nouveaux `Messagerie/GroupDetailView.swift`
+   + `Messagerie/AddGroupMemberView.swift`, `GroupModels.swift`/`GroupRepository.swift` étendus,
+   `ChatView.swift` : bouton "info.circle" toolbar pour ouvrir les infos de groupe (membres/rôles/
+   description/lien d'invitation/quitter). PAS couvert : photo de groupe, action "Message" directe
+   sur un membre, mute privé (documenté dans `GroupDetailView.swift` en tête de fichier).
+4. **Re-vérification fraîche et approfondie de Feed (Session→API→Decode→ViewModel→View) et
+   Galerie/Publish** — AUCUN nouveau bug statique trouvé au-delà de ce que le 11ᵉ tour avait déjà
+   corrigé/instrumenté. `UserSession` confirmée synchrone/fiable (pas de race condition de cache).
+   `FeedActivity.id: Int` confirmé être le SEUL champ non-optionnel (tous les autres le sont),
+   correspond à `activityLib.java`'s `int id` — pas de divergence de type trouvée qui expliquerait un
+   échec de décodage systématique. `FeedView.swift`/`PublishComposeView.swift` relus intégralement,
+   logique de state (`stage`/`croppedImage`) correctement séquencée. **Conclusion honnête : la cause
+   racine des P0 Home/Profile/Chat-bouton reste NON CONFIRMÉE par manque de logs Appetize réels —
+   voir "Next exact task" ci-dessous, ne pas re-creuser sans nouvelle preuve.**
+
+## Currently in progress
+- **Rien de mon côté** (pas de tâche interrompue à mi-chemin).
+- **L'AUTRE session** semble en train de faire une passe de parité UI systématique à partir de
+  captures Android fraîchement reçues (Roster FAB, Profile boutons ronds, vignettes Profile compteur
+  de vues, Animems, Search, Notifications) — fichiers listés en tête de cette section, TOUS non
+  commités au moment d'écrire.
+
+## Uncommitted work (cette session, séparé de l'autre session — voir liste ci-dessus)
+- `MIGRATION_AUDIT.md` (audit + documentation des 2 corrections)
+- `Sources/TiinverSwift/Advertising/AdMobManager.swift` (GAP-018)
+- `Sources/TiinverSwift/App/AppDelegate.swift` (GAP-018)
+- `Sources/TiinverSwift/Messagerie/GroupModels.swift` (GAP-011)
+- `Sources/TiinverSwift/Messagerie/GroupRepository.swift` (GAP-011)
+- `Sources/TiinverSwift/Messagerie/ChatView.swift` (GAP-011, bouton toolbar)
+- `Sources/TiinverSwift/Messagerie/GroupDetailView.swift` (GAP-011, nouveau)
+- `Sources/TiinverSwift/Messagerie/AddGroupMemberView.swift` (GAP-011, nouveau)
+- **AUCUNE compilation réelle vérifiée** — pas d'accès Xcode/macOS depuis cet environnement Windows,
+  code relu manuellement (signatures, `deploymentTarget: 16.0` respecté — `ContentUnavailableView`
+  iOS 17+ repéré et évité dans `AddGroupMemberView.swift`) mais pas confirmé par un build CI.
+
+## Appetize failures requiring fixes (toujours ouvertes, cause NON confirmée)
+- **P0 HOME** : le feed n'affiche toujours rien. Logs `SESSION:`/`FEED REQUEST:`/`FEED RESPONSE:`/
+  `FEED UI:` déjà en place dans `FeedViewModel.loadNextPage()` (depuis le 11ᵉ tour) — **la prochaine
+  session DOIT obtenir la sortie console réelle d'un test Appetize pour trancher**, aucune relecture
+  de code supplémentaire ne peut progresser sans cette preuve (déjà tentée deux fois : 11ᵉ tour +
+  cette session, aucun bug statique trouvé au-delà de ce qui est déjà corrigé).
+- **P0 PROFILE** : idem, logs `PROFILE REQUEST:`/`PROFILE RESPONSE:` déjà en place.
+- **P0 CHAT — bouton créer un groupe** : root cause probablement TROUVÉE par l'autre session (diff
+  non commité de `RosterListView.swift`) — le bouton était un item de barre d'outils
+  (`person.2.badge.plus`), invisible/pas assez découvrable vs le vrai FAB rose bas-droite d'Android
+  vu sur la capture d'écran — corrigé en FAB dans le diff non commité actuel. **À CONFIRMER par le
+  prochain test Appetize une fois ce travail commité**, pas encore validé.
+- **P0 ANIMEMS** : en cours de reconstruction par l'autre session à partir des captures Android
+  reçues (diff non commité `AnimemesEditorView.swift`/`AnimemesEditorState.swift`/
+  `AnimemesDrawingView.swift`) — ne pas toucher ces fichiers en parallèle.
+- **P0 GALERIE/PUBLIER** : bug silencieux déjà trouvé et corrigé au 11ᵉ tour (2 `guard` silencieux).
+  Re-vérifié cette session, aucun autre bug statique trouvé. **Pas re-testé sur Appetize depuis le
+  correctif** — reste "CODE WRITTEN, CI VALIDATED" mais PAS "TESTED ON APPETIZE"/"FUNCTIONALLY
+  VALIDATED".
+
+## CI validated but NOT functionally validated
+Absolument tout le travail depuis `b485f34` inclus (Profile fix, Galerie fix, groupes fix) — AUCUN
+test Appetize n'a eu lieu depuis. Plus tout le travail non commité de cette session (GAP-018,
+GAP-011) et de l'autre session (parité UI) — encore au niveau "CODE WRITTEN", pas même "CI
+VALIDATED" tant que non commité/buildé.
+
+## Known bugs
+- Voir "Appetize failures" ci-dessus — Home/Profile vides, bouton groupe (probablement résolu, à
+  confirmer), Animems non fidèle (en cours de résolution par l'autre session).
+- GAP-011 : photo de groupe, action "Message" sur un membre, mute privé — MISSING, documentés,
+  pas des oublis silencieux.
+- GAP-016 (statistiques créateur), GAP-013/014 (cadeaux/réponses commentaires), GAP-015 (motifs de
+  signalement inventés), GAP-010 (liens légaux About/Help génériques), GAP-009 (stockage granulaire)
+  — tous MISSING/INCORRECT, non traités cette session, voir `MIGRATION_AUDIT.md` pour le détail
+  complet de chaque gap.
+
+## Hypothèses NON vérifiées
+- L'hypothèse "décodage `Codable` strict avalant des items Feed" (11ᵉ tour) reste NON confirmée —
+  cette session a re-vérifié que `FeedActivity.id` est le seul champ non-optionnel et correspond
+  exactement au type Android (`int`), ce qui rend cette hypothèse MOINS probable comme cause d'un
+  feed COMPLÈTEMENT vide (elle expliquerait au mieux quelques items manquants, pas un flux à zéro
+  post) — mais reste possible si le serveur retourne parfois un `id` non-numérique. Logs déjà en
+  place pour trancher.
+- Aucune hypothèse nouvelle avancée pour Home/Profile cette session — voir conclusion honnête dans
+  "Actually completed" ci-dessus.
+
+## Next exact task
+1. **Obtenir un vrai test Appetize AVEC les logs console** (ou une capture d'écran claire de
+   l'erreur) une fois le travail actuel (GAP-018, GAP-011, ET le travail de parité UI de l'autre
+   session) commité et un build CI vert confirmé — c'est le SEUL moyen de trancher Home/Profile,
+   deux passes de relecture de code n'ayant rien trouvé de plus à corriger statiquement.
+2. Si les logs confirment la piste `Codable`/décodage pour Feed : corriger `FeedActivity` (rendre
+   `id` plus tolérant, ou ajouter un `init(from:)` custom comme `SearchModels.swift` l'a déjà fait
+   pour un problème similaire, GAP déjà résolu le 2026-08-15/16).
+3. Si les logs montrent autre chose (erreur réseau, timeout, mauvaise base URL) : suivre la preuve,
+   pas une hypothèse.
+4. Une fois Home/Profile/Chat confirmés fonctionnels : traiter GAP-016 (statistiques créateur, écran
+   entier à construire) et GAP-010 (liens légaux About/Help, correctif trivial de 3 lignes,
+   rapport bénéfice/effort excellent).
+5. Committer le travail de cette session (GAP-018 + GAP-011) ET celui de l'autre session (parité UI)
+   séparément si possible, avec des messages de commit distincts reflétant leurs objectifs réels
+   respectifs — vérifier `git status` d'abord pour confirmer qui a fini d'éditer quoi.
+
+## Resume instruction for next Claude
+"Vérifie d'abord `git status` — si les fichiers Animems/Roster/Profile/Contacts listés en tête de
+cette section sont encore non commités, NE LES MODIFIE PAS avant d'avoir confirmé qu'aucune autre
+session n'est en train de les éditer. Committe le travail prêt (GAP-018 ATT + GAP-011 gestion de
+groupe, cette session ; parité UI captures Android, l'autre session, si elle a terminé), déclenche
+un build GitHub Actions, corrige toute erreur réelle de compilation. Puis attends/demande un test
+Appetize réel AVEC LES LOGS CONSOLE avant de retoucher Home/Profile — ne recommence pas une 3ᵉ passe
+de relecture de code sans cette preuve, ça n'a rien donné de plus aux 2 passes précédentes. Une fois
+les logs en main, corrige la cause RÉELLE qu'ils révèlent, pas une hypothèse. Ensuite GAP-016
+(statistiques créateur) et GAP-010 (liens légaux) sont les prochains gaps documentés les plus
+rentables (voir `MIGRATION_AUDIT.md`)."
+
+---
+
 ## 0. BUILD CI — À LIRE EN PREMIER
 
 **BUILD CI VALIDÉ :** Oui (GitHub Actions uniquement — voir stratégie double-CI ci-dessous,
@@ -828,3 +987,116 @@ mise en page).
 4. Ne pas déclencher Appetize soi-même, ne pas le redemander avant que l'utilisateur le fasse.
 5. Une fois les logs de diagnostic ayant servi à confirmer une cause racine, penser à les retirer
    (ce sont des ajouts temporaires, documentés comme tels dans chaque fichier).
+
+---
+
+## 11quinquies. HANDOFF — 12ᵉ TOUR (2026-08-16) — "STOP" UTILISATEUR : LE TEST APPETIZE RÉEL A
+## CONTREDIT "COMPLETE", DIAGNOSTIC RUNTIME PROFOND + INSTRUMENTATION VISIBLE À L'ÉCRAN
+
+**Déclencheur** : l'utilisateur a testé un build Codemagic RÉEL sur Appetize (premier test après le
+lot de reconstruction UI du tour précédent) et a explicitement REJETÉ toute conclusion "COMPLETE"
+basée sur un build vert. Message "STOP" détaillé (voir citation complète en tête de fichier, section
+CURRENT HANDOFF) exigeant une traçabilité runtime complète (pas des hypothèses) pour 3 bugs P0 :
+Home/Feed vide, Profile vide, Animems canvas/transformations non fonctionnels — DANS CET ORDRE,
+sans passer aux P1 avant que les causes racines des P0 soient identifiées ET corrigées, sans
+redemander de test Appetize entre chaque petit correctif (quota limité).
+
+**Travail effectué, dans l'ordre chronologique réel :**
+1. **P0-1 (Home/Feed) — retraçage complet** : re-vérifié les 3 points d'entrée auth
+   (`LoginView.swift`/`SignUpWithGoogleView.swift`/`EmailVerificationView.swift`) — le correctif de
+   race condition du 2026-08-13 (`AuthSessionPersistence.saveSession()` synchrone avant navigation)
+   est TOUJOURS en place et correct dans les 3. `UserSession.shared.myId` structurellement fiable
+   (lecture `UserDefaults` synchrone). AUCUN nouveau bug statique trouvé au-delà de ce qui était déjà
+   connu — la piste `Codable` strict avalant silencieusement des items reste une hypothèse PLAUSIBLE
+   NON CONFIRMÉE.
+2. **P0-2 (Profile) — VRAI mécanisme de bug trouvé et corrigé** : `ProfileView` construit son
+   `@StateObject ProfileViewModel` via `ProfileView.init()` (sans argument), qui capture
+   `UserSession.shared.myId ?? ""` **UNE SEULE FOIS** à la construction. Si cette vue est construite
+   avant que la session soit pleinement peuplée (navigation qui suit immédiatement le login/lancement
+   à froid), `userId` reste figé à `""` À VIE pour cette instance — l'endpoint devient
+   `getuserbyid//{myId}` (double slash, `userId` vide), échec serveur quasi certain, écran
+   indéfiniment vide. Corrigé : `ProfileViewModel.userId` passé de `let` à `private(set) var` +
+   nouvelle méthode `healStaleUserIdIfNeeded()` (auto-guérison si `userId` vide mais
+   `UserSession.shared.myId` disponible), appelée en tête de `loadProfile()`. **Ceci N'EST PAS
+   confirmé comme LA cause exacte rapportée par l'utilisateur** — c'est un vrai mécanisme de bug
+   plausible, corrigé par prudence, à confirmer/infirmer par le diagnostic à l'écran (point 4).
+3. **P0-3 (Animems) — retraçage géométrique complet, aucun bug trouvé statiquement** : relu
+   ligne à ligne `AnimemesGestureController.swift` (sélection/translation/rotation/échelle) contre la
+   sémantique Android "post*" documentée (`postTranslate`/`postRotate`/`postScale`) — composition de
+   matrices fidèle, ordre correct. `Transform.cgAffineTransform` (conversion d'ordre Android→Core
+   Graphics) revérifiée, cohérente. `version += 1` → `.id(state.version)` confirme que le `Canvas`
+   est bien forcé à se redessiner après chaque mutation. **Seul risque structurel NOUVEAU identifié
+   (pas confirmé)** : la refonte visuelle du tour précédent a ajouté `zoomControls`/`rightToolbar`
+   en overlay DANS LE MÊME `ZStack` que le `Canvas` récepteur de gestes — un changement structurel
+   réel qui pourrait (sans certitude) intercepter des gestes selon le comportement runtime SwiftUI.
+   Non modifié à cette étape (pas de preuve, seulement une hypothèse) — instrumenté à la place
+   (point 4).
+4. **Instrumentation visible À L'ÉCRAN pour les 3 P0** (nouveauté de ce tour : l'utilisateur n'a
+   probablement PAS accès aux logs console Xcode depuis Appetize, donc tout `print()` seul est
+   inutile pour le prochain test) :
+   - `FeedRepository.fetchTimeline()` retourne désormais `TimelineResult { activities, receivedCount
+     }` au lieu de `[FeedActivity]` seul — expose le nombre RÉEL d'items renvoyés par le serveur à
+     côté du nombre décodés avec succès, fermant l'angle mort où un échec de décodage silencieux
+     produisait "0 posts, aucune erreur" indiscernable d'un flux réellement vide.
+     `FeedViewModel.diagnostics` (nouveau `@Published String`) accumule les mêmes lignes que les
+     `print()` déjà en place (`SESSION:`/`FEED REQUEST:`/`FEED RESPONSE: server sent N activities, M
+     decoded successfully [— K DROPPED BY DECODE FAILURE]`), rendu dans un panneau
+     `ScrollView`+texte monospace sélectionnable dans `FeedView.emptyOrStatusState`.
+   - `ProfileViewModel.diagnostics` (même motif) accumule `SESSION:`/`PROFILE REQUEST:`/`PROFILE
+     RESPONSE:`, avec une ligne WARNING explicite si `userId` est vide malgré `myId` non-nil (preuve
+     directe du mécanisme du point 2). `ProfileView` gagne un panneau diagnostic visible dans la
+     branche d'erreur ET dans une nouvelle branche de repli (profil nil / pas de chargement / pas
+     d'erreur — l'état auparavant silencieusement blanc).
+   - `AnimemesEditorState.gestureDiagnostics` (nouveau `@Published String`) : chaque geste
+     (`selectObject`/`dragMoved`/`dragEnded`/`rotationChanged`/`scaleChanged`) logue en temps réel ce
+     qu'il a fait ou pourquoi il a été ignoré (aucune sélection, aucun `bound`, calque touché, valeurs
+     de matrice résultantes). Affiché en HUD vert monospace sur fond noir
+     (`gestureDiagnosticsHUD` dans `AnimemesEditorView`, entre la barre du haut et le canevas) —
+     **c'est la preuve directe qui tranchera si les gestes sont seulement reçus mais n'affectent rien,
+     ou pas reçus du tout, ou affectent un calque différent de celui rendu**.
+5. **Tableaux de diagnostic produits** (`Étape | Android | iOS | Résultat réel | Preuve | Cause`,
+   demande explicite de l'utilisateur) — présentés directement à l'utilisateur dans la conversation
+   pour les 3 P0, pas dupliqués ici (voir transcript de session si besoin de les relire ; résumé :
+   aucun bug statique NOUVEAU confirmé pour Feed/Animems au-delà de ce qui est listé ci-dessus, un
+   vrai mécanisme de bug plausible corrigé pour Profile).
+
+**Commits de ce tour** :
+- `f634788` ("feat(animems,chat,profile,ui): rebuild toolbars/screens to match real Android
+  screenshots") — travail de refonte UI du tour précédent, committé en DÉBUT de ce tour (n'était pas
+  encore poussé). Run GitHub Actions **SUCCESS** (confirmé avant de continuer).
+- `328f7ad` ("fix(profile): heal stale-captured userId; add on-screen runtime diagnostics for
+  Feed/Profile/Animems P0s") — le travail de ce tour décrit ci-dessus. Run GitHub Actions
+  `31951566226` **SUCCESS**.
+
+**COMPILED** (confirmé CI, `31951566226`) : tous les fichiers touchés ce tour — `ProfileViewModel.swift`,
+`ProfileView.swift`, `FeedRepository.swift`, `FeedViewModel.swift`, `FeedView.swift`,
+`AnimemesEditorState.swift`, `AnimemesEditorView.swift`.
+
+**FUNCTIONALLY VERIFIED** : **AUCUN** — pas de test Appetize effectué par cette session, conforme à
+l'instruction explicite de l'utilisateur ("NE LANCE PAS APPETIZE APRÈS CHAQUE PETITE CORRECTION").
+
+**Statuts imposés par l'utilisateur, à respecter jusqu'à preuve du contraire par un test réel** :
+- HOME/FEED = CI VALIDATED, FUNCTIONALLY FAILED
+- PROFILE = CI VALIDATED, FUNCTIONALLY FAILED
+- ANIMEMS CANVAS/TRANSFORMATIONS = CI VALIDATED, FUNCTIONALLY FAILED
+
+**Instructions pour la prochaine session :**
+1. Lire ce fichier EN PREMIER (section CURRENT HANDOFF tout en haut + cette section 11quinquies),
+   PUIS vérifier `git status`/`git log`/`git fetch origin main` avant toute action — l'autre session
+   (GAP-018/GAP-011, fichiers listés dans CURRENT HANDOFF) a probablement continué depuis.
+2. **NE PAS redéclarer Home/Feed, Profile ou Animems "COMPLETE"/"FUNCTIONALLY VALIDATED"** tant qu'un
+   test Appetize réel sur le commit `328f7ad` (ou plus récent) ne le confirme pas explicitement.
+3. **Dès que l'utilisateur fournit un nouveau rapport Appetize** (idéalement avec une capture des 3
+   nouveaux panneaux/HUD de diagnostic ajoutés ce tour) : LIRE CES LOGS COMME SOURCE DE VÉRITÉ, PAS
+   une hypothèse. Le panneau Feed dira si c'est un problème de décodage (N reçus ≠ M décodés) ou de
+   requête (aucune réponse/erreur réseau) ou d'affichage. Le panneau Profile dira si le mécanisme du
+   point 2 était LA cause (ligne WARNING présente) ou autre chose. Le HUD Animems dira si les gestes
+   sont reçus, quel calque ils affectent, et quelles valeurs de matrice en résultent.
+4. Une fois la cause EXACTE connue via ces logs, corriger CETTE cause précise — pas une nouvelle
+   hypothèse. Puis retirer l'instrumentation temporaire (documentée comme telle dans chaque fichier
+   modifié ce tour) une fois qu'elle a servi.
+5. Continuer dans l'ordre P0 imposé (Home/Feed → Profile → Animems) avant tout retour aux points P1
+   déjà listés en section 10/11quater (bouton créer-groupe Roster, parité visuelle Animems restante,
+   etc.).
+6. Ne pas déclencher Appetize soi-même ; ne pas le redemander entre chaque petit correctif — quota
+   limité, instruction explicite et répétée de l'utilisateur.

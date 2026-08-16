@@ -127,7 +127,9 @@ struct CreatorOfWeekView: View {
             }
             .padding(.vertical, 12).padding(.horizontal, 12)
 
-            Text("STAR")
+            // Port de `fragment_creator.xml:95` (`android:text="👑 STAR"`) — emoji couronne, pas
+            // juste "STAR" (vérifié dans le layout Android, pas deviné depuis la capture).
+            Text("👑 STAR")
                 .font(.caption2.bold())
                 .padding(.horizontal, 10).padding(.vertical, 4)
                 .background(Color.accentColor, in: Capsule())

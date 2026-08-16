@@ -3642,3 +3642,116 @@ correction (quota Appetize limité, un seul test global prévu à la fin).**
 - **Aucun test fonctionnel réel effectué** — conforme à la consigne de l'utilisateur (un seul test
   Appetize global prévu, pas encore fait). Toutes les fonctionnalités de ce tour sont au niveau
   "compile réellement", pas "fonctionnellement validé".
+
+---
+
+**SESSION DU 2026-08-16 (8ᵉ tour) — CONTINUATION AUTONOME SANS APPETIZE : Animems parité
+avancée, audits Galerie/Chat/WebRTC/Feed/Profile/Search complets, corrections réelles trouvées et
+appliquées. Instruction explicite de l'utilisateur de ne PAS s'arrêter entre les étapes et de NE
+PAS demander de test Appetize (quota conservé pour un test global final).**
+
+**Galerie** (commit `d19e372`) — gap complet comparé à `MediaEditor.java`/`ImageEditorCompound.java`
+via audit dédié : recadrage forme libre (`FreeformCropView`) et suppression d'arrière-plan
+(`RemoveBackground`) existaient déjà en composants Swift mais n'étaient jamais câblés dans le flux
+de publication — corrigé. Ajouté : choix rectangle/ovale/forme-libre avant recadrage, retournement
+horizontal, peinture libre + texte (nouveau `PhotoToolsView.swift`, aplatissement via `ImageRenderer`
+plutôt que `UIGraphicsImageRenderer` manuel), miniature/durée vidéo réelles
+(`AVAssetImageGenerator`), limite de légende 80 caractères, partage natif après publication. Stickers/
+filtres/`MediaTrim` (recadrage temporel vidéo) restent MISSING, périmètre non couvert cette passe.
+
+**Chat GAP-003** — deux audits dédiés (Socket.IO événement-par-événement, fonctionnel transversal) :
+résultat majoritairement COMPLETE, portage "unusuellement complet" (citation de l'agent d'audit) —
+pagination, suppression pour-moi/pour-tous, accusés de lecture, reconnexion, présence/frappe,
+tous confirmés fidèles à `ChatRepository.java`. Téléchargement des pièces jointes reçues implémenté
+(`ChatViewModel.requestDownload`, `DownloadReceiver.java` lu en entier — GET non authentifié direct,
+confirmé fidèle). Seul écart réel trouvé : `pushNotification`/`pushNotification_by_id`
+(`notificateUser`/`notificateUserById` côté Android) — **FAUX POSITIF confirmé par grep exhaustif du
+dépôt Android entier : zéro appelant, code mort côté Android lui-même**, PAS réimplémenté à raison
+(les notifications sont déclenchées serveur→FCM, chemin déjà COMPLETE côté iOS). `ChatBubbleRow`
+(avatar/timestamp/coche de statut) et l'état vide de la liste de conversations, signalés
+"non vérifiés" par l'audit, confirmés PRÉSENTS et COMPLETS après relecture directe — pas des gaps.
+
+**WebRTC/CallKit GAP-005** — audit complet (10 fichiers Android + 6 fichiers iOS relus en entier).
+Résultat majoritairement COMPLETE (signalisation, glare, ICE restart, mute, CallKit). **Deux vrais
+bugs/gaps trouvés et corrigés** :
+1. **HIGH PRIORITY — aucune configuration `AVAudioSession`/`RTCAudioSession` catégorie/mode nulle
+   part** dans toute la pile d'appel (`RTConnection2.java:689-701` a son équivalent
+   `AudioManager.MODE_IN_COMMUNICATION`, jamais porté). Corrigé dans
+   `CallKitManager`/`CallCoordinator.didActivate` : `RTCAudioSessionConfiguration` réglée en
+   `.playAndRecord`/`.voiceChat` au SEUL moment où CallKit délègue la session audio à l'app. Sans ce
+   correctif, le routage audio d'un appel n'était pas garanti sur un vrai appareil malgré une
+   compilation/exécution logique correctes.
+2. **Vérification/demande de permission micro absente** avant tout démarrage d'appel
+   (`Utils/PermissionRequest.java:62-99` jamais porté). Ajouté dans `CallCoordinator.swift` :
+   `startOutgoingCall` vérifie/demande AVANT d'engager CallKit ; `handleIncomingCall` continue de
+   signaler l'appel entrant inconditionnellement (contrat CallKit obligatoire) mais vérifie AVANT
+   `fetchTurnAndStart` et raccroche si refusé. Alerte utilisateur câblée dans `ChatView.swift` (pas
+   `CallView.swift`, qui ne s'affiche jamais pour le cas "appel sortant refusé" — l'état reste
+   `.idle`).
+
+**Feed/Ads** — `NativeAdLoader`/`NativeAdContentView` existaient comme briques jamais câblées
+(`AdMobManager.swift`) — câblées dans `FeedDetailPagerView` (le PAGER plein écran, PAS la grille —
+vérifié en lisant `ViewPagerAdapter.java`/`NativeAdsManager.java` en entier : Android insère une
+annonce tous les 7 posts DANS le pager, remplaçant la position plutôt que d'ajouter une page,
+`getItemCount = list.size()+1` inchangé).
+
+**Search** — audit dédié : hashtag/publication non cliquables, pas de bouton "Suivre" inline, pas
+d'état d'erreur distinct de "aucun résultat" (un `try?` générique avalait les deux). Corrigés :
+nouveau `HashtagFeedView.swift` (réutilise `FeedGridCell`/`FeedDetailPagerView`, rendus `internal`
+pour permettre cette réutilisation), mapping `SearchPostResult → FeedActivity` pour réutiliser le
+pager plein écran, bouton Suivre inline, états erreur/vide distincts.
+
+**Profile** — audit complet : résultat quasi-entièrement COMPLETE. Seul écart : édition de catégorie
+en lecture seule (déjà documenté comme périmètre réduit assumé dans `EditProfileView.swift`).
+
+**Animems GAP-006 — le morceau le plus important de cette session.** Audit dédié
+(`AnimemesCompound.java` 3947 lignes + `TimelineView.java` 1320 lignes lus en entier) a révélé que
+le moteur (`AnimationEngine`/`KeyframeTrack`/`TimelineViewModel`/masques `MaskFactory`/
+`MaskEditController`/`MaskPreviewEditorPanelState`) était déjà porté en quasi-totalité lors d'une
+session précédente mais JAMAIS câblé à l'éditeur (`AnimemesEditorState`/`AnimemesEditorView` ne les
+référençaient nulle part). Câblé de bout en bout cette session :
+- **Timeline** — nouveau `TimelineView.swift` (rendu `Canvas` : règle/repères, barres par calque
+  avec poignées de redimensionnement, marqueurs losange de keyframes, playhead), geste unique
+  déterminant le mode (SCRUB/PAN/DRAG/RESIZE_LEFT/RESIZE_RIGHT) au premier contact comme
+  `TimelineView.onTouchEvent` côté Android, au-dessus des mathématiques déjà portées
+  (`TimelineViewModel`, 435 lignes, jamais utilisées avant ce tour).
+- **Keyframes explicites** — modèle "marqueur explicite" confirmé par lecture d'Android (PAS un
+  enregistrement continu) : l'utilisateur transforme un objet par geste, positionne le playhead,
+  appuie sur un bouton ◆ qui appelle `AnimationObjectData.addMatrixKeyframe` (déjà porté).
+- **Lecture/pause réelles** — `AnimationEngine` avait déjà un lecteur `CADisplayLink` complet
+  (`play`/`pause`/`seek`, délégué `PlaybackListener`), jamais branché. Câblé avec conformité
+  `nonisolated` au délégué (même motif que `CallKitManager`/`CXProviderDelegate` déjà dans ce
+  projet — les rappels `CADisplayLink` n'arrivent pas dans un contexte `@MainActor` statiquement
+  connu). Le rendu du canevas est passé de "toujours la dernière transform" à conscient du playhead
+  (`LayerRenderer.drawObjectFrame`, qui interroge les pistes de keyframes EN DIRECT — pas besoin de
+  pré-calculer/`bake` avant l'aperçu, uniquement pour l'export).
+- **Masques** — panneau de choix de type + inversion/flou/écart-miroir, geste direct (glisser/
+  pincer/pivoter) sur le canevas en mode édition de masque pilotant `maskOffsetX/Y`/`maskScale`/
+  `maskRotation`. `.erase`/`.clip` (`ObjectType`) confirmés être du code Android MORT (jamais
+  construits, seulement dans des switches de rendu hérités) — pas une lacune de portage.
+- **Ordre des calques (z-order)** : confirmé PAS un écart — aucune fonctionnalité de réordonnancement
+  n'existe côté Android non plus (l'ordre = ordre d'ajout, implicite).
+- **Reste hors périmètre, documenté** : sauvegarde d'image statique (chemin "Save" non-animé
+  d'Android), modèles de mouvement locaux/partagés (`MotionTemplateManager`, upload communautaire),
+  export GIF (seul MP4 existe). Pas explorés cette passe.
+- **4 échecs de build CI consécutifs sur le câblage des gestes** (dont 3 après le lot principal déjà
+  vert) — tous liés à `combinedGesture`/`maskEditGesture`, deux propriétés `some Gesture` distinctes
+  choisies par ternaire pour basculer entre mode normal et mode masque. `some Gesture` opaque ne
+  s'unifie PAS entre deux déclarations séparées même structurellement identiques ; l'érasure de type
+  explicite (`AnyGesture`) a ensuite buté sur une ambiguïté de type-checking dans l'expression
+  imbriquée. Résolu en éliminant le problème à la racine : un seul jeu de gestes, bascule
+  `isMaskEditMode` À L'EXÉCUTION dans chaque `onChanged`/`onEnded` plutôt que deux graphes de gestes
+  de types différents. **Aucun de ces échecs n'a pu être anticipé/vérifié localement — pas
+  d'environnement Xcode dans cette session Windows** ; chaque diagnostic est venu de la lecture
+  directe des logs `xcodebuild` réels via l'API GitHub Actions.
+
+**Discipline CI de cette session** : 8 commits poussés (`d19e372`, `ab36462`, `3f1c22d` ÉCHEC,
+`b90ae3d` ÉCHEC, `fd92885` ÉCHEC, `0fa0de8` ÉCHEC, `e4b347a` SUCCESS — 4 tentatives successives pour
+le seul lot Animems timeline/masques, chacune diagnostiquée à partir du VRAI log `xcodebuild`
+téléchargé via l'API GitHub Actions, jamais devinée). **Run final GitHub Actions SUCCESS confirmé :
+commit `e4b347a`.** Codemagic toujours en attente d'un déclenchement manuel par l'utilisateur — non
+rapporté à ce jour pour aucun commit de cette session.
+
+**Aucun test fonctionnel réel (Appetize) effectué** — conforme à l'instruction explicite et répétée
+de l'utilisateur ce tour : pas de test intermédiaire, un seul test global prévu après ce cycle
+complet.

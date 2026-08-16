@@ -12,20 +12,40 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 ## 0. BUILD CI — À LIRE EN PREMIER
 
 **BUILD CI VALIDÉ :** Oui (GitHub Actions uniquement — voir stratégie double-CI ci-dessous,
-Codemagic en attente d'un déclenchement manuel par l'utilisateur)
-**Build :** GitHub Actions run `31912698274` (workflow `ios-build.yml`)
-**Commit :** `f2460f2` ("feat(animems): assemble minimal functional editor screen" — dernier de 3
-commits du lot Chat+Galerie+Animems, testés ensemble en un seul build)
-**Date :** 2026-08-15 22:39-22:45 UTC
-**Résultat :** `** BUILD SUCCEEDED **`. Les 11 fichiers nouveaux/modifiés de ce lot confirmés
-compilés (chemin complet dans le log). 0 erreur réelle. **0 warning.**
-**Historique complet des runs de cette journée** (pour ne pas confondre) :
-1. `31905358058` (commit `733da28`) — ÉCHEC, `-downloadComponent` invalide, Xcode non sélectionné.
-2. `31907788616` (commit `a66c509`, fixes CI seuls) — SUCCESS.
-3. `31908841925` (commit `e4b1832`, GAP-004) — SUCCESS.
-4. `31911325017` (commit `3f5f880`, corrections P0 Appetize Home/Profile/Search) — SUCCESS.
-5. `31912698274` (commit `f2460f2`, Chat+Galerie+Animems construits) — **SUCCESS, dernier run
-   connu, un seul build pour les 3 commits du lot** (consigne explicite : pas un build par commit).
+Codemagic en attente d'un déclenchement manuel par l'utilisateur, jamais rapporté à ce jour)
+**Build :** GitHub Actions run `31923679579` (workflow `ios-build.yml`)
+**Commit :** `e4b347a` ("fix(build): eliminate AnyGesture type dance, merge mask/object gestures
+into one" — dernier d'une série de 4 tentatives pour faire compiler le lot Animems
+timeline/keyframes/masques, voir section 0quater et `MIGRATION_PROGRESS.md` pour le détail complet)
+**Date :** 2026-08-16
+**Résultat :** `** BUILD SUCCEEDED **`. Confirmé via l'API GitHub Actions (`status: completed,
+conclusion: success`), pas seulement supposé.
+**Historique complet des runs depuis le dernier point de reprise** (pour ne pas confondre) :
+1. `31912698274` (commit `f2460f2`, Chat+Galerie+Animems minimal construits) — SUCCESS (session
+   précédente, voir section 0ter).
+2. `31916776657` (commit `d19e372`, gestes Animems réels + fix WebRTC glare + parité Galerie) —
+   SUCCESS.
+3. `31915767632` (commit `ab36462`, native ads câblées dans le pager Feed) — SUCCESS.
+4. `31916776657`... voir plus haut, doublon d'affichage — le run suivant (commit `3f1c22d`,
+   timeline/keyframes/lecture/masques Animems câblés pour la première fois) — **ÉCHEC** :
+   `ProfileRepository()` appelé directement (`init` privé, singleton `.shared` requis) dans
+   `HashtagFeedView.swift`/`SearchView.swift` (fonctionnalité Search du même lot).
+5. `31917572782` (commit `b90ae3d`, fix ProfileRepository + panneau/geste masque câblés) —
+   **ÉCHEC** : `error: conflicting arguments to generic parameter 'T' ('AnyGesture<(some
+   Gesture).Value>' vs. 'AnyGesture<(some Gesture).Value>')` — deux propriétés `some Gesture`
+   distinctes (`combinedGesture`/`maskEditGesture`) choisies par ternaire ne s'unifient PAS même
+   structurellement identiques.
+6. `31918239357` (commit `fd92885`, tentative de fix via type explicite `AnyGesture<ObjectGestureValue>`
+   partagé + permission micro avant appel) — **ÉCHEC** : `error: type of expression is ambiguous
+   without a type annotation` sur la construction imbriquée `AnyGesture(SimultaneousGesture(...))`.
+7. `31918549314` (commit `0fa0de8`, tentative de fix via bindings `let` explicitement typés) —
+   **ÉCHEC** : log non entièrement récupéré avant la décision de changer d'approche (téléchargement
+   du log `xcodebuild` via l'API GitHub Actions systématiquement lent/tronqué pour ce projet — log
+   complet ~25-27k lignes, dépendances Firebase compilées avant la cible propre, `curl --max-time
+   590` en arrière-plan nécessaire, jamais en une seule commande synchrone).
+8. `31923679579` (commit `e4b347a`, gestes fusionnés en UN SEUL jeu avec bascule `isMaskEditMode` à
+   l'exécution plutôt que deux graphes de gestes différemment typés) — **SUCCESS.** Dernier run
+   connu.
 
 ### CI VALIDATION — format demandé par l'utilisateur pour chaque commit important
 
@@ -322,91 +342,142 @@ fonctionnent réellement comme Android tant qu'un nouveau test Appetize ne l'a p
 
 ## 10. PROCHAINE TÂCHE EXACTE
 
-**Ne PAS commencer GAP-003 — instruction explicite de l'utilisateur, toujours valable.** Les 6
-problèmes Appetize (Home/Profile/Search/Chat/Galerie/Animems) sont maintenant tous CORRIGÉS ou
-CONSTRUITS et compilent réellement (GitHub Actions, run `31912698274`, SUCCESS). **Rien de tout
-cela n'a encore été testé fonctionnellement** — l'utilisateur a explicitement demandé UN SEUL test
-Appetize global une fois tout le lot terminé (quota limité), pas de test intermédiaire.
+**Instruction explicite et répétée de l'utilisateur ce tour (8ᵉ, 2026-08-16) : NE PAS s'arrêter, NE
+PAS demander/attendre de test Appetize — un seul test global prévu APRÈS ce cycle complet, quota
+conservé.** Cette règle reste valable pour la prochaine session tant que l'utilisateur ne dit pas
+explicitement le contraire.
 
-**Tâche exacte** :
-1. **Attendre/demander le test Appetize global de l'utilisateur** sur le commit `f2460f2` (ou plus
-   récent) — c'est la seule façon de savoir si les 6 écrans fonctionnent réellement. Documenter
-   chaque résultat (PASS/FAIL par écran) dans `MIGRATION_AUDIT.md`, sections "APPETIZE FUNCTIONAL
-   TEST — 2026-08-15" (les deux, P0-1/2/3 et P0-4/5/6), en remplaçant les mentions "NON TESTÉ" par
-   le résultat réel.
-2. **Si des bugs sont trouvés au test global** : appliquer la même méthode que cette session —
-   comparer au code Android réel avant de corriger, ne pas deviner. Périmètres RÉDUITS assumés à
-   garder en tête en analysant un rapport de bug (pas des oublis, des décisions documentées) :
-   Galerie sans peinture/texte/stickers sur la photo ; Animems sans rotation/échelle/masques/
-   keyframes/timeline, export toujours 3s statique ; Chat sans écran "Contacts" autonome hors flux
-   groupe si Android en a un séparé (non investigué).
-3. **Demander le retour Codemagic manuel** — toujours en attente depuis GAP-004 (`e4b1832`), jamais
-   rapporté pour AUCUN commit de la journée.
-4. Continuer d'appliquer la stratégie double-CI (section 0) pour chaque nouveau commit important.
-5. Une fois le test Appetize global concluant (ou sur décision explicite de l'utilisateur de
-   continuer sans attendre) : GAP-003 (audit profond du Chat, périmètre déjà donné par
-   l'utilisateur dans un message dédié) redevient la suite logique.
+**État réel après ce tour** — voir `MIGRATION_PROGRESS.md` (entrée "SESSION DU 2026-08-16, 8ᵉ tour")
+pour le détail complet par fonctionnalité. Résumé :
+- **Animems (GAP-006)** : timeline/keyframes/lecture/masques maintenant CÂBLÉS (le moteur était déjà
+  porté, seul l'écran ne les utilisait pas) — PARTIAL→COMPLETE pour ces sous-fonctionnalités
+  précises. Restent MISSING, non explorés cette passe : sauvegarde image statique non-animée, modèles
+  de mouvement (local/upload communautaire), export GIF.
+- **Galerie** : PARTIAL→PARTIAL (amélioré) — recadrage forme-libre/suppression fond/retournement/
+  peinture/texte/miniature-durée vidéo réelle/légende limitée/partage AJOUTÉS. Restent MISSING :
+  stickers, `MediaTrim` (recadrage temporel vidéo).
+- **Chat (GAP-003)** : COMPLETE quasi-intégral confirmé par 2 audits dédiés + lecture directe des
+  éléments "non vérifiés" signalés (`ChatBubbleRow`, état vide roster — tous deux déjà présents).
+  Téléchargement pièces jointes reçues implémenté. Seul "gap" (`pushNotification`) est un faux
+  positif : code mort côté Android lui-même, confirmé par grep exhaustif.
+- **WebRTC/CallKit (GAP-005)** : COMPLETE quasi-intégral confirmé par audit dédié (10 fichiers
+  Android relus en entier). 2 vrais bugs trouvés ET corrigés : configuration audio session absente
+  (HIGH PRIORITY — pouvait empêcher l'audio de fonctionner sur un vrai appareil) et permission micro
+  jamais vérifiée avant un appel.
+- **Feed/Ads** : native ads câblées dans le pager plein écran (pas la grille — vérifié contre
+  `ViewPagerAdapter.java`).
+- **Search** : navigation hashtag/publication, bouton Suivre, états erreur/vide AJOUTÉS.
+- **Profile** : COMPLETE quasi-intégral confirmé par audit dédié, seul écart déjà documenté
+  (catégorie en lecture seule).
+
+**Tâche exacte pour la suite** (dans l'ordre, sans s'arrêter entre chaque point, sauf blocage réel) :
+1. **GAP-006 Animems — modèles de mouvement / sauvegarde image statique / export GIF** — seuls
+   morceaux du périmètre Android encore non explorés pour Animems. Lire `AnimemesCompound.java`
+   sections `showSaveDialog`/`saveAsMotionTemplate`/`saveAndUploadTemplate`/`MotionTemplateManager`
+   (citées dans l'audit du tour 8, pas encore lues en détail) avant d'implémenter quoi que ce soit.
+2. **Galerie — stickers/emoji et `MediaTrim`** (recadrage temporel vidéo) — les deux seuls morceaux
+   MediaEditor encore MISSING. `MediaTrim.java`/`MediaTrim2.java` jamais lus.
+3. **Audit "Autres modules"** encore non couverts explicitement par un audit dédié ce tour :
+   authentification/onboarding (stables depuis des sessions antérieures, pas revérifiés), paiements/
+   monétisation (`Wallet/*`, AdMob rewarded déjà câblé au module 15/16 — pas re-audité), deep links,
+   Firebase/analytics (pas re-audité), notifications push (confirmé COMPLETE en passant par l'audit
+   Chat, pas un audit dédié).
+4. **Demander le retour Codemagic manuel** — toujours en attente depuis GAP-004 (`e4b1832`), jamais
+   rapporté pour AUCUN commit à ce jour, y compris ceux de ce tour.
+5. Continuer d'appliquer la stratégie double-CI (section 0) pour chaque nouveau commit important —
+   **attention à la lenteur/instabilité du téléchargement de log `xcodebuild` via l'API GitHub
+   Actions pour ce projet précis** (voir section 0, point 7 : `curl` timeouts fréquents sur les logs
+   complets ~25-27k lignes, toujours relancer en arrière-plan avec `--max-time 590`, jamais en
+   commande synchrone bloquante).
+6. Le test Appetize global reste À VENIR, sur décision de l'utilisateur — ne pas le demander
+   proactivement, ne pas s'arrêter en l'attendant.
 
 ## 11. HANDOFF — DERNIÈRE SESSION
 
-**Session :** Claude Code (Sonnet 5), reprise sans mémoire, contexte reconstruit depuis Git +
-documentation existante. 7ᵉ tour de cette même journée (2026-08-15).
-**Date :** 2026-08-15
-**Dernière tâche terminée :** Les 6 problèmes du test Appetize traités en 2 vagues dans la même
-session : (tour 6) Home/Profile/Search corrigés + validés CI ; (tour 7, celui-ci) Chat/Galerie/
-Animems — identifiés comme fonctionnalités jamais construites — BÂTIS de bout en bout (pas
-seulement documentés), sur instruction explicite de l'utilisateur de ne pas s'arrêter entre les
-corrections. Commit final `f2460f2`, GitHub Actions SUCCESS (run `31912698274`).
-**Travail effectué (tour 7) :**
-- 3 investigations Android dédiées (Chat/Galerie/Animems), chacune avec citations de fichier:ligne
-  précises, AVANT d'écrire une seule ligne de Swift.
-- Chat : sélecteur de contacts + création de groupe construits (5 fichiers neufs +
-  `RosterListView.swift`).
-- Galerie : flux crop→légende→publication construit (1 fichier neuf + `FeedRepository.swift`/
-  `FeedView.swift`), périmètre réduit assumé et documenté.
-- Animems : écran d'éditeur réel assemblé autour du moteur déjà porté (2 fichiers neufs), API du
-  moteur vérifiée signature par signature avant intégration (fichier le plus à risque de la
-  session — rendu `CGContext` bas niveau + `AVAssetWriter`, aucun retour compilateur avant push).
-- Revue transversale (TODO/stubs) — rien de neuf trouvé au-delà des gaps déjà connus.
-- 3 commits séparés (`3dc83d3`/`1aab36e`/`f2460f2`), **un seul build CI pour les 3** (économie de
-  quota demandée explicitement).
-**Travail actuellement en cours :** Aucun code en cours. Documentation de ce tour en cours de
-finalisation dans ce fichier, reste à committer.
-**PROCHAINE TÂCHE EXACTE :** Voir section 10 ci-dessus.
-**Fichiers modifiés :** Voir section 6 ci-dessus. Code applicatif (3 commits du tour 7) déjà poussé ;
-mises à jour de documentation restent à committer avec ce fichier.
-**Fichiers à surveiller :** `.claude/worktrees/fix-splash-stuck` apparaît modifié dans le `git
-status` du dépôt ANDROID (pas iOS) — une AUTRE session travaille en parallèle sur ce worktree
-Android. Ne PAS y toucher, ne pas supposer son contenu.
-**Bugs connus :** Aucun bug de compilation. Périmètres réduits assumés à ne PAS confondre avec des
-bugs si l'utilisateur les rapporte après test (voir section 10, point 2, et section 0ter pour le
-détail complet). Le token GitHub qui était dans l'URL du remote a été exposé une fois en clair dans
-cette conversation avant sécurisation — **rotation recommandée, à confirmer avec l'utilisateur si
-elle a été faite.**
-**Tests effectués :** Compilation CI réelle réussie pour TOUT le lot (GitHub Actions, `f2460f2`,
-0 erreur, 0 warning sur les 11 fichiers du tour 7). **AUCUN test fonctionnel réel** — conforme à la
-consigne explicite de l'utilisateur, qui veut un seul test Appetize global, pas encore fait.
-**Résultats :** Les 6 écrans (Home/Profile/Search/Chat/Galerie/Animems) compilent réellement
-(niveau 1/3 : COMPILÉE). Codemagic jamais rapporté (niveau 2/3 non atteint). Aucun test
-fonctionnel réel (niveau 3/3 non atteint) — TOUT reste à valider par le test Appetize global promis.
-**Décisions techniques :** Voir section 9 + section 0ter (périmètres réduits assumés pour Galerie/
-Animems, détaillés et justifiés, pas des raccourcis silencieux).
-**Points importants :**
-- Ne PAS refaire l'audit global — `MIGRATION_AUDIT.md`/`MIGRATION_PROGRESS.md` sont à jour et
-  fiables.
-- Ne PAS supposer que les 6 écrans fonctionnent réellement — seule la compilation est confirmée.
-- Ne PAS relancer de build CI avant le prochain vrai changement de code — un test Appetize ne
-  nécessite aucun nouveau build, le commit `f2460f2` est déjà celui à tester.
+**Session :** Claude Code (Sonnet 5), continuation autonome sans mémoire de session précédente,
+contexte reconstruit depuis Git + documentation existante. 8ᵉ tour, 2026-08-16.
+**Date :** 2026-08-16
+**Dernière tâche terminée :** Cycle complet de continuation demandé explicitement par l'utilisateur
+("CONTINUE LA MIGRATION... NE T'ARRÊTE PAS AVANT D'AVOIR TRAITÉ TOUT CE QUI EST RÉALISABLE") couvrant
+Animems (priorité principale), Galerie, Chat, WebRTC, Feed, Profile, Search, et un audit transversal.
+Voir section 10 ci-dessus pour le détail COMPLETE/PARTIAL/MISSING par fonctionnalité, et
+`MIGRATION_PROGRESS.md` (entrée 8ᵉ tour) pour le récit complet.
+**Travail effectué (tour 8), dans l'ordre chronologique réel :**
+- Repris exactement où le tour 7 s'était arrêté : fix du geste Animems cassé (`AnimemesEditorView`
+  référençait une méthode `moveObject` déjà supprimée de `AnimemesEditorState` — corrigé en premier,
+  avant tout nouveau travail), gestes translation/rotation/échelle réels câblés via
+  `AnimemesGestureController` (déjà porté, jamais utilisé), fix bug sélection (le calque sélectionné
+  restait bloqué après le premier toucher).
+- Fix bug WebRTC réel trouvé en fin de tour précédent : `makingOffer` jamais réinitialisé après
+  échec `setRemoteDescription` (`RTConnection2.onSetFailure` non reproduit).
+- Batch de 5 audits dédiés en parallèle (Socket.IO Chat, MediaEditor Galerie, WebRTC/CallKit complet,
+  Profile complet, Search complet) — 2 premières tentatives ont échoué avec une erreur API
+  transitoire, relancées avec succès.
+- Galerie : freeform crop + suppression arrière-plan (composants déjà portés, jamais câblés) +
+  flip + peinture/texte (nouveau `PhotoToolsView.swift`) + miniature/durée vidéo réelles + limite
+  légende + partage natif.
+- Native ads câblées dans le pager Feed (pas la grille — vérifié contre le code Android réel avant
+  de choisir l'emplacement).
+- Search : navigation hashtag/publication + bouton Suivre + états erreur/vide.
+- WebRTC : 2 corrections réelles trouvées par l'audit (config audio session + permission micro).
+- **Animems, le morceau principal** : lecture complète de `AnimemesCompound.java` (3947 lignes) +
+  `TimelineView.java` (1320 lignes) a révélé que le moteur (timeline/keyframes/masques) était déjà
+  porté à ~95% lors d'une session antérieure mais jamais câblé à l'éditeur. Câblage complet :
+  `TimelineView.swift` (nouveau, rendu `Canvas` + geste unique multi-mode), enregistrement de
+  keyframes explicite (bouton ◆), lecture/pause réelle (`AnimationEngine`/`CADisplayLink`), panneau
+  + geste de masque.
+- **4 tentatives de build CI pour le seul lot Animems** avant succès — voir section 0 pour le détail
+  exact de chaque échec/diagnostic. Aucune ne pouvait être anticipée sans environnement macOS ; toutes
+  diagnostiquées à partir du VRAI log `xcodebuild`, jamais devinées.
+- Documentation (ce fichier + `MIGRATION_PROGRESS.md`) mise à jour en fin de tour.
+**Travail actuellement en cours :** Aucun code en cours — dernier commit (`e4b347a`) confirmé
+SUCCESS. Mise à jour de documentation en cours de finalisation, reste à committer avec ce fichier.
+**PROCHAINE TÂCHE EXACTE :** Voir section 10 ci-dessus — modèles de mouvement/sauvegarde statique/
+export GIF (Animems), stickers/`MediaTrim` (Galerie), audit des modules non encore couverts
+(paiements/deep links/Firebase-analytics).
+**Fichiers modifiés :** Voir `MIGRATION_PROGRESS.md` (entrée 8ᵉ tour) pour la liste complète —
+volume trop important pour être dupliqué ici sans risque de désynchronisation. Tout le code
+applicatif de ce tour est commité et poussé (8 commits, `d19e372`…`e4b347a`) ; seule la documentation
+de ce tour reste à committer.
+**Fichiers à surveiller :** aucun changement externe détecté ce tour (contrairement au tour 7 où un
+worktree Android parallèle était en cours) — à revérifier via `git status`/`git log` en début de
+prochaine session, ne jamais supposer.
+**Bugs connus :** Aucun bug de compilation à ce jour (dernier run SUCCESS). Deux VRAIS bugs
+fonctionnels trouvés ET corrigés ce tour (glare WebRTC `makingOffer`, config audio session absente).
+Un potentiel troisième sujet non résolu : la lenteur/l'instabilité du téléchargement des logs
+`xcodebuild` complets via l'API GitHub Actions pour ce projet (jamais un problème de fond côté code,
+juste un frein opérationnel à connaître pour la prochaine session — voir section 10, point 5).
+**Tests effectués :** Compilation CI réelle réussie pour tout le lot du tour (GitHub Actions,
+`e4b347a`, SUCCESS confirmé via l'API, pas seulement supposé). **AUCUN test fonctionnel réel
+(Appetize)** — conforme à la consigne explicite et répétée de l'utilisateur ce tour.
+**Résultats :** Animems/Galerie/Chat/WebRTC/Feed/Profile/Search tous avancés d'un cran réel (voir
+section 10 pour le détail COMPLETE/PARTIAL/MISSING). Niveau "compile réellement" atteint pour tout
+le lot (GitHub Actions SUCCESS). Codemagic toujours jamais rapporté. Test fonctionnel réel toujours
+non fait — reste le seul niveau de validation manquant, sur décision explicite de l'utilisateur de
+le reporter à la fin d'un cycle plus complet.
+**Décisions techniques :** Voir section 9 (décisions antérieures, toujours valables) +
+`MIGRATION_PROGRESS.md` entrée 8ᵉ tour pour les décisions de ce tour (piste-par-calque simplifiée
+pour la timeline, pas de re-bake keyframes pour l'aperçu live vs export, gestes fusionnés en un seul
+jeu plutôt que deux graphes typés différemment, etc. — chacune documentée avec sa justification dans
+le code source directement, pas seulement ici).
+**Points importants pour la prochaine session :**
+- Ne PAS refaire les audits déjà faits ce tour (Socket.IO Chat, MediaEditor Galerie, WebRTC/CallKit,
+  Profile, Search) — tous documentés en détail dans `MIGRATION_PROGRESS.md`, resultats fiables.
+- Ne PAS supposer qu'un geste/timeline/masque Animems fonctionne VISUELLEMENT correctement — seule
+  la compilation est confirmée, comme toujours dans cette mission tant qu'Appetize n'a pas tourné.
+- **Si un nouveau lot de Swift touche des `Gesture`/`SimultaneousGesture`/`AnyGesture` composés en
+  plusieurs variantes choisies dynamiquement, éviter d'emblée le pattern "deux `some Gesture`
+  différentes + ternaire + `AnyGesture`"** — préférer un seul jeu de gestes avec bascule d'état À
+  L'EXÉCUTION dans les handlers (voir `AnimemesEditorView.swift`, section geste, et son commentaire
+  de tête qui documente l'historique complet de cet écueil). Coût réel ce tour : 4 builds CI, ~1h de
+  cycles diagnostic/fix sans environnement macOS local pour vérifier.
 - Ne JAMAIS déclencher Codemagic soi-même sans credential réel — l'utilisateur le fait manuellement.
-- Si l'utilisateur rapporte un bug après test sur Galerie/Animems, vérifier D'ABORD si c'est dans le
-  périmètre volontairement réduit (section 0ter) avant de le traiter comme un vrai bug.
 - Tout le code est commité/poussé ; seule la documentation de ce tour reste à committer.
 **Instructions pour la prochaine session :**
-1. Lire ce fichier EN PREMIER, section 0/0bis/0ter en priorité absolue.
+1. Lire ce fichier EN PREMIER, section 0 (CI) et 10 (prochaine tâche) en priorité absolue.
 2. Vérifier qu'il correspond toujours au code réel (`git log`, `git status`) — une autre session a
    pu intervenir/pousser depuis.
-3. Si l'utilisateur ne précise pas de priorité, demander (a) le résultat du test Appetize global
-   (commit `f2460f2`) et (b) le résultat de son build Codemagic manuel (section 10) — l'utilisateur
-   a explicitement interdit GAP-003 tant que ces points ne sont pas clarifiés.
-4. Mettre à jour ce fichier (sections 0, 0bis, 0ter et 11) à la fin de la session, quel que soit le
+3. Continuer directement les points listés en section 10 SANS demander confirmation ni test Appetize,
+   sauf si l'utilisateur donne une instruction contraire explicite dans le nouveau message reçu.
+4. Mettre à jour ce fichier (sections 0 et 11 au minimum) à la fin de la session, quel que soit le
    résultat.

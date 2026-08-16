@@ -1104,3 +1104,52 @@ découverte majeure) : sélecteur GIF/stickers du chat (`ChatView.swift`, placeh
 téléchargement des pièces jointes chat reçues (`ChatViewModel.requestDownload`, distinct de
 GAP-004 qui ne couvrait que l'upload), TODOs de migration Core Data (routine, sans impact
 fonctionnel). Rien nécessitant une action dans cette passe.
+
+---
+
+## SESSION DU 2026-08-16 — STATUT PAR FONCTIONNALITÉ (8ᵉ tour, continuation autonome sans
+Appetize, instruction explicite de l'utilisateur). Commit final validé : `e4b347a` (GitHub Actions
+SUCCESS). Détail chronologique complet dans `MIGRATION_PROGRESS.md`.
+
+| Fonctionnalité | Statut | Détail |
+|---|---|---|
+| Animems — translation/rotation/échelle | COMPLETE | `AnimemesGestureController` câblé réellement (était déjà porté, jamais utilisé côté UI avant ce tour) |
+| Animems — timeline (règle/playhead/blocs par calque) | COMPLETE | Nouveau `TimelineView.swift` au-dessus de `TimelineViewModel` (435 lignes, déjà porté, jamais utilisé) |
+| Animems — keyframes explicites (bouton ◆) | COMPLETE | Modèle "marqueur explicite" confirmé par lecture d'Android, PAS un enregistrement continu |
+| Animems — lecture/pause réelle | COMPLETE | `AnimationEngine`/`CADisplayLink` (déjà porté, jamais branché) |
+| Animems — masques (type/inversion/flou/écart/geste offset-scale-rotation) | COMPLETE | `MaskFactory`/`MaskType`/champs `AnimationObjectData` déjà portés et déjà rendus par `LayerRenderer`, seul le câblage UI manquait |
+| Animems — ordre des calques (z-order) | N/A | Confirmé : n'existe PAS côté Android non plus (ordre = ordre d'ajout) |
+| Animems — sauvegarde image statique / modèles de mouvement / export GIF | MISSING | Non explorés ce tour — voir `AnimemesCompound.java` `showSaveDialog`/`saveAsMotionTemplate`/`MotionTemplateManager` |
+| Galerie — recadrage forme libre / suppression arrière-plan | COMPLETE | Composants déjà portés (`FreeformCropView`/`RemoveBackground`), jamais câblés avant ce tour |
+| Galerie — retournement horizontal, peinture, texte | COMPLETE | Nouveau `PhotoToolsView.swift` |
+| Galerie — miniature/durée vidéo réelles | COMPLETE | `AVAssetImageGenerator`, remplace l'icône statique |
+| Galerie — légende (limite 80), partage natif | COMPLETE | — |
+| Galerie — stickers/emoji, `MediaTrim` (recadrage temporel vidéo) | MISSING | Non explorés ce tour |
+| Chat — Socket.IO (tous événements) | COMPLETE | Audit dédié événement-par-événement, portage confirmé "unusuellement complet" |
+| Chat — pagination/suppression/accusés lecture/reconnexion/présence | COMPLETE | Audit fonctionnel transversal dédié |
+| Chat — téléchargement pièces jointes reçues | COMPLETE | `DownloadReceiver.java` lu en entier, GET non authentifié confirmé fidèle |
+| Chat — `ChatBubbleRow` (avatar/timestamp/coche), état vide roster | COMPLETE | Signalés "non vérifiés" par l'audit, confirmés déjà présents après relecture directe |
+| Chat — `pushNotification`/`pushNotification_by_id` | N/A (faux positif) | `notificateUser`/`notificateUserById` : zéro appelant dans TOUT le dépôt Android, code mort côté Android lui-même |
+| WebRTC — signalisation/glare/ICE restart/mute/CallKit | COMPLETE | Audit dédié, 10 fichiers Android relus en entier |
+| WebRTC — configuration `AVAudioSession`/`RTCAudioSession` | COMPLETE (corrigé ce tour) | HIGH PRIORITY — absente nulle part avant ce tour, pouvait empêcher l'audio réel sur device malgré compilation/exécution logique correctes |
+| WebRTC — permission micro avant appel | COMPLETE (corrigé ce tour) | `Utils/PermissionRequest.java` jamais porté avant ce tour |
+| Feed — native ads dans le pager plein écran | COMPLETE | Câblées dans `FeedDetailPagerView` (PAS la grille — vérifié contre `ViewPagerAdapter.java`/`NativeAdsManager.java`) |
+| Profile | COMPLETE (quasi-intégral) | Audit dédié ; seul écart déjà documenté (édition catégorie lecture seule) |
+| Search — navigation hashtag/publication, bouton Suivre, états erreur/vide | COMPLETE | Nouveau `HashtagFeedView.swift`, mapping `SearchPostResult → FeedActivity` |
+| Paiements/monétisation, deep links, Firebase/analytics | UNVERIFIED | Pas d'audit dédié ce tour |
+
+### Build CI — 4 tentatives sur le seul lot Animems timeline/masques
+
+Voir `CLAUDE_CONTINUATION.md` section 0 pour le détail complet run-par-run. Résumé : 3 échecs
+successifs (`3f1c22d`, `b90ae3d`, `fd92885`, `0fa0de8` — mauvais usage d'un singleton `private
+init`, puis deux vagues d'échecs de type-checking `AnyGesture`/`some Gesture` sur le geste de
+masque), chacun diagnostiqué à partir du VRAI log `xcodebuild` téléchargé via l'API GitHub Actions
+(jamais deviné, pas d'environnement macOS local). Résolu en restructurant le geste (un seul jeu de
+gestes, bascule d'état à l'exécution plutôt que deux graphes de gestes typés différemment) plutôt
+que de continuer à patcher l'érasure de type à l'aveugle. **Run final SUCCESS : `31923679579`,
+commit `e4b347a`.**
+
+### Codemagic
+
+Toujours en attente d'un déclenchement manuel par l'utilisateur — aucun résultat Codemagic
+rapporté à ce jour pour AUCUN commit, y compris ceux de ce tour.

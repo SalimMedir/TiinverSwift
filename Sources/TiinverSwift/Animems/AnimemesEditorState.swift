@@ -36,6 +36,12 @@ final class AnimemesEditorState: ObservableObject {
     @Published var exportError: String?
     @Published var selectedId: String?
     @Published private(set) var isPlaying = false
+    /// Port du mode d'édition de masque (`MaskAddPanel`/`MaskPreviewEditorPanel` →
+    /// `mView.startMaskEditMode`/`stopMaskEditMode`, `AnimemesCompound.java:1033-1310`) — quand
+    /// actif, le geste principal du canevas (`AnimemesEditorView.combinedGesture`) est remplacé par
+    /// `maskEditGesture`, qui pilote `maskOffsetX/Y`/`maskScale`/`maskRotation` au lieu de la
+    /// matrice de transformation de l'objet.
+    @Published var isMaskEditMode = false
 
     /// Port de `configureNewObject`/durée par défaut d'un nouveau calque — 3s à 30 fps
     /// (`AnimemesExporter.frameRate`), point de départ ÉDITABLE ensuite via la timeline
@@ -246,6 +252,70 @@ final class AnimemesEditorState: ObservableObject {
         guard let id = selectedId, let idx = index(of: id), let bound = layers[idx].bound else { return }
         let clamped = AnimemesGestureController.clampPerEventScaleFactor(incrementalFactor)
         gestureController.scale(factor: clamped, focus: CGPoint(x: bound.midX, y: bound.midY), objectIndex: idx, composer: composer)
+        version += 1
+    }
+
+    // MARK: - Masques (port de `MaskAddPanel`/`MaskPreviewEditorPanel`, `AnimemesCompound.java:
+    // 1033-1310`) — `MaskFactory`/`appliedMaskType`/`maskOffsetX/Y`/`maskScale`/`maskMirrorGap`/
+    // `maskRotation`/`maskFeather`/`maskInverted` étaient déjà portés côté `AnimationObjectData`/
+    // `LayerRenderer` (rendu déjà câblé, vérifié en relisant `LayerRenderer.drawObjectFrame`), seul
+    // le câblage UI/geste manquait.
+
+    /// Port de `MaskAddPanel` (choix du type) — applique/change le masque du calque sélectionné.
+    /// `nil` retire le masque (`appliedMaskType = nil`, `hasAppliedMask` redevient `false`).
+    func setMaskType(_ type: MaskType?) {
+        guard let id = selectedId, let obj = layers.first(where: { $0.id == id }) else { return }
+        obj.appliedMaskType = type
+        version += 1
+    }
+
+    func toggleMaskInverted() {
+        guard let id = selectedId, let obj = layers.first(where: { $0.id == id }) else { return }
+        obj.maskInverted.toggle()
+        version += 1
+    }
+
+    func setMaskFeather(_ value: Float) {
+        guard let id = selectedId, let obj = layers.first(where: { $0.id == id }) else { return }
+        obj.maskFeather = value
+        version += 1
+    }
+
+    func setMaskMirrorGap(_ value: Float) {
+        guard let id = selectedId, let obj = layers.first(where: { $0.id == id }) else { return }
+        obj.maskMirrorGap = value
+        version += 1
+    }
+
+    /// Port du glisser-déposer direct du masque (`MaskEditController`/`maskApplyDrag`) —
+    /// `deltaTranslation` est un DELTA (pas cumulatif, contrairement à `RotationGesture`/
+    /// `MagnificationGesture` de SwiftUI) : l'appelant (`AnimemesEditorView.maskEditGesture`)
+    /// calcule ce delta lui-même depuis `DragGesture.value.translation`, même motif que l'ancien
+    /// `moveObject` avant le passage au geste matriciel. Normalisé par la taille du canevas —
+    /// `maskOffsetX`/`Y` sont des fractions `[-2, 2]` de la largeur/hauteur (voir le clamp dans
+    /// `AnimationObjectData`), pas des pixels.
+    func maskOffsetChanged(deltaTranslation: CGSize, canvasSize: CGSize) {
+        guard let id = selectedId, let obj = layers.first(where: { $0.id == id }),
+              canvasSize.width > 0, canvasSize.height > 0
+        else { return }
+        obj.maskOffsetX += Float(deltaTranslation.width / canvasSize.width)
+        obj.maskOffsetY += Float(deltaTranslation.height / canvasSize.height)
+        version += 1
+    }
+
+    /// Port de `maskScaleChanged` — `incrementalFactor` PAR ÉVÉNEMENT, même contrat que
+    /// `scaleChanged(incrementalFactor:)` (objet) ci-dessus.
+    func maskScaleChanged(incrementalFactor: CGFloat) {
+        guard let id = selectedId, let obj = layers.first(where: { $0.id == id }) else { return }
+        obj.maskScale *= Float(incrementalFactor)
+        version += 1
+    }
+
+    /// Port de `maskRotationChanged` — `deltaDegrees` DELTA (pas cumulatif), calculé par l'appelant
+    /// depuis `RotationGesture.value.degrees` (cumulatif) comme `maskOffsetChanged` ci-dessus.
+    func maskRotationChanged(deltaDegrees: CGFloat) {
+        guard let id = selectedId, let obj = layers.first(where: { $0.id == id }) else { return }
+        obj.maskRotation += Float(deltaDegrees)
         version += 1
     }
 

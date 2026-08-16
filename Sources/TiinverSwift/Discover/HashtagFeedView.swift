@@ -58,7 +58,7 @@ struct HashtagFeedView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            posts = try await ProfileRepository().fetchHashtagPosts(tag: tag, limit: 30, offset: 0)
+            posts = try await ProfileRepository.shared.fetchHashtagPosts(tag: tag, limit: 30, offset: 0)
             errorText = nil
         } catch {
             errorText = "Erreur de chargement."

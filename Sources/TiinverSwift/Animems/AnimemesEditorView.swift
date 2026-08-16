@@ -6,9 +6,9 @@ import SwiftUI
 /// du moteur. Barre du haut (`close_animemes`/`save_animemes2`), rangée d'ajout d'objet (`ic_add`/
 /// `ic_text`/`btn_shape`, PAS `ic_sticker` — nécessiterait le catalogue d'émojis/stickers, hors
 /// périmètre de cette passe), `undo`, canevas avec déplacement/rotation/échelle réels au doigt
-/// (2026-08-16, `AnimemesGestureController`), **timeline/keyframes/lecture câblés le 2026-08-16**
-/// (`TimelineView`/`AnimationEngine`, moteur déjà porté, seul le câblage manquait — voir audit dans
-/// `MIGRATION_AUDIT.md`). Masques/stickers PAS reproduits dans cette passe.
+/// (2026-08-16, `AnimemesGestureController`), **timeline/keyframes/lecture/masques câblés le
+/// 2026-08-16** (`TimelineView`/`AnimationEngine`/`MaskFactory`, moteur déjà porté, seul le câblage
+/// manquait — voir audit dans `MIGRATION_AUDIT.md`). Stickers/emoji PAS reproduits dans cette passe.
 struct AnimemesEditorView: View {
     var onClose: () -> Void
 
@@ -21,15 +21,22 @@ struct AnimemesEditorView: View {
     @State private var isPinching = false
     @State private var exportedURL: URL?
     @State private var showDurationSlider = false
+    @State private var lastMaskDragTranslation: CGSize = .zero
+    @State private var lastMaskMagnification: CGFloat = 1.0
+    @State private var lastMaskRotationDegrees: CGFloat = 0
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 canvas
                 playbackBar
-                TimelineView(state: state)
-                if showDurationSlider, let selectedId = state.selectedId, let obj = state.layers.first(where: { $0.id == selectedId }) {
-                    durationSlider(for: obj)
+                if state.isMaskEditMode, let selectedId = state.selectedId, let obj = state.layers.first(where: { $0.id == selectedId }) {
+                    maskPanel(for: obj)
+                } else {
+                    TimelineView(state: state)
+                    if showDurationSlider, let selectedId = state.selectedId, let obj = state.layers.first(where: { $0.id == selectedId }) {
+                        durationSlider(for: obj)
+                    }
                 }
                 toolbar
             }
@@ -114,7 +121,7 @@ struct AnimemesEditorView: View {
                 }
             }
             .background(Color(white: 0.08))
-            .gesture(combinedGesture)
+            .gesture(state.isMaskEditMode ? AnyGesture(maskEditGesture) : AnyGesture(combinedGesture))
             .onAppear { canvasSize = geo.size; state.preparePlayback(canvasSize: geo.size) }
             .onChange(of: geo.size) { newSize in canvasSize = newSize; state.preparePlayback(canvasSize: newSize) }
             .onChange(of: state.version) { _ in state.preparePlayback(canvasSize: canvasSize) }
@@ -250,6 +257,104 @@ struct AnimemesEditorView: View {
         state.beginPinchRotate()
     }
 
+    // MARK: - Geste d'édition de masque (port de `MaskEditController`/`maskApplyDrag`, 2026-08-16)
+    //
+    // MÊME composition que `combinedGesture` (glisser+pincer+pivoter simultanés) mais ciblant
+    // `maskOffsetX/Y`/`maskScale`/`maskRotation` au lieu de la matrice de l'objet — types de geste
+    // structurellement identiques exprès, pour que `AnyGesture(maskEditGesture)`/
+    // `AnyGesture(combinedGesture)` (voir `canvas`) partagent le même `Value` associé.
+
+    private var maskEditGesture: some Gesture {
+        SimultaneousGesture(SimultaneousGesture(maskDragGesture, maskMagnificationGesture), maskRotationGesture)
+    }
+
+    private var maskDragGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                let delta = CGSize(
+                    width: value.translation.width - lastMaskDragTranslation.width,
+                    height: value.translation.height - lastMaskDragTranslation.height
+                )
+                lastMaskDragTranslation = value.translation
+                state.maskOffsetChanged(deltaTranslation: delta, canvasSize: canvasSize)
+            }
+            .onEnded { _ in lastMaskDragTranslation = .zero }
+    }
+
+    private var maskMagnificationGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                state.maskScaleChanged(incrementalFactor: value / lastMaskMagnification)
+                lastMaskMagnification = value
+            }
+            .onEnded { _ in lastMaskMagnification = 1.0 }
+    }
+
+    private var maskRotationGesture: some Gesture {
+        RotationGesture()
+            .onChanged { value in
+                let delta = value.degrees - lastMaskRotationDegrees
+                lastMaskRotationDegrees = value.degrees
+                state.maskRotationChanged(deltaDegrees: delta)
+            }
+            .onEnded { _ in lastMaskRotationDegrees = 0 }
+    }
+
+    /// Port de `MaskAddPanel` (choix du type) + `MaskPreviewEditorPanel` (inversion/flou/écart
+    /// miroir) — le décalage/l'échelle/la rotation se pilotent par geste direct sur le canevas
+    /// (`maskEditGesture` ci-dessus), pas par ce panneau (fidèle à Android : `MaskEditController`
+    /// pilote CE sous-ensemble via le canevas, le panneau ne porte que les réglages scalaires).
+    private func maskPanel(for obj: AnimationObjectData) -> some View {
+        VStack(spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    Button {
+                        state.setMaskType(nil)
+                        state.isMaskEditMode = false
+                    } label: {
+                        Text("Aucun").font(.caption.bold())
+                    }
+                    ForEach(MaskType.allCases, id: \.self) { type in
+                        Button { state.setMaskType(type) } label: {
+                            Text(type.displayName)
+                                .font(.caption.bold())
+                                .padding(.horizontal, 10).padding(.vertical, 6)
+                                .background(obj.appliedMaskType == type ? Color.accentColor : Color(white: 0.2))
+                                .foregroundStyle(.white)
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
+            if obj.appliedMaskType != nil {
+                HStack {
+                    Toggle(isOn: Binding(get: { obj.maskInverted }, set: { _ in state.toggleMaskInverted() })) {
+                        Text("Inverser").font(.caption)
+                    }
+                    .toggleStyle(.button)
+                    .tint(.accentColor)
+                }
+                .padding(.horizontal)
+                HStack {
+                    Text("Flou").font(.caption).foregroundStyle(.white.opacity(0.7))
+                    Slider(value: Binding(get: { Double(obj.maskFeather) }, set: { state.setMaskFeather(Float($0)) }), in: 0...1)
+                }
+                .padding(.horizontal)
+                if obj.appliedMaskType == .mirror {
+                    HStack {
+                        Text("Écart").font(.caption).foregroundStyle(.white.opacity(0.7))
+                        Slider(value: Binding(get: { Double(obj.maskMirrorGap) }, set: { state.setMaskMirrorGap(Float($0)) }), in: 0...0.5)
+                    }
+                    .padding(.horizontal)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .foregroundStyle(.white)
+        .background(Color.black)
+    }
+
     private var toolbar: some View {
         HStack(spacing: 28) {
             // Port de `ic_add` (ajout photo).
@@ -262,6 +367,13 @@ struct AnimemesEditorView: View {
             Button { state.addShape(.shapeRect, canvasSize: canvasSize) } label: { Image(systemName: "rectangle") }
             Button { state.addShape(.shapeCircle, canvasSize: canvasSize) } label: { Image(systemName: "circle") }
             Button { state.addShape(.shapeLine, canvasSize: canvasSize) } label: { Image(systemName: "line.diagonal") }
+            // Port de `MaskAddPanel`/`showMaskAddPanel()` — active le mode d'édition de masque sur
+            // le calque sélectionné (voir `maskPanel`/`maskEditGesture` ci-dessus).
+            Button { state.isMaskEditMode.toggle() } label: {
+                Image(systemName: state.isMaskEditMode ? "circle.dashed.inset.filled" : "circle.dashed")
+            }
+            .disabled(state.selectedId == nil)
+            .tint(state.isMaskEditMode ? .yellow : .white)
             Spacer()
             // Port de `undo` → `mView.deletePrecedenteDraw()`.
             Button { state.removeLast() } label: { Image(systemName: "arrow.uturn.backward") }

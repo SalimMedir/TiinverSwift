@@ -145,7 +145,7 @@ struct SearchView: View {
         if let index = results.users.firstIndex(where: { $0.id == user.id }) {
             results.users[index].isFollowed = true
         }
-        try? await ProfileRepository().follow(userId: String(user.id), followerId: myId)
+        try? await ProfileRepository.shared.follow(userId: String(user.id), followerId: myId)
     }
 
     private func postRow(_ post: SearchPostResult) -> some View {

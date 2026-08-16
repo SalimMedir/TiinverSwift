@@ -1,6 +1,6 @@
 /// Port de `engine/mask/MaskType.java` — types de masque disponibles, rendus en bitmap ARGB
 /// (côté Swift : `CGImage`, voir `MaskFactory.swift`).
-enum MaskType {
+enum MaskType: CaseIterable {
     case circle
     case square
     case rectangle

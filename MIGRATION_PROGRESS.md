@@ -3755,3 +3755,150 @@ rapporté à ce jour pour aucun commit de cette session.
 **Aucun test fonctionnel réel (Appetize) effectué** — conforme à l'instruction explicite et répétée
 de l'utilisateur ce tour : pas de test intermédiaire, un seul test global prévu après ce cycle
 complet.
+
+**Compléments validés séparément en fin de 8ᵉ tour** (chacun son propre commit + run GitHub Actions
+SUCCESS) : sauvegarde d'image statique Animems pour les compositions non animées (`hasAnimation`/
+`exportStaticImage` dans `AnimemesEditorState.swift`, réutilise `LayerRenderer.drawLastTransform`,
+commit `70692d5`, run `31924209161`) et recadrage temporel vidéo Galerie (`MediaTrimView.swift`
+nouveau — filmstrip + poignées + `AVAssetExportSession(.presetPassthrough)`, commit `ef3a34b`, run
+`31924498415`).
+
+---
+
+## SESSION DU 2026-08-16 (9ᵉ tour) — MODÈLES DE MOUVEMENT, STICKERS, DEEP LINKS, AUDITS FINAUX
+
+**Continuation directe du 8ᵉ tour** (même session logique, reprise après compaction du contexte),
+sur instruction explicite de l'utilisateur donnant un ORDRE DE PRIORITÉ précis et répétant la
+consigne de ne jamais s'arrêter après un build vert : ANIMEMS → GALERIE → PAYMENTS/MONÉTISATION →
+DEEP LINKS → FIREBASE/ANALYTICS → AUDIT TRANSVERSAL FINAL. Deux commits, chacun son propre run
+GitHub Actions, **les deux SUCCESS du premier coup** (contraste net avec les 4 échecs du lot Animems
+timeline/masques du tour précédent).
+
+### 1. Animems — modèles de mouvement locaux (commit `ac67c79`, run `31935598442` SUCCESS)
+
+`MotionTemplateManager.java` (551 lignes) lu en entier avant tout code, conformément à la consigne
+de l'utilisateur de ne jamais inventer une fonctionnalité absente d'Android. Port fidèle :
+- **`MotionTemplate.swift`** (nouveau) — `Codable`, structure miroir de la sérialisation Android :
+  canevas, pistes (`MotionTrack`, une par calque : offset/dimensions/bornes de trame/verrou/
+  matrices/auto-frames de masque/keyframes/propriétés de forme et de masque).
+- **`MotionTemplateManager.swift`** (nouveau) — `extract(composer:canvasWidth:canvasHeight:...)` et
+  `apply(_:to:trackIndex:targetCanvasWidth:targetCanvasHeight:)`, normalisation/dénormalisation par
+  taille de canevas fidèle à l'original, reconstruction des auto-frames de masque par composition de
+  matrice (`postScale`→`postRotate`→`postTranslate`, même idiome que `AnimemesGestureController`,
+  déjà dans ce projet — pas une nouvelle primitive inventée). Stockage JSON dans `Application
+  Support/MotionTemplates/` (PAS `Documents` : donnée interne à l'app, pas un fichier utilisateur).
+- **Fidélité délibérée reproduite, PAS "corrigée"** : le switch `apply()` d'Android n'a AUCUN `case
+  PROP_MATRIX` dans sa réapplication de keyframes au chargement — seules les 9 propriétés scalaires
+  (opacité/couleur/rayon de coin/etc.) sont réellement reconstruites ; les keyframes de MATRICE sont
+  extraites dans le modèle sauvegardé mais ne sont jamais reconstruites au chargement. Reproduit
+  exactement tel quel côté iOS plutôt que "amélioré" — un modèle appliqué perdra donc ses keyframes
+  de matrice, exactement comme sur Android.
+- **`MotionTemplateGalleryView.swift`** (nouveau) — liste SwiftUI avec suppression, état vide, tape
+  pour sélectionner.
+- **`MaskType.swift`** — ajout de `androidName`/`init?(androidName:)` pour aller-retour fidèle des
+  constantes d'énumération Android dans le JSON du modèle.
+- **`AnimationObjectData.swift`** — ajout de `clearAllKeyframes()`.
+- **UI** — `AnimemesEditorView.swift` : boutons galerie de modèles + sauver-comme-modèle,
+  `.confirmationDialog` "Exporter la vidéo" vs "Enregistrer comme modèle" (affiché seulement si
+  `state.hasAnimation`). `AnimemesEditorState.swift` : `saveAsTemplate(canvasSize:) -> Bool` et
+  `applyTemplate(_:canvasSize:)` — applique la piste 0 au calque actuellement sélectionné,
+  simplification documentée car l'audit n'avait pas détaillé le mapping multi-piste↔multi-calque
+  précis côté UI Android.
+- **Modèles de mouvement COMMUNAUTAIRES (upload/parcourir) : évalués et EXPLICITEMENT DIFFÉRÉS**
+  (tâche #49) — périmètre comparable à un portage de fonctionnalité séparée entière (upload BunnyCDN,
+  endpoints backend `templates/add`/`templates/list`, galerie communautaire paginée avec aperçu
+  audio, flux télécharger-puis-appliquer). Décision documentée plutôt que du travail bâclé en fin de
+  liste de priorités.
+- **Export GIF : reconfirmé code mort côté Android** (`AnimatedGifEncoder` jamais instancié dans le
+  chemin d'export réel) — intentionnellement PAS implémenté, conforme à la consigne explicite de
+  l'utilisateur.
+
+### 2. Galerie — stickers/emoji (commit `f2012a1`, run `31936056808` SUCCESS)
+
+Audit dédié du système de stickers/emoji Android : confirmé qu'Android utilise son propre clavier
+emoji Unicode STANDARD embarqué (`com.vanniktech.emoji.EmojiView`), PAS un catalogue d'assets
+personnalisés. Porté fidèlement via le clavier emoji NATIF iOS plutôt qu'une grille d'assets custom
+qui aurait trahi le comportement réel : `PhotoToolsView.swift` — nouvel état/alerte avec `TextField`
+(le clavier emoji système apparaît naturellement au focus), `addSticker()` ajoute un `PlacedText`
+avec `isSticker: true`, rendu à 64pt/`.regular` (vs 30pt/`.bold` pour le texte) sans teinte de
+couleur, sur les deux sites de rendu (`ForEach` live + `flatten()` composé).
+
+### 3. Deep links — routage complet (même commit `f2012a1`, run `31936056808` SUCCESS)
+
+Audit dédié a trouvé un **GAP RÉEL total côté iOS avant ce tour** : zéro schéma `CFBundleURLTypes`
+déclaré, zéro `.onOpenURL`, zéro routage — pas une lacune partielle, une absence complète. Lu en
+entier : `AndroidManifest.xml` (intent-filters), `ShareActivity.java` lignes ~130-340
+(`processUri`/`processUrl`/`getGroup`/`getUser`/`getPost`/`connectToServeur`/`joinGroup`/
+`getActivities`).
+
+Porté :
+- **`DeepLinkRouter.swift`** (nouveau) — dispatch par schéma : `myapp://parrainage?code=X` (EXACT
+  même schéma qu'Android — ferme une vraie lacune trouvée en passant : `REFERRED_BY`
+  (`UserDefaults`) était déjà LU par `RegisterView.swift`/`SignUpWithGoogleView.swift` depuis une
+  session antérieure, mais RIEN ne l'écrivait avant ce tour) ; `tiinver://{path}` (repli propre à ce
+  portage pour les chemins `https://tiinver.com/...`, un vrai Universal Link `https://` nécessitant
+  un fichier `apple-app-site-association` hébergé côté serveur, hors du contrôle de ce dépôt).
+  Segments de chemin routés vers `user`/`post`/`group`/`myaccount`/`animemes`/`update`/`offer`, avec
+  réinjection explicite du host pour le schéma `tiinver://` (où le premier segment logique atterrit
+  dans `url.host`, pas `pathComponents`, contrairement à `https://`).
+- **`DeepLinkCenter.swift`** — `DeepLinkDestination` étendu : `.userProfile`/`.post`/`.groupChat`/
+  `.settings`/`.animems`/`.referral`.
+- **`RootRouterView.swift`** — `.onOpenURL` monté AVANT le gate d'authentification (capture le
+  parrainage dès l'inscription, pas seulement une fois connecté).
+- **`HomeShellView.swift`** — présentations (`sheet`/`fullScreenCover`) pour chaque nouvelle
+  destination, `.onChange(of: deepLinks.pending)` étendu.
+- **Nouveaux endpoints repository**, chacun vérifié séparément pour la forme réelle de sa réponse,
+  jamais supposée identique à un endpoint au nom similaire :
+  - `ProfileRepository.fetchUser(byUsername:)` (`getuser/{username}`) — `userData` est une CHAÎNE
+    JSON-encodée sur CET endpoint, contrairement à `getuserbyid` où `userData` est un objet imbriqué.
+  - `FeedRepository.fetchPost(byToken:)` (`getactivity/{token}`, clé `activity`).
+  - `GroupRepository.fetchGroup(token:myId:)` (`group/{myId}/{token}`, clé `data` — même clé que
+    `createGroup`), reconstruit le `RosterModel` avec les mêmes champs que `joinGroup()` (lu en
+    entier).
+- **`project.yml`** — `CFBundleURLTypes` déclare `myapp` et `tiinver`.
+- **`FeedActivity.swift`** — `Equatable` ajouté (requis pour que `DeepLinkDestination: Equatable`
+  compile avec le nouveau cas `.post(FeedActivity)`).
+
+### 4. Payments/Monétisation, Firebase/Analytics, audit transversal final
+
+Trois audits dédiés, tous conclus SANS gap réel nécessitant du code :
+- **Payments/Monétisation** : confirme GAP-007 déjà documenté dans `MIGRATION_AUDIT.md` — StoreKit 2
+  est une divergence PRODUIT intentionnelle déjà actée par l'utilisateur (pas un portage 1:1 du flux
+  mobile money/crypto hors-application d'Android). Rien à implémenter.
+- **Firebase/Analytics** : initialisation, FCM, Analytics, attribution déjà portés fidèlement lors de
+  sessions antérieures. Aucun code dupliqué ajouté, conforme à la consigne explicite de l'utilisateur.
+- **Audit transversal final** (TODO/FIXME/placeholder/stub/mock/`fatalError`/fonctions vides/boutons
+  morts/`NavigationLink` sans destination/API inutilisée/Repository déconnecté/ViewModel
+  inutilisé/données codées en dur) — repasse fraîche sur l'ensemble du dépôt, aucune nouvelle
+  trouvaille actionnable au-delà de la tâche #49 déjà identifiée par l'audit Animems.
+
+### Build CI
+
+`ac67c79` → run `31935598442` **SUCCESS**. `f2012a1` → run `31936056808` **SUCCESS**. Aucun échec ce
+tour — contraste avec les 4 tentatives nécessaires pour le lot Animems timeline/masques du tour 8.
+Codemagic toujours en attente d'un déclenchement manuel par l'utilisateur, jamais rapporté à ce jour
+pour aucun commit du projet.
+
+### Point de sécurité traité ce tour
+
+Une notification de tâche en arrière-plan inconnue (`bjyot2t0x`, "rechercher un token Codemagic API
+ou une configuration CLI sur cette machine") est apparue sans avoir été émise par cette session.
+Vérifiée contre la liste des tâches réellement lancées par cette session (aucune correspondance),
+son fichier de sortie n'a PAS été ouvert ni son contenu utilisé, conformément aux règles de sécurité
+de la mission sur le contenu non reconnu touchant des credentials. Signalée explicitement à
+l'utilisateur avant toute action ; l'utilisateur a confirmé de l'ignorer complètement et de continuer
+uniquement avec le code des dépôts — résolu.
+
+### État après ce tour
+
+**La liste de priorités explicite de l'utilisateur (ANIMEMS → GALERIE → PAYMENTS → DEEP LINKS →
+FIREBASE → AUDIT TRANSVERSAL) est désormais entièrement traitée.** Seule exception, délibérément
+différée et documentée : la tâche #49 (modèles de mouvement communautaires Animems), dont le
+périmètre est comparable à un portage de fonctionnalité séparée à part entière. L'export GIF Animems
+reste intentionnellement non implémenté (code mort confirmé côté Android). Aucun autre gap réalisable
+identifié — voir `CLAUDE_CONTINUATION.md` section 11bis pour le handoff complet et la recommandation
+de produire le rapport final unique demandé par l'utilisateur.
+
+**Aucun test fonctionnel réel (Appetize) effectué ce tour** — conforme à la consigne explicite et
+répétée de l'utilisateur : "APPETIZE EST INTERDIT POUR L'INSTANT", un seul test global prévu une fois
+tout le travail de migration réalisable traité.

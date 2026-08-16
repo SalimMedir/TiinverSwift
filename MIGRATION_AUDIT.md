@@ -1170,3 +1170,35 @@ tour, chacun validé séparément par GitHub Actions (SUCCESS confirmé pour les
 modèles de mouvement Animems (local + upload communautaire), export GIF Animems, stickers/emoji
 Galerie, et l'audit dédié de paiements/monétisation/deep links/Firebase-analytics (UNVERIFIED,
 pas re-vérifiés cette session).
+
+---
+
+## SESSION DU 2026-08-16 (9ᵉ tour) — SUITE, PRIORITÉS RESTANTES TRAITÉES
+
+Continuation directe du tour 8, sur instruction explicite et priorisée de l'utilisateur (ANIMEMS →
+GALERIE → PAYMENTS → DEEP LINKS → FIREBASE → AUDIT TRANSVERSAL). Deux commits, tous deux validés
+GitHub Actions SUCCESS : `ac67c79` (modèles de mouvement Animems), `f2012a1` (stickers Galerie +
+deep links complets).
+
+| Fonctionnalité | Statut | Détail |
+|---|---|---|
+| Animems — modèles de mouvement LOCAUX (sauvegarde/chargement/suppression/galerie) | COMPLETE | `MotionTemplateManager.java` (551 lignes) lu en entier et porté fidèlement, y compris la reconstruction de matrice de masque par composition `postScale`/`postRotate`/`postTranslate`. **Fidélité délibérée reproduite** : Android n'a AUCUN `case PROP_MATRIX` dans son switch de réapplication de keyframes — seules les 9 propriétés scalaires sont réellement ré-appliquées au chargement d'un modèle, les keyframes de matrice sont extraites mais jamais reconstruites ; non "corrigé" côté iOS, reproduit tel quel. Stockage `Application Support/MotionTemplates/` (JSON), pas `Documents` (donnée interne, pas exposée à l'utilisateur via Fichiers). Commit `ac67c79` |
+| Animems — modèles de mouvement COMMUNAUTAIRES (upload/parcourir/télécharger) | MISSING, explicitement différé | Tâche #49 — périmètre comparable à un portage de fonctionnalité séparée à part entière (upload BunnyCDN + endpoints backend `templates/add`/`templates/list` + galerie communautaire paginée avec aperçu audio + flux télécharger-puis-appliquer). Documenté plutôt qu'improvisé, cohérent avec la consigne "ne pas inventer/bâcler une fonctionnalité de cette ampleur en fin de liste" |
+| Animems — export GIF | MISSING, intentionnellement PAS implémenté | Reconfirmé code mort côté Android (`AnimatedGifEncoder` jamais instancié dans le chemin d'export réel) — l'utilisateur a explicitement demandé de ne pas inventer de fonctionnalité absente d'Android |
+| Galerie — stickers/emoji | COMPLETE | Audit dédié a confirmé qu'Android utilise son propre clavier emoji Unicode standard embarqué (`com.vanniktech.emoji.EmojiView`), PAS un catalogue de stickers personnalisé — porté via le clavier emoji natif iOS (`TextField`) plutôt qu'une grille d'assets custom, fidèle au comportement réel plutôt qu'à une traduction littérale de nom de classe. `PlacedText.isSticker` avec rendu agrandi (64pt) non teinté. Commit `f2012a1` |
+| Deep links — schémas/routage | COMPLETE (nouveau, entièrement absent avant ce tour) | Audit dédié a trouvé un GAP RÉEL total côté iOS : zéro schéma `CFBundleURLTypes` déclaré, zéro `.onOpenURL`, zéro routage. Porté : `myapp://parrainage?code=X` (EXACT même schéma qu'Android, ferme la boucle `REFERRED_BY` déjà LUE par `RegisterView`/`SignUpWithGoogleView` depuis une session antérieure mais jamais ÉCRITE), plus `tiinver://{user,post,group,myaccount,animemes,update,offer}/...` (repli propre à ce portage — vrais Universal Links `https://` impossibles sans fichier AASA hébergé côté serveur, hors du contrôle de ce dépôt). Nouveaux `DeepLinkRouter.swift`, endpoints `ProfileRepository.fetchUser(byUsername:)`/`FeedRepository.fetchPost(byToken:)`/`GroupRepository.fetchGroup(token:myId:)`. Commit `f2012a1` |
+| Paiements/monétisation | COMPLETE (audité, aucune implémentation nécessaire) | Confirme GAP-007 déjà documenté : StoreKit 2 est une divergence PRODUIT intentionnelle et déjà actée (pas un portage 1:1 du flux mobile money/crypto hors-app d'Android). Aucun gap réel trouvé au-delà de ce qui était déjà connu |
+| Firebase/Analytics | COMPLETE (audité, aucune implémentation nécessaire) | Initialisation, FCM, Analytics, attribution déjà portés fidèlement lors de sessions antérieures — aucune duplication de code ajoutée, conforme à la consigne explicite de l'utilisateur |
+| Audit transversal final (TODO/stubs/placeholders/boutons morts) | COMPLETE (repasse dédiée, aucune nouvelle trouvaille actionnable) | Repasse fraîche sur l'ensemble du dépôt — rien de nouveau au-delà de ce qui était déjà connu/documenté (tâche #49 exceptée, déjà traitée comme différée ci-dessus) |
+
+**Build CI** : `ac67c79` → run `31935598442`, SUCCESS. `f2012a1` → run `31936056808`, SUCCESS. Aucun
+échec ce tour (contrairement aux 4 échecs du lot Animems timeline/masques au tour 8).
+
+**Codemagic** : toujours en attente d'un déclenchement manuel par l'utilisateur — aucun résultat
+rapporté à ce jour pour AUCUN commit du projet.
+
+**Ce qui reste réellement MISSING/différé après ce tour** (portée non explorée par choix documenté,
+pas par oubli) : modèles de mouvement communautaires Animems (tâche #49) et export GIF Animems
+(confirmé non pertinent, code mort côté Android). Tout le reste de la liste de priorités explicite
+de l'utilisateur (Animems local, Galerie stickers, Payments, Deep Links, Firebase, audit transversal)
+est désormais traité.

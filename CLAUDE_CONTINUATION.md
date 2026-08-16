@@ -13,9 +13,9 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 **BUILD CI VALIDÉ :** Oui (GitHub Actions uniquement — voir stratégie double-CI ci-dessous,
 Codemagic en attente d'un déclenchement manuel par l'utilisateur, jamais rapporté à ce jour)
-**Build :** GitHub Actions run `31924498415` (workflow `ios-build.yml`)
-**Commit :** `ef3a34b` ("feat(galerie): implement video trim (MediaTrim) before publish" — dernier
-commit de la session, voir points 9-10 ci-dessous)
+**Build :** GitHub Actions run `31936056808` (workflow `ios-build.yml`)
+**Commit :** `f2012a1` ("feat(galerie,navigation): sticker/emoji support + full deep-link routing"
+— dernier commit de la session, 9ᵉ tour, voir points 12-13 ci-dessous)
 **Date :** 2026-08-16
 **Résultat :** `** BUILD SUCCEEDED **`. Confirmé via l'API GitHub Actions (`status: completed,
 conclusion: success`), pas seulement supposé.
@@ -48,6 +48,11 @@ conclusion: success`), pas seulement supposé.
 9. `31924209161` (commit `70692d5`, sauvegarde image statique pour composition Animems non animée)
    — **SUCCESS.**
 10. `31924498415` (commit `ef3a34b`, recadrage temporel vidéo `MediaTrim` câblé dans la Galerie) —
+    **SUCCESS.**
+11. `31935598442` (commit `ac67c79`, modèles de mouvement Animems locaux : sauvegarde/chargement/
+    suppression/galerie, port fidèle de `MotionTemplateManager.java`) — **SUCCESS.**
+12. `31936056808` (commit `f2012a1`, stickers/emoji Galerie via clavier emoji natif + routage
+    complet des liens profonds `myapp://parrainage`/`tiinver://{user,post,group,...}`) —
     **SUCCESS.** Dernier run connu.
 
 ### CI VALIDATION — format demandé par l'utilisateur pour chaque commit important
@@ -345,58 +350,58 @@ fonctionnent réellement comme Android tant qu'un nouveau test Appetize ne l'a p
 
 ## 10. PROCHAINE TÂCHE EXACTE
 
-**Instruction explicite et répétée de l'utilisateur ce tour (8ᵉ, 2026-08-16) : NE PAS s'arrêter, NE
-PAS demander/attendre de test Appetize — un seul test global prévu APRÈS ce cycle complet, quota
-conservé.** Cette règle reste valable pour la prochaine session tant que l'utilisateur ne dit pas
-explicitement le contraire.
+**Instruction explicite et répétée de l'utilisateur (8ᵉ ET 9ᵉ tour, 2026-08-16) : NE PAS s'arrêter,
+NE PAS demander/attendre de test Appetize — un seul test global prévu APRÈS avoir traité tout ce qui
+est réalisable, quota conservé.** Cette règle reste valable pour la prochaine session tant que
+l'utilisateur ne dit pas explicitement le contraire.
 
-**État réel après ce tour** — voir `MIGRATION_PROGRESS.md` (entrée "SESSION DU 2026-08-16, 8ᵉ tour")
-pour le détail complet par fonctionnalité. Résumé :
-- **Animems (GAP-006)** : timeline/keyframes/lecture/masques maintenant CÂBLÉS (le moteur était déjà
-  porté, seul l'écran ne les utilisait pas) — PARTIAL→COMPLETE pour ces sous-fonctionnalités
-  précises, PLUS la sauvegarde image statique (`hasAnimation`/`exportStaticImage`, commit `70692d5`)
-  ajoutée en fin de tour. Restent MISSING, non explorés cette passe : modèles de mouvement
-  (local/upload communautaire), export GIF.
-- **Galerie** : PARTIAL→PARTIAL (amélioré) — recadrage forme-libre/suppression fond/retournement/
-  peinture/texte/miniature-durée vidéo réelle/légende limitée/partage AJOUTÉS, PLUS `MediaTrim`
-  (recadrage temporel vidéo, `MediaTrimView.swift`, commit `ef3a34b`) ajouté en fin de tour. Reste
-  MISSING : stickers/emoji.
-- **Chat (GAP-003)** : COMPLETE quasi-intégral confirmé par 2 audits dédiés + lecture directe des
-  éléments "non vérifiés" signalés (`ChatBubbleRow`, état vide roster — tous deux déjà présents).
-  Téléchargement pièces jointes reçues implémenté. Seul "gap" (`pushNotification`) est un faux
-  positif : code mort côté Android lui-même, confirmé par grep exhaustif.
-- **WebRTC/CallKit (GAP-005)** : COMPLETE quasi-intégral confirmé par audit dédié (10 fichiers
-  Android relus en entier). 2 vrais bugs trouvés ET corrigés : configuration audio session absente
-  (HIGH PRIORITY — pouvait empêcher l'audio de fonctionner sur un vrai appareil) et permission micro
-  jamais vérifiée avant un appel.
-- **Feed/Ads** : native ads câblées dans le pager plein écran (pas la grille — vérifié contre
-  `ViewPagerAdapter.java`).
-- **Search** : navigation hashtag/publication, bouton Suivre, états erreur/vide AJOUTÉS.
-- **Profile** : COMPLETE quasi-intégral confirmé par audit dédié, seul écart déjà documenté
-  (catégorie en lecture seule).
+**État réel après le 9ᵉ tour** — voir `MIGRATION_PROGRESS.md` (entrée "SESSION DU 2026-08-16, 9ᵉ
+tour") et `MIGRATION_AUDIT.md` (section "SESSION DU 2026-08-16 (9ᵉ tour)") pour le détail complet.
+Résumé : la liste de priorités explicite de l'utilisateur (ANIMEMS → GALERIE → PAYMENTS → DEEP LINKS
+→ FIREBASE → AUDIT TRANSVERSAL) est désormais **entièrement traitée**, à une seule exception
+délibérément différée :
+- **Animems — modèles de mouvement LOCAUX** : COMPLETE. Port fidèle de `MotionTemplateManager.java`
+  (551 lignes lues en entier), y compris la non-reconstruction des keyframes de matrice au chargement
+  (fidélité au bug/limitation réel d'Android, pas "corrigé"). Commit `ac67c79`.
+- **Animems — modèles de mouvement COMMUNAUTAIRES (upload/parcourir)** : **MISSING, explicitement
+  différé** — tâche #49, périmètre comparable à une fonctionnalité séparée entière (upload BunnyCDN
+  + endpoints backend dédiés + galerie paginée). Documenté plutôt que bâclé.
+- **Animems — export GIF** : confirmé (re-confirmé) code mort côté Android — intentionnellement PAS
+  implémenté, conforme à "ne pas inventer de fonctionnalité absente d'Android".
+- **Galerie — stickers/emoji** : COMPLETE. Android utilise son propre clavier emoji Unicode standard
+  (pas un catalogue custom) — porté via le clavier emoji natif iOS. Commit `f2012a1`.
+- **Deep links** : COMPLETE (nouveau — était TOTALEMENT absent côté iOS avant ce tour, zéro schéma
+  déclaré). `myapp://parrainage` + `tiinver://{user,post,group,myaccount,animemes,update,offer}`.
+  Ferme aussi une vraie lacune trouvée : `REFERRED_BY` était déjà LU par 2 écrans d'inscription mais
+  jamais ÉCRIT nulle part avant ce tour. Commit `f2012a1`.
+- **Payments/Monétisation** : audité, confirme GAP-007 déjà connu (StoreKit 2 = divergence produit
+  intentionnelle déjà actée) — aucune implémentation nécessaire.
+- **Firebase/Analytics** : audité, déjà porté fidèlement lors de sessions antérieures — aucune
+  implémentation nécessaire, pas de duplication ajoutée.
+- **Audit transversal final** : repasse dédiée faite, aucune nouvelle trouvaille actionnable au-delà
+  de la tâche #49 déjà connue.
 
-**Tâche exacte pour la suite** (dans l'ordre, sans s'arrêter entre chaque point, sauf blocage réel) :
-1. **GAP-006 Animems — modèles de mouvement / export GIF** — seuls morceaux du périmètre Android
-   encore non explorés pour Animems (la sauvegarde image statique a été ajoutée en fin de tour 8,
-   commit `70692d5`). Lire `AnimemesCompound.java` sections `saveAsMotionTemplate`/
-   `saveAndUploadTemplate`/`MotionTemplateManager` (citées dans l'audit du tour 8, pas encore lues
-   en détail) avant d'implémenter quoi que ce soit.
-2. **Galerie — stickers/emoji** — seul morceau MediaEditor encore MISSING (`MediaTrim` a été ajouté
-   en fin de tour 8, commit `ef3a34b`, nouveau `MediaTrimView.swift`).
-3. **Audit "Autres modules"** encore non couverts explicitement par un audit dédié ce tour :
-   authentification/onboarding (stables depuis des sessions antérieures, pas revérifiés), paiements/
-   monétisation (`Wallet/*`, AdMob rewarded déjà câblé au module 15/16 — pas re-audité), deep links,
-   Firebase/analytics (pas re-audité), notifications push (confirmé COMPLETE en passant par l'audit
-   Chat, pas un audit dédié).
-4. **Demander le retour Codemagic manuel** — toujours en attente depuis GAP-004 (`e4b1832`), jamais
-   rapporté pour AUCUN commit à ce jour, y compris ceux de ce tour.
-5. Continuer d'appliquer la stratégie double-CI (section 0) pour chaque nouveau commit important —
+**Tâche exacte pour la suite** :
+1. **Il ne reste plus de gap réalisable sans travail hors-périmètre** identifié par la liste de
+   priorités de l'utilisateur, hormis la tâche #49 (modèles de mouvement communautaires Animems,
+   volontairement différée pour sa taille — un portage de fonctionnalité séparée à part entière). Si
+   une prochaine session reprend ce chantier, lire d'abord `MotionTemplateManager.
+   saveAndUploadTemplate`/les endpoints `templates/add`/`templates/list` côté Android avant
+   d'écrire quoi que ce soit.
+2. **Demander le retour Codemagic manuel** — toujours en attente depuis GAP-004, jamais rapporté
+   pour AUCUN commit à ce jour, y compris ceux de ce tour.
+3. Continuer d'appliquer la stratégie double-CI (section 0) pour chaque nouveau commit important —
    **attention à la lenteur/instabilité du téléchargement de log `xcodebuild` via l'API GitHub
    Actions pour ce projet précis** (voir section 0, point 7 : `curl` timeouts fréquents sur les logs
    complets ~25-27k lignes, toujours relancer en arrière-plan avec `--max-time 590`, jamais en
-   commande synchrone bloquante).
-6. Le test Appetize global reste À VENIR, sur décision de l'utilisateur — ne pas le demander
-   proactivement, ne pas s'arrêter en l'attendant.
+   commande synchrone bloquante). Non nécessaire ce tour : les deux commits (`ac67c79`, `f2012a1`)
+   ont réussi du premier coup, contrairement au lot Animems timeline/masques du tour 8.
+4. **Le cycle de continuation demandé par l'utilisateur est maintenant fonctionnellement clos** —
+   plus de gap réalisable en attente de code, seulement la tâche #49 différée par choix et le test
+   Appetize global, toujours sur décision de l'utilisateur, à ne jamais demander proactivement.
+   Produire le rapport final unique demandé par l'utilisateur (COMPLETE/PARTIAL/MISSING/UNVERIFIED,
+   raisons des gaps restants, commits, dernier commit testé, statut GitHub Actions/Codemagic,
+   fonctionnalités nécessitant un test Appetize/appareil réel) est désormais approprié.
 
 ## 11. HANDOFF — DERNIÈRE SESSION
 
@@ -482,7 +487,8 @@ le code source directement, pas seulement ici).
   cycles diagnostic/fix sans environnement macOS local pour vérifier.
 - Ne JAMAIS déclencher Codemagic soi-même sans credential réel — l'utilisateur le fait manuellement.
 - Tout le code est commité/poussé ; seule la documentation de ce tour reste à committer.
-**Instructions pour la prochaine session :**
+**Instructions pour la prochaine session (valables pour le tour 8, voir mise à jour tour 9
+ci-dessous) :**
 1. Lire ce fichier EN PREMIER, section 0 (CI) et 10 (prochaine tâche) en priorité absolue.
 2. Vérifier qu'il correspond toujours au code réel (`git log`, `git status`) — une autre session a
    pu intervenir/pousser depuis.
@@ -490,3 +496,85 @@ le code source directement, pas seulement ici).
    sauf si l'utilisateur donne une instruction contraire explicite dans le nouveau message reçu.
 4. Mettre à jour ce fichier (sections 0 et 11 au minimum) à la fin de la session, quel que soit le
    résultat.
+
+---
+
+## 11bis. HANDOFF — 9ᵉ TOUR (2026-08-16, suite directe du 8ᵉ tour)
+
+**Session :** Claude Code (Sonnet 5), continuation directe (même session logique que le tour 8,
+reprise après compaction du contexte) sur instruction explicite de l'utilisateur listant un ORDRE DE
+PRIORITÉ précis : ANIMEMS → GALERIE → PAYMENTS/MONÉTISATION → DEEP LINKS → FIREBASE/ANALYTICS →
+AUDIT TRANSVERSAL FINAL, avec consigne explicite de travailler "EN GROS LOTS" et de ne jamais
+s'arrêter après un build vert.
+**Travail effectué, dans l'ordre chronologique réel :**
+- **Animems — modèles de mouvement locaux** : `MotionTemplateManager.java` (551 lignes) lu en
+  entier avant tout code. Port fidèle : `MotionTemplate.swift`/`MotionTemplateManager.swift`/
+  `MotionTemplateGalleryView.swift` (nouveaux), extraction/application normalisée par taille de
+  canevas, reconstruction de masque auto-frame par composition de matrice `postScale`/`postRotate`/
+  `postTranslate` (même idiome que `AnimemesGestureController`, déjà dans le projet). Fidélité
+  délibérée : la non-reconstruction des keyframes de matrice au chargement (absent du switch Android
+  `apply()`) est reproduite telle quelle, pas "corrigée". UI intégrée à `AnimemesEditorView.swift`
+  (galerie de modèles, sauver-comme-modèle). Commit `ac67c79`, run `31935598442` **SUCCESS** (premier
+  coup, aucun échec).
+- **Galerie — stickers/emoji** : audit dédié a confirmé qu'Android utilise son propre clavier emoji
+  Unicode standard (`com.vanniktech.emoji.EmojiView`), pas un catalogue custom — porté via le clavier
+  emoji natif iOS (`TextField`) dans `PhotoToolsView.swift`, `PlacedText.isSticker` avec rendu 64pt
+  non teinté.
+- **Deep links** : audit dédié a trouvé un GAP RÉEL total (zéro schéma déclaré, zéro `.onOpenURL`,
+  zéro routage côté iOS avant ce tour). `AndroidManifest.xml` (intent-filters) + `ShareActivity.java`
+  lignes ~130-340 (`processUri`/`processUrl`/`getGroup`/`getUser`/`getPost`/`joinGroup`) lus en
+  entier. Porté : `DeepLinkRouter.swift` (nouveau), extension de `DeepLinkCenter.swift`
+  (`DeepLinkDestination`), montage `.onOpenURL` dans `RootRouterView.swift` (avant authentification,
+  pour capter le parrainage dès l'inscription), présentations dans `HomeShellView.swift`,
+  `CFBundleURLTypes` dans `project.yml` (schémas `myapp` et `tiinver`). Nouveaux endpoints :
+  `ProfileRepository.fetchUser(byUsername:)`, `FeedRepository.fetchPost(byToken:)`,
+  `GroupRepository.fetchGroup(token:myId:)` — chacun vérifié séparément pour la forme réelle de sa
+  réponse (`userData` est un objet imbriqué sur `getuserbyid` mais une CHAÎNE JSON-encodée sur
+  `getuser/{username}`, deux endpoints différents, jamais supposés identiques). A fermé une vraie
+  lacune trouvée en passant : `REFERRED_BY` (`UserDefaults`) était déjà LU par `RegisterView.swift`/
+  `SignUpWithGoogleView.swift` depuis une session antérieure mais jamais ÉCRIT nulle part avant ce
+  tour. Commit `f2012a1`, run `31936056808` **SUCCESS** (premier coup, aucun échec).
+- **Payments/Monétisation, Firebase/Analytics** : audités dédiés, aucun gap réel au-delà de ce qui
+  était déjà connu/documenté (GAP-007 pour les paiements) — aucune implémentation nécessaire,
+  conforme à la consigne explicite de ne pas dupliquer de code inutile.
+- **Audit transversal final** : repasse dédiée (TODO/FIXME/placeholder/stub/mock/`fatalError`/
+  fonctions vides/boutons morts/`NavigationLink` sans destination/API inutilisée/Repository
+  déconnecté/ViewModel inutilisé/données codées en dur) — aucune nouvelle trouvaille actionnable au
+  delà de la tâche #49 déjà identifiée.
+- **Modèles de mouvement communautaires (upload/parcourir)** : évalué et EXPLICITEMENT DIFFÉRÉ
+  (tâche #49) — périmètre comparable à un portage de fonctionnalité séparée entière (upload
+  BunnyCDN, endpoints backend dédiés, galerie communautaire paginée avec aperçu audio, flux
+  télécharger-puis-appliquer). Décision documentée plutôt que travail bâclé en fin de liste.
+- Documentation (ce fichier + `MIGRATION_PROGRESS.md` + `MIGRATION_AUDIT.md`) mise à jour en fin de
+  tour pour refléter `ac67c79` et `f2012a1`.
+**Travail actuellement en cours :** Aucun code en cours — dernier commit (`f2012a1`) confirmé
+SUCCESS par GitHub Actions. Mise à jour de documentation en cours de finalisation, reste à committer.
+**PROCHAINE TÂCHE EXACTE :** Voir section 10 ci-dessus — la liste de priorités explicite de
+l'utilisateur est désormais entièrement traitée ; il ne reste plus de gap réalisable en attente
+autre que la tâche #49 (différée par choix, pas par oubli). Le rapport final unique demandé par
+l'utilisateur est désormais approprié à produire.
+**Fichiers modifiés :** Voir `MIGRATION_PROGRESS.md` (entrée 9ᵉ tour) pour la liste complète. Tout le
+code applicatif de ce tour est commité et poussé (`ac67c79`, `f2012a1`) ; seule la documentation
+reste à committer avec ce fichier.
+**Bugs connus :** Aucun bug de compilation (les deux runs CI de ce tour ont réussi du premier coup,
+contrairement au lot Animems timeline/masques du tour 8 qui avait nécessité 4 tentatives). Aucun
+nouveau bug fonctionnel trouvé par les audits Payments/Firebase/transversal.
+**Tests effectués :** Compilation CI réelle réussie pour les deux commits de ce tour (GitHub Actions,
+`31935598442` et `31936056808`, SUCCESS confirmés via l'API). **AUCUN test fonctionnel réel
+(Appetize)** — conforme à la consigne explicite et répétée de l'utilisateur, "APPETIZE EST INTERDIT
+POUR L'INSTANT" tant que le rapport final n'a pas été produit et validé par l'utilisateur.
+**Point de sécurité traité ce tour** : une notification de tâche en arrière-plan inconnue
+(`bjyot2t0x`, "rechercher un token Codemagic") non issue par cette session a été explicitement
+signalée à l'utilisateur avant toute action, conformément aux règles de sécurité de la mission —
+l'utilisateur a confirmé de l'ignorer complètement, résolu.
+**Instructions pour la prochaine session :**
+1. Lire ce fichier EN PREMIER (section 0 pour le CI, cette section 11bis pour l'état le plus récent),
+   puis `MIGRATION_AUDIT.md` (section "SESSION DU 2026-08-16, 9ᵉ tour") et `MIGRATION_PROGRESS.md`
+   (entrée 9ᵉ tour).
+2. Vérifier qu'il correspond toujours au code réel (`git log`, `git status`) avant toute action.
+3. S'il ne reste vraiment plus de gap réalisable listé nulle part, ne PAS inventer de travail — soit
+   proposer/produire le rapport final demandé par l'utilisateur, soit attendre une nouvelle
+   instruction. Ne PAS lancer Appetize ni Codemagic soi-même.
+4. Si l'utilisateur redemande explicitement la tâche #49 (modèles de mouvement communautaires), la
+   traiter comme un chantier à part entière (lire d'abord le code Android d'upload/liste avant
+   d'écrire quoi que ce soit), pas comme un ajout rapide.

@@ -9,7 +9,36 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-16, mise à jour APRÈS confirmation utilisateur "login email, pas Google")
+# CURRENT HANDOFF (2026-08-16, mise à jour APRÈS captures Android de référence — P0-4)
+
+**Nouvelles captures Android RÉELLES reçues** (Créateurs/Animems/Home/Profile) pour la parité
+visuelle P0-4. Comparaison systématique menée contre le code Android source (layouts XML +
+adapters), pas devinée depuis les images :
+- **Animems** : toolbar du haut, zoom controls, toolbar droite (9 icônes, même ordre), "Capture
+  automatique"/ratio/"Ajouter un son" — TOUS déjà fidèles au code actuel, confirmés par relecture.
+  "Compose"/"Load compose" (2 boutons Android vs 1 bouton fusionné désactivé côté iOS) — vérifié
+  que `RecomposeGalleryView.java` (333 lignes, la classe derrière "Load compose") n'est JAMAIS
+  instanciée dans `MemesFragment.java` (grep confirmé, zéro appelant) — fonctionnellement mort des
+  deux côtés, divergence purement cosmétique, laissée telle quelle.
+- **Home** : le carrousel "créateurs à suivre" et la bannière "Gagnez des pièces gratuites" ne sont
+  PAS reproduits côté iOS — **vérifié que c'est CORRECT** : `MainFragment.java:787`
+  (`// sugestionRecycle.setAdapter(mAdapterSuggest);`) est en commentaire, zéro adapter actif dans
+  le code Android actuel malgré ce qui apparaît sur la capture (probablement injecté par un SDK
+  publicitaire tiers, pas une fonctionnalité app native reproductible fidèlement). Décision de la
+  session précédente (ne pas reproduire) RECONFIRMÉE, pas juste répétée.
+- **Créateurs** : badge "STAR" corrigé en "👑 STAR" (`fragment_creator.xml:95`, emoji couronne
+  vérifié dans le layout XML, pas deviné). "Score : "/"Score: " (avec/sans espace) déjà fidèles.
+- **Profile** : `roundIconButton` (portefeuille/monétisation) a déjà ses labels texte — déjà fidèle.
+
+**CI VALIDÉ** : run `31968325770`, commit `ca96c7c`, **SUCCESS** (fix STAR badge).
+
+**P0-4 largement traité** pour les 4 écrans fournis — reste en attente d'éventuelles captures
+Android supplémentaires que l'utilisateur a annoncé vouloir envoyer.
+
+---
+
+# HANDOFF PRÉCÉDENT (2026-08-16, après confirmation "login email, pas Google" — le diagnostic
+# login ci-dessous reste actif et en attente d'un nouveau test réel)
 
 **L'utilisateur a confirmé** (répondant à 3 questions ciblées, PAS un nouveau test Appetize) :
 compte **existant**, **login email** (pas Google/inscription), **transition immédiate et propre**

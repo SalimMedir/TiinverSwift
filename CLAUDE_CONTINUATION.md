@@ -9,7 +9,46 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-16, mise à jour par la session BUILD-FIRST/TEST-GLOBAL — priorise ceci)
+# CURRENT HANDOFF (2026-08-16, mise à jour APRÈS captures Appetize réelles — priorise ceci)
+
+**NOUVELLE PREUVE REÇUE CE TOUR** : l'utilisateur a fourni 6 captures d'écran d'un VRAI test
+Appetize (pas des hypothèses). Panneaux de diagnostic (ajoutés au tour précédent) VISIBLES dessus :
+- Écran Feed : `SESSION: myId=nil token=nil authenticated=false` / `FEED REQUEST: aborted — myId
+  nil or non-numeric`.
+- Écran Profile : `SESSION: userId(param, figé à la construction)="" myId(relu maintenant)=nil
+  authenticated=false` / `PROFILE REQUEST: aborted — UserSession.shared.myId is nil`.
+- Écran Créateurs : "Impossible de charger le classement" (générique, `try?` dans
+  `CreatorOfWeekViewModel.load()`).
+- Écran Chat : "Aucune conversation" (état vide légitime en apparence, FAB de création de groupe
+  bien visible — P0-6 confirmé visuellement présent).
+- 2 captures Animems : HUD `selectedId=nil·calques=0` (canevas vide, avant ajout média) puis
+  `selectedId=<uuid>·calques=1` + `DRAG at (...) → calque #0 déplacé` (SÉLECTION ET DRAG reçus sur
+  le TOUT PREMIER contact avec un calque neuf — transform encore identité, ne contredit PAS le bug
+  de resélection déjà trouvé/corrigé, qui ne se manifeste qu'APRÈS une première transformation).
+
+**CAUSE RACINE DE LA SESSION VIDE (myId=nil/apiKey=nil PARTOUT) — TROUVÉE ET CORRIGÉE** :
+`AuthEndpoints.parseRegisterResponse` avalait silencieusement tout échec de `decodeUser(meta)` via
+`try? decodeUser(meta) ?? User()` — si le décodage du "user" imbriqué échoue, le code continuait
+avec un `User()` VIDE (id/apiKey nil) MAIS `etat` restait quand même renseigné avec le message de
+SUCCÈS du backend ("User created successfully"). `SignUpWithGoogleView.handle(_:)` ne regarde QUE
+`user.etat`, jamais si le décodage a réellement réussi — il sauvegardait donc cette session VIDE et
+naviguait vers Home. Corrigé : propage maintenant l'échec comme une vraie erreur (`throw`).
+**Bug adjacent trouvé en même temps** : `LoginView`/`RegisterView`/`SignUpWithGoogleView`
+n'affichaient JAMAIS `viewModel.errorMessage` (le canal d'erreur réseau/décodage de
+`AuthViewModel.run`'s `catch`) — seulement leur `errorText` local, alimenté UNIQUEMENT par
+`handle(_:)`, qui ne s'exécute jamais si l'appel réseau lève une exception. Toute erreur
+réseau/décodage pendant l'authentification était donc invisible. Corrigé dans les 3 vues.
+**Honnêteté** : ce bug est spécifique au chemin "S'inscrire avec Google" (`registerWithProvider`).
+Le chemin login/register-email a été revérifié et est structurellement sain (décodage `throw`-ant
+correctement propagé, jamais avalé). Si l'utilisateur confirme avoir utilisé login/email plutôt que
+Google pour ce test, cette cause précise n'explique pas TOUT et il faudra creuser plus — signalé
+honnêtement plutôt que de survendre la correction.
+
+**CI VALIDÉ pour ce lot** : run `31963720961`, commit `6d4aa50`, **SUCCESS**.
+
+---
+
+# HANDOFF PRÉCÉDENT (2026-08-16, session BUILD-FIRST/TEST-GLOBAL — toujours valide, voir ci-dessus pour la suite)
 
 **RÈGLE ABSOLUE TOUJOURS EN VIGUEUR** : ne jamais déclarer HOME/FEED, PROFILE ou ANIMEMS "COMPLETE"/
 "FUNCTIONALLY VALIDATED" sur la seule base d'un build vert. MAIS — changement important ce tour —

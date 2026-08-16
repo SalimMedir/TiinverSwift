@@ -297,6 +297,25 @@ extension CallCoordinator: CallKitManagerDelegate {
         let rtcSession = RTCAudioSession.sharedInstance()
         rtcSession.audioSessionDidActivate(audioSession)
         rtcSession.isAudioEnabled = true
+
+        // Port de `webrtc.setMode(AudioManager.MODE_IN_COMMUNICATION)` (RTConnection2.java:689-701)
+        // — trouvé manquant par l'audit WebRTC complet du 2026-08-16 (HIGH PRIORITY) : aucune
+        // catégorie/mode n'était réglé nulle part dans la pile d'appel, laissant le routage audio
+        // WebRTC non garanti sur un vrai appareil malgré une compilation/exécution logique
+        // correctes. Réglage ICI et SEULEMENT ici (pas avant `didActivate` — voir avertissement de
+        // tête de fichier `CallKitManager.swift` : CallKit ne délègue la session audio à l'app qu'à
+        // partir de ce rappel, toute configuration antérieure échoue silencieusement).
+        rtcSession.lockForConfiguration()
+        let config = RTCAudioSessionConfiguration.webRTC()
+        config.category = AVAudioSession.Category.playAndRecord.rawValue
+        config.categoryOptions = [.allowBluetooth, .allowBluetoothA2DP, .duckOthers]
+        config.mode = AVAudioSession.Mode.voiceChat.rawValue
+        do {
+            try rtcSession.setConfiguration(config, active: true)
+        } catch {
+            print("❌ RTCAudioSession configuration failed:", error)
+        }
+        rtcSession.unlockForConfiguration()
     }
 
     func callKitManager(_ manager: CallKitManager, didDeactivate audioSession: AVAudioSession) {

@@ -9,7 +9,9 @@ struct SearchView: View {
     @State private var results = SearchResults()
     @State private var recent = RecentSearchStore.all()
     @State private var isLoading = false
+    @State private var errorText: String?
     @State private var searchTask: Task<Void, Never>?
+    @State private var detailPost: FeedActivity?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,8 +40,17 @@ struct SearchView: View {
                     if !results.users.isEmpty {
                         Section("Comptes") { // R.string.user
                             ForEach(results.users) { user in
-                                NavigationLink { ProfileView(userId: String(user.id), isCurrentUser: false) } label: {
-                                    userRow(user)
+                                HStack {
+                                    NavigationLink { ProfileView(userId: String(user.id), isCurrentUser: false) } label: {
+                                        userRow(user)
+                                    }
+                                    Spacer()
+                                    // Port de `UniversalSearchAdapter.java:225-247` (bouton "Suivre"
+                                    // inline sur la ligne résultat) — manquant côté iOS avant ce
+                                    // correctif. `.buttonStyle(.borderless)` évite que le tap sur ce
+                                    // bouton déclenche aussi la navigation du `NavigationLink` voisin
+                                    // (comportement standard `List`/`NavigationLink` imbriqués).
+                                    followButton(user)
                                 }
                             }
                         }
@@ -47,16 +58,32 @@ struct SearchView: View {
                     if !results.hashtags.isEmpty {
                         Section("Hashtags") {
                             ForEach(results.hashtags) { tag in
-                                Label("#\(tag.tag)", systemImage: "number")
+                                NavigationLink { HashtagFeedView(tag: tag.tag) } label: {
+                                    Label("#\(tag.tag)", systemImage: "number")
+                                }
                             }
                         }
                     }
                     if !results.posts.isEmpty {
                         Section("Publications") { // R.string equivalent non identifié
-                            ForEach(results.posts) { post in postRow(post) }
+                            ForEach(results.posts) { post in
+                                postRow(post).contentShape(Rectangle()).onTapGesture { detailPost = post.asFeedActivity }
+                            }
                         }
                     }
                     if isLoading { ProgressView().frame(maxWidth: .infinity) }
+                    // Port de `showEmpty("Erreur de chargement")`/`showEmpty("Aucun résultat pour …")`
+                    // (`RechercheTiinver.java:452-455,567`) — les deux états manquaient côté iOS
+                    // (échec réseau et absence de résultat rendus indistinguables d'une recherche
+                    // jamais lancée, `try?` avalant l'erreur dans `SearchRepository`).
+                    if !isLoading, query.count >= 2 {
+                        if let errorText {
+                            Text(errorText).foregroundStyle(.red).frame(maxWidth: .infinity)
+                        } else if results.users.isEmpty, results.hashtags.isEmpty, results.posts.isEmpty {
+                            Text("Aucun résultat pour \u{201C}\(query)\u{201D}")
+                                .foregroundStyle(.secondary).frame(maxWidth: .infinity)
+                        }
+                    }
                 }
             }
             .listStyle(.plain)
@@ -73,6 +100,9 @@ struct SearchView: View {
                     runSearch(full: true)
                 }
             }
+        }
+        .fullScreenCover(item: $detailPost) { post in
+            FeedDetailPagerView(posts: [post], startIndex: 0, onClose: { detailPost = nil })
         }
     }
 
@@ -92,6 +122,32 @@ struct SearchView: View {
         }
     }
 
+    private func followButton(_ user: SearchUserResult) -> some View {
+        Button {
+            Task { await toggleFollow(user) }
+        } label: {
+            Text(user.isFollowed == true ? "Abonné" : "Suivre")
+                .font(.caption.bold())
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(user.isFollowed == true ? Color(.secondarySystemBackground) : Color.accentColor)
+                .foregroundStyle(user.isFollowed == true ? Color.primary : Color.white)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.borderless)
+        .disabled(user.isFollowed == true)
+    }
+
+    /// Port de `UniversalSearchAdapter`'s follow click handler — `ProfileRepository.follow` ne
+    /// gère QUE le sens "suivre" (pas de bascule "ne plus suivre" depuis cette liste, fidèle à
+    /// `ProfileViewModel.follow()` déjà porté — même absence côté profil, voir audit Profile).
+    private func toggleFollow(_ user: SearchUserResult) async {
+        guard user.isFollowed != true, let myId = UserSession.shared.myId else { return }
+        if let index = results.users.firstIndex(where: { $0.id == user.id }) {
+            results.users[index].isFollowed = true
+        }
+        try? await ProfileRepository().follow(userId: String(user.id), followerId: myId)
+    }
+
     private func postRow(_ post: SearchPostResult) -> some View {
         HStack {
             if let thumb = post.thumbnailURL {
@@ -106,7 +162,13 @@ struct SearchView: View {
     }
 
     private func suggest(_ text: String) async {
-        results = (try? await SearchRepository.shared.suggest(query: text)) ?? SearchResults()
+        do {
+            results = try await SearchRepository.shared.suggest(query: text)
+            errorText = nil
+        } catch {
+            results = SearchResults()
+            errorText = "Erreur de chargement."
+        }
     }
 
     private func runSearch(full: Bool) {
@@ -114,7 +176,13 @@ struct SearchView: View {
         Task {
             isLoading = true
             defer { isLoading = false }
-            results = (try? await SearchRepository.shared.search(query: query, tab: tab)) ?? SearchResults()
+            do {
+                results = try await SearchRepository.shared.search(query: query, tab: tab)
+                errorText = nil
+            } catch {
+                results = SearchResults()
+                errorText = "Erreur de chargement."
+            }
             RecentSearchStore.save(query)
             recent = RecentSearchStore.all()
         }

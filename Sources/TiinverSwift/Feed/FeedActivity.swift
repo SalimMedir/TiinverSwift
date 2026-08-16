@@ -4,7 +4,7 @@ import Foundation
 /// `feedtimeline/{userId}/{limit}/{offset}` (voir `Activity/repository/ActivityRepository.java`,
 /// champ `"activities"`). Noms de champs Gson vérifiés dans le fichier source (correspondance
 /// directe nom de champ Java ↔ clé JSON, pas d'annotation `@SerializedName`) plutôt que devinés.
-struct FeedActivity: Codable {
+struct FeedActivity: Codable, Identifiable {
     var id: Int
     var actor: String?
     var token: String?

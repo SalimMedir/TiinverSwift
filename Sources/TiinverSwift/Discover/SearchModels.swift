@@ -59,6 +59,23 @@ struct SearchPostResult: Codable, Identifiable, Hashable {
         guard let cdn_thumbnail_url, !cdn_thumbnail_url.isEmpty else { return nil }
         return URL(string: cdn_thumbnail_url)
     }
+
+    /// Port de `UniversalSearchAdapter.java:298-306` (tap sur un résultat "publication" → écran
+    /// plein écran) — convertit vers `FeedActivity` pour réutiliser `FeedDetailPagerView`
+    /// (`FeedView.swift`) tel quel plutôt que construire un second visualiseur plein écran.
+    /// `actor` : `Int` ici vs `String?` sur `FeedActivity` (divergence documentée dans
+    /// `SearchPostResult`), converti simplement en chaîne.
+    var asFeedActivity: FeedActivity {
+        FeedActivity(
+            id: id, actor: String(actor), token: token, verified: nil, verb: verb,
+            lastname: nil, firstname: firstname, object: object, likes: likes, views: views,
+            isLiked: isLiked == true ? "true" : "false", stamp: stamp, comment: comment, share: nil,
+            object_url: object_url, message: message, userId: actor, profile: profile, location: nil,
+            certified: isCertified == 1 ? "true" : "false", followers: nil, following: nil,
+            username: username, cdn_content_id: cdn_content_id, cdn_content_url: cdn_content_url,
+            cdn_thumbnail_url: cdn_thumbnail_url
+        )
+    }
 }
 
 /// Port de `parseAndDisplay` — enveloppe complète `{error, results: {users, hashtags, posts}}`.

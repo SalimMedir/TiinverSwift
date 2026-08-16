@@ -185,7 +185,7 @@ struct FeedView: View {
 /// Port de `ActivityAdapter.ViewHolder`/`les_pub_affiche2.xml` — cellule de grille : vignette
 /// (photo ou 1ʳᵉ image vidéo), nom d'utilisateur, compteurs like/commentaire en surimpression bas-
 /// gauche (`nikname`/`ShowJaimeNum`/`commentQte`, mêmes champs que `onBindView`/`video`/`photo`).
-private struct FeedGridCell: View {
+struct FeedGridCell: View {
     let post: FeedActivity
 
     var body: some View {
@@ -231,7 +231,7 @@ private struct FeedGridCell: View {
 /// `TabView` en style `.page` est nativement horizontal ; la rotation (page tournée -90°, conteneur
 /// tourné +90°) est le contournement standard pour obtenir un défilement vertical plein écran sur
 /// iOS 16 sans dépendance tierce.
-private struct FeedDetailPagerView: View {
+struct FeedDetailPagerView: View {
     let posts: [FeedActivity]
     let startIndex: Int
     let onLoadMore: () -> Void
@@ -239,7 +239,7 @@ private struct FeedDetailPagerView: View {
 
     @State private var currentIndex: Int
 
-    init(posts: [FeedActivity], startIndex: Int, onLoadMore: @escaping () -> Void, onClose: @escaping () -> Void) {
+    init(posts: [FeedActivity], startIndex: Int, onLoadMore: @escaping () -> Void = {}, onClose: @escaping () -> Void) {
         self.posts = posts
         self.startIndex = startIndex
         self.onLoadMore = onLoadMore

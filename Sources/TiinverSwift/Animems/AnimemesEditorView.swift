@@ -2,13 +2,13 @@ import SwiftUI
 
 /// Assemble un écran d'éditeur RÉEL autour du moteur Animems déjà porté (`AnimationComposer`/
 /// `AnimationObjectData`/`LayerRenderer`/`ShapeFactory`/`AnimemesExporter`, lus en entier le
-/// 2026-08-15) — port MINIMAL mais FONCTIONNEL de `AnimemesCompound.java`/`compound_animemes_
-/// layout.xml`, PAS une réécriture du moteur. Barre du haut minimale (`close_animemes`/
-/// `save_animemes2`), rangée d'ajout d'objet (`ic_add`/`ic_text`/`btn_shape`, PAS `ic_sticker` —
-/// nécessiterait le catalogue d'émojis/stickers, hors périmètre de cette passe), `undo`, canevas
-/// avec déplacement/rotation/échelle réels au doigt (2026-08-16, `AnimemesGestureController` —
-/// masques/keyframes/timeline détaillée PAS reproduits dans cette passe, voir `MIGRATION_AUDIT.md`
-/// pour le périmètre exact laissé de côté).
+/// 2026-08-15) — port de `AnimemesCompound.java`/`compound_animemes_layout.xml`, PAS une réécriture
+/// du moteur. Barre du haut (`close_animemes`/`save_animemes2`), rangée d'ajout d'objet (`ic_add`/
+/// `ic_text`/`btn_shape`, PAS `ic_sticker` — nécessiterait le catalogue d'émojis/stickers, hors
+/// périmètre de cette passe), `undo`, canevas avec déplacement/rotation/échelle réels au doigt
+/// (2026-08-16, `AnimemesGestureController`), **timeline/keyframes/lecture câblés le 2026-08-16**
+/// (`TimelineView`/`AnimationEngine`, moteur déjà porté, seul le câblage manquait — voir audit dans
+/// `MIGRATION_AUDIT.md`). Masques/stickers PAS reproduits dans cette passe.
 struct AnimemesEditorView: View {
     var onClose: () -> Void
 
@@ -20,11 +20,17 @@ struct AnimemesEditorView: View {
     @State private var lastMagnification: CGFloat = 1.0
     @State private var isPinching = false
     @State private var exportedURL: URL?
+    @State private var showDurationSlider = false
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 canvas
+                playbackBar
+                TimelineView(state: state)
+                if showDurationSlider, let selectedId = state.selectedId, let obj = state.layers.first(where: { $0.id == selectedId }) {
+                    durationSlider(for: obj)
+                }
                 toolbar
             }
             .background(Color.black)
@@ -75,17 +81,27 @@ struct AnimemesEditorView: View {
         }
     }
 
+    /// Port de `MemesView2.onDraw` — rendu conscient du playhead (`LayerRenderer.drawObjectFrame`,
+    /// 2026-08-16), remplace l'ancien rendu toujours-dernière-transform (`drawLastTransform`,
+    /// équivalent à un playhead figé sur la dernière frame). `drawObjectFrame` interroge les pistes
+    /// de keyframes EN DIRECT (voir note `AnimemesEditorState.preparePlayback`) — `localTransformIndex`
+    /// n'est qu'un REPLI pour les calques sans keyframe matrice (transform unique posée par geste).
     private var canvas: some View {
         GeometryReader { geo in
             Canvas { context, size in
                 context.withCGContext { cgContext in
-                    for obj in state.layers {
+                    let frame = state.timeline.playheadFrame
+                    let ns = state.timeline.frameToTimestampNs(frame)
+                    for (index, obj) in state.layers.enumerated() {
                         guard obj.visible else { continue }
                         switch obj.objectType {
                         case .bitmap, .shapeRect, .shapeCircle, .shapeLine:
-                            LayerRenderer.drawLastTransform(
-                                obj, in: cgContext, currentNs: 0, isSliderPreview: true,
-                                bitmapCache: state.bitmapCache, viewSize: size
+                            let localIndex = state.localTransformIndex(forLayer: index, frame: frame)
+                            let tfm = localIndex.flatMap { obj.transforms.indices.contains($0) ? obj.transforms[$0] : nil }
+                                ?? obj.transforms.last ?? Transform()
+                            LayerRenderer.drawObjectFrame(
+                                obj, transform: tfm, frameIndex: localIndex ?? 0, in: cgContext,
+                                currentNs: ns, viewSize: size
                             )
                         case .text:
                             LayerRenderer.drawText(obj, in: cgContext, textRect: state.textRect, viewSize: size)
@@ -99,13 +115,71 @@ struct AnimemesEditorView: View {
             }
             .background(Color(white: 0.08))
             .gesture(combinedGesture)
-            .onAppear { canvasSize = geo.size }
-            .onChange(of: geo.size) { newSize in canvasSize = newSize }
+            .onAppear { canvasSize = geo.size; state.preparePlayback(canvasSize: geo.size) }
+            .onChange(of: geo.size) { newSize in canvasSize = newSize; state.preparePlayback(canvasSize: newSize) }
+            .onChange(of: state.version) { _ in state.preparePlayback(canvasSize: canvasSize) }
             // `version` force un redraw explicite après mutation des calques (le moteur Animems
             // est composé de classes de référence, pas de `@Published` internes — voir
             // `AnimemesEditorState`).
             .id(state.version)
         }
+        .frame(height: 320)
+    }
+
+    /// Port de la barre de lecture (`AnimemesCompound.java:2007-2019` — bouton play/pause unique) +
+    /// bouton ◆ (`captureTransformKeyframe`, voir `AnimemesEditorState.recordKeyframe`) + accès à la
+    /// durée du calque sélectionné.
+    private var playbackBar: some View {
+        HStack(spacing: 20) {
+            Button {
+                state.togglePlayback(canvasSize: canvasSize)
+            } label: {
+                Image(systemName: state.isPlaying ? "pause.fill" : "play.fill")
+            }
+            .disabled(state.layers.isEmpty)
+
+            Text(String(format: "%.1fs", Double(state.timeline.playheadFrame) / Double(max(1, state.engine.frameRate))))
+                .font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.7))
+
+            Spacer()
+
+            // Port du bouton ◆ — enregistre un keyframe matrice pour le calque sélectionné à la
+            // position actuelle du playhead (modèle "marqueur explicite", voir audit).
+            Button { state.recordKeyframe() } label: {
+                Image(systemName: "diamond.fill")
+            }
+            .disabled(state.selectedId == nil)
+
+            Button { showDurationSlider.toggle() } label: {
+                Image(systemName: "timer")
+            }
+            .disabled(state.selectedId == nil)
+        }
+        .font(.title3)
+        .foregroundStyle(.white)
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.black)
+    }
+
+    /// Port du glissement de poignée de durée (raccourci équivalent, voir
+    /// `AnimemesEditorState.setSelectedDuration`) — durée en secondes du calque sélectionné.
+    private func durationSlider(for obj: AnimationObjectData) -> some View {
+        let totalFrames = max(1, state.engine.totalFramesMinus1 + 1)
+        let currentSeconds = Double(obj.endFrame - obj.startFrame + 1) / Double(max(1, state.engine.frameRate))
+        return HStack {
+            Text("Durée").font(.caption).foregroundStyle(.white.opacity(0.7))
+            Slider(
+                value: Binding(
+                    get: { currentSeconds },
+                    set: { state.setSelectedDuration(seconds: $0) }
+                ),
+                in: 0.5...Double(max(1, totalFrames * 2)) / Double(max(1, state.engine.frameRate))
+            )
+            Text(String(format: "%.1fs", currentSeconds)).font(.caption.monospacedDigit()).foregroundStyle(.white)
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 6)
     }
 
     /// Port RÉEL de `MemesView2.onTouchEvent` (translation/rotation/échelle simultanées, 2026-08-16)

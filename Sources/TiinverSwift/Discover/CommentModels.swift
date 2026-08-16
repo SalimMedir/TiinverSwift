@@ -33,4 +33,31 @@ struct Comment: Codable, Identifiable, Equatable {
     var hasGift: Bool?
 
     var belongsToCurrentUser: Bool { actor.map { String($0) == UserSession.shared.myId } ?? false }
+
+    /// Décodage tolérant (2026-08-16) — même cause racine que `FeedActivity`/`User`
+    /// (`LenientDecoding.swift`) : `id` non-optionnel ferait échouer le décodage de CHAQUE
+    /// commentaire dès qu'UN SEUL arrive avec un champ numérique en chaîne.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeLenientInt(forKey: .id)
+        username = try container.decodeIfPresent(String.self, forKey: .username)
+        firstname = try container.decodeIfPresent(String.self, forKey: .firstname)
+        lastname = try container.decodeIfPresent(String.self, forKey: .lastname)
+        profile = try container.decodeIfPresent(String.self, forKey: .profile)
+        certified = try container.decodeIfPresent(String.self, forKey: .certified)
+        activityId = container.decodeLenientIntIfPresent(forKey: .activityId)
+        actor = container.decodeLenientIntIfPresent(forKey: .actor)
+        repliesCount = container.decodeLenientIntIfPresent(forKey: .repliesCount)
+        parentId = try container.decodeIfPresent(String.self, forKey: .parentId)
+        object_url = try container.decodeIfPresent(String.self, forKey: .object_url)
+        commentText = try container.decodeIfPresent(String.self, forKey: .commentText)
+        action = try container.decodeIfPresent(String.self, forKey: .action)
+        status = container.decodeLenientIntIfPresent(forKey: .status)
+        isReply = container.decodeLenientBoolIfPresent(forKey: .isReply)
+        stamp = try container.decodeIfPresent(String.self, forKey: .stamp)
+        giftEmoji = try container.decodeIfPresent(String.self, forKey: .giftEmoji)
+        giftName = try container.decodeIfPresent(String.self, forKey: .giftName)
+        giftPrice = container.decodeLenientIntIfPresent(forKey: .giftPrice)
+        hasGift = container.decodeLenientBoolIfPresent(forKey: .hasGift)
+    }
 }

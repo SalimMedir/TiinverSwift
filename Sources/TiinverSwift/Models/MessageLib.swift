@@ -114,6 +114,68 @@ struct MessageLib: Codable, Equatable {
 
     init() {}
 
+    /// Décodage tolérant (2026-08-16) : `ChatRepository` décode `[MessageLib]` via
+    /// `try? JSONDecoder().decode(...)` — si UN SEUL message du tableau a un champ numérique
+    /// envoyé en chaîne par le backend (même cause racine que `FeedActivity`/`User`, voir
+    /// `LenientDecoding.swift`), le décodage de TOUT le tableau échoue et `try?` retombe
+    /// silencieusement sur `nil` → historique de conversation vide, symptôme identique à un
+    /// Feed vide. `= 0`/`= false` sur ces propriétés ne sert PAS de repli au décodage (piège Swift
+    /// documenté — seul l'initialiseur memberwise en bénéficie, jamais `Decodable` synthétisé).
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        messageId = try container.decodeIfPresent(String.self, forKey: .messageId)
+        conversationId = try container.decodeIfPresent(String.self, forKey: .conversationId)
+        type = try container.decodeIfPresent(String.self, forKey: .type)
+        to = try container.decodeIfPresent(String.self, forKey: .to)
+        from = try container.decodeIfPresent(String.self, forKey: .from)
+        sender = try container.decodeIfPresent(String.self, forKey: .sender)
+        receiver = try container.decodeIfPresent(String.self, forKey: .receiver)
+        nikname = try container.decodeIfPresent(String.self, forKey: .nikname)
+        username = try container.decodeIfPresent(String.self, forKey: .username)
+        message = try container.decodeIfPresent(String.self, forKey: .message)
+        giftId = try container.decodeIfPresent(String.self, forKey: .giftId)
+        verb = try container.decodeIfPresent(String.self, forKey: .verb)
+        object = try container.decodeIfPresent(String.self, forKey: .object)
+        objectUrl = try container.decodeIfPresent(String.self, forKey: .objectUrl)
+        thumbnailUri = try container.decodeIfPresent(String.self, forKey: .thumbnailUri)
+        thumbnailUrl = try container.decodeIfPresent(String.self, forKey: .thumbnailUrl)
+        localFileDirection = try container.decodeIfPresent(String.self, forKey: .localFileDirection)
+        profile = try container.decodeIfPresent(String.self, forKey: .profile)
+        status = container.decodeLenientIntIfPresent(forKey: .status) ?? 0
+        vu = try container.decodeIfPresent(String.self, forKey: .vu)
+        regroupage = try container.decodeIfPresent(String.self, forKey: .regroupage)
+        stamp = try container.decodeIfPresent(String.self, forKey: .stamp)
+        deliverTime = try container.decodeIfPresent(String.self, forKey: .deliverTime)
+        resource = try container.decodeIfPresent(String.self, forKey: .resource)
+        versionCode = container.decodeLenientIntIfPresent(forKey: .versionCode) ?? 0
+        isQuoted = container.decodeLenientBoolIfPresent(forKey: .isQuoted) ?? false
+        quoteMessage = try container.decodeIfPresent(String.self, forKey: .quoteMessage)
+        quoteTitle = try container.decodeIfPresent(String.self, forKey: .quoteTitle)
+        quoteObject = try container.decodeIfPresent(String.self, forKey: .quoteObject)
+        quoteDuration = try container.decodeIfPresent(String.self, forKey: .quoteDuration)
+        width = try container.decodeIfPresent(String.self, forKey: .width)
+        height = try container.decodeIfPresent(String.self, forKey: .height)
+        duration = try container.decodeIfPresent(String.self, forKey: .duration)
+        imageByte = try container.decodeIfPresent([UInt8].self, forKey: .imageByte)
+        groupType = try container.decodeIfPresent(String.self, forKey: .groupType)
+        groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
+        groupName = try container.decodeIfPresent(String.self, forKey: .groupName)
+        token = try container.decodeIfPresent(String.self, forKey: .token)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        mgGraphic = try container.decodeIfPresent(String.self, forKey: .mgGraphic)
+        senderFcmId = try container.decodeIfPresent(String.self, forKey: .senderFcmId)
+        receiverFcmId = try container.decodeIfPresent(String.self, forKey: .receiverFcmId)
+        creationDate = try container.decodeIfPresent(String.self, forKey: .creationDate)
+        isFileUploaded = container.decodeLenientIntIfPresent(forKey: .isFileUploaded) ?? 0
+        isFileDownloaded = container.decodeLenientIntIfPresent(forKey: .isFileDownloaded) ?? 0
+        userId = container.decodeLenientStringIfPresent(forKey: .userId)
+        share = try container.decodeIfPresent(String.self, forKey: .share)
+        origin = try container.decodeIfPresent(String.self, forKey: .origin)
+        lucrative = container.decodeLenientIntIfPresent(forKey: .lucrative) ?? 0
+        price = container.decodeLenientIntIfPresent(forKey: .price) ?? 0
+        belongsToCurrentUser = container.decodeLenientBoolIfPresent(forKey: .belongsToCurrentUser) ?? false
+    }
+
     /// Port des constantes `MessageLib.CHAT`/`CHATGROUP`/`CALL`/`CALLGROUP`.
     enum WireType {
         static let chat = "chat"

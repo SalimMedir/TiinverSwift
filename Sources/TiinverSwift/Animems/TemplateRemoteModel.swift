@@ -44,12 +44,17 @@ extension TemplateRemoteModel: Decodable {
         cdnUrl = (try? c.decode(String.self, forKey: .cdnUrl)) ?? ""
         audioCdnUrl = (try? c.decodeIfPresent(String.self, forKey: .audioCdnUrl)) ?? nil
         audioFileName = (try? c.decodeIfPresent(String.self, forKey: .audioFileName)) ?? nil
-        hasAudio = (try? c.decode(Bool.self, forKey: .hasAudio)) ?? false
-        trackCount = (try? c.decode(Int.self, forKey: .trackCount)) ?? 1
-        totalFrames = (try? c.decode(Int.self, forKey: .totalFrames)) ?? 0
-        canvasWidth = (try? c.decode(Int.self, forKey: .canvasWidth)) ?? 1080
-        canvasHeight = (try? c.decode(Int.self, forKey: .canvasHeight)) ?? 1920
-        createdAt = (try? c.decode(Int64.self, forKey: .createdAt)) ?? 0
+        // 2026-08-16 : passage aux helpers `decodeLenient*` (voir `LenientDecoding.swift`) — le
+        // `(try? c.decode(Int.self, ...)) ?? défaut` d'origine ne tentait QUE le type `Int` natif ;
+        // un champ envoyé en chaîne par le backend (même divergence que `FeedActivity`/`User`)
+        // retombait silencieusement sur le DÉFAUT au lieu de la vraie valeur (pas un écran vide ici
+        // grâce au repli déjà en place, mais une donnée affichée FAUSSE plutôt que réelle).
+        hasAudio = c.decodeLenientBoolIfPresent(forKey: .hasAudio) ?? false
+        trackCount = c.decodeLenientIntIfPresent(forKey: .trackCount) ?? 1
+        totalFrames = c.decodeLenientIntIfPresent(forKey: .totalFrames) ?? 0
+        canvasWidth = c.decodeLenientIntIfPresent(forKey: .canvasWidth) ?? 1080
+        canvasHeight = c.decodeLenientIntIfPresent(forKey: .canvasHeight) ?? 1920
+        createdAt = Int64(c.decodeLenientIntIfPresent(forKey: .createdAt) ?? 0)
         creatorName = (try? c.decodeIfPresent(String.self, forKey: .creatorName)) ?? nil
     }
 }

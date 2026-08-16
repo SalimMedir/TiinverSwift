@@ -18,6 +18,28 @@ struct SearchUserResult: Codable, Identifiable, Hashable {
     var location: String?
     var biography: String?
     var category: String?
+
+    /// Décodage tolérant (2026-08-16) : MÊME cause racine que `FeedActivity.id`/`User.id` (voir
+    /// `LenientDecoding.swift`) — `id` non-optionnel décodé strictement faisait échouer TOUT le
+    /// tableau `users` d'un coup dès qu'UN SEUL résultat arrivait avec un `id` en chaîne
+    /// (`SearchResults.init(from:)` utilise `decodeIfPresent([SearchUserResult].self, ...)`, qui
+    /// échoue sur le tableau ENTIER si un seul élément lève une erreur — pas un `compactMap`
+    /// tolérant par élément), rattaché au P0 historique "résultats de recherche invisibles".
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeLenientInt(forKey: .id)
+        username = try container.decodeIfPresent(String.self, forKey: .username)
+        firstname = try container.decodeIfPresent(String.self, forKey: .firstname)
+        lastname = try container.decodeIfPresent(String.self, forKey: .lastname)
+        profile = try container.decodeIfPresent(String.self, forKey: .profile)
+        certified = container.decodeLenientBoolIfPresent(forKey: .certified)
+        isFollowed = container.decodeLenientBoolIfPresent(forKey: .isFollowed)
+        followers = try container.decodeIfPresent(String.self, forKey: .followers)
+        following = try container.decodeIfPresent(String.self, forKey: .following)
+        location = try container.decodeIfPresent(String.self, forKey: .location)
+        biography = try container.decodeIfPresent(String.self, forKey: .biography)
+        category = try container.decodeIfPresent(String.self, forKey: .category)
+    }
 }
 
 /// Port du bloc "HASHTAGS" de `parseAndDisplay` (`tag`/`post_count`/`total_views`).
@@ -54,6 +76,32 @@ struct SearchPostResult: Codable, Identifiable, Hashable {
     var firstname: String?
     var profile: String?
     var isCertified: Int?
+
+    /// Décodage tolérant (2026-08-16) — même cause racine que `SearchUserResult` ci-dessus,
+    /// `id`/`actor` sont ici les DEUX champs non-optionnels de cette struct.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeLenientInt(forKey: .id)
+        token = try container.decodeIfPresent(String.self, forKey: .token)
+        verb = try container.decodeIfPresent(String.self, forKey: .verb)
+        object = try container.decodeIfPresent(String.self, forKey: .object)
+        object_url = try container.decodeIfPresent(String.self, forKey: .object_url)
+        message = try container.decodeIfPresent(String.self, forKey: .message)
+        likes = container.decodeLenientIntIfPresent(forKey: .likes)
+        comment = container.decodeLenientIntIfPresent(forKey: .comment)
+        views = container.decodeLenientIntIfPresent(forKey: .views)
+        stamp = try container.decodeIfPresent(String.self, forKey: .stamp)
+        cdn_thumbnail_url = try container.decodeIfPresent(String.self, forKey: .cdn_thumbnail_url)
+        cdn_content_url = try container.decodeIfPresent(String.self, forKey: .cdn_content_url)
+        cdn_provider = try container.decodeIfPresent(String.self, forKey: .cdn_provider)
+        cdn_content_id = try container.decodeIfPresent(String.self, forKey: .cdn_content_id)
+        isLiked = container.decodeLenientBoolIfPresent(forKey: .isLiked)
+        actor = try container.decodeLenientInt(forKey: .actor)
+        username = try container.decodeIfPresent(String.self, forKey: .username)
+        firstname = try container.decodeIfPresent(String.self, forKey: .firstname)
+        profile = try container.decodeIfPresent(String.self, forKey: .profile)
+        isCertified = container.decodeLenientIntIfPresent(forKey: .isCertified)
+    }
 
     var thumbnailURL: URL? {
         guard let cdn_thumbnail_url, !cdn_thumbnail_url.isEmpty else { return nil }

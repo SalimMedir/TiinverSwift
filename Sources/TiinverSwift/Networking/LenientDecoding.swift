@@ -50,4 +50,16 @@ extension KeyedDecodingContainer {
         }
         return nil
     }
+
+    /// `String?` optionnel, tolérant l'INVERSE : un champ typé `String` côté modèle (souvent un
+    /// identifiant, ex. `CreatorModel.userId`) mais que le backend envoie parfois comme NOMBRE JSON
+    /// natif plutôt que comme chaîne — même classe de divergence que ci-dessus, dans l'autre sens.
+    func decodeLenientStringIfPresent(forKey key: Key) -> String? {
+        if let value = try? decode(String.self, forKey: key) { return value }
+        if let value = try? decode(Int.self, forKey: key) { return String(value) }
+        if let value = try? decode(Double.self, forKey: key) {
+            return value == value.rounded() ? String(Int(value)) : String(value)
+        }
+        return nil
+    }
 }

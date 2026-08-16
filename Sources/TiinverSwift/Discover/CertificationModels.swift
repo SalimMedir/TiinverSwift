@@ -13,6 +13,27 @@ struct CertificationStatus: Codable, Equatable {
     var rejected_at: String?
     var reason: String?
     var expire_at: String?
+
+    /// Décodage tolérant (2026-08-16) — même cause racine que `FeedActivity`/`User` (voir
+    /// `LenientDecoding.swift`) : bien que `pk_id`/`userId`/`is_certified` soient `Optional`, un
+    /// décodage `Int` STRICT échoue quand même sur une valeur PRÉSENTE mais mal typée (chaîne) —
+    /// `Optional` protège seulement contre une clé ABSENTE, pas contre un mauvais type — ce qui
+    /// ferait échouer le décodage de CET OBJET ENTIER (pas un tableau, un seul objet), masquant
+    /// tout le statut de certification.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        pk_id = container.decodeLenientIntIfPresent(forKey: .pk_id)
+        userId = container.decodeLenientIntIfPresent(forKey: .userId)
+        is_certified = container.decodeLenientIntIfPresent(forKey: .is_certified)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        level = try container.decodeIfPresent(String.self, forKey: .level)
+        doc_url = try container.decodeIfPresent(String.self, forKey: .doc_url)
+        requested_at = try container.decodeIfPresent(String.self, forKey: .requested_at)
+        approved_at = try container.decodeIfPresent(String.self, forKey: .approved_at)
+        rejected_at = try container.decodeIfPresent(String.self, forKey: .rejected_at)
+        reason = try container.decodeIfPresent(String.self, forKey: .reason)
+        expire_at = try container.decodeIfPresent(String.self, forKey: .expire_at)
+    }
 }
 
 /// Port de `ui/certification/CertificationRepository.java` (366 lignes, lu en entier le

@@ -9,17 +9,43 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-16, mise à jour par la session de DIAGNOSTIC RUNTIME P0 — priorise ceci)
+# CURRENT HANDOFF (2026-08-16, mise à jour par la session BUILD-FIRST/TEST-GLOBAL — priorise ceci)
 
-**RÈGLE ABSOLUE EN VIGUEUR DEPUIS LE MESSAGE "STOP" DE L'UTILISATEUR (2026-08-16, après un VRAI test
-Appetize sur build Codemagic)** : le test réel a contredit le rapport "COMPLETE" précédent.
-**NE PLUS JAMAIS déclarer HOME/FEED, PROFILE ou ANIMEMS "COMPLETE" ou "FUNCTIONALLY VALIDATED" sur
-la seule base d'un audit statique ou d'un build vert.** Statuts imposés tant qu'un nouveau test réel
-ne les contredit pas :
-- **HOME/FEED = CI VALIDATED, FUNCTIONALLY FAILED** (feed vide sur Appetize)
-- **PROFILE = CI VALIDATED, FUNCTIONALLY FAILED** (écran vide sur Appetize)
-- **ANIMEMS CANVAS/TRANSFORMATIONS = CI VALIDATED, FUNCTIONALLY FAILED** (gestes/transformations ne
-  fonctionnent pas comme la référence Android sur Appetize)
+**RÈGLE ABSOLUE TOUJOURS EN VIGUEUR** : ne jamais déclarer HOME/FEED, PROFILE ou ANIMEMS "COMPLETE"/
+"FUNCTIONALLY VALIDATED" sur la seule base d'un build vert. MAIS — changement important ce tour —
+**3 VRAIES CAUSES RACINES ont été trouvées et corrigées par comparaison de code Android↔Swift
+champ par champ** (pas des hypothèses, pas des diagnostics ajoutés en attendant un test) :
+
+1. **HOME/FEED + PROFILE vides — CAUSE RACINE CONFIRMÉE** : `JSONValue.int(_:)` (chemin JSON
+   dynamique) tolère déjà un `Int` OU une chaîne numérique — preuve déjà présente dans le code que
+   ce backend n'envoie PAS toujours ses champs numériques en JSON natif. Mais `FeedActivity`/`User`
+   (chemin `Codable` strict) n'avaient JAMAIS cette tolérance : `FeedActivity.id` (SEUL champ non
+   optionnel) fait échouer le décodage de CHAQUE activité dès que le serveur l'envoie en chaîne —
+   Gson (Android) tolère ça nativement, `JSONDecoder` (Swift) non. Corrigé : nouveau
+   `Networking/LenientDecoding.swift` + `init(from:)` manuel sur `FeedActivity`/`User` utilisant ces
+   helpers pour tous les champs `Int`/`Bool`/`Double`. Cascade automatiquement à `AuthEndpoints`
+   (login) et partout où `User` est décodé.
+2. **ANIMEMS canvas/transformations — CAUSE RACINE CONFIRMÉE** : `AnimemesEditorState.selectObject
+   (at:)` comparait le point de toucher (repère ÉCRAN) directement à `obj.bound` (repère LOCAL du
+   calque, confirmé dans `LayerRenderer` : `context.concatenate(matrix)` PUIS bound assigné en
+   coordonnées locales — exactement comme Android `canvas.concat(matrix)` puis `bound.set(offsetX,
+   offsetY,...)`, JAMAIS pré-multiplié). Dès qu'un calque est déplacé/pivoté/redimensionné UNE FOIS,
+   son repère local ne coïncide plus avec l'écran → la resélection échoue silencieusement → tout
+   geste suivant semble "ne pas marcher". Le test correct (inversion de matrice) existait déjà dans
+   `AnimemesGestureController.isPoint(_:insideObjectAt:)` mais n'était jamais appelé par
+   `selectObject`. Corrigé : `selectObject` délègue maintenant à `gestureController.isPoint`.
+3. **Bug de build auto-infligé, trouvé et corrigé dans la FOULÉE** : ajouter `init(from decoder:)` à
+   `FeedActivity`/`User` supprime silencieusement l'initialiseur memberwise AUTOMATIQUE de Swift —
+   cassait `SearchModels.swift`'s `asFeedActivity` et tous les `User()` (Login/Register/
+   SignUpWithGoogle/NewPassword/AuthEndpoints). Restauré via des `init(...)` explicites.
+
+**CI VALIDÉ pour ce lot** : run `31953585109`, commit `02142a2`, **SUCCESS**. **Codemagic PAS ENCORE
+déclenché pour ce commit** — demander à l'utilisateur de le lancer manuellement sur `02142a2` pour la
+double validation demandée. **AUCUN test Appetize fait** (interdit explicitement par l'utilisateur
+tant que le cycle n'est pas terminé) — donc toujours : HOME/FEED, PROFILE, ANIMEMS restent
+officiellement "CI VALIDATED, FUNCTIONALLY UNCONFIRMED" jusqu'au test global final, MAIS la
+confiance dans ces 3 corrections est HAUTE (causes prouvées par lecture de code, pas des
+suppositions) contrairement aux tours précédents qui n'avaient QUE de l'instrumentation.
 
 **AVANT DE CONTINUER : une AUTRE session Claude Code a TOUJOURS des modifications NON commitées EN
 COURS** (confirmé par `git status` au moment d'écrire ceci) sur : `Advertising/AdMobManager.swift`,
@@ -32,20 +58,27 @@ toucher un de ces fichiers** — ne pas les modifier en parallèle, ne pas les c
 l'autre session (même arbre de travail, pas des branches isolées — une collision ici n'est pas un
 conflit git résolvable).
 
+**RISQUE APPARENTÉ NON CORRIGÉ, documenté pour la suite** : `Messagerie/GroupModels.swift`
+(actuellement non commité par l'autre session) a `GroupMember.userId: Int` et `.groupId: Int`,
+NON-optionnels, décodés via `JSONDecoder().decode` strict — EXACT même classe de risque que
+`FeedActivity.id` ci-dessus (le backend pourrait aussi envoyer ces champs en chaîne pour les
+membres de groupe). PAS corrigé cette session pour éviter d'éditer un fichier en cours de
+modification par l'autre session — à traiter dès que ce fichier est stable/commité, avec le même
+motif `LenientDecoding.swift` déjà en place (`decodeLenientInt`/`decodeLenientIntIfPresent`).
+
 ## Last confirmed state
 - Branch: `main`
-- HEAD commit: `328f7ad` ("fix(profile): heal stale-captured userId; add on-screen runtime
-  diagnostics for Feed/Profile/Animems P0s") — poussé sur `origin/main`, confirmé par `git fetch`.
-  Précédé de `f634788` ("feat(animems,chat,profile,ui): rebuild toolbars/screens to match real
-  Android screenshots").
-- Dernier run GitHub Actions confirmé : `31951566226` sur commit `328f7ad`, **SUCCESS** (compilation
-  seule — voir règle absolue ci-dessus, ceci ne valide PAS le fonctionnement réel).
+- HEAD commit: `02142a2` ("fix(build): restore memberwise initializers lost by adding custom
+  init(from:)") — poussé sur `origin/main`, confirmé par `git fetch`. Précédé de `2fd1149`
+  (les 3 vraies corrections ci-dessus), `c63a3c8` (doc), `328f7ad`/`f634788` (tours précédents).
+- Dernier run GitHub Actions confirmé : `31953585109` sur commit `02142a2`, **SUCCESS**.
+  Run intermédiaire `31952957757` sur `2fd1149` avait ÉCHOUÉ (le bug d'initialiseur memberwise
+  ci-dessus, trouvé via le log réel puis corrigé dans la foulée — pas deviné).
 - Dernier build Codemagic confirmé fonctionnellement testé (par l'utilisateur, PAS par cette
-  session) : celui qui a produit le rapport "STOP" ci-dessus — build sur un commit antérieur à
-  `f634788`/`328f7ad` (probablement `60818bc` ou `b485f34`), compile avec succès, MAIS Home/Feed,
-  Profile, Animems FONCTIONNELLEMENT ÉCHOUÉS. **Le travail de ce tour (`f634788`+`328f7ad`) n'a PAS
-  encore été testé sur Appetize** — voir section 11quinquies pour le détail complet de ce qui a été
-  ajouté pour permettre au PROCHAIN test de révéler la cause racine exacte.
+  session) : celui qui a produit le rapport "STOP" — build sur un commit antérieur à `f634788`
+  (probablement `60818bc` ou `b485f34`), compile avec succès, MAIS Home/Feed, Profile, Animems
+  FONCTIONNELLEMENT ÉCHOUÉS À CE MOMENT-LÀ. **Aucun nouveau test Appetize/Codemagic depuis** — le
+  travail de CE tour (les 3 vraies corrections) n'a jamais été vu tourner réellement.
 
 ## Actually completed cette session (audit + 2 corrections, PAS commité)
 1. **Audit indépendant des 7 priorités utilisateur (Chat/Animems/Appels/Shareboard/Wallet/

@@ -204,17 +204,29 @@ struct HomeShellView: View {
         let sessionId = UserSession.shared.myId
         let hasKey = UserSession.shared.apiKey != nil
         let ok = sessionId != nil && hasKey
-        return HStack(spacing: 6) {
-            Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-            Text("userId(objet reçu)=\(user.id.map(String.init) ?? "nil") · userId(session persistée)=\(sessionId ?? "nil") · apiKey=\(hasKey ? "présent" : "nil")")
-                .font(.system(size: 10, design: .monospaced))
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
+        // 2026-08-17 : ajoute directement ici le JSON brut capturé par `AuthEndpoints.
+        // captureRawUserJSONIfIdMissing` (désormais câblé sur LES DEUX chemins, login ET
+        // inscription) — plus besoin de naviguer jusqu'à Feed/Profile pour le voir.
+        let rawJSON = UserSession.shared.debugLastLoginRawUserJSON
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                Text("userId(objet reçu)=\(user.id.map(String.init) ?? "nil") · userId(session persistée)=\(sessionId ?? "nil") · apiKey=\(hasKey ? "présent" : "nil")")
+                    .font(.system(size: 10, design: .monospaced))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+            }
+            if let rawJSON {
+                Text("JSON user reçu (id manquant) : \(rawJSON)")
+                    .font(.system(size: 9, design: .monospaced))
+                    .lineLimit(4)
+                    .minimumScaleFactor(0.6)
+            }
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(ok ? Color.green : Color.red)
     }
 

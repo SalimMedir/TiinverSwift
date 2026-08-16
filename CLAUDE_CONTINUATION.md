@@ -13,10 +13,9 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 **BUILD CI VALIDÉ :** Oui (GitHub Actions uniquement — voir stratégie double-CI ci-dessous,
 Codemagic en attente d'un déclenchement manuel par l'utilisateur, jamais rapporté à ce jour)
-**Build :** GitHub Actions run `31923679579` (workflow `ios-build.yml`)
-**Commit :** `e4b347a` ("fix(build): eliminate AnyGesture type dance, merge mask/object gestures
-into one" — dernier d'une série de 4 tentatives pour faire compiler le lot Animems
-timeline/keyframes/masques, voir section 0quater et `MIGRATION_PROGRESS.md` pour le détail complet)
+**Build :** GitHub Actions run `31924498415` (workflow `ios-build.yml`)
+**Commit :** `ef3a34b` ("feat(galerie): implement video trim (MediaTrim) before publish" — dernier
+commit de la session, voir points 9-10 ci-dessous)
 **Date :** 2026-08-16
 **Résultat :** `** BUILD SUCCEEDED **`. Confirmé via l'API GitHub Actions (`status: completed,
 conclusion: success`), pas seulement supposé.
@@ -44,8 +43,12 @@ conclusion: success`), pas seulement supposé.
    complet ~25-27k lignes, dépendances Firebase compilées avant la cible propre, `curl --max-time
    590` en arrière-plan nécessaire, jamais en une seule commande synchrone).
 8. `31923679579` (commit `e4b347a`, gestes fusionnés en UN SEUL jeu avec bascule `isMaskEditMode` à
-   l'exécution plutôt que deux graphes de gestes différemment typés) — **SUCCESS.** Dernier run
-   connu.
+   l'exécution plutôt que deux graphes de gestes différemment typés) — **SUCCESS.** Lot Animems
+   timeline/keyframes/masques enfin confirmé compilé après 4 tentatives.
+9. `31924209161` (commit `70692d5`, sauvegarde image statique pour composition Animems non animée)
+   — **SUCCESS.**
+10. `31924498415` (commit `ef3a34b`, recadrage temporel vidéo `MediaTrim` câblé dans la Galerie) —
+    **SUCCESS.** Dernier run connu.
 
 ### CI VALIDATION — format demandé par l'utilisateur pour chaque commit important
 
@@ -351,11 +354,13 @@ explicitement le contraire.
 pour le détail complet par fonctionnalité. Résumé :
 - **Animems (GAP-006)** : timeline/keyframes/lecture/masques maintenant CÂBLÉS (le moteur était déjà
   porté, seul l'écran ne les utilisait pas) — PARTIAL→COMPLETE pour ces sous-fonctionnalités
-  précises. Restent MISSING, non explorés cette passe : sauvegarde image statique non-animée, modèles
-  de mouvement (local/upload communautaire), export GIF.
+  précises, PLUS la sauvegarde image statique (`hasAnimation`/`exportStaticImage`, commit `70692d5`)
+  ajoutée en fin de tour. Restent MISSING, non explorés cette passe : modèles de mouvement
+  (local/upload communautaire), export GIF.
 - **Galerie** : PARTIAL→PARTIAL (amélioré) — recadrage forme-libre/suppression fond/retournement/
-  peinture/texte/miniature-durée vidéo réelle/légende limitée/partage AJOUTÉS. Restent MISSING :
-  stickers, `MediaTrim` (recadrage temporel vidéo).
+  peinture/texte/miniature-durée vidéo réelle/légende limitée/partage AJOUTÉS, PLUS `MediaTrim`
+  (recadrage temporel vidéo, `MediaTrimView.swift`, commit `ef3a34b`) ajouté en fin de tour. Reste
+  MISSING : stickers/emoji.
 - **Chat (GAP-003)** : COMPLETE quasi-intégral confirmé par 2 audits dédiés + lecture directe des
   éléments "non vérifiés" signalés (`ChatBubbleRow`, état vide roster — tous deux déjà présents).
   Téléchargement pièces jointes reçues implémenté. Seul "gap" (`pushNotification`) est un faux
@@ -371,12 +376,13 @@ pour le détail complet par fonctionnalité. Résumé :
   (catégorie en lecture seule).
 
 **Tâche exacte pour la suite** (dans l'ordre, sans s'arrêter entre chaque point, sauf blocage réel) :
-1. **GAP-006 Animems — modèles de mouvement / sauvegarde image statique / export GIF** — seuls
-   morceaux du périmètre Android encore non explorés pour Animems. Lire `AnimemesCompound.java`
-   sections `showSaveDialog`/`saveAsMotionTemplate`/`saveAndUploadTemplate`/`MotionTemplateManager`
-   (citées dans l'audit du tour 8, pas encore lues en détail) avant d'implémenter quoi que ce soit.
-2. **Galerie — stickers/emoji et `MediaTrim`** (recadrage temporel vidéo) — les deux seuls morceaux
-   MediaEditor encore MISSING. `MediaTrim.java`/`MediaTrim2.java` jamais lus.
+1. **GAP-006 Animems — modèles de mouvement / export GIF** — seuls morceaux du périmètre Android
+   encore non explorés pour Animems (la sauvegarde image statique a été ajoutée en fin de tour 8,
+   commit `70692d5`). Lire `AnimemesCompound.java` sections `saveAsMotionTemplate`/
+   `saveAndUploadTemplate`/`MotionTemplateManager` (citées dans l'audit du tour 8, pas encore lues
+   en détail) avant d'implémenter quoi que ce soit.
+2. **Galerie — stickers/emoji** — seul morceau MediaEditor encore MISSING (`MediaTrim` a été ajouté
+   en fin de tour 8, commit `ef3a34b`, nouveau `MediaTrimView.swift`).
 3. **Audit "Autres modules"** encore non couverts explicitement par un audit dédié ce tour :
    authentification/onboarding (stables depuis des sessions antérieures, pas revérifiés), paiements/
    monétisation (`Wallet/*`, AdMob rewarded déjà câblé au module 15/16 — pas re-audité), deep links,
@@ -429,12 +435,15 @@ Voir section 10 ci-dessus pour le détail COMPLETE/PARTIAL/MISSING par fonctionn
 - **4 tentatives de build CI pour le seul lot Animems** avant succès — voir section 0 pour le détail
   exact de chaque échec/diagnostic. Aucune ne pouvait être anticipée sans environnement macOS ; toutes
   diagnostiquées à partir du VRAI log `xcodebuild`, jamais devinées.
-- Documentation (ce fichier + `MIGRATION_PROGRESS.md`) mise à jour en fin de tour.
-**Travail actuellement en cours :** Aucun code en cours — dernier commit (`e4b347a`) confirmé
+- Après le lot principal (build vert), deux compléments ajoutés et validés séparément : sauvegarde
+  image statique Animems (`hasAnimation`/`exportStaticImage`, commit `70692d5`, SUCCESS) et
+  recadrage temporel vidéo Galerie (`MediaTrimView.swift` nouveau, commit `ef3a34b`, SUCCESS).
+- Documentation (ce fichier + `MIGRATION_PROGRESS.md` + `MIGRATION_AUDIT.md`) mise à jour en fin de
+  tour avec les deux compléments inclus.
+**Travail actuellement en cours :** Aucun code en cours — dernier commit (`ef3a34b`) confirmé
 SUCCESS. Mise à jour de documentation en cours de finalisation, reste à committer avec ce fichier.
-**PROCHAINE TÂCHE EXACTE :** Voir section 10 ci-dessus — modèles de mouvement/sauvegarde statique/
-export GIF (Animems), stickers/`MediaTrim` (Galerie), audit des modules non encore couverts
-(paiements/deep links/Firebase-analytics).
+**PROCHAINE TÂCHE EXACTE :** Voir section 10 ci-dessus — modèles de mouvement/export GIF (Animems),
+stickers (Galerie), audit des modules non encore couverts (paiements/deep links/Firebase-analytics).
 **Fichiers modifiés :** Voir `MIGRATION_PROGRESS.md` (entrée 8ᵉ tour) pour la liste complète —
 volume trop important pour être dupliqué ici sans risque de désynchronisation. Tout le code
 applicatif de ce tour est commité et poussé (8 commits, `d19e372`…`e4b347a`) ; seule la documentation

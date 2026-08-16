@@ -1136,6 +1136,10 @@ SUCCESS). Détail chronologique complet dans `MIGRATION_PROGRESS.md`.
 | Feed — native ads dans le pager plein écran | COMPLETE | Câblées dans `FeedDetailPagerView` (PAS la grille — vérifié contre `ViewPagerAdapter.java`/`NativeAdsManager.java`) |
 | Profile | COMPLETE (quasi-intégral) | Audit dédié ; seul écart déjà documenté (édition catégorie lecture seule) |
 | Search — navigation hashtag/publication, bouton Suivre, états erreur/vide | COMPLETE | Nouveau `HashtagFeedView.swift`, mapping `SearchPostResult → FeedActivity` |
+| Animems — sauvegarde image statique (composition non animée) | COMPLETE | `hasAnimation`/`exportStaticImage` (`AnimemesCompound.isAnimation()`/`createImage` portés), commit `70692d5` |
+| Galerie — recadrage temporel vidéo (`MediaTrim`) | COMPLETE | Nouveau `MediaTrimView.swift` (filmstrip + poignées + `AVAssetExportSession(.presetPassthrough)`), commit `ef3a34b` |
+| Animems — modèles de mouvement (local/upload communautaire), export GIF | MISSING | Non explorés — `MotionTemplateManager`/`saveAsMotionTemplate`/`saveAndUploadTemplate`, sous-système entier non lu |
+| Galerie — stickers/emoji | MISSING | Catalogue d'émojis/stickers non porté (`EmojiView` côté Android) |
 | Paiements/monétisation, deep links, Firebase/analytics | UNVERIFIED | Pas d'audit dédié ce tour |
 
 ### Build CI — 4 tentatives sur le seul lot Animems timeline/masques
@@ -1153,3 +1157,16 @@ commit `e4b347a`.**
 
 Toujours en attente d'un déclenchement manuel par l'utilisateur — aucun résultat Codemagic
 rapporté à ce jour pour AUCUN commit, y compris ceux de ce tour.
+
+### Compléments après le lot principal (même tour, 2026-08-16)
+
+Deux éléments identifiés comme MISSING dans le tableau ci-dessus ont été traités avant la fin du
+tour, chacun validé séparément par GitHub Actions (SUCCESS confirmé pour les deux, runs
+`31924209161`/`31924498415`) :
+- **Animems — sauvegarde image statique** (commit `70692d5`) — désormais COMPLETE.
+- **Galerie — `MediaTrim`** (commit `ef3a34b`) — désormais COMPLETE.
+
+**Restent MISSING, non traités ce tour** (portée non explorée, pas des oublis silencieux) :
+modèles de mouvement Animems (local + upload communautaire), export GIF Animems, stickers/emoji
+Galerie, et l'audit dédié de paiements/monétisation/deep links/Firebase-analytics (UNVERIFIED,
+pas re-vérifiés cette session).

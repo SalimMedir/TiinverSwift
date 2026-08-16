@@ -23,6 +23,7 @@ struct FeedView: View {
     @State private var detailStartIndex = 0
     @State private var pendingMedia: PublishMedia?
     @State private var showAnimems = false
+    @State private var pendingTrimURL: URL?
 
     private let columns = [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)]
 
@@ -97,10 +98,10 @@ struct FeedView: View {
                 },
                 onVideoPickedFromGallery: { url in
                     // Port de la branche vidéo de `pickMedia` → `onArticleSelected(10, bundle)` →
-                    // `MediaTrim` → `PublishFragment`. `MediaTrim` (recadrage temporel) PAS reproduit
-                    // dans cette passe — la vidéo choisie est publiée telle quelle, gap documenté.
+                    // `MediaTrim` → `PublishFragment` — recadrage temporel câblé le 2026-08-16
+                    // (`MediaTrimView.swift`, nouveau).
                     showCamera = false
-                    pendingMedia = .video(url)
+                    pendingTrimURL = url
                 },
                 onOpenAnimems: {
                     // Port de `onArticleSelected(5, ...)` côté `CameraActivity` → `MemesFragment`.
@@ -115,6 +116,18 @@ struct FeedView: View {
                 onPublished: { pendingMedia = nil; Task { await viewModel.reset() } },
                 onCancel: { pendingMedia = nil }
             )
+        }
+        .fullScreenCover(isPresented: Binding(get: { pendingTrimURL != nil }, set: { if !$0 { pendingTrimURL = nil } })) {
+            if let url = pendingTrimURL {
+                MediaTrimView(
+                    sourceURL: url,
+                    onTrimmed: { trimmedURL in
+                        pendingTrimURL = nil
+                        pendingMedia = .video(trimmedURL)
+                    },
+                    onCancel: { pendingTrimURL = nil }
+                )
+            }
         }
         .fullScreenCover(isPresented: $showAnimems) {
             AnimemesEditorView(onClose: { showAnimems = false })

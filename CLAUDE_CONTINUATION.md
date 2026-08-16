@@ -9,7 +9,27 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-16, mise à jour APRÈS retour UX Profile + nouveau test partiel)
+# CURRENT HANDOFF (2026-08-17, bandeau userId permanent ajouté sur demande explicite)
+
+**Demande directe de l'utilisateur** : "il faut afficher le userId pourqu'on puisse de savoir si
+réellement la session fonctionne" — au lieu d'un panneau de diagnostic caché dans un état d'erreur
+d'un écran précis, un bandeau ROUGE/VERT **visible en permanence sur les 3 onglets réels**
+(Accueil/Chat/Créateurs) a été ajouté à `HomeShellView.swift` (`.safeAreaInset(edge: .top)`,
+nouvelle propriété `userIdDebugBanner`). Affiche trois valeurs côte à côte en une ligne :
+`userId(objet reçu)` (ce que `User` contenait à la construction de `HomeShellView`, donc juste
+après connexion/restauration) vs `userId(session persistée)` (`UserSession.shared.myId`, ce que
+Feed/Profile lisent réellement) vs `apiKey` (présence Keychain) — permet de voir EN UN COUP D'ŒIL,
+sans naviguer nulle part, si le problème est au décodage, à la persistance, ou spécifique au
+Keychain (si `myId` est présent mais pas `apiKey`, ou l'inverse).
+
+**CI VALIDÉ** : run `31977901638`, commit `b09b2e7`, **SUCCESS**.
+
+**À retirer une fois la cause de la session vide confirmée et corrigée** — c'est un ajout
+temporaire de diagnostic, documenté comme tel dans le code.
+
+---
+
+# HANDOFF PRÉCÉDENT (2026-08-16, mise à jour APRÈS retour UX Profile + nouveau test partiel)
 
 **Nouveau test réel reçu** (horodatage 00:41/00:42, DIFFÉRENT du lot précédent 19:52/19:53 — un
 vrai nouveau test, pas les mêmes captures) : mêmes symptômes `myId=nil`/`authenticated=false` sur

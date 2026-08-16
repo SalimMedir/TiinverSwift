@@ -58,9 +58,16 @@ struct LoginView: View {
 
                 SecureField("Mot de passe", text: $password)
 
+                // Même correctif que `SignUpWithGoogleView.swift`/`RegisterView.swift`
+                // (2026-08-16, captures Appetize) : `viewModel.errorMessage` (réseau/transport)
+                // n'était jamais rendu ici — un échec de `login()` avant même la réponse du
+                // backend (donc jamais de `user.etat` à inspecter dans `handle(_:)`) restait
+                // invisible.
                 if showError {
                     Text(errorText)
                         .foregroundStyle(.red)
+                } else if let networkError = viewModel.errorMessage {
+                    Text(networkError).foregroundStyle(.red)
                 }
 
                 Button {

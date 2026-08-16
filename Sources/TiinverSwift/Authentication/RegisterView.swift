@@ -48,8 +48,15 @@ struct RegisterView: View {
                 SecureField("Mot de passe", text: $password)
                 SecureField("Confirmer le mot de passe", text: $passwordConfirm)
 
+                // Même correctif que `SignUpWithGoogleView.swift` (2026-08-16, captures Appetize) :
+                // `viewModel.errorMessage` (réseau/transport, alimenté par `AuthViewModel.run`'s
+                // `catch`) n'était jamais rendu ici, seul `errorText` local (alimenté uniquement
+                // par `handle(_:)`, jamais appelé si `register()` lève une exception au lieu de
+                // retourner un `User`) — un échec de `register()` restait invisible.
                 if let errorText {
                     Text(errorText).foregroundStyle(.red)
+                } else if let networkError = viewModel.errorMessage {
+                    Text(networkError).foregroundStyle(.red)
                 }
 
                 Button {

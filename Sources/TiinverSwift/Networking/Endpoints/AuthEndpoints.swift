@@ -47,7 +47,7 @@ enum AuthEndpoints {
         ]
         params["referredBy"] = user.referredBy ?? ""
         let json = try await APIClient.shared.postAuth(params, endpoint: "register")
-        return parseRegisterResponse(json, includesUserObject: false)
+        return try parseRegisterResponse(json, includesUserObject: false)
     }
 
     /// Équivalent de `AuthRepository.setRegisterWithGoogle(user, provider)`.
@@ -62,7 +62,7 @@ enum AuthEndpoints {
             "referredBy": user.referredBy ?? ""
         ]
         let json = try await APIClient.shared.postAuth(params, endpoint: "register")
-        return parseRegisterResponse(json, includesUserObject: true)
+        return try parseRegisterResponse(json, includesUserObject: true)
     }
 
     /// Équivalent de `AuthRepository.setPasswordForgotted(user, usingEmail)`.
@@ -96,14 +96,27 @@ enum AuthEndpoints {
         return user
     }
 
-    private static func parseRegisterResponse(_ json: JSONValue, includesUserObject: Bool) -> User {
+    /// **CAUSE RACINE RÉELLE trouvée et corrigée ici (2026-08-16, captures Appetize)** : cette
+    /// fonction avalait silencieusement tout échec de `decodeUser(meta)` via `try? ... ?? User()`
+    /// — si le décodage du "user" imbriqué échouait (avant le correctif `LenientDecoding`, un `id`
+    /// envoyé en chaîne suffisait), le code continuait comme si tout allait bien avec un `User()`
+    /// VIDE (`id`/`apiKey` nil), MAIS `etat` restait renseigné avec le message de succès du
+    /// backend ("User created successfully") — `SignUpWithGoogleView.handle(_:)` ne regarde QUE
+    /// `user.etat`, jamais si le décodage a réellement réussi, donc il sauvegardait cette session
+    /// VIDE et naviguait vers Home. Résultat observé sur Appetize : `myId=nil`/`apiKey=nil` sur
+    /// TOUS les écrans authentifiés (Home/Feed/Profile/Créateurs), sans la moindre erreur visible,
+    /// immédiatement après une inscription Google apparemment réussie. Propage maintenant l'échec
+    /// de décodage comme une vraie erreur (`AuthViewModel.run`'s `catch` existe déjà et alimente
+    /// `errorMessage` — seul le rendu de ce champ manquait côté vue, corrigé séparément dans
+    /// `SignUpWithGoogleView.swift`).
+    private static func parseRegisterResponse(_ json: JSONValue, includesUserObject: Bool) throws -> User {
         let error = (try? json.string("error")) ?? "true"
         var user = User()
         // "false", "true", et "mailExist" partagent tous la même logique côté Android :
         // extraire "message" et le recopier dans etat (voir InscriptionProcess/registerWithProvider).
         if includesUserObject, error == "false", let meta = json["user"] {
             applyBlockedUsers(from: meta)
-            user = (try? decodeUser(meta)) ?? User()
+            user = try decodeUser(meta)
         }
         user.etat = json.backendErrorMessage
         return user

@@ -25,8 +25,17 @@ struct SignUpWithGoogleView: View {
             if viewModel.isLoading {
                 ProgressView()
             }
+            // Port de `handle(_:)`'s cas d'erreur métier (etat != succès) ET, ajouté ici, des
+            // erreurs réseau/décodage remontées par `AuthViewModel.run`'s `catch` — CAUSE RACINE
+            // RÉELLE d'un écran Google Sign-Up qui ne montrait RIEN quand `registerWithProvider`
+            // levait une exception (`viewModel.errorMessage` était bien renseigné, mais cette vue
+            // ne l'affichait jamais, seul `errorText` local — alimenté uniquement par `handle(_:)`,
+            // jamais appelé puisque `.onChange(of: viewModel.user)` ne se déclenche que si `user`
+            // devient non-nil, ce qui n'arrive PAS quand `run` intercepte une erreur).
             if let errorText {
                 Text(errorText).foregroundStyle(.red)
+            } else if let networkError = viewModel.errorMessage {
+                Text(networkError).foregroundStyle(.red)
             }
 
             Button("Continuer avec Google") { // signup1

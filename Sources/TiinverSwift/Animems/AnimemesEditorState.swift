@@ -397,11 +397,25 @@ final class AnimemesEditorState: ObservableObject {
         version += 1
     }
 
-    /// Port de `save_animemes2` → `showSaveDialog()` → export réel (`AnimemesCompound.
-    /// createVideosFromBitmap`) — MP4 uniquement, pas de GIF (voir `AnimemesExporter`, aucun
-    /// exporteur GIF porté).
+    /// Port de `AnimemesCompound.isAnimation()` (`AnimationUtils.isAnimation(composer, FrameCount)`)
+    /// — vrai si au moins un calque porte une trajectoire animée. Signal Swift équivalent le plus
+    /// fiable disponible dans ce portage : présence d'une piste de keyframes non vide sur au moins
+    /// un calque (`hasKeyframes`) — Android teste aussi le nombre de `Transform` capturées par
+    /// geste en mode `automateCapture`, chemin non porté dans cette passe (voir `MIGRATION_AUDIT.md`).
+    var hasAnimation: Bool {
+        composer.layers.contains { $0.hasKeyframes }
+    }
+
+    /// Port de `save_animemes2` → `showSaveDialog()`/`saveBitmapDrawed()` — branche sur
+    /// `isAnimation()` comme l'original : export vidéo réel si au moins un calque est animé, sinon
+    /// sauvegarde d'une image statique (JPEG, qualité 70 comme `BitmapManager.fromBitmapToImage`
+    /// côté Android, `createImage`). PAS de GIF (voir `AnimemesExporter`, aucun exporteur GIF porté).
     func export(canvasSize: CGSize, completion: @escaping (URL?) -> Void) {
         guard !composer.layers.isEmpty else { return }
+        guard hasAnimation else {
+            completion(exportStaticImage(canvasSize: canvasSize))
+            return
+        }
         isExporting = true
         exportError = nil
         let exporter = AnimemesExporter(composer: composer)
@@ -421,6 +435,45 @@ final class AnimemesEditorState: ObservableObject {
                     completion(nil)
                 }
             }
+        }
+    }
+
+    /// Port de `createImage` — aplatit l'état statique actuel des calques (dernière transform de
+    /// chaque calque, pas de lecture de keyframes puisque `!hasAnimation` par construction ici) en
+    /// une seule bitmap via le même chemin de rendu que l'aperçu figé (`LayerRenderer.
+    /// drawLastTransform`), puis écrit un JPEG qualité 70 — mêmes réglages que
+    /// `BitmapManager.fromBitmapToImage(context, bitmap, 3, 70)` (le paramètre `3` Android est un
+    /// facteur d'échelle non pertinent ici, la bitmap est déjà à la résolution du canevas).
+    private func exportStaticImage(canvasSize: CGSize) -> URL? {
+        guard canvasSize.width > 0, canvasSize.height > 0 else { return nil }
+        let renderer = UIGraphicsImageRenderer(size: canvasSize)
+        let image = renderer.image { context in
+            for obj in composer.layers {
+                guard obj.visible else { continue }
+                switch obj.objectType {
+                case .bitmap, .shapeRect, .shapeCircle, .shapeLine:
+                    LayerRenderer.drawLastTransform(
+                        obj, in: context.cgContext, currentNs: 0, isSliderPreview: true,
+                        bitmapCache: bitmapCache, viewSize: canvasSize
+                    )
+                case .text:
+                    LayerRenderer.drawText(obj, in: context.cgContext, textRect: textRect, viewSize: canvasSize)
+                case .sticker:
+                    LayerRenderer.drawSticker(obj, in: context.cgContext)
+                default:
+                    break
+                }
+            }
+        }
+        guard let jpegData = image.jpegData(compressionQuality: 0.7) else { return nil }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString).appendingPathExtension("jpg")
+        do {
+            try jpegData.write(to: url)
+            return url
+        } catch {
+            exportError = "L'export a échoué."
+            return nil
         }
     }
 

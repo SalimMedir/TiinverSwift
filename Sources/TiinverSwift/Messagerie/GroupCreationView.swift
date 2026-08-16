@@ -97,15 +97,22 @@ struct GroupCreationView: View {
     /// puis navigation vers la conversation créée (port de la construction `RosterModel` +
     /// `Intent(ActivityMsg.class)`).
     private func create() async {
-        guard let myId = UserSession.shared.myId else { return }
+        print("SESSION: myId=\(UserSession.shared.myId ?? "nil") authenticated=\(UserSession.shared.isLoggedIn)")
+        guard let myId = UserSession.shared.myId else {
+            errorText = "Session invalide — reconnecte-toi puis réessaie."
+            print("GROUP CREATE: aborted — UserSession.shared.myId is nil")
+            return
+        }
         isCreating = true
         errorText = nil
         defer { isCreating = false }
+        print("GROUP CREATE REQUEST: endpoint=group name=\(groupName) isPrivate=\(isPrivate) isLucrative=\(isLucrative) members=\(members.count)")
         do {
             let group = try await GroupRepository.shared.createGroup(
                 name: groupName.trimmingCharacters(in: .whitespaces),
                 isPrivate: isPrivate, isLucrative: isLucrative, price: price, creatorId: myId
             )
+            print("GROUP CREATE RESPONSE: success groupId=\(group.groupId) token=\(group.token)")
             await GroupRepository.shared.addMembers(members, toGroupId: group.groupId, inviterId: myId)
 
             let conversationId = ConversationIdGenerator.groupConversationId(currentUser: myId, remoteUser: group.groupId)
@@ -142,7 +149,8 @@ struct GroupCreationView: View {
             createdTarget = target
             showCreatedChat = true
         } catch {
-            errorText = "Impossible de créer le groupe. Réessaie."
+            print("GROUP CREATE RESPONSE: error=\(error)")
+            errorText = "Impossible de créer le groupe : \(error.localizedDescription)"
         }
     }
 }

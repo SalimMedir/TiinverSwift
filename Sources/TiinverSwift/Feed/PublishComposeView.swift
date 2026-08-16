@@ -162,8 +162,21 @@ struct PublishComposeView: View {
 
     /// Port de `MainFragment`/`FeedFragment` (réception `token="publication"`) → `publish(data)` →
     /// `ActivityService`/`HttpFileUploader` (type=0) → `POST activity/add`.
+    ///
+    /// **Bug réel trouvé et corrigé (2026-08-16, test Appetize : "je clique sur Publier mais rien
+    /// ne se passe")** : les deux `guard` de cette fonction faisaient un `return` SILENCIEUX (pas
+    /// d'erreur affichée, pas de fermeture d'écran) si `myId` était nil (session) OU si
+    /// `croppedImage` était nil — dans les deux cas, l'utilisateur voit très exactement "rien ne se
+    /// passe" en tapant Publier, sans le moindre indice de la cause. Les deux surfacent maintenant
+    /// `errorText` (déjà affiché dans le formulaire) au lieu de disparaître silencieusement, fidèle
+    /// à la consigne explicite de ne jamais laisser une erreur être invisible.
     private func publish() async {
-        guard let actorId = UserSession.shared.myId else { return }
+        print("SESSION: myId=\(UserSession.shared.myId ?? "nil") apiKey.isEmpty=\(UserSession.shared.apiKey?.isEmpty ?? true) authenticated=\(UserSession.shared.isLoggedIn)")
+        guard let actorId = UserSession.shared.myId else {
+            errorText = "Session invalide — reconnecte-toi puis réessaie."
+            print("PUBLISH REQUEST: aborted — UserSession.shared.myId is nil")
+            return
+        }
         isPublishing = true
         errorText = nil
         defer { isPublishing = false }
@@ -174,22 +187,30 @@ struct PublishComposeView: View {
         do {
             switch media {
             case .photo:
-                guard let image = croppedImage, let jpegData = image.jpegData(compressionQuality: 0.9) else { return }
+                guard let image = croppedImage, let jpegData = image.jpegData(compressionQuality: 0.9) else {
+                    errorText = "Image invalide — reviens en arrière et réessaie."
+                    print("PUBLISH REQUEST: aborted — croppedImage is nil or JPEG encoding failed")
+                    return
+                }
+                print("PUBLISH REQUEST: endpoint=activity/add actorId=\(actorId) object=photos captionLength=\(caption.count) fileBytes=\(jpegData.count)")
                 try await FeedRepository().publish(
                     actorId: actorId, object: "photos", message: caption, hashtags: hashtags,
                     fileData: jpegData, mimeType: "image/jpeg", filename: "\(unixTime).webp"
                 )
             case .video(let url):
                 let videoData = try Data(contentsOf: url)
+                print("PUBLISH REQUEST: endpoint=activity/add actorId=\(actorId) object=videos captionLength=\(caption.count) fileBytes=\(videoData.count)")
                 try await FeedRepository().publish(
                     actorId: actorId, object: "videos", message: caption, hashtags: hashtags,
                     fileData: videoData, mimeType: "video/mp4", filename: "\(unixTime).mp4"
                 )
             }
+            print("PUBLISH RESPONSE: success")
             publishedShareText = caption.isEmpty ? "Je viens de publier sur Tiinver !" : caption
             showShareSheet = true
         } catch {
-            errorText = "La publication a échoué. Réessaie."
+            print("PUBLISH RESPONSE: error=\(error)")
+            errorText = "La publication a échoué : \(error.localizedDescription)"
         }
     }
 }

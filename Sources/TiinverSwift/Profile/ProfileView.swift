@@ -105,6 +105,16 @@ struct ProfileView: View {
             .padding()
         } else if viewModel.isLoadingProfile {
             ProgressView().padding()
+        } else if let errorMessage = viewModel.errorMessage {
+            // Port du même correctif que `FeedView.emptyOrStatusState` — rend visible ce qui
+            // était auparavant un écran blanc indiscernable d'un profil vide (voir
+            // `ProfileViewModel.errorMessage`).
+            VStack(spacing: 12) {
+                Text(errorMessage).multilineTextAlignment(.center).foregroundStyle(.secondary)
+                Button("Réessayer") { Task { await viewModel.loadProfile() } }
+                    .buttonStyle(.borderedProminent)
+            }
+            .padding()
         }
     }
 

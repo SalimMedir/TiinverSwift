@@ -11,13 +11,31 @@ final class FeedRepository {
     }
 
     /// Port de `td.get("feedtimeline/" + userId + "/" + limit + "/" + offset, ...)`.
+    ///
+    /// **Log de diagnostic temporaire (2026-08-16)** — `compactMap` avalait silencieusement tout
+    /// item dont le décodage `Codable` échouait (ex. un champ non-optionnel dont le type JSON réel
+    /// diffère de ce qu'attend `FeedActivity`), produisant un tableau final PLUS PETIT que le
+    /// nombre d'éléments réellement reçus, SANS aucune erreur visible — symptôme indiscernable côté
+    /// UI d'un flux réellement vide. Rendu visible ici plutôt que supposé correct.
     func fetchTimeline(userId: Int, limit: Int, offset: Int) async throws -> [FeedActivity] {
         let json = try await APIClient.shared.get("feedtimeline/\(userId)/\(limit)/\(offset)")
         let array = try json.jsonArray("activities")
-        return array.compactMap { item -> FeedActivity? in
-            guard let data = item.rawData else { return nil }
-            return try? JSONDecoder().decode(FeedActivity.self, from: data)
+        let decoded = array.compactMap { item -> FeedActivity? in
+            guard let data = item.rawData else {
+                print("FEED RESPONSE: item.rawData nil for one activity — raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+            do {
+                return try JSONDecoder().decode(FeedActivity.self, from: data)
+            } catch {
+                print("FEED RESPONSE: decode failure for one activity — error=\(error) raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
         }
+        if decoded.count != array.count {
+            print("FEED RESPONSE: received=\(array.count) activities, only \(decoded.count) decoded successfully — \(array.count - decoded.count) silently dropped, see decode failures above")
+        }
+        return decoded
     }
 
     /// Port de `ShareActivity.getPost`/`connectToServeur` (`getactivity/{token}`, clé de réponse
@@ -97,11 +115,18 @@ final class FeedRepository {
             "hashtags": hashtags.joined(separator: ","),
             "format": "json",
         ]
-        let value = try await APIClient.shared.uploadMultipart(
-            endpoint: "activity/add", fields: params, fileFieldName: "object_url",
-            filename: filename, mimeType: mimeType, fileData: fileData
-        )
+        let value: JSONValue
+        do {
+            value = try await APIClient.shared.uploadMultipart(
+                endpoint: "activity/add", fields: params, fileFieldName: "object_url",
+                filename: filename, mimeType: mimeType, fileData: fileData
+            )
+        } catch {
+            print("FEED PUBLISH: endpoint=activity/add transport error=\(error)")
+            throw error
+        }
         guard value.isBackendSuccess else {
+            print("FEED PUBLISH: endpoint=activity/add backend error=\(value.backendErrorMessage ?? "?") raw=\(value.toDictionary() ?? [:])")
             throw JSONError.typeMismatch(value.backendErrorMessage ?? "activity/add")
         }
     }

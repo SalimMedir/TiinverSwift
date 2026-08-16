@@ -16,6 +16,13 @@ final class ProfileViewModel: ObservableObject {
     @Published var isBlocked = false
     @Published var isFollowing = false
     @Published var isUploadingPhoto = false
+    /// Port du même correctif que `FeedViewModel.errorMessage` (2026-08-13, cause racine du feed
+    /// vide sans erreur visible) — `loadProfile()` avalait silencieusement toute erreur réseau/
+    /// session via `try?`, laissant `ProfileView.header` ne RIEN afficher (ni spinner, ni erreur,
+    /// ni contenu) : indiscernable d'un profil réellement vide. Trouvé en réappliquant le même
+    /// audit "silent try? = symptôme identique au bug Feed déjà corrigé" à Profile, qui ne l'avait
+    /// jamais reçu.
+    @Published var errorMessage: String?
 
     let userId: String
     let isCurrentUser: Bool
@@ -30,10 +37,24 @@ final class ProfileViewModel: ObservableObject {
     }
 
     func loadProfile() async {
-        guard let viewerId = UserSession.shared.myId else { return }
+        print("SESSION: userId(param)=\(userId) myId=\(UserSession.shared.myId ?? "nil") apiKey.isEmpty=\(UserSession.shared.apiKey?.isEmpty ?? true) authenticated=\(UserSession.shared.isLoggedIn)")
+        guard let viewerId = UserSession.shared.myId else {
+            errorMessage = "Aucune session active — reconnexion nécessaire."
+            print("PROFILE REQUEST: aborted — UserSession.shared.myId is nil")
+            return
+        }
         isLoadingProfile = true
+        errorMessage = nil
         defer { isLoadingProfile = false }
-        profile = try? await repository.fetchProfile(userId: userId, viewerId: viewerId)
+        print("PROFILE REQUEST: endpoint=getuserbyid/\(userId)/\(viewerId) userId=\(userId) viewerId=\(viewerId)")
+        do {
+            profile = try await repository.fetchProfile(userId: userId, viewerId: viewerId)
+            print("PROFILE RESPONSE: success username=\(profile?.username ?? "nil") id=\(profile?.id.map(String.init) ?? "nil")")
+        } catch {
+            profile = nil
+            errorMessage = "Impossible de charger le profil : \(error.localizedDescription)"
+            print("PROFILE RESPONSE: error=\(error)")
+        }
         isFollowing = profile?.isFollowed ?? false
         if let username = profile?.username {
             isBlocked = UserDefaults.standard.bool(forKey: username + "_blocked") // port de `infoContract.BLOCKED` ("_blocked", vérifié)
@@ -51,15 +72,19 @@ final class ProfileViewModel: ObservableObject {
         guard !isLoadingPosts, !reachedEnd, let viewerId = UserSession.shared.myId else { return }
         isLoadingPosts = true
         defer { isLoadingPosts = false }
+        print("PROFILE POSTS REQUEST: endpoint=feedtimeline/\(userId)/\(viewerId)/\(limit)/\(offset)")
         do {
             let page = try await repository.fetchUserPosts(actor: userId, viewerId: viewerId, limit: limit, offset: offset)
+            print("PROFILE POSTS RESPONSE: count=\(page.count)")
             if page.isEmpty {
                 reachedEnd = true
             } else {
                 posts.append(contentsOf: page)
                 offset += limit
             }
-        } catch {}
+        } catch {
+            print("PROFILE POSTS RESPONSE: error=\(error)")
+        }
     }
 
     /// Port de `butSeguir.setOnClickListener` (`UserProfile.java`) — écho optimiste immédiat

@@ -42,22 +42,32 @@ final class FeedViewModel: ObservableObject {
         // PART `errorMessage`/`isLoading` (2ᵉ défaut confirmé indépendamment, voir `FeedView.swift`)
         // — l'écran restait donc blanc pour TOUJOURS, sans distinction possible entre "en cours de
         // chargement", "échec réseau" et "pas de session". Rendu visible explicitement ici.
-        guard let userId = UserSession.shared.myId.flatMap(Int.init) else {
+        // Logs de diagnostic temporaires (2026-08-16, demande explicite de l'utilisateur suite au
+        // test Appetize "le Home n'affiche toujours aucun feed") — à retirer une fois la cause
+        // confirmée par un run réel. Format demandé : SESSION / FEED REQUEST / FEED RESPONSE / FEED UI.
+        print("SESSION: myId=\(UserSession.shared.myId ?? "nil") token exists=\(UserSession.shared.apiKey != nil) authenticated=\(UserSession.shared.isLoggedIn)")
+        guard let myIdString = UserSession.shared.myId, let userId = Int(myIdString) else {
             errorMessage = "Aucune session active — reconnexion nécessaire."
+            print("FEED REQUEST: aborted — myId nil or non-numeric (raw=\(UserSession.shared.myId ?? "nil"))")
             return
         }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
 
+        print("FEED REQUEST: endpoint=feedtimeline/\(userId)/\(pageSize)/\(offset) userId=\(userId) limit=\(pageSize) offset=\(offset) authHeaderPresent=\(UserSession.shared.apiKey != nil)")
         do {
             let page = try await repository.fetchTimeline(userId: userId, limit: pageSize, offset: offset)
+            print("FEED RESPONSE: success number of posts=\(page.count)")
             try? await repository.cache(page)
             let hidden = hiddenPostIDs
-            posts.append(contentsOf: page.filter { !hidden.contains($0.id) })
+            let visible = page.filter { !hidden.contains($0.id) }
+            posts.append(contentsOf: visible)
             offset += page.count
+            print("FEED UI: received posts=\(page.count) hiddenFiltered=\(page.count - visible.count) displayed total=\(posts.count)")
         } catch {
             errorMessage = error.localizedDescription
+            print("FEED RESPONSE: error=\(error)")
         }
     }
 

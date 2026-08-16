@@ -130,10 +130,20 @@ final class RosterListViewModel: ObservableObject {
     /// `RosterModel` prêt à être passé à `ChatView`, exactement comme `Roster.onItemClicked`
     /// transmet son `RosterModel` à `ActivityMsg` côté Android.
     func refresh() async {
+        // Log de diagnostic temporaire (2026-08-16) — le bouton "créer un groupe" (toolbar,
+        // `person.2.badge.plus`) est câblé indépendamment de cet état (voir `RosterListView.body`,
+        // `.toolbar` appliqué HORS du `Group` conditionnel sur `rows`/`hasLoaded`) : relu et
+        // confirmé présent et correctement branché vers `ContactPickerView` par lecture directe du
+        // code. Aucun bug statique trouvé dans ce fichier — ce log confirme au minimum que l'écran
+        // est bien atteint et que `refresh()` s'exécute, pour aider à isoler un éventuel problème
+        // d'affichage propre au runtime (non détectable par lecture de code seule).
+        print("ROSTER: refresh() started, myId=\(UserSession.shared.myId ?? "nil")")
         guard let entities = try? await repository.rosterAll() else {
             hasLoaded = true
+            print("ROSTER: rosterAll() failed or returned nil")
             return
         }
+        print("ROSTER: rosterAll() returned \(entities.count) rows")
         let currentUserId = UserSession.shared.myId ?? ""
         let currentUsername = UserSession.shared.username ?? ""
         let currentNikname = UserSession.shared.nikname ?? ""

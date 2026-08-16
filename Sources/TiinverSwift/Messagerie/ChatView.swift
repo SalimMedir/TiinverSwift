@@ -13,6 +13,7 @@ struct ChatView: View {
     @State private var showAttachmentPicker = false
     @State private var showShareboard = false
     @State private var showMessageGraphicCompose = false
+    @State private var showDeleteOptions = false
     @FocusState private var inputFocused: Bool
 
     init(target: RosterModel) {
@@ -52,6 +53,11 @@ struct ChatView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Autorise l'accès au micro dans Réglages pour passer ou recevoir des appels.")
+        }
+        .confirmationDialog("Supprimer \(viewModel.selection.count) message(s)", isPresented: $showDeleteOptions, titleVisibility: .visible) {
+            Button("Supprimer pour moi") { viewModel.deleteSelectedForMe() }
+            Button("Supprimer pour tout le monde", role: .destructive) { viewModel.deleteSelectedForEveryone() }
+            Button("Annuler", role: .cancel) {}
         }
         // Port du point d'entrée Shareboard (`R.id.shareboard`/`mListener.onArticleSelected(9,…)`,
         // pas plus identifié que celui de l'appel dans les 3080 lignes lues de
@@ -261,8 +267,15 @@ struct ChatView: View {
                 Text("\(viewModel.selection.count)")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
+                // Port du dialogue à 2 choix affiché après sélection + suppression
+                // (`ChatFragmentTest.java:2493-2521`) — "supprimer pour moi" (retrait local) vs
+                // "supprimer pour tout le monde" (visible par le correspondant, `deletemessage`
+                // via socket). `deleteSelectedForEveryone()` était déjà entièrement câblé côté
+                // ViewModel/Repository (garde `belongsToCurrentUser` déjà présente) mais n'avait
+                // AUCUN point d'entrée UI avant ce tour — trouvé par un audit dédié, PAS une
+                // fonctionnalité nouvelle inventée ici.
                 Button(role: .destructive) {
-                    viewModel.deleteSelectedForMe()
+                    showDeleteOptions = true
                 } label: { Image(systemName: "trash") }
             }
         } else {

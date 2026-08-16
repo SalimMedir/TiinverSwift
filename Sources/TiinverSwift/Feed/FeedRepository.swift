@@ -99,4 +99,38 @@ final class FeedRepository {
             throw JSONError.typeMismatch(value.backendErrorMessage ?? "activity/add")
         }
     }
+
+    /// Port de `MainFragment.OnLikeClicked`/`OnclickPrtg` — endpoint `reaction`, MÊMES paramètres
+    /// envoyés dans les DEUX sens du bascule (Android ne distingue jamais "like" de "unlike", ni
+    /// "share" de "unshare" au niveau réseau — le serveur bascule lui-même l'état ; l'affichage
+    /// optimiste local est ce qui diffère, pas la requête). `message` retourné utilisé UNIQUEMENT
+    /// par le partage, pour distinguer `SHARE`/`UNSHARE` (`infoContract.SHARE`/`UNSHARE`).
+    @discardableResult
+    func reaction(activityId: Int, userId: String, verb: String, object: String, status: String) async throws -> String? {
+        let params: [String: String] = [
+            "activityId": String(activityId), "userId": userId, "verb": verb, "object": object, "status": status,
+        ]
+        let value = try await APIClient.shared.post(params, endpoint: "reaction")
+        guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.backendErrorMessage ?? "reaction") }
+        return value.optionalString("message")
+    }
+
+    /// Port de `ActivityAdapter.deleteMyPost` — `POST deleteactivity {id, actor}`, réservé aux
+    /// publications propres (garde faite côté appelant, `FeedViewModel.deleteOwnPost`).
+    func deleteActivity(id: Int, actorId: String) async throws {
+        let value = try await APIClient.shared.post(["id": String(id), "actor": actorId], endpoint: "deleteactivity")
+        guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.backendErrorMessage ?? "deleteactivity") }
+    }
+
+    /// Port de `Report.report()` — endpoint `report`. `target_id`/`report_type` VIDES depuis ce
+    /// point d'entrée précis (Feed) : `MainFragment.OnclickMoreExpand` (`report_content`) ne les
+    /// renseigne PAS dans l'intent lancé vers `Report.java` (seuls `userId`/`username`/`nikname` le
+    /// sont) — reproduit fidèlement (un signalement déclenché depuis le Feed cible l'UTILISATEUR,
+    /// pas la publication précise, au niveau de CET appel réseau), pas "corrigé" en inventant un
+    /// `target_id` qu'Android lui-même n'envoie pas ici.
+    func reportUser(userId: String, username: String, message: String) async throws {
+        let params: [String: String] = ["userId": userId, "username": username, "message": message, "target_id": "", "report_type": ""]
+        let value = try await APIClient.shared.post(params, endpoint: "report")
+        guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.backendErrorMessage ?? "report") }
+    }
 }

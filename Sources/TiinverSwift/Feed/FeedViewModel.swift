@@ -1,9 +1,12 @@
 import Foundation
 
 /// Port partiel de `Activity/ui/MainFragment.java` (1966 lignes — hors de portée d'un portage
-/// intégral à ce stade). Seule la boucle "charger la page suivante / afficher" est portée ici ;
-/// interactions (like/commentaire/partage/double-tap), pagination infinie fine, et le mode
-/// "édition"/upload restent à porter avec les modules qui les concernent (18/11/7).
+/// intégral à ce stade). La boucle "charger la page suivante / afficher" ET les interactions
+/// (like/commentaire/partage/suppression/masquage/ne-plus-suivre/blocage/signalement, câblées le
+/// 2026-08-16 après un audit dédié ayant trouvé ces actions ENTIÈREMENT absentes malgré des
+/// endpoints déjà identifiés) sont portées ici. Double-tap, pagination infinie fine (seuil fixe "2
+/// avant la fin" ici vs seuil dynamique par item visible côté Android — équivalent fonctionnel,
+/// pas une divergence de comportement), et le mode édition/upload restent hors périmètre.
 @MainActor
 final class FeedViewModel: ObservableObject {
     @Published var posts: [FeedActivity] = []
@@ -11,8 +14,19 @@ final class FeedViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let repository = FeedRepository()
+    private let profileRepository = ProfileRepository.shared
     private let pageSize = 10
     private var offset = 0
+
+    /// Port de `Settings.setBooleanPreference(id+infoContract.DELETE_POST, true)` — masquage LOCAL
+    /// d'une publication d'autrui (`ActivityAdapter.deletePostById`, PAS un vrai appel serveur, voir
+    /// `hideOthersPost`). Persisté via `UserDefaults` plutôt que le système `ContentProvider`
+    /// Android (rôle identique : survivre au redémarrage de l'app).
+    private static let hiddenPostsKey = "feed_hidden_post_ids"
+    private var hiddenPostIDs: Set<Int> {
+        get { Set((UserDefaults.standard.array(forKey: Self.hiddenPostsKey) as? [Int]) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: Self.hiddenPostsKey) }
+    }
 
     func loadInitial() async {
         guard posts.isEmpty else { return }
@@ -39,7 +53,8 @@ final class FeedViewModel: ObservableObject {
         do {
             let page = try await repository.fetchTimeline(userId: userId, limit: pageSize, offset: offset)
             try? await repository.cache(page)
-            posts.append(contentsOf: page)
+            let hidden = hiddenPostIDs
+            posts.append(contentsOf: page.filter { !hidden.contains($0.id) })
             offset += page.count
         } catch {
             errorMessage = error.localizedDescription
@@ -52,5 +67,87 @@ final class FeedViewModel: ObservableObject {
         posts = []
         offset = 0
         await loadNextPage()
+    }
+
+    // MARK: - Interactions (port de `OnLikeClicked`/`OnclickCommentaire`/`OnclickPrtg`/`OnclickMoreExpand`)
+
+    /// Port de `OnLikeClicked` — bascule optimiste locale (`isLiked`/`likes`), PUIS envoie TOUJOURS
+    /// les MÊMES paramètres réseau (`verb: "like"`, `status: "LIKE"`) quel que soit le sens du
+    /// bascule, fidèle à l'original (le serveur bascule lui-même l'état ; Android n'envoie jamais de
+    /// "unlike" distinct).
+    func toggleLike(_ post: FeedActivity) {
+        guard let index = posts.firstIndex(where: { $0.id == post.id }), let myId = UserSession.shared.myId else { return }
+        let wasLiked = posts[index].isLiked == "true"
+        posts[index].isLiked = wasLiked ? "false" : "true"
+        posts[index].likes = max(0, (posts[index].likes ?? 0) + (wasLiked ? -1 : 1))
+        let object = post.object ?? ""
+        Task { try? await repository.reaction(activityId: post.id, userId: myId, verb: "like", object: object, status: "LIKE") }
+    }
+
+    /// Port de `OnclickPrtg` — envoie TOUJOURS `verb: "share"`/`status: "SHARE"` (même remarque que
+    /// `toggleLike`), puis ajuste le compteur local selon la réponse RÉELLE du serveur
+    /// (`message == infoContract.SHARE` → +1, `== infoContract.UNSHARE` → -1), PAS un bascule
+    /// optimiste pré-calculé côté client comme le like (fidèle à l'ordre des opérations Android :
+    /// `OnclickPrtg` attend la réponse avant de toucher le compteur). Le partage natif
+    /// (`shareMediaLink`) est déclenché par l'appelant (vue), pas ici — même séparation que
+    /// l'original (`data.Post` réseau ET `shareMediaLink` appelés indépendamment par le handler).
+    func toggleShare(_ post: FeedActivity) async {
+        guard let myId = UserSession.shared.myId else { return }
+        let object = post.object ?? ""
+        guard let message = try? await repository.reaction(activityId: post.id, userId: myId, verb: "share", object: object, status: "SHARE"),
+              let index = posts.firstIndex(where: { $0.id == post.id })
+        else { return }
+        if message == "Share successfully" {
+            posts[index].share = (posts[index].share ?? 0) + 1
+        } else if message == "Unshare successfully" {
+            posts[index].share = max(0, (posts[index].share ?? 0) - 1)
+        }
+    }
+
+    /// Port de `ActivityAdapter.deleteMyPost` — UNIQUEMENT pour ses propres publications (garde déjà
+    /// faite par l'appelant via `FeedActivity`'s `actor == myId`, voir `FeedView.moreActions`).
+    func deleteOwnPost(_ post: FeedActivity) async {
+        guard let myId = UserSession.shared.myId else { return }
+        try? await repository.deleteActivity(id: post.id, actorId: myId)
+        posts.removeAll { $0.id == post.id }
+    }
+
+    /// Port de la branche non-propriétaire de `OnclickMoreExpand`'s `delete_content`
+    /// (`ActivityAdapter.deletePostById` + `Settings.setBooleanPreference(...DELETE_POST, true)`) —
+    /// retrait LOCAL uniquement, persisté pour ne pas réapparaître après un `reset()`/relance de
+    /// l'app, PAS un appel serveur (Android ne supprime pas la publication d'autrui, il la masque
+    /// juste dans SON propre flux).
+    func hideOthersPost(_ post: FeedActivity) {
+        var hidden = hiddenPostIDs
+        hidden.insert(post.id)
+        hiddenPostIDs = hidden
+        posts.removeAll { $0.id == post.id }
+    }
+
+    /// Port de `OnclickMoreExpand`'s branche `unfollow` — MÊME endpoint `follow` que
+    /// `ProfileRepository.follow` (le serveur bascule lui-même suivre/ne-plus-suivre, PAS un
+    /// endpoint distinct côté Android — `td.Following(map)` avec `userId=actor cible`,
+    /// `followId=myId`, exactement les paramètres de `ProfileRepository.follow`).
+    func unfollow(_ post: FeedActivity) async {
+        guard let myId = UserSession.shared.myId, let actorId = post.actor else { return }
+        try? await profileRepository.follow(userId: actorId, followerId: myId)
+    }
+
+    /// Port de la branche `block_content` de `OnclickMoreExpand` → `block(mediaObject)` — mêmes
+    /// paramètres exacts (`username`=mon pseudo, `username_blocked`=pseudo cible, `userId`=mon id,
+    /// `user_blocked_id`=`mediaObject.getActor()`).
+    func block(_ post: FeedActivity) async {
+        guard let myId = UserSession.shared.myId, let myUsername = UserSession.shared.username,
+              let targetUsername = post.username, let actorId = post.actor
+        else { return }
+        _ = try? await profileRepository.toggleBlock(myUsername: myUsername, myId: myId, targetUsername: targetUsername, targetUserId: actorId)
+        posts.removeAll { $0.id == post.id }
+    }
+
+    /// Port de `Report.report()` — voir `FeedRepository.reportUser` pour la note de fidélité sur
+    /// `target_id`/`report_type` vides depuis ce point d'entrée.
+    func report(_ post: FeedActivity, reason: String) async {
+        guard let actorId = post.actor, let username = post.username else { return }
+        try? await repository.reportUser(userId: actorId, username: username, message: reason)
     }
 }

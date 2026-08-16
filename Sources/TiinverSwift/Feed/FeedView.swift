@@ -24,6 +24,11 @@ struct FeedView: View {
     @State private var pendingMedia: PublishMedia?
     @State private var showAnimems = false
     @State private var pendingTrimURL: URL?
+    @State private var moreActionsPost: FeedActivity?
+    @State private var reportTargetPost: FeedActivity?
+    @State private var showReportReasons = false
+    @State private var blockTargetPost: FeedActivity?
+    @State private var commentsPost: FeedActivity?
 
     private let columns = [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)]
 
@@ -35,7 +40,13 @@ struct FeedView: View {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 1) {
                         ForEach(Array(viewModel.posts.enumerated()), id: \.offset) { index, post in
-                            FeedGridCell(post: post)
+                            FeedGridCell(
+                                post: post,
+                                onLike: { viewModel.toggleLike(post) },
+                                onComment: { commentsPost = post },
+                                onShare: { Task { await viewModel.toggleShare(post) } },
+                                onMore: { moreActionsPost = post }
+                            )
                                 .onTapGesture {
                                     detailStartIndex = index
                                     showDetail = true
@@ -65,8 +76,8 @@ struct FeedView: View {
         }
         .fullScreenCover(isPresented: $showDetail) {
             FeedDetailPagerView(
-                posts: viewModel.posts, startIndex: detailStartIndex,
-                onLoadMore: { Task { await viewModel.loadNextPage() } },
+                viewModel: viewModel, startIndex: detailStartIndex,
+                onComment: { commentsPost = $0 }, onMore: { moreActionsPost = $0 },
                 onClose: { showDetail = false }
             )
         }
@@ -132,7 +143,66 @@ struct FeedView: View {
         .fullScreenCover(isPresented: $showAnimems) {
             AnimemesEditorView(onClose: { showAnimems = false })
         }
+        .sheet(item: $commentsPost) { post in
+            CommentsView(activityId: post.id)
+        }
+        // Port de `OnclickMoreExpand` (bottom sheet à 5 items, `layout_post_action.xml`) —
+        // `delete_content` TOUJOURS affiché (MÊME libellé "Supprimer" qu'on soit propriétaire ou
+        // non, fidèle à l'original : `titles[0]` est un texte STATIQUE côté Android, pas conditionné
+        // par la propriété — seul le COMPORTEMENT diffère, voir `FeedViewModel.deleteOwnPost` vs
+        // `hideOthersPost`) ; `copy_link`/`unfollow`/`block_content`/`report_content` masqués pour
+        // ses propres publications (`setIdHideContent`, `username.equals(mediaObjects.getUsername())`).
+        .confirmationDialog("Actions", isPresented: Binding(get: { moreActionsPost != nil }, set: { if !$0 { moreActionsPost = nil } }), titleVisibility: .hidden) {
+            if let post = moreActionsPost {
+                let isOwnPost = post.actor == UserSession.shared.myId
+                Button("Supprimer", role: .destructive) {
+                    if isOwnPost {
+                        Task { await viewModel.deleteOwnPost(post) }
+                    } else {
+                        viewModel.hideOthersPost(post)
+                    }
+                }
+                if !isOwnPost {
+                    Button("Copier le lien") {
+                        if let token = post.token { UIPasteboard.general.string = "https://tiinver.com/post/\(token)" }
+                    }
+                    Button("Ne plus suivre @\(post.username ?? "")") { Task { await viewModel.unfollow(post) } }
+                    Button("Bloquer @\(post.username ?? "")", role: .destructive) { blockTargetPost = post }
+                    Button("Signaler le post") { reportTargetPost = post; showReportReasons = true }
+                }
+                Button("Annuler", role: .cancel) {}
+            }
+        }
+        // Port de `Report` (`R.array.report_setting_array`, 8 motifs) — sélection d'un motif avant
+        // envoi (`Report.onItemClick`/`report()`).
+        .confirmationDialog("Motif du signalement", isPresented: $showReportReasons, titleVisibility: .visible) {
+            ForEach(Self.reportReasons, id: \.self) { reason in
+                Button(reason) {
+                    if let post = reportTargetPost { Task { await viewModel.report(post, reason: reason) } }
+                }
+            }
+            Button("Annuler", role: .cancel) { reportTargetPost = nil }
+        }
+        // Port du dialogue de confirmation `block()` (`MyFragmentDialog`, type=5) — seule action du
+        // menu "..." à demander une confirmation explicite avant envoi côté Android.
+        .alert(
+            "Bloquer @\(blockTargetPost?.username ?? "") ?", isPresented: Binding(get: { blockTargetPost != nil }, set: { if !$0 { blockTargetPost = nil } })
+        ) {
+            Button("Annuler", role: .cancel) { blockTargetPost = nil }
+            Button("Bloquer", role: .destructive) {
+                if let post = blockTargetPost { Task { await viewModel.block(post) } }
+                blockTargetPost = nil
+            }
+        } message: {
+            Text("Vous ne verrez plus le contenu de cette personne, et elle ne pourra plus voir le vôtre.")
+        }
     }
+
+    /// Port de `R.array.report_setting_array` (`strings.xml:516-525`).
+    private static let reportReasons = [
+        "Nudité", "Violence", "Harcèlement", "Fausse information",
+        "Vente non autorisée", "Discours de haine", "Terrorisme", "Moins de 13 ans",
+    ]
 
     /// État affiché tant qu'aucun post n'est chargé — distingue explicitement les 3 cas
     /// auparavant indiscernables (écran blanc dans tous les cas) : chargement en cours, erreur
@@ -196,10 +266,23 @@ struct FeedView: View {
 }
 
 /// Port de `ActivityAdapter.ViewHolder`/`les_pub_affiche2.xml` — cellule de grille : vignette
-/// (photo ou 1ʳᵉ image vidéo), nom d'utilisateur, compteurs like/commentaire en surimpression bas-
-/// gauche (`nikname`/`ShowJaimeNum`/`commentQte`, mêmes champs que `onBindView`/`video`/`photo`).
+/// (photo ou 1ʳᵉ image vidéo), nom d'utilisateur, compteurs like/commentaire/partage en
+/// surimpression bas-gauche (`nikname`/`ShowJaimeNum`/`commentQte`, mêmes champs que
+/// `onBindView`/`video`/`photo`). **Câblage réel des interactions (2026-08-16)** — un audit dédié a
+/// trouvé `OnLikeClicked`/`OnclickCommentaire`/`OnclickPrtg`/`OnclickMoreExpand`
+/// (`MainFragment.java:1126-1360`) entièrement absents côté iOS malgré des endpoints déjà
+/// identifiables (`reaction`/`deleteactivity`/`report`, voir `FeedRepository.swift`) — ces 3
+/// compteurs sont maintenant de vrais boutons, plus un bouton "..." pour le menu d'actions
+/// (`layout_post_action.xml`, 5 items).
 struct FeedGridCell: View {
     let post: FeedActivity
+    // Défauts no-op : `HashtagFeedView.swift` (résultats de recherche) réutilise cette cellule pour
+    // son seul rendu visuel, sans les interactions — périmètre Search déjà audité séparément
+    // (COMPLETE), pas étendu ici pour rester ciblé sur le gap Feed identifié par l'audit.
+    var onLike: () -> Void = {}
+    var onComment: () -> Void = {}
+    var onShare: () -> Void = {}
+    var onMore: () -> Void = {}
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -224,12 +307,31 @@ struct FeedGridCell: View {
                 Text(post.username.map { "\($0)" } ?? "\(post.firstname ?? "") \(post.lastname ?? "")")
                     .font(.caption).bold().foregroundStyle(.white).lineLimit(1)
                 HStack(spacing: 10) {
-                    Label("\(post.likes ?? 0)", systemImage: "heart.fill")
-                    Label("\(post.comment ?? 0)", systemImage: "message.fill")
+                    Button(action: onLike) {
+                        Label("\(post.likes ?? 0)", systemImage: post.isLiked == "true" ? "heart.fill" : "heart")
+                            .foregroundStyle(post.isLiked == "true" ? .red : .white)
+                    }
+                    Button(action: onComment) {
+                        Label("\(post.comment ?? 0)", systemImage: "message.fill").foregroundStyle(.white)
+                    }
+                    Button(action: onShare) {
+                        Label("\(post.share ?? 0)", systemImage: "paperplane.fill").foregroundStyle(.white)
+                    }
                 }
-                .font(.caption2).foregroundStyle(.white).labelStyle(.titleAndIcon)
+                .font(.caption2).labelStyle(.titleAndIcon).buttonStyle(.plain)
             }
             .padding(8)
+
+            Button(action: onMore) {
+                Image(systemName: "ellipsis")
+                    .font(.caption).bold()
+                    .foregroundStyle(.white)
+                    .padding(6)
+                    .background(Circle().fill(.black.opacity(0.35)))
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(4)
         }
         .aspectRatio(0.8, contentMode: .fill)
         .clipped()
@@ -245,20 +347,47 @@ struct FeedGridCell: View {
 /// tourné +90°) est le contournement standard pour obtenir un défilement vertical plein écran sur
 /// iOS 16 sans dépendance tierce.
 struct FeedDetailPagerView: View {
-    let posts: [FeedActivity]
+    // `@StateObject(wrappedValue:)` n'utilise sa valeur initiale QU'UNE FOIS par identité de vue
+    // (première création), ignorant les valeurs passées aux reconstructions suivantes de `init()`
+    // (SwiftUI ré-exécute `init()` à chaque re-rendu du parent, même pour une struct `View`) — donc
+    // sûr d'utiliser ici pour LES DEUX cas : (a) `FeedViewModel()` fraîchement créé (post isolé,
+    // lien profond) N'EST PAS recréé à chaque re-rendu, son état (likes/etc togglés) survit ; (b)
+    // le `FeedViewModel` du fil principal transmis par `FeedView` reste le MÊME objet partagé (
+    // sémantique de référence), ses mutations (`@Published posts`) restent visibles des deux côtés.
+    // `@ObservedObject` aurait été un piège classique ici : recréer un `FeedViewModel()` DANS
+    // `init()` avec `@ObservedObject` le referait à CHAQUE reconstruction du parent, perdant l'état
+    // d'interaction (likes) entre deux re-rendus.
+    @StateObject private var viewModel: FeedViewModel
     let startIndex: Int
-    let onLoadMore: () -> Void
+    var onComment: (FeedActivity) -> Void = { _ in }
+    var onMore: (FeedActivity) -> Void = { _ in }
     let onClose: () -> Void
 
     @State private var currentIndex: Int
 
-    init(posts: [FeedActivity], startIndex: Int, onLoadMore: @escaping () -> Void = {}, onClose: @escaping () -> Void) {
-        self.posts = posts
+    /// Port ponctuel : quand ce pager est ouvert directement sur UN post isolé (résolution d'un lien
+    /// profond `/post/{token}`, `DeepLinkRouter.swift`) plutôt que sur le fil complet, un
+    /// `FeedViewModel` jetable suffit — les actions (like/commentaire/partage) restent
+    /// fonctionnelles même hors contexte fil.
+    init(posts: [FeedActivity], startIndex: Int, onClose: @escaping () -> Void) {
+        let vm = FeedViewModel()
+        vm.posts = posts
+        _viewModel = StateObject(wrappedValue: vm)
         self.startIndex = startIndex
-        self.onLoadMore = onLoadMore
         self.onClose = onClose
         _currentIndex = State(initialValue: startIndex)
     }
+
+    init(viewModel: FeedViewModel, startIndex: Int, onComment: @escaping (FeedActivity) -> Void = { _ in }, onMore: @escaping (FeedActivity) -> Void = { _ in }, onClose: @escaping () -> Void) {
+        _viewModel = StateObject(wrappedValue: viewModel)
+        self.startIndex = startIndex
+        self.onComment = onComment
+        self.onMore = onMore
+        self.onClose = onClose
+        _currentIndex = State(initialValue: startIndex)
+    }
+
+    private var posts: [FeedActivity] { viewModel.posts }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -269,14 +398,20 @@ struct FeedDetailPagerView: View {
                             if Self.isAdPosition(index, count: posts.count) {
                                 FeedAdCell()
                             } else {
-                                FeedDetailCell(post: post, isActive: index == currentIndex)
+                                FeedDetailCell(
+                                    post: post, isActive: index == currentIndex,
+                                    onLike: { viewModel.toggleLike(post) },
+                                    onComment: { onComment(post) },
+                                    onShare: { Task { await viewModel.toggleShare(post) } },
+                                    onMore: { onMore(post) }
+                                )
                             }
                         }
                             .frame(width: geo.size.height, height: geo.size.width)
                             .rotationEffect(.degrees(-90))
                             .tag(index)
                             .onAppear {
-                                if index == posts.count - 2 { onLoadMore() }
+                                if index == posts.count - 2 { Task { await viewModel.loadNextPage() } }
                             }
                     }
                 }
@@ -327,6 +462,10 @@ struct FeedDetailPagerView: View {
 private struct FeedDetailCell: View {
     let post: FeedActivity
     let isActive: Bool
+    var onLike: () -> Void = {}
+    var onComment: () -> Void = {}
+    var onShare: () -> Void = {}
+    var onMore: () -> Void = {}
 
     var body: some View {
         ZStack {
@@ -348,7 +487,7 @@ private struct FeedDetailCell: View {
 
             VStack {
                 Spacer()
-                HStack {
+                HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(post.username.map { "@\($0)" } ?? "")
                             .font(.headline)
@@ -361,12 +500,36 @@ private struct FeedDetailCell: View {
                         }
                     }
                     Spacer()
+                    // Port de `OnLikeClicked`/`OnclickCommentaire`/`OnclickPrtg`/`OnclickMoreExpand`
+                    // — rail d'actions verticale (même 4 interactions que la cellule de grille,
+                    // voir `FeedGridCell`), emplacement standard pour un pager plein écran.
+                    actionRail
                 }
                 .padding()
             }
         }
         .background(Color.black)
         .clipped()
+    }
+
+    private var actionRail: some View {
+        VStack(spacing: 20) {
+            actionButton(icon: post.isLiked == "true" ? "heart.fill" : "heart", tint: post.isLiked == "true" ? .red : .white, count: post.likes ?? 0, action: onLike)
+            actionButton(icon: "message.fill", tint: .white, count: post.comment ?? 0, action: onComment)
+            actionButton(icon: "paperplane.fill", tint: .white, count: post.share ?? 0, action: onShare)
+            Button(action: onMore) {
+                Image(systemName: "ellipsis").font(.title2).foregroundStyle(.white)
+            }
+        }
+    }
+
+    private func actionButton(icon: String, tint: Color, count: Int, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Image(systemName: icon).font(.title2).foregroundStyle(tint)
+                Text("\(count)").font(.caption2).foregroundStyle(.white)
+            }
+        }
     }
 }
 

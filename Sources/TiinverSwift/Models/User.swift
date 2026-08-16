@@ -71,6 +71,15 @@ struct User: Codable, Equatable {
         return lastname
     }
 
+    /// Initialiseur memberwise explicite (tous les champs optionnels, sans arguments requis) — un
+    /// `struct` Swift perd son initialiseur memberwise AUTOMATIQUE dès qu'un initialiseur
+    /// personnalisé (`init(from decoder:)` ci-dessous) est déclaré. `User()` (zéro argument) est
+    /// appelé directement à plusieurs endroits du projet (`LoginView`/`RegisterView`/
+    /// `SignUpWithGoogleView`/`NewPasswordView`/`AuthEndpoints`/`UserSession.cachedUser`) — sans cet
+    /// initialiseur explicite, AUCUN de ces appels ne compile plus (même cause que le correctif
+    /// équivalent sur `FeedActivity` — trouvée et corrigée avant tout autre travail).
+    init() {}
+
     /// Décodage manuel : `id`/`userId` doivent tolérer une chaîne numérique en plus d'un `Int` JSON
     /// natif — MÊME cause racine que `FeedActivity` (voir `LenientDecoding.swift`), confirmée comme
     /// cause du Profile systématiquement vide (`getuserbyid` échouait à décoder `id` dès que le

@@ -52,6 +52,31 @@ struct FeedActivity: Codable, Identifiable, Equatable {
         object?.caseInsensitiveCompare("videos") == .orderedSame
     }
 
+    /// Initialiseur memberwise explicite — un `struct` Swift perd son initialiseur memberwise
+    /// AUTOMATIQUE dès qu'un initialiseur personnalisé (ici `init(from decoder:)` ci-dessous) est
+    /// déclaré. `SearchModels.swift`'s `SearchPostResult.asFeedActivity` construit un
+    /// `FeedActivity` directement par nom de paramètre (PAS via JSON) — sans cet initialiseur
+    /// explicite, cet appel ne compile plus (cause réelle d'un échec de build découvert au premier
+    /// run CI après l'ajout de `init(from:)` ci-dessous, corrigé avant tout autre travail).
+    init(
+        id: Int, actor: String? = nil, token: String? = nil, verified: Bool? = nil, verb: String? = nil,
+        lastname: String? = nil, firstname: String? = nil, object: String? = nil, likes: Int? = nil,
+        views: Int? = nil, isLiked: String? = nil, stamp: String? = nil, comment: Int? = nil,
+        share: Int? = nil, object_url: String? = nil, message: String? = nil, userId: Int? = nil,
+        profile: String? = nil, location: String? = nil, certified: String? = nil, followers: String? = nil,
+        following: String? = nil, username: String? = nil, cdn_content_id: String? = nil,
+        cdn_content_url: String? = nil, cdn_thumbnail_url: String? = nil
+    ) {
+        self.id = id; self.actor = actor; self.token = token; self.verified = verified; self.verb = verb
+        self.lastname = lastname; self.firstname = firstname; self.object = object; self.likes = likes
+        self.views = views; self.isLiked = isLiked; self.stamp = stamp; self.comment = comment
+        self.share = share; self.object_url = object_url; self.message = message; self.userId = userId
+        self.profile = profile; self.location = location; self.certified = certified
+        self.followers = followers; self.following = following; self.username = username
+        self.cdn_content_id = cdn_content_id; self.cdn_content_url = cdn_content_url
+        self.cdn_thumbnail_url = cdn_thumbnail_url
+    }
+
     /// Décodage manuel : `id` (seul champ non-optionnel) doit tolérer une chaîne numérique en plus
     /// d'un `Int` JSON natif — voir `LenientDecoding.swift` pour la cause racine confirmée (le
     /// backend ne garantit pas le type JSON de ses champs numériques, déjà géré côté `JSONValue`

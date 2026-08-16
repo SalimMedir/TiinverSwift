@@ -9,7 +9,27 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-16, mise à jour APRÈS balayage complet de la classe de bug decode)
+# CURRENT HANDOFF (2026-08-16, mise à jour APRÈS retour UX Profile + nouveau test partiel)
+
+**Nouveau test réel reçu** (horodatage 00:41/00:42, DIFFÉRENT du lot précédent 19:52/19:53 — un
+vrai nouveau test, pas les mêmes captures) : mêmes symptômes `myId=nil`/`authenticated=false` sur
+Feed/Profile. **Point important** : le panneau `LOGIN RAW USER JSON` (ajouté commit `26b278d`
+justement pour ce cas) N'EST PAS apparu dans ce lot — ce qui signifie que le scénario précis anticipé
+("décodage réussi mais id manquant") ne s'est PAS produit cette fois, donc soit (a) aucune connexion
+n'a été retentée pendant CE test précis, soit (b) `login()` a levé une vraie erreur visible (page de
+connexion non capturée dans ce lot). **Pas encore élucidé — nécessite la capture de l'ÉCRAN DE
+CONNEXION lui-même au prochain test pour trancher.**
+
+**Retour UX direct de l'utilisateur, traité immédiatement** : l'écran Profile masquait TOUT son
+chrome (avatar/abonnés/boutons) dès qu'il y avait une erreur — corrigé (commit `2edcd65`, CI
+SUCCESS run `31977346121`) : le chrome (avatar placeholder, "0" abonnés, boutons "MODIFIER LE
+PROFIL"/portefeuille/monétisation) s'affiche désormais TOUJOURS, l'erreur/diagnostic apparaît en
+plus, pas à la place. Créateurs (`CreatorOfWeekView`) laissé tel quel — motif différent, déjà
+comparé à une capture Android réelle, écran de liste complet pas une mise en page fixe comme Profile.
+
+---
+
+# HANDOFF PRÉCÉDENT (2026-08-16, mise à jour APRÈS balayage complet de la classe de bug decode)
 
 **Pendant l'attente d'un nouveau test réel** (l'utilisateur a explicitement demandé de continuer
 sans s'arrêter), balayage systématique de TOUT le code pour la MÊME classe de bug que Feed/Profile

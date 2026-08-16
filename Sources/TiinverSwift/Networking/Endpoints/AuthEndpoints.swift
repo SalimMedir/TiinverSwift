@@ -103,8 +103,16 @@ enum AuthEndpoints {
         }
     }
 
+    /// **CAUSE RACINE RÉELLE ET DÉFINITIVEMENT CONFIRMÉE (2026-08-17)** — voir
+    /// `JSONValue.errorFieldNormalized` : la réponse RÉELLE de `login` envoie `"error": false` en
+    /// BOOLÉEN JSON natif, pas la chaîne `"false"` supposée ici jusqu'à présent. L'ancien
+    /// `try json.string("error")` ne matchait donc JAMAIS `"false"`, tombait dans le dernier repli
+    /// (`User()` vide, `etat` recopié depuis `message`="Login Successful"), que `LoginView.handle`
+    /// reconnaît quand même — d'où la navigation propre vers Home avec une session totalement
+    /// vide, symptôme observé identiquement à travers de nombreux tours de diagnostic. Utilise
+    /// maintenant `errorFieldNormalized`, qui tolère les deux conventions.
     private static func parseLoginResponse(_ json: JSONValue) throws -> User {
-        let error = try json.string("error")
+        let error = json.errorFieldNormalized
         if error == "false" {
             guard let meta = json["user"] else { throw JSONError.missingKey("user") }
             applyBlockedUsers(from: meta)
@@ -136,7 +144,10 @@ enum AuthEndpoints {
     /// `errorMessage` — seul le rendu de ce champ manquait côté vue, corrigé séparément dans
     /// `SignUpWithGoogleView.swift`).
     private static func parseRegisterResponse(_ json: JSONValue, includesUserObject: Bool) throws -> User {
-        let error = (try? json.string("error")) ?? "true"
+        // 2026-08-17 : `errorFieldNormalized` (voir `parseLoginResponse`/`JSONValue.swift`) — même
+        // divergence booléen/chaîne potentielle sur cet endpoint, non confirmée ici mais corrigée
+        // par précaution avec la même méthode qui a résolu `login`.
+        let error = json.errorFieldNormalized
         var user = User()
         // "false", "true", et "mailExist" partagent tous la même logique côté Android :
         // extraire "message" et le recopier dans etat (voir InscriptionProcess/registerWithProvider).
@@ -151,7 +162,7 @@ enum AuthEndpoints {
 
     private static func parseForgotPasswordResponse(_ json: JSONValue) -> User {
         var user = User()
-        let error = (try? json.string("error")) ?? ""
+        let error = json.errorFieldNormalized
         let message = json.backendErrorMessage
         // mdpOublierProcess ne traite QUE ces deux combinaisons précises — aucune autre valeur
         // de "error"/"message" ne produit de résultat côté Android (pas de branche else).

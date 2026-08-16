@@ -86,7 +86,12 @@ struct FeedActivity: Codable, Identifiable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeLenientInt(forKey: .id)
-        actor = try container.decodeIfPresent(String.self, forKey: .actor)
+        // 2026-08-17 : `actor`/`isLiked` — cause confirmée par le JSON réel de `feedtimeline`
+        // (fourni par l'utilisateur) : `"actor": 22894` est un NOMBRE (pas la chaîne attendue),
+        // `"isLiked": false` est un BOOLÉEN JSON natif (pas la chaîne "true"/"false" attendue) —
+        // PRÉSENTS SUR CHAQUE ITEM de l'échantillon réel, donc le décodage strict précédent aurait
+        // fait échouer TOUT le flux Feed d'un coup, même après la correction du type de `id`.
+        actor = container.decodeLenientStringIfPresent(forKey: .actor)
         token = try container.decodeIfPresent(String.self, forKey: .token)
         verified = container.decodeLenientBoolIfPresent(forKey: .verified)
         verb = try container.decodeIfPresent(String.self, forKey: .verb)
@@ -95,7 +100,7 @@ struct FeedActivity: Codable, Identifiable, Equatable {
         object = try container.decodeIfPresent(String.self, forKey: .object)
         likes = container.decodeLenientIntIfPresent(forKey: .likes)
         views = container.decodeLenientIntIfPresent(forKey: .views)
-        isLiked = try container.decodeIfPresent(String.self, forKey: .isLiked)
+        isLiked = container.decodeLenientBoolAsStringIfPresent(forKey: .isLiked)
         stamp = try container.decodeIfPresent(String.self, forKey: .stamp)
         comment = container.decodeLenientIntIfPresent(forKey: .comment)
         share = container.decodeLenientIntIfPresent(forKey: .share)
@@ -105,8 +110,11 @@ struct FeedActivity: Codable, Identifiable, Equatable {
         profile = try container.decodeIfPresent(String.self, forKey: .profile)
         location = try container.decodeIfPresent(String.self, forKey: .location)
         certified = try container.decodeIfPresent(String.self, forKey: .certified)
-        followers = try container.decodeIfPresent(String.self, forKey: .followers)
-        following = try container.decodeIfPresent(String.self, forKey: .following)
+        // `followers`/`following` pas présents sur les items "activities" de l'échantillon réel,
+        // mais MÊME champs/MÊME divergence confirmée sur `User` (voir `User.swift`) — traités par
+        // précaution avec la même tolérance plutôt que supposés sûrs faute de les avoir vus ici.
+        followers = container.decodeLenientStringIfPresent(forKey: .followers)
+        following = container.decodeLenientStringIfPresent(forKey: .following)
         username = try container.decodeIfPresent(String.self, forKey: .username)
         cdn_content_id = try container.decodeIfPresent(String.self, forKey: .cdn_content_id)
         cdn_content_url = try container.decodeIfPresent(String.self, forKey: .cdn_content_url)

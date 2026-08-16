@@ -111,10 +111,16 @@ struct User: Codable, Equatable {
         stamp = try container.decodeIfPresent(String.self, forKey: .stamp)
         error = try container.decodeIfPresent(String.self, forKey: .error)
         username = try container.decodeIfPresent(String.self, forKey: .username)
-        followers = try container.decodeIfPresent(String.self, forKey: .followers)
-        following = try container.decodeIfPresent(String.self, forKey: .following)
-        emailVerified = try container.decodeIfPresent(String.self, forKey: .emailVerified)
-        certified = try container.decodeIfPresent(String.self, forKey: .certified)
+        // 2026-08-17 : `decodeLenientStringIfPresent` — le JSON RÉEL de `login` (fourni par
+        // l'utilisateur) envoie ces 4 champs en NOMBRE (`"followers": 921`, `"following": 321`,
+        // `"emailVerified": 1`, `"certified": 0`) alors que `User` les déclare `String?` — un
+        // décodage strict aurait levé une exception ici, cassant `decodeUser(meta)` ENTIER dès que
+        // le bug `errorFieldNormalized` (voir plus haut/`JSONValue.swift`) aurait été corrigé sans
+        // ce correctif — cause racine confirmée par les données réelles, pas une supposition.
+        followers = container.decodeLenientStringIfPresent(forKey: .followers)
+        following = container.decodeLenientStringIfPresent(forKey: .following)
+        emailVerified = container.decodeLenientStringIfPresent(forKey: .emailVerified)
+        certified = container.decodeLenientStringIfPresent(forKey: .certified)
         isCertified = container.decodeLenientBoolIfPresent(forKey: .isCertified)
         isFollowed = container.decodeLenientBoolIfPresent(forKey: .isFollowed)
         etat = try container.decodeIfPresent(String.self, forKey: .etat)

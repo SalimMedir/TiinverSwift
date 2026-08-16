@@ -99,10 +99,29 @@ struct JSONValue {
         return try JSONValue.parse(data)
     }
 
-    /// Convention backend confirmée : le champ "error" est une CHAINE ("false" = succès), jamais
-    /// un booléen JSON. Ne pas "normaliser" — voir TIINVER_IOS_PORT_ANALYSIS.md §6.3, point 3.
+    /// **CAUSE RACINE RÉELLE, CONFIRMÉE le 2026-08-17 par le JSON brut réel fourni par
+    /// l'utilisateur** (pas une hypothèse) : `TransportData.java`'s convention "error" = CHAÎNE
+    /// ("false"/"true") documentée comme non-négociable NE TIENT PAS sur l'endpoint `login` —
+    /// réponse réelle observée : `"error": false` (BOOLÉEN JSON natif). `optionalString("error")`
+    /// renvoyait `nil` pour cette valeur (`dict?[key] as? String` échoue sur un `Bool`), donc
+    /// `isBackendSuccess`/`AuthEndpoints.parseLoginResponse` (qui utilisait directement
+    /// `json.string("error")`, `throws` sur toute valeur non-`String`... en pratique la
+    /// stringification de repli de `string(_:)` produisait une valeur ne correspondant JAMAIS
+    /// exactement à `"false"`) ne reconnaissait jamais un login pourtant réussi. Résultat observé :
+    /// `LoginView` naviguait quand même vers Home (car le dernier repli de `parseLoginResponse`
+    /// recopiait `message` — "Login Successful" — dans `etat`, que `LoginView.handle` reconnaît),
+    /// MAIS avec un `User()` ENTIÈREMENT VIDE (le vrai `decodeUser(meta)` n'était jamais atteint) —
+    /// explique EXACTEMENT le symptôme "connexion propre, session vide" observé depuis plusieurs
+    /// tours. Tolère maintenant LES DEUX conventions plutôt que de supposer laquelle un endpoint
+    /// donné utilise.
+    var errorFieldNormalized: String {
+        if let s = dict?["error"] as? String { return s }
+        if let b = dict?["error"] as? Bool { return b ? "true" : "false" }
+        return "true" // forme inattendue : ne JAMAIS supposer un succès par défaut
+    }
+
     var isBackendSuccess: Bool {
-        optionalString("error") == "false"
+        errorFieldNormalized == "false"
     }
 
     /// Présent sur la plupart des réponses d'erreur (TransportData.java: response.getString("message")).

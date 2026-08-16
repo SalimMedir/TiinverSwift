@@ -62,4 +62,17 @@ extension KeyedDecodingContainer {
         }
         return nil
     }
+
+    /// `String?` optionnel représentant un booléen texte ("true"/"false", convention utilisée
+    /// ailleurs dans l'app pour `FeedActivity.isLiked`, ex. `posts[i].isLiked == "true"`) —
+    /// **cause confirmée le 2026-08-17 par le JSON réel de `feedtimeline`** : `"isLiked": false`
+    /// y est envoyé en BOOLÉEN JSON natif, pas en chaîne comme `FeedActivity.isLiked: String?`
+    /// l'attendait — décodage strict aurait échoué sur CHAQUE item du flux (`isLiked` présent sur
+    /// tous les éléments de l'échantillon réel), expliquant un Feed systématiquement vide même
+    /// après correction du décodage de `id`. Normalise le booléen en "true"/"false".
+    func decodeLenientBoolAsStringIfPresent(forKey key: Key) -> String? {
+        if let value = try? decode(Bool.self, forKey: key) { return value ? "true" : "false" }
+        if let text = try? decode(String.self, forKey: key) { return text }
+        return nil
+    }
 }

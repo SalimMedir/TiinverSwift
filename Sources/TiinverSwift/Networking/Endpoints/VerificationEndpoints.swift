@@ -23,8 +23,10 @@ enum VerificationEndpoints {
     static func verifyEmail(verificationCode: String, email: String) async throws -> Bool {
         let params = ["verificationCode": verificationCode, "email": email, "checkBy": "email"]
         let json = try await APIClient.shared.post(params, endpoint: "verifyemail")
-        let error = (try? json.string("error")) ?? "true"
-        return error == "false" && json.backendErrorMessage == "verification passed"
+        // 2026-08-17 : `errorFieldNormalized` — même précaution que `AuthEndpoints` (voir
+        // `JSONValue.swift`), ce module partage le même backend d'authentification que `login`
+        // (confirmé booléen JSON natif sur "error").
+        return json.errorFieldNormalized == "false" && json.backendErrorMessage == "verification passed"
     }
 
     /// Port de `mdpOublier.SuccessRequest` (envoi de l'email de confirmation de changement de

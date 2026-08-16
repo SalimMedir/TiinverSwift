@@ -25,9 +25,22 @@ final class UserSession {
         static let gemsAmount = "gemsAmount"
         static let pendingCoinsAmount = "pendingCoinsAmount"
         static let pendingGemsAmount = "pendingGemsAmount"
+        static let debugLastLoginRawUserJSON = "debugLastLoginRawUserJSON"
     }
 
     private init() {}
+
+    /// Diagnostic temporaire (2026-08-16) — voir `AuthEndpoints.parseLoginResponse` : capture le
+    /// dictionnaire JSON brut du "user" reçu à la connexion quand `error=="false"` (décodage
+    /// RÉUSSI, pas d'exception) mais que `user.id` est quand même resté `nil` — le seul scénario
+    /// qui explique une navigation propre vers Home suivie d'une session vide. Lu par
+    /// `FeedViewModel`/`ProfileViewModel` et affiché dans leur panneau de diagnostic déjà visible
+    /// à l'écran, pour trancher au prochain test réel sans deviner davantage. À retirer une fois
+    /// la cause confirmée.
+    var debugLastLoginRawUserJSON: String? {
+        get { defaults.string(forKey: Keys.debugLastLoginRawUserJSON) }
+        set { defaults.set(newValue, forKey: Keys.debugLastLoginRawUserJSON) }
+    }
 
     var apiKey: String? {
         get { KeychainStore.loadAPIKey() }

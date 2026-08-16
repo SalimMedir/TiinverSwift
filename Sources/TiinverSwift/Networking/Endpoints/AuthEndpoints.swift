@@ -84,6 +84,21 @@ enum AuthEndpoints {
             guard let meta = json["user"] else { throw JSONError.missingKey("user") }
             applyBlockedUsers(from: meta)
             var user = try decodeUser(meta)
+            // Diagnostic (2026-08-16, captures Appetize) : un test réel avec un compte EXISTANT a
+            // montré une navigation propre vers Home (donc `error=="false"` et `decodeUser` n'a PAS
+            // levé d'exception — le décodage a réussi) mais `UserSession.shared.myId` restait nil
+            // ensuite. Toutes les causes déjà explorées (race condition, échec de décodage avalé,
+            // memberwise init manquant) sont exclues par ce scénario précis : un décodage RÉUSSI
+            // peut quand même produire `user.id == nil` si la clé JSON réelle du champ id sur CET
+            // endpoint diffère de "id"/"userId" (ex. casse différente, imbrication différente) —
+            // `User.id`/`userId` sont Optional, donc l'absence de la clé ne fait PAS échouer le
+            // décodage, juste silencieusement `nil`. Capture le dictionnaire JSON brut REÇU dans ce
+            // cas précis pour trancher au prochain test réel, sans deviner davantage.
+            if user.id == nil {
+                UserSession.shared.debugLastLoginRawUserJSON = "\(meta.toDictionary() ?? [:])"
+            } else {
+                UserSession.shared.debugLastLoginRawUserJSON = nil // décodage réussi normalement, pas de trace périmée à garder
+            }
             user.etat = "Login Successful"
             return user
         } else if error == "true" {

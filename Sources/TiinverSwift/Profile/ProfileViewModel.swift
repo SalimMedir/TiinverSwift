@@ -64,6 +64,12 @@ final class ProfileViewModel: ObservableObject {
             let line = "PROFILE REQUEST: aborted — UserSession.shared.myId is nil"
             print(line)
             diagnostics += "\n" + line
+            // Voir `UserSession.debugLastLoginRawUserJSON` (même diagnostic que FeedViewModel).
+            if let raw = UserSession.shared.debugLastLoginRawUserJSON {
+                let rawLine = "LOGIN RAW USER JSON (id manquant malgré succès) : \(raw)"
+                print(rawLine)
+                diagnostics += "\n" + rawLine
+            }
             return
         }
         if userId.isEmpty {

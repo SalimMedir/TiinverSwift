@@ -57,6 +57,14 @@ final class FeedViewModel: ObservableObject {
             let line = "FEED REQUEST: aborted — myId nil or non-numeric (raw=\(UserSession.shared.myId ?? "nil"))"
             print(line)
             diagnostics += "\n" + line
+            // Voir `UserSession.debugLastLoginRawUserJSON` — si présent, prouve que le login a
+            // RÉUSSI (décodage sans erreur) mais que le JSON "user" reçu n'avait pas la clé "id"
+            // attendue, montrant la clé RÉELLE utilisée par ce endpoint pour trancher enfin.
+            if let raw = UserSession.shared.debugLastLoginRawUserJSON {
+                let rawLine = "LOGIN RAW USER JSON (id manquant malgré succès) : \(raw)"
+                print(rawLine)
+                diagnostics += "\n" + rawLine
+            }
             return
         }
         isLoading = true

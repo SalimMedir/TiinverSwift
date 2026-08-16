@@ -91,6 +91,17 @@ struct HomeShellView: View {
                 .tabItem { Label("Profil", systemImage: "person.crop.circle.fill") }
                 .tag(4)
         }
+        // Bandeau de diagnostic TEMPORAIRE (2026-08-16, demande explicite de l'utilisateur : "il
+        // faut afficher le userId pourqu'on puisse de savoir si réellement la session fonctionne")
+        // — VISIBLE EN PERMANENCE sur les 5 onglets (contrairement aux panneaux de diagnostic
+        // Feed/Profile, qui n'apparaissent que dans leurs propres écrans et seulement en cas
+        // d'erreur). Lit `UserSession.shared.myId` directement à la construction de cet écran —
+        // reflète exactement la valeur telle qu'elle était juste après la connexion/l'ouverture de
+        // l'app, ce qui est précisément ce qu'il faut vérifier. À retirer une fois la cause du
+        // problème de session confirmée et corrigée.
+        .safeAreaInset(edge: .top) {
+            userIdDebugBanner
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 // Port du point d'entrée `RechercheTiinver` (module 18, `MainFragment`/
@@ -180,6 +191,31 @@ struct HomeShellView: View {
             case .referral: showReferral = true
             }
         }
+    }
+
+    /// Bandeau TEMPORAIRE (voir commentaire sur `.safeAreaInset` ci-dessus) — compare 3 valeurs en
+    /// une ligne pour trancher précisément OÙ la session se perd s'il y a un problème :
+    /// `user.id` = ce que l'objet reçu au moment de la connexion contenait RÉELLEMENT (permet de
+    /// voir si le décodage du login a lui-même trouvé un id, indépendamment de la persistance) ;
+    /// `myId` = ce qui est RÉELLEMENT lu depuis `UserSession.shared` (persisté, ce que Feed/Profile
+    /// utilisent) ; `apiKey` = présence du jeton d'authentification (Keychain), séparé de `myId`
+    /// (UserDefaults) — un écart entre les deux isolerait un problème Keychain spécifique.
+    private var userIdDebugBanner: some View {
+        let sessionId = UserSession.shared.myId
+        let hasKey = UserSession.shared.apiKey != nil
+        let ok = sessionId != nil && hasKey
+        return HStack(spacing: 6) {
+            Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+            Text("userId(objet reçu)=\(user.id.map(String.init) ?? "nil") · userId(session persistée)=\(sessionId ?? "nil") · apiKey=\(hasKey ? "présent" : "nil")")
+                .font(.system(size: 10, design: .monospaced))
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity)
+        .background(ok ? Color.green : Color.red)
     }
 
     /// Port de `NavigationCompound.cursorWorkerTask` (partie badge messagerie) :

@@ -1256,3 +1256,65 @@ pour AUCUN commit du projet.
 
 Après ce tour, la liste de priorités explicite de l'utilisateur ET les 4 audits dédiés n'ont plus de
 gap réalisable identifié en attente de code.
+
+---
+
+## SESSION DU 2026-08-16 (11ᵉ tour) — PREMIER TEST APPETIZE RÉEL : CORRECTIF DE 3 BUGS RUNTIME
+
+**Changement méthodologique majeur, à respecter pour toute lecture future de ce document** :
+l'utilisateur a fait son PREMIER test Appetize global sur le code jusqu'à `68fd1d3` et a constaté que
+plusieurs lignes marquées **COMPLETE** dans les tours précédents (Feed, Profile, Galerie-publication)
+NE FONCTIONNAIENT PAS réellement à l'usage malgré une compilation verte. **Nouvelle règle absolue,
+en vigueur à partir de ce tour** : "le fichier existe" et "le build est SUCCESS" ne sont PLUS des
+preuves de COMPLETE. Chaque fonctionnalité doit désormais être documentée séparément sur 3 axes :
+**COMPILED** (compile, confirmé CI) / **FUNCTIONALLY VERIFIED** (comportement confirmé sur un run
+réel) / **UI VERIFIED AGAINST ANDROID** (comparé visuellement à une capture Android réelle). Ne
+jamais fusionner ces trois notions dans un seul "COMPLETE".
+
+### Bugs trouvés et corrigés (par lecture de code, preuve à l'appui — pas par supposition)
+
+| Bug | Domaine | Preuve (fichier:élément) | Correction |
+|---|---|---|---|
+| `loadProfile()` avalait toute erreur via `try?`, `ProfileView.header` ne rendait RIEN (ni spinner, ni erreur, ni contenu) sur tout échec réseau/session — indiscernable d'un profil vide | Profile | `ProfileViewModel.swift`, EXACTEMENT le bug déjà root-causé et corrigé pour `FeedViewModel` le 2026-08-13, jamais porté à `ProfileViewModel` | `errorMessage` + `catch` explicite + état d'erreur/retry dans `ProfileView.header` |
+| Deux `guard ... else { return }` silencieux (`myId` nil, `croppedImage` nil) dans `publish()` — correspond EXACTEMENT au symptôme rapporté ("je clique sur Publier, rien ne se passe") | Galerie | `PublishComposeView.swift` | Les deux surfacent maintenant `errorText` (déjà affiché, jamais branché) |
+| Même classe de bug (`guard let myId = ... else { return }` silencieux) dans la création de groupe | Chat | `GroupCreationView.swift` | Même correctif |
+| `compactMap` de décodage `Codable` pouvait avaler silencieusement des items dont le JSON ne correspond pas exactement à `FeedActivity` (Swift `Codable` strict, contrairement à Gson) | Feed (risque plausible, PAS confirmé) | `FeedRepository.fetchTimeline()` | Log de décodage ajouté pour trancher au prochain test, pas une correction aveugle |
+
+### Investigation SANS résultat statique (documentée honnêtement, pas ignorée)
+
+**Bouton "créer un groupe" (Chat/Roster)** : `RosterListView.swift` relu ligne par ligne. Le bouton
+existe réellement (`person.2.badge.plus`, `.navigationBarTrailing`, navigue vers
+`ContactPickerView`), son `.toolbar` est appliqué EN DEHORS du `Group` conditionnel sur l'état des
+données, aucune duplication du fichier trouvée dans le dépôt. **Aucun bug statique identifiable.**
+Log de diagnostic ajouté pour la prochaine session ; si le bouton manque toujours malgré un code
+vérifié correct, la cause est probablement d'ordre runtime/rendu, hors de portée d'une lecture de
+code seule.
+
+### Session/Auth — retracé, aucun bug trouvé (confirme les tours précédents)
+
+`LoginView.swift:132` (`AuthSessionPersistence.saveSession` synchrone AVANT navigation) et
+`RootRouterView.swift` (`cachedUser()` synchrone, sans dépendance réseau) relus — structurellement
+corrects, le correctif de race condition du 2026-08-13 tient toujours. Logs de diagnostic
+`SESSION:`/`FEED REQUEST:`/`FEED RESPONSE:`/`FEED UI:` ajoutés dans `FeedViewModel.loadNextPage()`
+au format exact demandé par l'utilisateur, pour confirmer ou infirmer cette conclusion au prochain
+test réel plutôt que de la considérer acquise indéfiniment.
+
+### Statut mis à jour (corrige les lignes prématurément COMPLETE des tours précédents)
+
+| Fonctionnalité | COMPILED | FUNCTIONALLY VERIFIED | UI VERIFIED |
+|---|---|---|---|
+| Feed — chargement initial | Oui | **NON — bug rapporté, cause en cours de diagnostic** | Non |
+| Feed — actions (like/comment/partage/etc., tour 10) | Oui | Non (jamais testées) | Non |
+| Profile — chargement | Oui (avec le correctif de ce tour) | **NON — correctif pas encore revérifié** | Non |
+| Galerie — publication | Oui (avec le correctif de ce tour) | **NON — correctif pas encore revérifié** | Non |
+| Chat — création de groupe (bouton d'entrée) | Oui | **NON — bug persistant, cause non identifiée** | Non |
+| Animems | Oui | Non | **Non — en attente des captures Android** |
+
+**Build CI** : `b485f34` → run `31941895327`, **SUCCESS**.
+
+**Codemagic** : compile également avec succès (confirmé par l'utilisateur), mais comme GitHub
+Actions, cela ne valide QUE la compilation — voir la règle absolue en tête de cette section.
+
+**Ce qui reste à faire** : attendre le prochain test Appetize (ou les captures Android pour Animems)
+avant de continuer — les logs de diagnostic ajoutés ce tour sont le principal outil pour confirmer
+les causes racines réelles, pas des suppositions à valider a priori.

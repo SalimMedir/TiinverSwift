@@ -13,13 +13,19 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 **BUILD CI VALIDÉ :** Oui (GitHub Actions uniquement — voir stratégie double-CI ci-dessous,
 Codemagic en attente d'un déclenchement manuel par l'utilisateur, jamais rapporté à ce jour)
-**Build :** GitHub Actions run `31940076878` (workflow `ios-build.yml`)
-**Commit :** `68fd1d3` ("fix(session): purge local Chat/Roster/Notification caches on
-logout/delete" — dernier commit de la session, 10ᵉ tour, voir section 11ter ci-dessous)
+**Build :** GitHub Actions run `31941895327` (workflow `ios-build.yml`)
+**Commit :** `b485f34` ("fix(profile,galerie,groups): surface silent errors, add diagnostic logs"
+— dernier commit de la session, 11ᵉ tour, voir section 11quater ci-dessous)
 **Date :** 2026-08-16
 **Résultat :** `** BUILD SUCCEEDED **`. Confirmé via l'API GitHub Actions (`status: completed,
-conclusion: success`) — les 4 commits de ce tour (`adf9564`/`16c1fbd`/`6014cc6`/`68fd1d3`) sont
-TOUS confirmés `SUCCESS`, aucun échec ce tour.
+conclusion: success`).
+**IMPORTANT — ce commit N'A PAS ENCORE été testé fonctionnellement** : Codemagic + GitHub Actions
+ont validé la COMPILATION du tour précédent (`68fd1d3`) et l'utilisateur a fait un premier test
+Appetize GLOBAL dessus, qui a trouvé 3 problèmes CRITIQUES (Home/Feed vide, Profile vide, Galerie
+publication muette) + 1 problème P0 non résolu (bouton créer-groupe absent) + Animems à comparer
+visuellement (captures à venir). Ce tour (`b485f34`) corrige 2 des 3 CRITIQUES par lecture de code
+(voir section 11quater) et ajoute des logs de diagnostic pour le reste — **AUCUN de ces correctifs
+n'a encore été revérifié sur un run Appetize réel**, seule la compilation est confirmée.
 **Historique complet des runs depuis le dernier point de reprise** (pour ne pas confondre) :
 1. `31912698274` (commit `f2460f2`, Chat+Galerie+Animems minimal construits) — SUCCESS (session
    précédente, voir section 0ter).
@@ -63,7 +69,11 @@ TOUS confirmés `SUCCESS`, aucun échec ce tour.
     **SUCCESS.**
 15. `31939780419` (commit `6014cc6`, dépendance `FirebaseCrashlytics`) — **SUCCESS.**
 16. `31940076878` (commit `68fd1d3`, purge des caches locaux Chat/Roster/Notifications à la
-    déconnexion/suppression de compte) — **SUCCESS.** Dernier run connu.
+    déconnexion/suppression de compte) — **SUCCESS.**
+17. `31941895327` (commit `b485f34`, correctifs P0 post-Appetize : erreurs silencieuses Profile/
+    Galerie-publication/création-groupe rendues visibles + logs de diagnostic Session/Feed) —
+    **SUCCESS.** Dernier run connu. **Compilation seulement — voir section 11quater : rien de ce
+    tour n'a encore été revérifié sur un run Appetize réel.**
 
 ### CI VALIDATION — format demandé par l'utilisateur pour chaque commit important
 
@@ -360,10 +370,21 @@ fonctionnent réellement comme Android tant qu'un nouveau test Appetize ne l'a p
 
 ## 10. PROCHAINE TÂCHE EXACTE
 
-**Instruction explicite et répétée de l'utilisateur (8ᵉ, 9ᵉ ET 10ᵉ tour, 2026-08-16) : NE PAS
-s'arrêter, NE PAS demander/attendre de test Appetize — un seul test global prévu APRÈS avoir traité
-tout ce qui est réalisable, quota conservé.** Cette règle reste valable pour la prochaine session
-tant que l'utilisateur ne dit pas explicitement le contraire.
+**RÈGLE ABSOLUE ADOPTÉE AU 11ᵉ TOUR (2026-08-16), remplace toute lecture antérieure de "COMPLETE"
+dans ce document et dans `MIGRATION_AUDIT.md` pour Feed/Profile/Chat/Galerie-publication** :
+l'utilisateur a fait son PREMIER test Appetize GLOBAL sur le code jusqu'à `68fd1d3` et a trouvé que
+Home/Feed, Profile et la publication Galerie — TOUS précédemment marqués COMPLETE parce qu'ils
+compilaient — ne fonctionnaient PAS réellement à l'usage. Désormais : **"le fichier existe" et "le
+build est SUCCESS" NE SONT PLUS des preuves suffisantes de COMPLETE.** Une fonctionnalité est
+COMPLETE seulement si : code présent + compile + chemin UI accessible + comportement fonctionnel +
+comparable à Android + aucun blocage évident. Documenter séparément désormais : **COMPILED** /
+**FUNCTIONALLY VERIFIED** / **UI VERIFIED AGAINST ANDROID** — ne jamais fusionner les trois. Voir
+section 11quater pour le détail complet de ce tour.
+
+**Instruction explicite et répétée de l'utilisateur (8ᵉ à 11ᵉ tour, 2026-08-16) : NE PAS
+s'arrêter, NE PAS demander/attendre de test Appetize — UN SEUL nouveau test global prévu APRÈS ce
+lot de corrections, quota limité.** Cette règle reste valable pour la prochaine session tant que
+l'utilisateur ne dit pas explicitement le contraire.
 
 **État réel après le 10ᵉ tour** — voir `MIGRATION_PROGRESS.md` (entrée "SESSION DU 2026-08-16, 10ᵉ
 tour") et `MIGRATION_AUDIT.md` (section "SESSION DU 2026-08-16 (10ᵉ tour)") pour le détail complet.
@@ -407,21 +428,27 @@ corriger **3 vrais gaps fonctionnels réels**, en plus de traiter la tâche #49 
   vertical réel) — seules les ACTIONS de post manquaient (voir ci-dessus).
 - **Chat — pagination/read-receipts** : audités, reconfirmés COMPLETE (déjà réel des deux côtés).
 
-**Tâche exacte pour la suite** :
-1. **Tous les commits de ce tour sont confirmés `SUCCESS`** (`adf9564`/`16c1fbd`/`6014cc6`/
-   `68fd1d3`, voir historique ci-dessus) — rien à corriger.
-2. **Il ne reste plus de gap réalisable identifié** par la liste de priorités de l'utilisateur ni par
-   les 4 audits dédiés de ce tour, hormis l'invitation d'amis par contacts (descope déjà acté, pas
-   un oubli). Si une prochaine session reprend ce chantier : lire `RosterListAdapter.java:206-212`/
-   `Invite.java` avant d'écrire quoi que ce soit — `NSContactsUsageDescription` est déjà déclaré dans
-   `project.yml` mais orphelin (jamais utilisé), prêt à servir le jour où ce chantier est repris.
-3. **Demander le retour Codemagic manuel** — toujours en attente depuis GAP-004, jamais rapporté
-   pour AUCUN commit à ce jour, y compris ceux de ce tour.
-4. **Le cycle de continuation demandé par l'utilisateur est maintenant fonctionnellement clos** —
-   plus de gap réalisable en attente de code. Produire le rapport final unique demandé par
-   l'utilisateur (COMPLETE/PARTIAL/MISSING/UNVERIFIED, raisons des gaps restants, commits, dernier
-   commit testé, statut GitHub Actions/Codemagic, fonctionnalités nécessitant un test
-   Appetize/appareil réel) est désormais approprié.
+**Tâche exacte pour la suite (mise à jour 11ᵉ tour)** :
+1. **ATTENDRE les captures Android promises par l'utilisateur avant de toucher à l'UI Animems ou à
+   toute autre UI nécessitant une comparaison visuelle** — instruction explicite, ne pas anticiper.
+2. **Le bouton "créer un groupe" (Chat/Roster) reste NON RÉSOLU** — relu ligne par ligne
+   (`RosterListView.swift`), présent et correctement câblé vers `ContactPickerView`, AUCUN bug
+   statique trouvé. Log de diagnostic ajouté (`ROSTER: refresh() started/rosterAll() returned N
+   rows`). Si le bouton manque toujours au prochain test réel, il faudra soit une capture d'écran
+   exacte du problème, soit un accès Xcode/simulateur réel pour observer le rendu — la lecture de
+   code seule a atteint sa limite ici.
+3. **Rien de ce tour (`b485f34`) n'a encore été revérifié fonctionnellement** — seule la compilation
+   est confirmée (voir section 0). Les logs de diagnostic ajoutés (préfixes `SESSION:`/`PROFILE
+   REQUEST:`/`PROFILE RESPONSE:`/`FEED REQUEST:`/`FEED RESPONSE:`/`FEED UI:`/`PUBLISH REQUEST:`/
+   `PUBLISH RESPONSE:`/`GROUP CREATE REQUEST:`/`GROUP CREATE RESPONSE:`/`ROSTER:`) sont TEMPORAIRES —
+   à lire lors du prochain test Appetize pour confirmer les causes racines, puis à retirer une fois
+   confirmées (ne pas les laisser indéfiniment en production).
+4. **Ne PAS redemander de test Appetize avant que l'utilisateur en fasse un lui-même** — quota
+   limité, un seul test global prévu, consigne explicite et répétée.
+5. **Demander le retour Codemagic manuel** — toujours en attente depuis GAP-004, jamais rapporté
+   pour AUCUN commit à ce jour.
+6. Invitation d'amis par contacts téléphone : toujours descopée par choix (voir section 10 du tour
+   précédent), pas retraitée.
 
 ## 11. HANDOFF — DERNIÈRE SESSION
 
@@ -691,3 +718,113 @@ reste de cette migration tant qu'Appetize n'a pas tourné.
    `RosterListAdapter.java:206-212`/`Invite.java` avant d'écrire quoi que ce soit —
    `NSContactsUsageDescription` est déjà déclaré dans `project.yml` (orphelin pour l'instant), prêt à
    servir.
+
+---
+
+## 11quater. HANDOFF — 11ᵉ TOUR (2026-08-16) — PREMIER TEST APPETIZE RÉEL, CORRECTIFS P0
+
+**Session :** Claude Code (Sonnet 5), continuation directe (même session logique, reprise après
+compaction du contexte). **Changement de nature du tour** : ce n'est plus un audit de couverture
+fonctionnelle mais la correction de bugs RÉELS trouvés par le PREMIER test Appetize global de
+l'utilisateur sur le code du 10ᵉ tour — la phase "audit + implémentation de features" cède la place
+à une phase "diagnostic + correction de bugs runtime". L'utilisateur a explicitement retiré la
+confiance accordée à "ça compile" comme preuve de fonctionnement (voir section 10, règle absolue).
+
+**Contexte reçu de l'utilisateur** : Codemagic ET GitHub Actions compilent avec succès (déjà su),
+MAIS le test Appetize réel montre 3 problèmes CRITIQUES (Home/Feed sans données malgré la grille 2
+colonnes déjà présente, Profile complètement vide, publication Galerie qui ne fait "rien" au clic)
++ 1 problème P0 non résolu depuis un tour antérieur (bouton créer-groupe Chat absent malgré un code
+déjà écrit) + Animems à comparer visuellement à des captures Android à venir (PAS encore reçues —
+consigne explicite de ne PAS toucher l'UI Animems avant leur réception).
+
+**Travail effectué, dans l'ordre chronologique réel :**
+1. **Traçabilité complète Session → Feed** (Android : login/session → userId → endpoint →
+   paramètres → réponse → parsing → repository → ViewModel → UI ; même chaîne côté Swift) :
+   - `LoginView.swift:132` : confirmé que `AuthSessionPersistence.saveSession(user)` (synchrone) est
+     bien appelée AVANT `onLoginSuccess(user)` (navigation) — le correctif de race condition du
+     2026-08-13 est toujours en place et correct. PAS de bug trouvé ici.
+   - `RootRouterView.swift` : `UserSession.shared.cachedUser()` lu depuis `UserDefaults`/Keychain,
+     synchrone, aucune dépendance réseau — restauration de session au lancement structurellement
+     correcte. PAS de bug trouvé ici.
+   - `FeedRepository.fetchTimeline()` : trouvé un risque réel non confirmé mais plausible — le
+     `compactMap` de décodage `Codable` avalait silencieusement TOUT item dont le JSON ne
+     correspondait pas exactement à `FeedActivity` (Swift `Codable` est strict, contrairement à
+     Gson côté Android qui coerce plus librement), produisant un tableau final plus petit que le
+     nombre RÉEL d'items reçus sans la moindre erreur visible. Rendu visible par un log dédié
+     (`FEED RESPONSE: decode failure for one activity...`), PAS confirmé comme LA cause — log ajouté
+     précisément pour trancher au prochain test réel plutôt que de deviner.
+   - Logs `SESSION:`/`FEED REQUEST:`/`FEED RESPONSE:`/`FEED UI:` ajoutés dans
+     `FeedViewModel.loadNextPage()`, format exact demandé par l'utilisateur.
+2. **Profile — VRAI BUG TROUVÉ ET CORRIGÉ** : `ProfileViewModel.loadProfile()` appelait
+   `try? await repository.fetchProfile(...)`, avalant SILENCIEUSEMENT toute erreur réseau/session.
+   `ProfileView.header` ne rendait ALORS RIEN (ni spinner — `isLoadingProfile` déjà retombé à
+   `false` — ni erreur — jamais renseignée — ni contenu — `profile` resté `nil`) : un écran
+   blanc indiscernable d'un profil réellement vide. **C'est EXACTEMENT le bug déjà root-causé et
+   corrigé pour `FeedViewModel` le 2026-08-13** (voir section 0, historique), mais ce correctif
+   n'avait JAMAIS été porté à `ProfileViewModel`, qui a été écrit séparément. Corrigé : nouveau
+   `@Published var errorMessage`, `try await` + `catch` explicite, `ProfileView.header` affiche
+   maintenant un état d'erreur + bouton "Réessayer" (même pattern que `FeedView.emptyOrStatusState`).
+   Logs `PROFILE REQUEST:`/`PROFILE RESPONSE:`/`PROFILE POSTS REQUEST:`/`PROFILE POSTS RESPONSE:`
+   ajoutés.
+3. **Galerie publication — VRAI BUG TROUVÉ ET CORRIGÉ** : `PublishComposeView.publish()` avait DEUX
+   `guard ... else { return }` silencieux (`UserSession.shared.myId` nil, `croppedImage` nil) — dans
+   les deux cas, taper "Publier" ne produit RIEN de visible (pas d'erreur, pas de fermeture d'écran,
+   juste... rien), correspondance EXACTE avec le symptôme rapporté. Corrigé : les deux surfacent
+   maintenant `errorText` (déjà affiché dans le formulaire, jamais branché à ces deux cas
+   précédemment). Logs `PUBLISH REQUEST:`/`PUBLISH RESPONSE:` ajoutés, plus un log dédié dans
+   `FeedRepository.publish()` pour capturer explicitement le statut/corps de réponse en cas
+   d'échec réseau OU d'échec applicatif (`error`≠"false"), fidèle à l'interdiction explicite de
+   laisser une erreur réseau invisible.
+4. **Création de groupe — MÊME classe de bug trouvée et corrigée** : `GroupCreationView.create()`
+   avait le même `guard let myId = ... else { return }` silencieux. Corrigé de la même façon.
+5. **Bouton "créer un groupe" absent — NON RÉSOLU, investigation approfondie sans succès** :
+   `RosterListView.swift` relu ligne par ligne — le bouton (`person.2.badge.plus`,
+   `.navigationBarTrailing`, navigue vers `ContactPickerView`) est RÉELLEMENT présent, câblé
+   correctement, et son `.toolbar` est appliqué EN DEHORS du `Group` conditionnel sur l'état des
+   données (donc ne dépend pas de `rows`/`hasLoaded`). Aucune duplication de `RosterListView`
+   trouvée dans le dépôt. Aucun bug statique identifiable par lecture de code. Log de diagnostic
+   ajouté (`ROSTER: refresh() started/rosterAll() returned N rows`) pour au moins confirmer que
+   l'écran est bien atteint au prochain test — mais si le bouton manque toujours malgré un code
+   correct, la cause est probablement un problème de rendu propre au runtime/appareil, qui
+   nécessitera soit une capture d'écran du problème exact, soit un accès direct à un environnement
+   Xcode/simulateur pour être diagnostiqué au-delà de ce que la lecture de code permet.
+6. **`SearchView.swift` revérifié** : déjà correctement instrumenté (états erreur/vide distincts)
+   depuis une session antérieure — aucune action nécessaire.
+7. **Animems : PAS touché**, conformément à l'instruction explicite d'attendre les captures Android.
+
+**Commit unique de ce tour** : `b485f34` ("fix(profile,galerie,groups): surface silent errors, add
+diagnostic logs"). Run GitHub Actions `31941895327` **SUCCESS**.
+
+**COMPILED** (compile réellement, confirmé CI) : les 7 fichiers modifiés ce tour
+(`ProfileViewModel.swift`, `ProfileView.swift`, `PublishComposeView.swift`, `FeedRepository.swift`,
+`FeedViewModel.swift`, `GroupCreationView.swift`, `RosterListView.swift`).
+
+**FUNCTIONALLY VERIFIED** (comportement réellement confirmé sur un run réel) : **AUCUN élément de ce
+tour** — zéro test Appetize effectué sur ce commit, conforme à la consigne explicite de l'utilisateur
+de n'en faire qu'un seul, à la fin de ce lot complet.
+
+**UI VERIFIED AGAINST ANDROID** : **AUCUN élément de ce tour** — aucune capture Android fournie
+encore, aucune modification visuelle faite (seule la logique d'affichage d'erreur a changé, pas la
+mise en page).
+
+**NOT FUNCTIONALLY VERIFIED, à confirmer au prochain test Appetize** :
+- Le bug Profile est-il réellement résolu (l'erreur s'affiche-t-elle, ou le profil se charge-t-il
+  enfin correctement) ?
+- Le bug Galerie-publication est-il réellement résolu ?
+- La cause RÉELLE du Home/Feed vide (les logs la révéleront — décodage silencieux ? réponse
+  réellement vide ? autre chose ?).
+- Le bouton créer-groupe Chat — toujours non expliqué.
+- Toute la parité visuelle Animems — bloquée sur réception des captures.
+
+**Instructions pour la prochaine session :**
+1. Lire ce fichier EN PREMIER (section 0 + cette section 11quater), puis `MIGRATION_AUDIT.md`/
+   `MIGRATION_PROGRESS.md` (entrées 11ᵉ tour).
+2. Si l'utilisateur fournit un nouveau rapport Appetize (avec ou sans logs de diagnostic copiés/
+   captures d'écran), l'utiliser comme SOURCE DE VÉRITÉ prioritaire sur toute supposition de ce
+   document — les logs ajoutés ce tour sont faits pour être lus à ce moment précis.
+3. Si les captures Android promises sont arrivées, ENFIN traiter Animems (et toute autre UI
+   nécessitant une comparaison visuelle) — comparer systématiquement écran par écran, prioriser P0
+   (écran/bouton/donnée/action absent) > P1 (mauvaise structure/composant) > P2 (détails visuels).
+4. Ne pas déclencher Appetize soi-même, ne pas le redemander avant que l'utilisateur le fasse.
+5. Une fois les logs de diagnostic ayant servi à confirmer une cause racine, penser à les retirer
+   (ce sont des ajouts temporaires, documentés comme tels dans chaque fichier).

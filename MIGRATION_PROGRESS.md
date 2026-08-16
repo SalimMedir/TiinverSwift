@@ -4065,3 +4065,102 @@ différée et déjà documentée par une session antérieure : l'invitation d'am
 répétée de l'utilisateur, "APPETIZE EST INTERDIT POUR L'INSTANT" tant que le rapport final n'a pas
 été produit et validé par l'utilisateur. Les nouvelles interactions (Feed, suppression Chat "pour
 tous") n'ont donc pas été vérifiées visuellement — seule la compilation CI est confirmée.
+
+---
+
+## SESSION DU 2026-08-16 (11ᵉ tour) — PREMIER TEST APPETIZE RÉEL, CORRECTIFS DE BUGS RUNTIME
+
+**Rupture avec les tours précédents** : le rapport final du 10ᵉ tour concluait que le cycle était
+"fonctionnellement clos". L'utilisateur a alors fait son PREMIER test Appetize GLOBAL sur ce code et
+a trouvé que 3 fonctionnalités marquées COMPLETE (Home/Feed, Profile, publication Galerie) ne
+fonctionnaient PAS réellement, plus un problème P0 déjà signalé (bouton créer-groupe Chat) toujours
+non résolu. L'utilisateur a explicitement retiré toute valeur probante à "ça compile" et a demandé
+une correction par LECTURE DE CODE PROUVÉE, pas par supposition, avec ajout de logs de diagnostic
+explicites pour les points restant incertains. Directive explicite : ne pas redemander de test
+Appetize après chaque petite correction, corriger un maximum en un seul lot, un seul nouveau test
+global prévu à la fin.
+
+### Traçabilité Session → Feed (aucun bug trouvé dans ce segment précis)
+
+Relu `LoginView.swift` : `AuthSessionPersistence.saveSession(user)` (synchrone) est bien appelé
+AVANT `onLoginSuccess(user)` (navigation) — le correctif de race condition du 2026-08-13 tient
+toujours, confirmé par lecture directe plutôt que supposé intact. `RootRouterView.swift` :
+`UserSession.shared.cachedUser()` est une lecture synchrone `UserDefaults`/Keychain sans dépendance
+réseau — structurellement correcte pour la restauration au relancement. Aucun bug trouvé dans ce
+segment précis de la chaîne.
+
+### Feed — cause probable identifiée, pas confirmée, log ajouté pour trancher
+
+`FeedRepository.fetchTimeline()` : le `compactMap` de décodage `Codable` avalait silencieusement
+tout item de la réponse dont le JSON ne correspond pas EXACTEMENT à `FeedActivity` (Swift `Codable`
+est strict — contrairement à Gson côté Android, plus permissif sur les coercions de type). Ce
+risque est réel et plausible mais PAS confirmé comme LA cause — un log dédié
+(`FEED RESPONSE: decode failure for one activity — error=... raw=...`) a été ajouté pour trancher
+au prochain test réel, plutôt que de corriger à l'aveugle un point non prouvé. Logs
+`SESSION:`/`FEED REQUEST:`/`FEED RESPONSE:`/`FEED UI:` ajoutés dans `FeedViewModel.loadNextPage()`
+au format exact demandé par l'utilisateur.
+
+### Profile — VRAI BUG TROUVÉ ET CORRIGÉ
+
+`ProfileViewModel.loadProfile()` : `profile = try? await repository.fetchProfile(...)` avalait
+SILENCIEUSEMENT toute erreur réseau ou de session. `ProfileView.header` ne rendait alors RIEN — ni
+spinner (`isLoadingProfile` déjà retombé à `false` dans le `defer`), ni erreur (jamais renseignée),
+ni contenu (`profile` resté `nil`) — un écran blanc structurellement indiscernable d'un profil
+réellement vide. **C'est très précisément le MÊME bug déjà diagnostiqué et corrigé pour
+`FeedViewModel` le 2026-08-13** ("cause réelle confirmée du feed vide sans aucune erreur visible"),
+mais ce correctif n'avait jamais été porté à `ProfileViewModel`, écrit séparément et jamais réaudité
+sous cet angle précis avant ce tour. Corrigé : nouveau `@Published var errorMessage`, `try await` +
+`catch` explicite au lieu de `try?`, et `ProfileView.header` affiche désormais un état d'erreur avec
+bouton "Réessayer" — même motif que `FeedView.emptyOrStatusState`, jamais appliqué à Profile avant
+ce tour. Logs `PROFILE REQUEST:`/`PROFILE RESPONSE:`/`PROFILE POSTS REQUEST:`/
+`PROFILE POSTS RESPONSE:` ajoutés.
+
+### Galerie — publication muette au clic : VRAI BUG TROUVÉ ET CORRIGÉ
+
+`PublishComposeView.publish()` avait DEUX `guard ... else { return }` silencieux : `myId` nil
+(session) et `croppedImage` nil. Dans les deux cas, taper "Publier" ne produit RIEN de visible — pas
+d'erreur, pas de fermeture d'écran, `isPublishing` retombe immédiatement via `defer` sans qu'aucun
+état intermédiaire ne soit perceptible. Correspond EXACTEMENT au symptôme rapporté par l'utilisateur
+("je clique sur Publier mais rien ne se passe"). Corrigé : les deux surfacent désormais `errorText`
+(déjà affiché dans le formulaire, jamais branché à ces deux cas précis). `FeedRepository.publish()`
+complété avec un log dédié capturant explicitement l'échec réseau OU applicatif (statut/message de
+réponse), conforme à l'interdiction explicite de l'utilisateur de laisser une erreur réseau
+invisible ("INTERDICTION de laisser un try? ou une erreur silencieuse masquer le problème").
+
+### Chat — création de groupe : même classe de bug corrigée, MAIS le bouton d'entrée reste inexpliqué
+
+`GroupCreationView.create()` avait le MÊME `guard let myId = ... else { return }` silencieux —
+corrigé de la même façon, avec les mêmes logs de diagnostic (`GROUP CREATE REQUEST:`/
+`GROUP CREATE RESPONSE:`).
+
+En revanche, le problème RAPPORTÉ par l'utilisateur — le bouton "créer un groupe" lui-même absent de
+l'écran Chat/Roster — n'a PAS pu être expliqué par lecture de code : `RosterListView.swift` relu
+ligne par ligne, le bouton (`person.2.badge.plus`, barre d'outils, navigue vers
+`ContactPickerView`) est réellement présent et correctement câblé, son `.toolbar` est appliqué EN
+DEHORS du `Group` conditionnel sur l'état des données (ne dépend donc pas de `rows`/`hasLoaded`),
+aucune duplication du fichier trouvée ailleurs dans le dépôt. **Documenté honnêtement comme NON
+RÉSOLU** plutôt que de prétendre un correctif inventé sans preuve — un log de diagnostic minimal
+(`ROSTER: refresh() started/rosterAll() returned N rows`) a été ajouté pour au moins confirmer que
+l'écran est bien atteint au prochain test ; si le bouton manque toujours malgré un code vérifié
+correct, la cause est probablement un problème de rendu propre au runtime/à l'appareil, hors de
+portée d'une lecture de code seule — nécessitera une capture d'écran précise ou un accès direct à un
+environnement Xcode/simulateur.
+
+### Animems — délibérément PAS touché
+
+Conforme à l'instruction explicite de l'utilisateur d'attendre les captures Android avant toute
+modification de l'UI Animems (ou de toute autre UI nécessitant une comparaison visuelle).
+
+### Discipline de ce tour
+
+**Un seul commit** (`b485f34`), conforme à la consigne "travailler en gros lots, ne pas déclencher
+de build après chaque micro-modification". Run GitHub Actions `31941895327` **SUCCESS**.
+
+**Nouvelle convention de documentation adoptée à partir de ce tour** (demande explicite de
+l'utilisateur) : **COMPILED** / **FUNCTIONALLY VERIFIED** / **UI VERIFIED AGAINST ANDROID** —
+trois axes distincts, ne plus jamais résumer en un seul "COMPLETE". Pour ce tour précisément :
+tout est COMPILED (CI vert), RIEN n'est FUNCTIONALLY VERIFIED ni UI VERIFIED (zéro test Appetize
+sur ce commit précis, zéro capture Android reçue).
+
+**Aucun test fonctionnel réel effectué sur ce commit** — conforme à la consigne explicite de
+l'utilisateur de n'en faire qu'un seul, à la fin de ce lot de corrections complet.

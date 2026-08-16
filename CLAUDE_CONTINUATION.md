@@ -9,7 +9,42 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-16, mise à jour APRÈS captures Android de référence — P0-4)
+# CURRENT HANDOFF (2026-08-16, mise à jour APRÈS balayage complet de la classe de bug decode)
+
+**Pendant l'attente d'un nouveau test réel** (l'utilisateur a explicitement demandé de continuer
+sans s'arrêter), balayage systématique de TOUT le code pour la MÊME classe de bug que Feed/Profile
+(`LenientDecoding.swift`) : champ `Int`/`Bool`/`Double` non-optionnel OU avec valeur par défaut
+Swift (`= 0`/`= false`) décodé strictement, alors que **la synthèse `Decodable` de Swift n'utilise
+JAMAIS la valeur par défaut d'une propriété comme repli au décodage** — piège Swift documenté,
+distinct de l'initialiseur memberwise (qui LUI en bénéficie). Corrigé dans, par ordre d'impact
+probable :
+- `SearchModels.swift` (`SearchUserResult.id`, `SearchPostResult.id`/`.actor`) — un seul résultat
+  mal typé vidait TOUT le tableau `users`/`posts` (`SearchResults.init` catch tout le tableau).
+- `CommentModels.swift` (`Comment.id`) — même risque pour un fil de commentaires entier.
+- `Models/MessageLib.swift` — décodé via `try? JSONDecoder().decode([MessageLib])` dans
+  `ChatRepository` : un seul message mal typé effaçait TOUT l'historique d'une conversation.
+- `Creators/CreatorModel.swift` (`rankPosition`/`score`/`followers`/`isStar`, tous `= 0`/`= false`).
+- `Discover/CertificationModels.swift` (`CertificationStatus`, un seul objet, pas un tableau —
+  échec total du statut de certification).
+- `Animems/TemplateRemoteModel.swift` — dégradait déjà proprement (`try?`+défaut manuel), mais
+  substituait silencieusement une FAUSSE valeur par défaut au lieu de la vraie ; corrigé pour
+  décoder correctement au lieu de juste ne pas planter.
+- `Wallet/WalletModels.swift` (`WalletTransaction`), `Models/TurnCredentials.swift` (crédentials
+  TURN WebRTC) — même correctif, moindre priorité (pas confirmés cassés, fermés par prudence).
+- Nouveau helper `decodeLenientStringIfPresent` (`LenientDecoding.swift`) pour le cas INVERSE : un
+  champ typé `String` mais envoyé comme NOMBRE JSON (`CreatorModel.userId`, `MessageLib.userId`).
+
+**NON corrigé, signalé, PAS une supposition non fondée** : `Models/WebrtcData.swift`/
+`Shareboard/PBSWireModels.swift` — signalisation WebRTC transmise directement entre les stacks
+natifs pairs, PAS via le backend PHP flaky à l'origine de cette classe de bug — risque
+structurellement moindre, pas corrigé sans preuve concrète d'un problème réel.
+
+**CI VALIDÉ** : run `31975209032` (commit `92fb087`, SUCCESS) puis run `31975582942` (commit
+`61fb7d9`, **SUCCESS**).
+
+---
+
+# HANDOFF PRÉCÉDENT (2026-08-16, après captures Android de référence — P0-4)
 
 **Nouvelles captures Android RÉELLES reçues** (Créateurs/Animems/Home/Profile) pour la parité
 visuelle P0-4. Comparaison systématique menée contre le code Android source (layouts XML +

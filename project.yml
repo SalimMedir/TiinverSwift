@@ -276,5 +276,21 @@ targets:
         product: FirebaseRemoteConfig
       - package: Firebase
         product: FirebaseAnalytics
+      # Port de `app/build.gradle` (plugin `com.google.firebase.crashlytics` + dépendance NDK,
+      # 2026-08-16, audit transversal final) — trouvé RÉELLEMENT actif côté Android (plugin déclaré,
+      # PAS du code mort) mais AUCUN appelant manuel (`FirebaseCrashlytics.getInstance()`/
+      # `recordException`) nulle part dans le code source Android : collecte 100% automatique des
+      # crashs, aucune logique métier à reproduire. `FirebaseApp.configure()` (déjà appelé,
+      # `AppDelegate.swift`) suffit à initialiser la collecte automatique une fois ce produit lié,
+      # même mécanisme "zéro-code" que le plugin Gradle. **Limite assumée** : PAS de phase de build
+      # dédiée à l'upload des dSYM (symbolication) — ce projet a un historique documenté de
+      # `postBuildScripts`/`resources:` XcodeGen fragiles (voir commentaires `excludes:` plus haut,
+      # 4 tentatives pour `GoogleService-Info.plist`) ; ajouter un script d'upload dSYM non
+      # vérifiable sans environnement Xcode local risquerait de casser un CI par ailleurs vert pour
+      # un gain (rapports lisibles vs juste collectés) non bloquant. Les rapports de crash seront
+      # collectés dès ce commit, la symbolication (dSYM) reste un suivi possible avec accès à un
+      # vrai run Xcode/Codemagic pour vérifier le script avant de l'ajouter.
+      - package: Firebase
+        product: FirebaseCrashlytics
       - package: TOCropViewController
         product: CropViewController

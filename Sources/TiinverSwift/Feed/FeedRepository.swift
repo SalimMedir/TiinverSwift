@@ -75,6 +75,12 @@ final class FeedRepository {
         try await activities.query(sortDescriptors: [NSSortDescriptor(key: "stamp", ascending: false)])
     }
 
+    /// Port de la branche `wk_activities` de `transportDataBackground.deleteaccount()` — voir
+    /// `LocalDataPurger.swift`.
+    func purgeCache() async throws {
+        try await activities.delete(predicate: nil)
+    }
+
     /// Port de `HttpFileUploader.uploadRequestBody` (`type=0`, cas "publication", déclenché après
     /// `PublishFragment` côté Android via `MainFragment`/`FeedFragment`, `token="publication"`) —
     /// POST multipart vers `activity/add`. Champs `category`/`metadata`/`template_id`/`consentAi`

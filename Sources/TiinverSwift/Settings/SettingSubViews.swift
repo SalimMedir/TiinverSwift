@@ -31,6 +31,11 @@ struct SettingAccountView: View {
         isBusy = true
         defer { isBusy = false }
         try? await ProfileRepository.shared.logout(userId: userId)
+        // Port de `transportDataBackground.deleteaccount()` — Android route "logout" ET
+        // "deleteaccount" vers la MÊME méthode, qui purge aussi tout le cache local
+        // (messages/roster/notifications), pas seulement les identifiants de session — voir
+        // `LocalDataPurger.swift` pour le détail complet et la justification de cette découverte.
+        await LocalDataPurger.purgeAll()
         UserSession.shared.clear()
     }
 
@@ -39,6 +44,7 @@ struct SettingAccountView: View {
         isBusy = true
         defer { isBusy = false }
         try? await ProfileRepository.shared.deleteAccount(userId: userId)
+        await LocalDataPurger.purgeAll()
         UserSession.shared.clear()
     }
 }

@@ -34,6 +34,14 @@ final class MessageRepository {
         self.roster = roster
     }
 
+    /// Port de la branche `wk_messages` de `transportDataBackground.deleteaccount()` — voir
+    /// `LocalDataPurger.swift`. `groupMessages` (`wk_gp_messages`) purgée aussi par cohérence bien
+    /// que confirmée table MORTE côté Android (voir note de tête de fichier) — vide en pratique.
+    func purgeAll() async throws {
+        try await messages.delete(predicate: nil)
+        try await groupMessages.delete(predicate: nil)
+    }
+
     /// Port de `isMessageExist` — `wk_messages` uniquement, comme l'original (`infoContract.
     /// MSG_URI`), pas de vérification `wk_gp_messages` correspondante côté Android non plus.
     func messageExists(messageId: String) async throws -> Bool {

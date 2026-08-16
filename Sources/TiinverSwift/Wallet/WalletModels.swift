@@ -26,6 +26,30 @@ struct WalletTransaction: Codable, Identifiable, Equatable {
         case operatorName = "operator"
         case operatorTransactionId, country, phoneNumber, status, createAt, type
     }
+
+    /// Décodage tolérant (2026-08-16) — même piège que `CreatorModel` : `= 0` sur ces propriétés
+    /// n'est JAMAIS utilisé par la synthèse `Decodable` de Swift, seulement par l'initialiseur
+    /// memberwise (absent ici de toute façon). Un décodage strict raté ferait échouer TOUTE la
+    /// ligne d'historique wallet.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = container.decodeLenientIntIfPresent(forKey: .id) ?? 0
+        userId = container.decodeLenientIntIfPresent(forKey: .userId) ?? 0
+        transactionId = try container.decodeIfPresent(String.self, forKey: .transactionId)
+        requestedBalance = container.decodeLenientDoubleIfPresent(forKey: .requestedBalance) ?? 0
+        requestedAmount = container.decodeLenientDoubleIfPresent(forKey: .requestedAmount) ?? 0
+        calculatedMoney = container.decodeLenientDoubleIfPresent(forKey: .calculatedMoney) ?? 0
+        quantity = container.decodeLenientIntIfPresent(forKey: .quantity) ?? 0
+        price = container.decodeLenientIntIfPresent(forKey: .price) ?? 0
+        currency = try container.decodeIfPresent(String.self, forKey: .currency)
+        operatorName = try container.decodeIfPresent(String.self, forKey: .operatorName)
+        operatorTransactionId = try container.decodeIfPresent(String.self, forKey: .operatorTransactionId)
+        country = try container.decodeIfPresent(String.self, forKey: .country)
+        phoneNumber = try container.decodeIfPresent(String.self, forKey: .phoneNumber)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        createAt = try container.decodeIfPresent(String.self, forKey: .createAt)
+        type = try container.decodeIfPresent(String.self, forKey: .type)
+    }
 }
 
 /// Port de `models/wallet/Operator.java` — un moyen de paiement/retrait "manuel" (mobile money ou

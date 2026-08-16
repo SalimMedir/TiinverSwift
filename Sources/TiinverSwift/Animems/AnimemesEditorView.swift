@@ -9,8 +9,11 @@ import SwiftUI
 /// (2026-08-16, `AnimemesGestureController`), **timeline/keyframes/lecture/masques/modèles de
 /// mouvement locaux câblés le 2026-08-16** (`TimelineView`/`AnimationEngine`/`MaskFactory`/
 /// `MotionTemplateManager`, moteur déjà porté, seul le câblage manquait — voir audit dans
-/// `MIGRATION_AUDIT.md`). Stickers/emoji et modèles COMMUNAUTAIRES (upload/partage) PAS reproduits
-/// dans cette passe.
+/// `MIGRATION_AUDIT.md`). **Modèles de mouvement COMMUNAUTAIRES (parcourir/télécharger/appliquer)
+/// câblés le 2026-08-16** — confirmés RÉELS et accessibles depuis l'UI Android par un audit dédié
+/// (`btn_display_online_template`), contrairement à l'UPLOAD communautaire (bouton "Publier le
+/// modèle" commenté dans le source Android lui-même, code mort, NON porté — voir
+/// `CommunityTemplateRepository.swift`).
 struct AnimemesEditorView: View {
     var onClose: () -> Void
 
@@ -28,6 +31,7 @@ struct AnimemesEditorView: View {
     @State private var lastMaskRotationDegrees: CGFloat = 0
     @State private var showSaveOptions = false
     @State private var showTemplateGallery = false
+    @State private var showCommunityGallery = false
     @State private var templateSavedToast = false
 
     var body: some View {
@@ -60,10 +64,20 @@ struct AnimemesEditorView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
+                    // Port de `btn_display_online_template` → `MemesFragment.showCommunityTemplates`
+                    // — confirmé RÉEL et accessible depuis l'UI Android par un audit dédié
+                    // (2026-08-16), contrairement à l'upload communautaire (code mort côté Android
+                    // lui-même, voir `CommunityTemplateRepository.swift`).
+                    Button { showCommunityGallery = true } label: {
+                        Image(systemName: "globe")
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
                     // Port de `save_animemes2` → `showSaveDialog()`/`AnimemesActionSheet` — si le
                     // calque est animé, propose export vidéo OU sauvegarde en modèle (port de
                     // "Publish Animation"/"Save Template" ; "Publish Template" = upload
-                    // communautaire, PAS reproduit dans cette passe, voir `MIGRATION_AUDIT.md`).
+                    // communautaire, PAS reproduit — code mort côté Android lui-même, voir
+                    // `MIGRATION_AUDIT.md`).
                     // Sinon (composition statique), export direct comme avant.
                     if state.isExporting {
                         ProgressView()
@@ -121,6 +135,15 @@ struct AnimemesEditorView: View {
                     showTemplateGallery = false
                 },
                 onClose: { showTemplateGallery = false }
+            )
+        }
+        .sheet(isPresented: $showCommunityGallery) {
+            CommunityTemplateGalleryView(
+                onSelect: { template in
+                    state.applyTemplate(template, canvasSize: canvasSize)
+                    showCommunityGallery = false
+                },
+                onClose: { showCommunityGallery = false }
             )
         }
         .alert("Modèle enregistré", isPresented: $templateSavedToast) {

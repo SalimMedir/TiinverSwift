@@ -222,6 +222,15 @@ struct HomeShellView: View {
                     .lineLimit(4)
                     .minimumScaleFactor(0.6)
             }
+            // 2026-08-17 : statut RÉEL de la dernière écriture Keychain (voir `KeychainStore.swift`
+            // — cause confirmée de `apiKey=nil` malgré un login décodé correctement : build
+            // Appetize compilé SANS signature de code, `SecItemAdd` peut échouer silencieusement).
+            if let keychainStatus = KeychainStore.lastSaveStatusDescription {
+                Text("Keychain écriture apiKey : \(keychainStatus)")
+                    .font(.system(size: 9, design: .monospaced))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.6)
+            }
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 8)

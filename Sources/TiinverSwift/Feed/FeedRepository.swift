@@ -107,36 +107,72 @@ final class FeedRepository {
         try await activities.delete(predicate: nil)
     }
 
-    /// Port de `HttpFileUploader.uploadRequestBody` (`type=0`, cas "publication", déclenché après
-    /// `PublishFragment` côté Android via `MainFragment`/`FeedFragment`, `token="publication"`) —
-    /// POST multipart vers `activity/add`. Champs `category`/`metadata`/`template_id`/`consentAi`
-    /// **délibérément omis** : présents sur `UploadData` côté Android mais jamais inclus dans le
-    /// corps RÉELLEMENT envoyé (vérifié dans `uploadRequestBody`, `HttpFileUploader.java`) — les
-    /// ajouter ici "corrigerait" un comportement qu'Android lui-même n'a pas, pas une fidélité.
-    func publish(actorId: String, object: String, message: String, hashtags: [String], fileData: Data, mimeType: String, filename: String) async throws {
-        let params: [String: String] = [
-            "token": UUID().uuidString,
+    /// **CORRIGÉ le 2026-08-17 (`MIGRATION_PARITY_AUDIT_V2.md` P0-1, cause racine réelle confirmée
+    /// en traçant `Activity/service/ActivityService.java` en entier, PAS `HttpFileUploader.java`
+    /// comme le supposait le commentaire précédent — voir `FeedMediaUploader.swift` pour la trace
+    /// complète)** : le fichier média n'est JAMAIS envoyé au backend Tiinver directement. Flux réel
+    /// en 2 étapes : (1) upload direct vers BunnyCDN (`FeedMediaUploader.uploadPhoto`/`uploadVideo`,
+    /// Storage pour les photos, Video Library HLS pour les vidéos) ; (2) `POST activity/add` avec
+    /// SEULEMENT des métadonnées texte (`cdn_content_id`/`cdn_content_url`/`cdn_thumbnail_url`/
+    /// `cdn_provider`/`object_url`) — jamais de fichier. `category`/`metadata`/`template_id`/
+    /// `consentAi` restent délibérément omis (non envoyés par le vrai client Android non plus,
+    /// vérifié dans `sendMetaDate`).
+    func publish(actorId: String, object: String, message: String, hashtags: [String], fileData: Data) async throws {
+        // Port de `Cryptography.generateUniqueBase64ID(myId)` — UNE SEULE valeur générée ici,
+        // réutilisée comme nom de fichier BunnyCDN ET comme paramètre `token` de `activity/add`,
+        // exactement comme Android réutilise le même `data.getToken()` aux deux endroits.
+        let token = UUID().uuidString
+
+        var cdnContentId: String
+        var cdnContentUrl: String
+        var cdnThumbnailUrl: String?
+
+        print("FEED PUBLISH: step=1/2 uploading to BunnyCDN object=\(object) token=\(token) bytes=\(fileData.count)")
+        do {
+            if object == "videos" {
+                let result = try await FeedMediaUploader.uploadVideo(token: token, videoData: fileData)
+                cdnContentId = result.cdnContentId
+                cdnContentUrl = result.cdnContentUrl
+                cdnThumbnailUrl = result.cdnThumbnailUrl
+            } else {
+                let result = try await FeedMediaUploader.uploadPhoto(token: token, jpegData: fileData)
+                cdnContentId = result.cdnContentId
+                cdnContentUrl = result.cdnContentUrl
+            }
+        } catch {
+            print("FEED PUBLISH: step=1/2 BunnyCDN upload FAILED error=\(error)")
+            throw error
+        }
+        print("FEED PUBLISH: step=1/2 BunnyCDN upload OK cdn_content_url=\(cdnContentUrl)")
+
+        var params: [String: String] = [
+            "token": token,
             "actor": actorId,
             "verb": "post",
             "object": object,
             "message": message,
             "hashtags": hashtags.joined(separator: ","),
             "format": "json",
+            "cdn_provider": "bunny",
+            "cdn_content_id": cdnContentId,
+            "cdn_content_url": cdnContentUrl,
+            "object_url": cdnContentUrl,
         ]
+        if let cdnThumbnailUrl { params["cdn_thumbnail_url"] = cdnThumbnailUrl }
+
+        print("FEED PUBLISH: step=2/2 endpoint=activity/add actor=\(actorId) object=\(object)")
         let value: JSONValue
         do {
-            value = try await APIClient.shared.uploadMultipart(
-                endpoint: "activity/add", fields: params, fileFieldName: "object_url",
-                filename: filename, mimeType: mimeType, fileData: fileData
-            )
+            value = try await APIClient.shared.post(params, endpoint: "activity/add")
         } catch {
-            print("FEED PUBLISH: endpoint=activity/add transport error=\(error)")
+            print("FEED PUBLISH: step=2/2 endpoint=activity/add transport error=\(error)")
             throw error
         }
         guard value.isBackendSuccess else {
-            print("FEED PUBLISH: endpoint=activity/add backend error=\(value.backendErrorMessage ?? "?") raw=\(value.toDictionary() ?? [:])")
+            print("FEED PUBLISH: step=2/2 endpoint=activity/add backend error=\(value.backendErrorMessage ?? "?") raw=\(value.toDictionary() ?? [:])")
             throw JSONError.typeMismatch(value.backendErrorMessage ?? "activity/add")
         }
+        print("FEED PUBLISH: step=2/2 endpoint=activity/add SUCCESS")
     }
 
     /// Port de `MainFragment.OnLikeClicked`/`OnclickPrtg` — endpoint `reaction`, MÊMES paramètres

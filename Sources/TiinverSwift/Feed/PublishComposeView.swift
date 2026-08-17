@@ -182,7 +182,6 @@ struct PublishComposeView: View {
         defer { isPublishing = false }
 
         let hashtags = caption.split(separator: " ").filter { $0.hasPrefix("#") }.map { String($0.dropFirst()) }
-        let unixTime = Int(Date().timeIntervalSince1970)
 
         do {
             switch media {
@@ -192,17 +191,17 @@ struct PublishComposeView: View {
                     print("PUBLISH REQUEST: aborted — croppedImage is nil or JPEG encoding failed")
                     return
                 }
-                print("PUBLISH REQUEST: endpoint=activity/add actorId=\(actorId) object=photos captionLength=\(caption.count) fileBytes=\(jpegData.count)")
+                print("PUBLISH REQUEST: object=photos captionLength=\(caption.count) fileBytes=\(jpegData.count) — flux réel : BunnyCDN Storage puis activity/add (métadonnées)")
                 try await FeedRepository().publish(
                     actorId: actorId, object: "photos", message: caption, hashtags: hashtags,
-                    fileData: jpegData, mimeType: "image/jpeg", filename: "\(unixTime).webp"
+                    fileData: jpegData
                 )
             case .video(let url):
                 let videoData = try Data(contentsOf: url)
-                print("PUBLISH REQUEST: endpoint=activity/add actorId=\(actorId) object=videos captionLength=\(caption.count) fileBytes=\(videoData.count)")
+                print("PUBLISH REQUEST: object=videos captionLength=\(caption.count) fileBytes=\(videoData.count) — flux réel : BunnyCDN Video Library puis activity/add (métadonnées)")
                 try await FeedRepository().publish(
                     actorId: actorId, object: "videos", message: caption, hashtags: hashtags,
-                    fileData: videoData, mimeType: "video/mp4", filename: "\(unixTime).mp4"
+                    fileData: videoData
                 )
             }
             print("PUBLISH RESPONSE: success")

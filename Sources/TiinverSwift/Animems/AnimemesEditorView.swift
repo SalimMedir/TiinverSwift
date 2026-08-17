@@ -312,10 +312,6 @@ struct AnimemesEditorView: View {
                 .onAppear { canvasSize = fitSize; state.preparePlayback(canvasSize: fitSize) }
                 .onChange(of: fitSize) { newSize in canvasSize = newSize; state.preparePlayback(canvasSize: newSize) }
                 .onChange(of: state.version) { _ in state.preparePlayback(canvasSize: canvasSize) }
-                // `version` force un redraw explicite après mutation des calques (le moteur Animems
-                // est composé de classes de référence, pas de `@Published` internes — voir
-                // `AnimemesEditorState`).
-                .id(state.version)
 
                 zoomControls
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)

@@ -1324,6 +1324,69 @@ vide (début de session), mais rien ne confirme s'il inclut le correctif `thumbn
 
 ---
 
+### GAP-024 — Animems : `.id(state.version)` interrompt le geste de déplacement en cours (RÉSOLU, trouvé par analyse statique, PAS par capture)
+
+**Domaine :** Animems
+**Priorité :** P0
+**Statut actuel :** DONE [VÉRIFIÉ CETTE SESSION PAR LECTURE DE CODE — pas encore par test réel]
+
+#### Constat de départ
+L'utilisateur signale que les objets ajoutés dans l'éditeur Animems "ne se déplacent pas
+facilement". Une passe d'audit précédente (documentée dans `CLAUDE_CONTINUATION.md`) avait relu
+`AnimemesGestureController.swift`/`AnimemesEditorState.swift` sans rien trouver — cette passe-ci
+élargit la lecture à `AnimemesEditorView.swift` (le point d'attache RÉEL du geste SwiftUI, jamais
+relu jusqu'ici) plutôt que de s'arrêter aux fichiers déjà couverts.
+
+#### Cause trouvée
+`AnimemesEditorView.swift`, `canvasArea` : le `Canvas` qui reçoit `.gesture(combinedGesture)` (le
+geste de glisser/pincer/pivoter) portait AUSSI `.id(state.version)`. `state.version` est incrémenté
+à CHAQUE `dragMoved(to:)` (`AnimemesEditorState.swift:254`, donc potentiellement plusieurs fois par
+seconde pendant un glissement actif). Changer le `.id()` d'une vue SwiftUI force SwiftUI à la
+traiter comme une INSTANCE ENTIÈREMENT NOUVELLE (destruction + recréation), y compris le
+reconnaisseur de geste UIKit sous-jacent — appliqué à la MÊME vue qui porte le geste actif, ceci
+interrompt/redémarre le suivi du geste en plein glissement, produisant exactement le symptôme
+rapporté ("ne se déplacent pas facilement" : résistance, saccades, geste qui semble se réinitialiser).
+
+**`.id()` était de toute façon redondant, pas seulement nuisible** : `state` est un `@StateObject`
+(`AnimemesEditorView.swift:41`) et `version` un `@Published private(set) var` (`AnimemesEditorState.
+swift:34`) — SwiftUI ré-évalue déjà `body` (donc reconstruit `Canvas` avec un contenu à jour) à
+CHAQUE mutation de `version`, sans avoir besoin de `.id()` pour forcer quoi que ce soit. Le
+commentaire de tête ("le moteur Animems est composé de classes de référence, pas de `@Published`
+internes") visait bien un problème réel — `composer`/`layers` sont des classes de référence dont les
+mutations internes ne sont PAS observées automatiquement — mais `version` (le `@Published` externe
+déjà utilisé comme signal) suffisait déjà à déclencher le redessin ; le `.id()` ajouté "par
+précaution" est ce qui casse le geste.
+
+#### Correction
+Suppression de `.id(state.version)` sur le `Canvas`. Le redessin continue de fonctionner via le
+mécanisme normal `@StateObject`/`@Published` (`.onChange(of: state.version)` voisin, qui pilote
+`preparePlayback`, reste inchangé et suffit à prouver que `version` est bien observé sans `.id()`).
+
+#### Piste secondaire identifiée, PAS corrigée (incertitude sur les effets de bord)
+`.onChange(of: state.version) { _ in state.preparePlayback(canvasSize: canvasSize) }` s'exécute
+AUSSI à chaque `dragMoved` — `preparePlayback`→`engine.prepare(composer:)` recalcule les
+bornes/durées de TOUTE la timeline pour TOUS les calques (`AnimationEngine.prepareFrame`, lu en
+partie), un travail pensé pour un changement de STRUCTURE (keyframe enregistrée, calque ajouté/
+retiré), pas pour chaque micro-déplacement d'un glissement en cours. Probable contributeur
+supplémentaire de lenteur perçue, mais resserrer ce déclencheur risque de casser un cas où
+`preparePlayback` est réellement nécessaire après un `version += 1` d'une autre origine — pas touché
+cette passe faute de certitude suffisante sur tous les sites d'incrémentation de `version`.
+
+#### Dépendances
+Aucune — retrait d'un modificateur, aucune signature changée.
+
+#### Risque de régression
+LOW — `.id()` était démontré redondant (le redessin fonctionne par le mécanisme `@Published`
+existant, vérifié par lecture, pas supposé).
+
+#### Critère de validation
+Dans l'éditeur Animems : sélectionner un objet et le glisser en continu sur plusieurs secondes — le
+déplacement doit suivre le doigt sans à-coups ni réinitialisation apparente. PAS encore vérifié par
+test réel (trouvé et corrigé par analyse statique du code SwiftUI, comme demandé explicitement par
+l'utilisateur plutôt que par nouvelle capture).
+
+---
+
 ## 4. API PARITY MATRIX
 
 *(Endpoints confirmés par lecture directe du code Android ET Swift — pas une liste exhaustive de

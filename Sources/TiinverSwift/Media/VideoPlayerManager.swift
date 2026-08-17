@@ -47,8 +47,16 @@ final class VideoPlayerManager {
     /// de lecture possible malgré une session/réseau désormais fonctionnels.
     private static let videoHTTPHeaders = ["User-Agent": "TiinverPlayer/1.0", "Referer": "https://stream.tiinver.com"]
 
+    // **Correctif CI du 2026-08-17** : `AVURLAssetHTTPHeaderFieldsKey` n'est PAS exposée au
+    // compilateur Swift (clé interne ObjC jamais déclarée côté Swift dans le SDK AVFoundation —
+    // confirmé, échec "cannot find 'AVURLAssetHTTPHeaderFieldsKey' in scope" en CI) alors qu'elle
+    // fonctionne bien à l'exécution une fois passée comme chaîne littérale identique — contournement
+    // standard et documenté pour ce cas précis, pas une invention : on passe la même valeur de clé
+    // sous forme de `String` brute plutôt que via le symbole manquant.
+    private static let httpHeaderFieldsOptionKey = "AVURLAssetHTTPHeaderFieldsKey"
+
     private static func makeAsset(url: URL) -> AVURLAsset {
-        AVURLAsset(url: url, options: [AVURLAssetHTTPHeaderFieldsKey: videoHTTPHeaders])
+        AVURLAsset(url: url, options: [httpHeaderFieldsOptionKey: videoHTTPHeaders])
     }
 
     func setStateCallback(_ callback: VideoPlayerStateCallback?) {

@@ -9,6 +9,62 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
+# CURRENT HANDOFF (2026-08-17, suite 3 — GAP-020/021/022 : ordre exact Fullscreen, Other User Profile partout, écran 1 création de groupe)
+
+**Contexte** : l'utilisateur a fourni une capture Android réelle du fullscreen Feed (bouton
+"S'abonner" visible) suite au tour précédent, redemandant explicitement de documenter dans
+`MIGRATION_AUDIT.md` (pas seulement `CLAUDE_CONTINUATION.md`) AVANT toute correction — puis a
+fourni 3 gaps précis confirmés par test réel : Other User Profile inaccessible depuis la plupart des
+écrans, chaîne de création de groupe incomplète (écran 1 manquant), Fullscreen déjà en bonne voie.
+
+**GAP-020 (MIGRATION_AUDIT.md)** : l'ordre vertical du bloc d'infos du fullscreen Feed
+(`FeedDetailCell`) était inversé par rapport à `reaction_pub_but.xml` (lu en entier) — Android :
+légende D'ABORD, puis avatar+pseudo+date, puis "S'abonner" ; iOS avait l'inverse. Corrigé (ordre
+exact) + ajout de la date (`TimeUtils.getDate`, "yyyy-MM-dd HH:mm:ss"→"dd-MM-yy", reproduit à
+l'identique). **Découverte en cours de route** : `Activity/ui/FullscreenActivity.java` est un
+template Android Studio mort (écouteurs vides, jamais atteint par aucune navigation réelle) — le
+VRAI fullscreen est `FeedFragment.java`→`ViewPagerAdapter.java`→`CustomCardView.java`, tous lus en
+entier. Commit `3bf7ae3`, CI verte.
+
+**GAP-021 (MIGRATION_AUDIT.md) — Other User Profile** : `grep -rl "UserProfile.class"` sur tout
+Android = 16 fichiers. `ProfileView.swift` elle-même était déjà complète (menu "..." correct :
+Signaler/Bloquer-Débloquer, exactement 2 items comme `menu_user_profile`), mais seulement 4/12
+points d'entrée reachable étaient câblés côté iOS. Ajoutés : `NotificationsListView` (aucune
+navigation avant), `SuggestionsCarouselView` (avatar tapable maintenant — **piège évité** : cette
+vue vit dans l'onglet Accueil, PAS enveloppé dans un `NavigationStack`, donc `fullScreenCover`+état
+local plutôt que `NavigationLink`, qui y serait silencieusement inopérant), `CommentsView` (avatar+
+pseudo, commentaires ET réponses), `ChatView` (nouveau bouton toolbar pour un chat 1:1, MÊME motif
+que le bouton groupe existant — l'écran de réglages complet `SettingPrivateMessageFragmant` reste un
+gap connu et borné, voir GAP-011, pas reconstruit ici). **PAS traité** : un 3ᵉ visualiseur fullscreen
+distinct (`NotiLikecmt/FullScreenMedia.java`/`CustomVideoView.java`, accessible depuis Notifications
+ET Search) — accessibilité réelle non confirmée par preuve d'instanciation active, à revérifier si
+rapporté. Commit `acbddc7`.
+
+**GAP-022 (MIGRATION_AUDIT.md) — écran 1 de création de groupe manquant** : `Contact.java` (Activity
+hôte, lu en entier) atterrit TOUJOURS sur `ContactsFragment` en premier (écran 1 : liste générale,
+tap = ouvrir un chat individuel DIRECTEMENT, `Adapter.ContactHolder`), quel que soit le point
+d'entrée (`Roster.java` FAB "créer groupe" ET `MonetizationActivity.java` "inviter des contacts" —
+DEUX entrées distinctes, vérifiées séparément). L'en-tête cliquable dédié ("Créer un groupe") bascule
+SEULEMENT ALORS vers `ChooseFragment` (écran 2, sélection multiple). `ContactPickerView.swift`
+sautait directement à l'écran 2 depuis TOUT point d'entrée — réécrite avec deux modes (`.browse`
+par défaut / `.selectForGroup`). Commit `acbddc7`.
+
+**Piège rencontré (déjà documenté dans le commit correctif)** : `navigationDestination(item:)`
+nécessite iOS 17, ce projet cible iOS 16 — cassait la compilation (`acbddc7`). Corrigé avec le même
+contournement `isPresented:`+`Binding(get:set:)` déjà utilisé partout ailleurs dans ce code base.
+Commit `e860d32`, CI verte.
+
+**CI VALIDÉ (toutes vertes)** : `3bf7ae3`, `e860d32` (inclut `acbddc7`, corrigé au commit suivant).
+**AUCUN de ces correctifs n'a encore été confirmé par un test réel** — statut correct : "CI
+VALIDATED, FUNCTIONALLY UNVERIFIED".
+
+**Reste à faire, explicitement en attente de preuve réelle de l'utilisateur avant tout code
+supplémentaire (règle "ne pas tâtonner")** : Animems — audit complet déjà fait (session précédente),
+aucun bug supplémentaire identifiable sans capture/vidéo réelle du problème rapporté (objets qui ne
+se déplacent pas facilement) ; en attente.
+
+---
+
 # CURRENT HANDOFF (2026-08-17, suite 2 — audit de complétude P0 : Feed Grid/Fullscreen, Profile tap, création de groupe)
 
 **Contexte** : l'utilisateur a REJETÉ la clôture précédente ("les problèmes persistants montrent

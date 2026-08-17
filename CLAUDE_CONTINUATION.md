@@ -9,7 +9,40 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-17, bandeau userId permanent ajouté sur demande explicite)
+# CURRENT HANDOFF (2026-08-17, CAUSE RACINE RÉELLE CONFIRMÉE — JSON brut fourni par l'utilisateur)
+
+**L'utilisateur a fourni le JSON RÉEL de `login` et `feedtimeline`** (pas une capture d'écran —
+le payload texte complet), après une frustration légitime sur la lenteur du diagnostic. Ce JSON a
+permis de trancher DÉFINITIVEMENT, sans plus deviner :
+
+1. **`"error": false` sur `login` est un BOOLÉEN JSON natif**, alors que la convention documentée
+   partout ailleurs dans ce backend (et supposée universelle jusqu'ici, y compris dans
+   `TIINVER_IOS_PORT_ANALYSIS.md §6.3`) est la CHAÎNE `"false"`. `AuthEndpoints.parseLoginResponse`
+   comparait `error == "false"` (texte) contre cette valeur, qui ne correspondait JAMAIS — tombait
+   dans le DERNIER repli du code (`User()` vide, `etat` recopié depuis `message` = "Login
+   Successful"), que `LoginView.handle` reconnaît quand même comme un succès. D'où : navigation
+   propre vers Accueil, session ENTIÈREMENT vide, exactement le symptôme signalé depuis hier.
+   **Corrigé** : `JSONValue.errorFieldNormalized` (nouveau) tolère chaîne OU booléen, utilisé
+   partout où "error" est vérifié dans `AuthEndpoints.swift`/`VerificationEndpoints.swift`/
+   `JSONValue.isBackendSuccess`.
+2. **6 divergences de type supplémentaires trouvées dans le MÊME JSON**, qui auraient maintenu le
+   bug même après le correctif ci-dessus : `User.emailVerified`/`certified`/`followers`/`following`
+   envoyés en NOMBRE (pas en texte) ; `FeedActivity.actor` envoyé en NOMBRE ; `FeedActivity.isLiked`
+   envoyé en BOOLÉEN JSON natif sur **CHAQUE** item du flux échantillon fourni — celui-ci à lui seul
+   aurait vidé tout le Feed même une fois la session correctement établie. Tous corrigés avec
+   `LenientDecoding.swift` (nouveau helper `decodeLenientBoolAsStringIfPresent` pour le cas
+   `isLiked`).
+
+**CI VALIDÉ** : run `31980597737`, commit `6513950`, **SUCCESS**.
+
+**Confiance** : MAXIMALE — pas une hypothèse déduite du comportement observé, mais une correction
+directement dérivée du JSON réel envoyé par le serveur, comparé champ par champ au modèle Swift.
+**Reste à confirmer par un test réel** (l'utilisateur a dit vouloir économiser Appetize — attendre
+son prochain test plutôt que de le lui redemander).
+
+---
+
+# HANDOFF PRÉCÉDENT (2026-08-17, bandeau userId permanent ajouté sur demande explicite)
 
 **Demande directe de l'utilisateur** : "il faut afficher le userId pourqu'on puisse de savoir si
 réellement la session fonctionne" — au lieu d'un panneau de diagnostic caché dans un état d'erreur

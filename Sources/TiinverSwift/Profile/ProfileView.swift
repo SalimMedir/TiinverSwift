@@ -14,6 +14,16 @@ struct ProfileView: View {
     @State private var showEditProfile = false
     @State private var showReport = false
     @State private var avatarPickerItem: PhotosPickerItem?
+    /// **CAUSE RACINE RÉELLE (P0-D, 2026-08-17, confirmée par relecture du code — pas une
+    /// hypothèse)** : la grille de posts n'avait ABSOLUMENT AUCUN geste de tap câblé (`postCell`
+    /// était rendu nu, sans `.onTapGesture` ni navigation), contrairement à `FeedView`'s
+    /// `FeedGridCell` qui, elle, ouvrait déjà `FeedDetailPagerView`. Réutilise CE MÊME pager
+    /// plein écran (déjà reconstruit avec parité Android en P0-C) plutôt que d'en dupliquer un
+    /// second — fidèle à la simplification déjà assumée par ce fichier (`UserProfile`+
+    /// `AddPerfilFoto` fusionnés), Android duplique `ProfileFeedFragment`/`FeedFragment` (code
+    /// quasi identique), iOS ne le fait pas.
+    @State private var showDetail = false
+    @State private var detailStartIndex = 0
 
     private let columns = [GridItem(.flexible(), spacing: 2), GridItem(.flexible(), spacing: 2), GridItem(.flexible(), spacing: 2)]
 
@@ -32,8 +42,12 @@ struct ProfileView: View {
         ScrollView {
             header
             LazyVGrid(columns: columns, spacing: 2) {
-                ForEach(viewModel.posts, id: \.id) { post in
+                ForEach(Array(viewModel.posts.enumerated()), id: \.element.id) { index, post in
                     postCell(post)
+                        .onTapGesture {
+                            detailStartIndex = index
+                            showDetail = true
+                        }
                         .onAppear {
                             if post.id == viewModel.posts.last?.id { Task { await viewModel.loadMorePosts() } }
                         }
@@ -46,6 +60,9 @@ struct ProfileView: View {
         .task {
             await viewModel.loadProfile()
             await viewModel.loadInitialPosts()
+        }
+        .fullScreenCover(isPresented: $showDetail) {
+            FeedDetailPagerView(posts: viewModel.posts, startIndex: detailStartIndex, onClose: { showDetail = false })
         }
         .confirmationDialog(
             viewModel.isBlocked ? "Débloquer cet utilisateur ?" : "Bloquer cet utilisateur ?", // R.string.unblock / block_info

@@ -1362,18 +1362,31 @@ Suppression de `.id(state.version)` sur le `Canvas`. Le redessin continue de fon
 mécanisme normal `@StateObject`/`@Published` (`.onChange(of: state.version)` voisin, qui pilote
 `preparePlayback`, reste inchangé et suffit à prouver que `version` est bien observé sans `.id()`).
 
-#### Piste secondaire identifiée, PAS corrigée (incertitude sur les effets de bord)
-`.onChange(of: state.version) { _ in state.preparePlayback(canvasSize: canvasSize) }` s'exécute
+#### Piste secondaire — CORRIGÉE dans un second temps (2026-08-17, même passe)
+`.onChange(of: state.version) { _ in state.preparePlayback(canvasSize: canvasSize) }` s'exécutait
 AUSSI à chaque `dragMoved` — `preparePlayback`→`engine.prepare(composer:)` recalcule les
-bornes/durées de TOUTE la timeline pour TOUS les calques (`AnimationEngine.prepareFrame`, lu en
-partie), un travail pensé pour un changement de STRUCTURE (keyframe enregistrée, calque ajouté/
-retiré), pas pour chaque micro-déplacement d'un glissement en cours. Probable contributeur
-supplémentaire de lenteur perçue, mais resserrer ce déclencheur risque de casser un cas où
-`preparePlayback` est réellement nécessaire après un `version += 1` d'une autre origine — pas touché
-cette passe faute de certitude suffisante sur tous les sites d'incrémentation de `version`.
+bornes/durées de TOUTE la timeline pour TOUS les calques (`AnimationEngine.prepareFrame`), un
+travail pensé pour un changement de STRUCTURE (keyframe enregistrée, calque ajouté/retiré), pas pour
+chaque micro-déplacement d'un glissement en cours.
+
+Plutôt que de resserrer `version` lui-même (risqué : 27 sites d'incrémentation dans
+`AnimemesEditorState.swift`, certains structurels certains non, pas tous audités individuellement),
+ajout d'un second compteur dédié `@Published private(set) var renderVersion` — les 6 fonctions de
+geste RÉELLEMENT continues (identifiées avec certitude : ce sont exactement celles appelées depuis
+les callbacks `onChanged` de `AnimemesEditorView.dragGesture`/`magnificationGesture`/
+`rotationGesture`, potentiellement plusieurs fois par seconde) — `dragMoved`, `rotationChanged`,
+`scaleChanged`, `maskOffsetChanged`, `maskScaleChanged`, `maskRotationChanged` — incrémentent
+maintenant `renderVersion` au lieu de `version`. `@StateObject` observe l'`ObservableObject` ENTIER
+(`objectWillChange` synthétisé sur TOUS les `@Published`, pas seulement `version`) donc le redessin
+du `Canvas` continue de se déclencher normalement pour ces 6 fonctions ; `.onChange(of: state.
+version)` ne les voit plus et ne relance `preparePlayback` que pour les 21 autres sites
+(structurels : ajout/suppression de calque, keyframe, masque appliqué/type, lecture/pause, etc.),
+laissés inchangés — changement ciblé sur les seuls sites dont la nature "continue vs structurelle"
+est certaine, pas une réécriture large.
 
 #### Dépendances
-Aucune — retrait d'un modificateur, aucune signature changée.
+Aucune — retrait d'un modificateur (`.id()`) + un nouveau `@Published` local à `AnimemesEditorState`,
+aucune signature publique changée.
 
 #### Risque de régression
 LOW — `.id()` était démontré redondant (le redessin fonctionne par le mécanisme `@Published`

@@ -32,6 +32,19 @@ final class AnimemesEditorState: ObservableObject {
     let timeline = TimelineViewModel()
 
     @Published private(set) var version = 0
+    /// **Ajouté le 2026-08-17** (GAP-024, piste secondaire) — `version` pilote À LA FOIS le
+    /// redessin du `Canvas` (via `@StateObject`/`@Published`, `AnimemesEditorView.body` se
+    /// ré-évalue à chaque mutation) ET `.onChange(of: state.version)` → `preparePlayback()`
+    /// (`AnimemesEditorView.swift`), qui relance `AnimationEngine.prepare(composer:)` — un
+    /// recalcul de TOUTE la timeline pensé pour un changement STRUCTUREL (keyframe enregistrée,
+    /// calque ajouté/retiré), pas pour chaque micro-mise à jour continue d'un geste en cours
+    /// (glisser/pincer/pivoter, plusieurs fois par seconde). Les fonctions de geste CONTINU
+    /// (`dragMoved`/`rotationChanged`/`scaleChanged`/`maskOffsetChanged`/`maskScaleChanged`/
+    /// `maskRotationChanged`) incrémentent désormais CE compteur au lieu de `version` — `@StateObject`
+    /// observe l'ObservableObject entier, donc le redessin continue de se déclencher normalement,
+    /// mais `.onChange(of: state.version)` ne voit plus ces mises à jour continues et ne relance
+    /// `preparePlayback` que pour les changements réellement structurels.
+    @Published private(set) var renderVersion = 0
     @Published var isExporting = false
     @Published var exportError: String?
     @Published var selectedId: String?
@@ -251,7 +264,7 @@ final class AnimemesEditorState: ObservableObject {
             return
         }
         gestureController.touchMoveTranslate(to: point, objectIndex: idx, composer: composer)
-        version += 1
+        renderVersion += 1
         let values = layers[idx].transforms.last?.matrixValues ?? []
         let tx = values.count > 2 ? values[2] : -1
         let ty = values.count > 5 ? values[5] : -1
@@ -290,7 +303,7 @@ final class AnimemesEditorState: ObservableObject {
     func rotationChanged(to newDegrees: CGFloat) {
         guard let id = selectedId, let idx = index(of: id) else { return }
         gestureController.rotate(to: newDegrees, objectIndex: idx, composer: composer)
-        version += 1
+        renderVersion += 1
         gestureDiagnostics = "ROTATE calque #\(idx) → \(String(format: "%.1f", newDegrees))°"
     }
 
@@ -305,7 +318,7 @@ final class AnimemesEditorState: ObservableObject {
         }
         let clamped = AnimemesGestureController.clampPerEventScaleFactor(incrementalFactor)
         gestureController.scale(factor: clamped, focus: CGPoint(x: bound.midX, y: bound.midY), objectIndex: idx, composer: composer)
-        version += 1
+        renderVersion += 1
         let values = layers[idx].transforms.last?.matrixValues ?? []
         let scaleX = values.count > 0 ? values[0] : -1
         gestureDiagnostics = "SCALE calque #\(idx) → facteur=\(String(format: "%.3f", clamped)) scaleX résultant=\(String(format: "%.3f", scaleX))"
@@ -356,7 +369,7 @@ final class AnimemesEditorState: ObservableObject {
         else { return }
         obj.maskOffsetX += Float(deltaTranslation.width / canvasSize.width)
         obj.maskOffsetY += Float(deltaTranslation.height / canvasSize.height)
-        version += 1
+        renderVersion += 1
     }
 
     /// Port de `maskScaleChanged` — `incrementalFactor` PAR ÉVÉNEMENT, même contrat que
@@ -364,7 +377,7 @@ final class AnimemesEditorState: ObservableObject {
     func maskScaleChanged(incrementalFactor: CGFloat) {
         guard let id = selectedId, let obj = layers.first(where: { $0.id == id }) else { return }
         obj.maskScale *= Float(incrementalFactor)
-        version += 1
+        renderVersion += 1
     }
 
     /// Port de `maskRotationChanged` — `deltaDegrees` DELTA (pas cumulatif), calculé par l'appelant
@@ -372,7 +385,7 @@ final class AnimemesEditorState: ObservableObject {
     func maskRotationChanged(deltaDegrees: CGFloat) {
         guard let id = selectedId, let obj = layers.first(where: { $0.id == id }) else { return }
         obj.maskRotation += Float(deltaDegrees)
-        version += 1
+        renderVersion += 1
     }
 
     /// Port d'`undo` → `mView.deletePrecedenteDraw()` — supprime le DERNIER calque ajouté (pas une

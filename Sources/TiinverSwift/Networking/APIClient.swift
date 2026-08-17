@@ -11,10 +11,22 @@ import Alamofire
 ///  - Timeout 20s, aucun retry automatique — les deux files Volley (normale et "NoRetries")
 ///    utilisent en réalité la même politique `DefaultRetryPolicy(20_000, 0, 1f)`, donc un seul
 ///    comportement à reproduire pour les deux (voir MySingleton.java:70-93).
-///  - Corps JSON envoyé même sur GET (JsonObjectRequest envoie toujours un corps, y compris `{}`
-///    pour une requête sans paramètres) — reproduit ici en encodant systématiquement en JSON.
-///  - Enveloppe de réponse : champ "error" en STRING ("false" = succès), "message" sur erreur
-///    (voir JSONValue.isBackendSuccess / backendErrorMessage).
+///  - Enveloppe de réponse : champ "error" en STRING ("false" = succès) OU BOOLÉEN JSON natif
+///    selon l'endpoint (confirmé le 2026-08-17 sur `login` par le JSON réel du backend — voir
+///    `JSONValue.errorFieldNormalized`, qui tolère les deux), "message" sur erreur (voir
+///    `JSONValue.isBackendSuccess`/`backendErrorMessage`).
+///
+/// **Contrainte ABANDONNÉE le 2026-08-17 (preuve réelle, pas une supposition)** : "corps JSON
+/// envoyé même sur GET" (JsonObjectRequest envoie toujours un corps côté Android, y compris `{}`)
+/// était documentée ci-dessus comme non-négociable, mais un test Appetize réel a montré que
+/// TOUTE requête GET échouait avec `AFError.urlRequestValidationFailed(.bodyDataInGETRequest)` —
+/// Alamofire (depuis 5.7) rejette désormais, par validation automatique AVANT tout envoi réseau,
+/// une requête GET porteuse d'un corps HTTP, même vide. Vérifié par grep sur TOUT le projet :
+/// AUCUN appel `.get(...)` n'envoie jamais de `params` non-vides (chaque endpoint encode ses
+/// paramètres dans le CHEMIN de l'URL) — le corps `{}` n'a donc jamais eu la moindre utilité
+/// fonctionnelle, c'était une fidélité purement cosmétique qui a fini par casser LITTÉRALEMENT
+/// CHAQUE écran de lecture de l'app (Home/Feed, Profile, Créateurs, Notifications, Recherche,
+/// Wallet, commentaires...). Les requêtes GET n'envoient plus de corps du tout.
 final class APIClient {
     static let shared = APIClient()
 
@@ -155,12 +167,18 @@ final class APIClient {
         headersOverride: HTTPHeaders? = nil
     ) async throws -> JSONValue {
         let url = baseURL + endpoint
+        // CAUSE RACINE RÉELLE, CONFIRMÉE le 2026-08-17 par l'erreur Alamofire remontée par un test
+        // Appetize réel (`AFError.urlRequestValidationFailed(.bodyDataInGETRequest)`) — voir le
+        // commentaire de tête de ce fichier. `URLEncoding.default` avec `params` vide (TOUJOURS le
+        // cas pour un GET dans ce projet, vérifié) produit une requête SANS corps, la seule forme
+        // qu'Alamofire moderne accepte pour une méthode GET.
+        let encoding: ParameterEncoding = method == .get ? URLEncoding.default : JSONEncoding.default
         return try await withCheckedThrowingContinuation { continuation in
             session.request(
                 url,
                 method: method,
                 parameters: params,
-                encoding: JSONEncoding.default,
+                encoding: encoding,
                 headers: headersOverride ?? headers()
             )
             .validate(statusCode: 200..<300)

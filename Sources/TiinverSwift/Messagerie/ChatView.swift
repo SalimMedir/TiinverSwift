@@ -15,15 +15,15 @@ struct ChatView: View {
     @State private var showMessageGraphicCompose = false
     @State private var showDeleteOptions = false
     @State private var showGroupDetail = false
-    /// Port de `profile_btn` (`setting/SettingPrivateMessageFragmant.java:91-96`, l'écran de
-    /// réglages d'une conversation 1:1 — `Intent(getContext(), UserProfile.class)`) — cet écran de
-    /// réglages complet (mute, heure de livraison programmée) reste un gap connu et volontairement
-    /// borné (voir `MIGRATION_AUDIT.md` GAP-011, "puis mute privé" jamais fait) ; CE point d'entrée
-    /// précis (accéder au profil du correspondant depuis un chat 1:1) est ajouté directement en
-    /// toolbar, MÊME motif que le bouton "info.circle" déjà existant pour les groupes juste
-    /// au-dessus — pas une fonctionnalité inventée, juste le point d'entrée le plus direct vers
-    /// `ProfileView` sans reconstruire tout l'écran de réglages pour ça seul.
-    @State private var showOtherProfile = false
+    /// **CORRIGÉ le 2026-08-18 (P1)** : ce bouton menait AUPARAVANT directement à `ProfileView`,
+    /// documenté comme un raccourci volontaire faute d'avoir porté l'écran de réglages complet
+    /// (`setting/SettingPrivateMessageFragmant.java`, hébergé par `ProfileDetailActivity`, MÊME
+    /// Activity que `SettingGroupMessageFragmant`/`GroupDetailView.swift` juste au-dessus selon
+    /// `chatType`). Cet écran est maintenant porté (`PrivateMessageSettingView.swift`) — le
+    /// raccourci direct-vers-profil devient une simple rangée DEDANS cet écran (`profile_btn`),
+    /// fidèle à la hiérarchie réelle Android (`ActivityMsg.titleContainer` → `ProfileDetailActivity`
+    /// → `SettingPrivateMessageFragmant` → `profile_btn` → `UserProfile`), pas un accès direct.
+    @State private var showPrivateMessageSettings = false
     @FocusState private var inputFocused: Bool
 
     init(target: RosterModel) {
@@ -91,10 +91,15 @@ struct ChatView: View {
                 )
             }
         }
-        // Port de `profile_btn` (voir déclaration de `showOtherProfile` ci-dessus).
-        .sheet(isPresented: $showOtherProfile) {
-            if let otherUserId = viewModel.target.userId {
-                NavigationStack { ProfileView(userId: otherUserId, isCurrentUser: false) }
+        // Port de `ProfileDetailActivity` (branche `chatType="chat"`, voir déclaration de
+        // `showPrivateMessageSettings` ci-dessus) — équivalent 1:1 de `showGroupDetail` ci-dessus.
+        .sheet(isPresented: $showPrivateMessageSettings) {
+            NavigationStack {
+                PrivateMessageSettingView(
+                    displayTitle: viewModel.target.nikname ?? viewModel.target.username ?? viewModel.target.to ?? "",
+                    username: viewModel.target.username ?? viewModel.target.to ?? "",
+                    userId: viewModel.target.userId
+                )
             }
         }
         .safeAreaInset(edge: .top, alignment: .center) {
@@ -320,7 +325,7 @@ struct ChatView: View {
             } else if viewModel.target.userId != nil {
                 // Port de `profile_btn` — équivalent 1:1 du bouton "info.circle" ci-dessus.
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showOtherProfile = true } label: { Image(systemName: "person.circle") }
+                    Button { showPrivateMessageSettings = true } label: { Image(systemName: "person.circle") }
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {

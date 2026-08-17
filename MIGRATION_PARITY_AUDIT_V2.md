@@ -96,7 +96,7 @@ Android sans équivalent nécessaire, noté).
 | `roster/NewMessage.java` | Recherche téléphone/email pour nouveau contact | — | ❌ `MISSING` (déjà noté GAP existant : "écran dédié recherche téléphone/email, reste hors périmètre") |
 | `roster/Invite.java` | Invitation SMS/contact natif | `Wallet/ReferralView.swift` (partiel) | 🟡 `PARTIAL` probable — à vérifier si `Invite.java` = même flux que `ReferralActivity` ou distinct |
 | `messagerie/ui/ActivityMsg.java` | Conversation 1:1/groupe (hôte `ChatFragmentTest`) | `Messagerie/ChatView.swift` | ✅ voir FEATURE Chat |
-| `messagerie/ui/ProfileDetailActivity.java` | Réglages d'1 conversation (lance `SettingPrivateMessageFragmant`) | — | ❌ `MISSING` — confirmé absent (GAP-011 historique + ce tour : seul un bouton d'accès direct au profil a été ajouté, PAS l'écran de réglages complet mute/heure programmée) |
+| `messagerie/ui/ProfileDetailActivity.java` | Réglages d'1 conversation (lance `SettingPrivateMessageFragmant`) | `PrivateMessageSettingView.swift` | `BUILD_VALIDATED` à confirmer par CI — implémenté le 2026-08-18 (P1) |
 | `contacts/Contact.java` | Hôte écran 1/2/3 création de groupe | `Messagerie/ContactPickerView.swift` + `GroupCreationView.swift` | ✅ voir FEATURE Chat |
 | `messagerie/group/GroupDetailActivity.java` | Détail groupe (membres, admin) | `Messagerie/GroupDetailView.swift` | ✅ voir FEATURE Chat |
 | `messagerie/group/AddGroupMemberActivity.java` | Ajout membre | `Messagerie/AddGroupMemberView.swift` | ✅ voir FEATURE Chat |
@@ -170,7 +170,7 @@ Android sans équivalent nécessaire, noté).
 |---|---|---|---|
 | `setting/SettingsActivity.java` | Hôte réglages | `SettingsView.swift` | ✅ |
 | `setting/SettingAccountFragment.java` | Compte (déconnexion/suppression) | `SettingSubViews.swift` | 🟡 |
-| `setting/SettingPrivateMessageFragmant.java` | Réglages 1 conversation (mute, etc.) | — | ❌ `MISSING` confirmé (GAP-011 historique, ce tour : seul l'accès profil ajouté) |
+| `setting/SettingPrivateMessageFragmant.java` | Réglages 1 conversation (mute, etc.) | `PrivateMessageSettingView.swift` (nouveau, 2026-08-18 P1) | `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis |
 | `setting/SettingAboutFragment.java`/`SettingHelpFragment.java` | À propos / Aide | `SettingSubViews.swift` | 🟡 (GAP-010 historique : liens légaux/FAQ génériques signalé) |
 | `setting/SettingAdvertisementFragment.java` | Préférences pub | `SettingSubViews.swift` | 🟡 (GAP-012 historique : clé `AUTHORIZED_ADS` corrigée) |
 | `setting/SettingChatFragment.java` | Préférences chat | `SettingSubViews.swift` | 🟡 |
@@ -464,7 +464,7 @@ sur plusieurs points de détail (debounce, hashtag, états).
 | Création groupe — écran 3 (nom+création) | `Group.java` | `GroupCreationView.swift` | `COMPLETE_PARITY_CANDIDATE` | Endpoint `POST group` vérifié, y compris la faute `type:"pivate"` reproduite |
 | Bouton "créer groupe" — accessible réellement | FAB `Roster.java:84,133-144` | FAB `RosterListView` | `COMPLETE_PARITY_CANDIDATE` | Câblé — **historique : signalé absent/non accessible par l'utilisateur, corrigé, PAS re-testé depuis le dernier correctif de flux (écran 1/2)** |
 | Gestion groupe (membres/rôles) | `GroupDetailActivity`/`SettingGroupMessageFragmant` | `GroupDetailView.swift`/`AddGroupMemberView.swift` | `COMPLETE_PARITY_CANDIDATE` | `GET membership/{groupId}`, `POST /member/update`, `POST deleteMember` vérifiés (GAP-011 historique) |
-| Réglages 1 conversation (mute, heure programmée) | `SettingPrivateMessageFragmant` | — | `MISSING` confirmé | GAP-011 historique + ce tour (seul un bouton d'accès profil ajouté, pas l'écran complet) |
+| Réglages 1 conversation (mute, heure programmée) | `SettingPrivateMessageFragmant` (238 lignes, hébergé par `ProfileDetailActivity`, MÊME Activity que `SettingGroupMessageFragmant`) | `PrivateMessageSettingView.swift` | `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis | **Implémenté le 2026-08-18 (P1)** — 100% local (`UserDefaults`/`@AppStorage`, AUCUN appel réseau côté Android non plus, vérifié en lisant le fichier en entier). Le bouton "person.circle" du chat 1:1 (raccourci direct-profil, documenté comme gap volontairement borné) ouvre désormais ce VRAI écran, dont `profile_btn` est maintenant une simple rangée. Bouton "Bloquer" reproduit FIDÈLEMENT tel quel (Android ne fait que changer le label, aucun appel réseau ni persistance à cet endroit précis — PAS "corrigé" en un vrai toggle, le vrai blocage fonctionnel existe déjà ailleurs, `ProfileViewModel.toggleBlock`). |
 | Accès profil depuis un chat 1:1 | `profile_btn`→`UserProfile` | bouton toolbar "person.circle" ajouté cette session | `COMPLETE_PARITY_CANDIDATE` | Commit dans GAP-021 |
 | Suppression message (pour moi / pour tous) | dialogue 2 choix (`ChatFragmentTest.java:2493-2521`) | `showDeleteOptions`, même 2 choix | `COMPLETE_PARITY_CANDIDATE` | Câblé session antérieure |
 | Upload pièces jointes | `HttpFileUploader`/BunnyCDN | `ChatMediaUploadService.swift` | `COMPLETE_PARITY_CANDIDATE` | GAP-004c historique, protocole BunnyCDN confirmé DIFFÉRENT du multipart direct du profil |
@@ -482,13 +482,15 @@ sur plusieurs points de détail (debounce, hashtag, états).
 ### Required work
 1. Test réel du flux complet création de groupe (écran 1→2→3→chat créé) sur un build à jour —
    AUCUNE preuve de test réel post-correctif à ce jour.
-2. Décider du sort de `SettingPrivateMessageFragmant` (P1/P2).
+2. ~~Décider du sort de `SettingPrivateMessageFragmant` (P1/P2).~~ Implémenté le 2026-08-18 (P1),
+   voir `PrivateMessageSettingView.swift`.
 3. Vérifier `AddGroupDescriptionActivity`/`ChangeGroupTopicActivity`/`FilterGroupMemberList` contre
    `GroupDetailView.swift` élément par élément.
 
 ### Validation level
 **`COMPLETE_PARITY_CANDIDATE`** pour le cœur (socket, création de groupe 3 écrans, gestion groupe,
-appels, pièces jointes). **`MISSING`** confirmé pour réglages 1:1 et recherche de groupe. Historique :
+appels, pièces jointes, réglages 1:1, recherche de groupe — ces 2 derniers implémentés le 2026-08-18,
+P1, `BUILD_VALIDATED` à confirmer). Historique :
 `FUNCTIONALLY_FAILED` confirmé à plusieurs reprises (bouton créer groupe rapporté absent/inaccessible,
 écran hybride au lieu de 2 écrans distincts) — corrigé au niveau code, AUCUN re-test réel depuis.
 
@@ -817,8 +819,9 @@ fonctionnalité "Fullscreen"). Chiffre honnête, pas un chiffre habillé pour pa
 9. Système de "Boost" (campagnes publicitaires payantes pour un post — `BoostActivity`/
    `BoostDashboardFragment`/`CreateBoostFragment`/`CommandeActivity`/`MesBoosts`) — `MISSING` total,
    5 classes Android sans AUCUN équivalent iOS trouvé.
-10. Réglages complets d'une conversation individuelle (mute, heure de livraison programmée,
-    `SettingPrivateMessageFragmant`) — `MISSING` confirmé (seul l'accès au profil a été ajouté).
+10. ~~Réglages complets d'une conversation individuelle (mute, heure de livraison programmée,
+    `SettingPrivateMessageFragmant`)~~ — **implémentés le 2026-08-18 (P1)**, voir
+    `PrivateMessageSettingView.swift`. `BUILD_VALIDATED` à confirmer par CI.
 11. Statistiques par post (`StatisticsActivity`) — `MISSING` confirmé (historique, re-confirmé).
 12. Export GIF Animems — `MISSING` confirmé, auto-documenté dans le code lui-même.
 13. Écran de recherche téléphone/email pour nouveau contact (`roster/NewMessage.java`) — `MISSING`

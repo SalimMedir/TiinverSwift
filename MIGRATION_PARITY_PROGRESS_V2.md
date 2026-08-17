@@ -115,3 +115,19 @@ Construction du `RosterModel` extraite en `GroupRepository.GroupInfo.rosterModel
 réutilisée par `DeepLinkRouter.routeToGroup` (corrige au passage son `subTitle` vide — chaîne réelle
 `"tab here for group info"` identifiée depuis `RosterListViewModel.refresh()`). Icône loupe ajoutée
 à la toolbar de `RosterListView`.
+
+### 2026-08-18 — Chat/Messaging (P1) — Implémentation des réglages de conversation 1:1
+**Commit(s) :** (à committer avec ce lot)
+**Run CI :** à dispatcher après commit
+**Statut AVANT (audit V2) :** `MISSING` confirmé (seul un raccourci direct-vers-profil existait)
+**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis
+**Preuve du changement de statut :** Lu `setting/SettingPrivateMessageFragmant.java` (238 lignes,
+entier) — confirmé hébergé par `messagerie/ui/ProfileDetailActivity.java`, la MÊME Activity que
+`SettingGroupMessageFragmant`/`GroupDetailView.swift` (déjà porté) selon `chatType`, atteint en tapant
+le titre de la conversation (`ActivityMsg.titleContainer`). Nouveau `PrivateMessageSettingView.swift` :
+rangée profil (`profile_btn`), interrupteur "livraison instantanée" + heure de livraison programmée
+(100% `UserDefaults`/`@AppStorage`, AUCUN appel réseau côté Android non plus dans ce fichier précis),
+bouton "Bloquer" reproduit FIDÈLEMENT (Android ne fait QUE changer le label ici, aucune persistance
+ni appel réseau — pas "corrigé" en un vrai toggle, qui existe déjà ailleurs, `ProfileViewModel.
+toggleBlock`). Le bouton "person.circle" du chat 1:1 (raccourci direct-profil documenté comme gap
+volontairement borné) ouvre désormais ce vrai écran.

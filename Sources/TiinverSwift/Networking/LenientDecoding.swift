@@ -51,6 +51,23 @@ extension KeyedDecodingContainer {
         return nil
     }
 
+    /// `String` OBLIGATOIRE, même tolérance que `decodeLenientStringIfPresent` ci-dessous mais qui
+    /// lève plutôt que de renvoyer `nil` si la clé est vraiment absente/de type totalement
+    /// inattendu — pour les champs `String` non-optionnels côté modèle (ex. `GroupMemberCandidate.
+    /// userId`, utilisé comme `Identifiable.id`) qui doivent malgré tout tolérer un NOMBRE JSON
+    /// natif (voir `decodeLenientStringIfPresent`, même classe de divergence Gson).
+    func decodeLenientString(forKey key: Key) throws -> String {
+        if let value = try? decode(String.self, forKey: key) { return value }
+        if let value = try? decode(Int.self, forKey: key) { return String(value) }
+        if let value = try? decode(Double.self, forKey: key) {
+            return value == value.rounded() ? String(Int(value)) : String(value)
+        }
+        throw DecodingError.typeMismatch(
+            String.self,
+            DecodingError.Context(codingPath: codingPath + [key], debugDescription: "Expected String or number for key \(key.stringValue)")
+        )
+    }
+
     /// `String?` optionnel, tolérant l'INVERSE : un champ typé `String` côté modèle (souvent un
     /// identifiant, ex. `CreatorModel.userId`) mais que le backend envoie parfois comme NOMBRE JSON
     /// natif plutôt que comme chaîne — même classe de divergence que ci-dessus, dans l'autre sens.

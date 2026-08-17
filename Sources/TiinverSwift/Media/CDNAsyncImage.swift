@@ -56,6 +56,14 @@ struct CDNAsyncImage<Content: View>: View {
         var request = URLRequest(url: url)
         // Valeur EXACTE de `ChargerImages.java` — voir commentaire de tête.
         request.setValue("https://tiinver.com", forHTTPHeaderField: "Referer")
+        // Défensif (2026-08-17, retest utilisateur signalant le problème encore présent après le
+        // correctif ci-dessus) : `URLCache.shared` peut avoir mis en cache une réponse d'ERREUR
+        // (403 sans `Referer`) obtenue sur un appareil/simulateur testé AVANT ce correctif — la clé
+        // de cache HTTP standard porte sur l'URL, pas sur les en-têtes de la requête, donc rejouer
+        // la MÊME URL après coup peut servir l'échec caché au lieu de refaire la requête (désormais
+        // correcte). Élimine cette classe d'échec fantôme plutôt que de la diagnostiquer au cas par
+        // cas.
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         do {
             let (data, _) = try await URLSession.shared.data(for: request)
             guard let uiImage = UIImage(data: data) else {

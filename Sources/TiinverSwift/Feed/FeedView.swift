@@ -546,7 +546,11 @@ private struct FeedDetailCell: View {
                     .disabled(true) // les contrôles natifs sont désactivés — l'appui joue/pause comme le tap Android d'origine
                     .onChange(of: isActive) { active in
                         if active {
-                            VideoPlayerManager.shared.playVideo(url: url)
+                            // Port de `VideoPlaybackCoordinator.tryPlayAt` — `fallbackURL` était
+                            // jamais transmis avant ce correctif malgré le mécanisme de repli déjà
+                            // présent dans `VideoPlayerManager` (`handlePlaybackFailure`), le
+                            // rendant inopérant en pratique.
+                            VideoPlayerManager.shared.playVideo(url: url, fallbackURL: post.fallbackPlaybackURL)
                         }
                     }
             } else if let thumb = post.thumbnailURL {

@@ -40,13 +40,31 @@ struct FeedActivity: Codable, Identifiable, Equatable {
     /// pour ses propres posts) — nécessaire pour reconstruire ce bouton côté iOS (P0-C, 2026-08-17).
     var isFollowed: Bool?
 
-    /// URL à lire : privilégie le CDN si disponible, sinon l'URL brute — même logique que
-    /// `NotiEntity.getDisplayUrl()` (module 4), appliquée ici au flux vidéo plutôt qu'aux
-    /// notifications.
+    /// **CAUSE RACINE RÉELLE (2026-08-17, retest utilisateur)** de la lecture vidéo peu fiable —
+    /// cette propriété privilégiait `cdn_content_url`, l'INVERSE de la priorité réelle Android.
+    /// Port fidèle de `VideoPlaybackCoordinator.tryPlayAt` (lu en entier) : l'URL PRINCIPALE
+    /// passée à `playerManager.playVideo(...)` est TOUJOURS `current.getObject_url()` — `object_url`
+    /// est le champ "média réel" universel (confirmé aussi côté photo : `CustomCardView.setData`
+    /// charge `mediaObject.getObject_url()` directement, JAMAIS `cdn_content_url`).
+    /// `cdn_content_url` n'est utilisé QUE pour construire une URL de REPLI distincte
+    /// (`fallbackPlaybackURL` ci-dessous), essayée seulement si `object_url` échoue à jouer —
+    /// jamais comme source principale.
     var playbackURL: URL? {
-        if let cdn = cdn_content_url, !cdn.isEmpty { return URL(string: cdn) }
-        guard let raw = object_url else { return nil }
+        guard let raw = object_url, !raw.isEmpty else { return nil }
         return URL(string: raw)
+    }
+
+    /// Port de `VideoPlaybackCoordinator.tryPlayAt`'s construction de `fallbackUrl` : `CDN_STREAM_
+    /// BASE_URL_V1 + ExoPlayerManager.extractVideoId(cdn_content_url) + "/play_720p.mp4"` —
+    /// `extractVideoId` prend simplement le PREMIER segment de chemin de `cdn_content_url` (le GUID
+    /// vidéo), reproduit ici via `URLComponents.path`. `stream.tiinver.com` (pas `cdn.tiinver.com`)
+    /// — valeur EXACTE de `infoContract.CDN_STREAM_BASE_URL_V1`, cohérente avec le `Referer`
+    /// `https://stream.tiinver.com` déjà utilisé par `VideoPlayerManager` pour ce même hôte.
+    var fallbackPlaybackURL: URL? {
+        guard let cdn = cdn_content_url, !cdn.isEmpty,
+            let videoId = URLComponents(string: cdn)?.path.split(separator: "/").first, !videoId.isEmpty
+        else { return nil }
+        return URL(string: "https://stream.tiinver.com/\(videoId)/play_720p.mp4")
     }
 
     /// **CAUSE RACINE RÉELLE (2026-08-17)** des photos/thumbnails vidéo absents en Grid ET en

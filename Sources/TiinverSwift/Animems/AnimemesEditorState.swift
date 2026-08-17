@@ -92,7 +92,25 @@ final class AnimemesEditorState: ObservableObject {
     /// Force un redraw explicite (voir tête de fichier) — exposé pour `TimelineView`, dont les
     /// gestes mutent `TimelineViewModel` directement (classe de référence, comme le reste du
     /// moteur) sans passer par une méthode dédiée de cet état.
+    ///
+    /// **NE PLUS appeler depuis un geste CONTINU (pan/scrub/dragItem/resize/pinch-zoom Timeline) —
+    /// voir `bumpRenderVersion()` ci-dessous.** Historiquement `TimelineView.swift` appelait CETTE
+    /// méthode à CHAQUE frame de geste (`onChanged`), ce qui, combiné à `.id(state.version)` sur le
+    /// `Canvas` porteur du geste (retiré le 2026-08-17, P0-5), interrompait le geste lui-même à
+    /// chaque mouvement (même classe de bug que GAP-024 sur le canevas principal, jamais portée
+    /// jusqu'ici à ce fichier sœur) — ET, indépendamment de ce bug, sur-déclenchait
+    /// `.onChange(of: state.version) → preparePlayback()` à chaque frame de pan/scrub/drag/resize/
+    /// zoom (même sur-déclenchement que GAP-024 partie 2, jamais porté ici non plus).
     func bumpVersion() { version += 1 }
+
+    /// **Ajouté le 2026-08-17 (P0-5)** — équivalent Timeline de `renderVersion` (voir sa doc de tête
+    /// de fichier) : à utiliser par les gestes CONTINUS de `TimelineView` (pan/scrub/dragItem/
+    /// resizeLeft/resizeRight/pinch-zoom, plusieurs fois par seconde) à la place de `bumpVersion()`
+    /// — déclenche le redessin (`@ObservedObject` observe tout l'`ObservableObject`) SANS relancer
+    /// `preparePlayback()`/`engine.prepare()` à chaque frame. Les changements réellement structurels
+    /// (`applyTimelineItemsToLayers()`, appelé une seule fois à la FIN d'un drag/resize) continuent
+    /// d'utiliser `version` via `bumpVersion()`/l'incrément direct existant.
+    func bumpRenderVersion() { renderVersion += 1 }
 
     // MARK: - Timeline (port de `testTimeLine()`/`refreshTimelineItems`)
 
@@ -501,11 +519,17 @@ final class AnimemesEditorState: ObservableObject {
 
     /// Port de `TimelineView.OnTimelineListener.onPlayheadMoved` → `mView.seek(frame)` — scrub
     /// manuel, met en pause la lecture en cours comme l'original.
+    /// **`renderVersion` depuis le 2026-08-17 (P0-5), PAS `version`** — seul appelant :
+    /// `TimelineView`'s geste de scrub (`combinedDragGesture`, cas `.scrub`), invoqué à CHAQUE frame
+    /// de mouvement du doigt sur la règle. `engine.seek(to:)` déplace bien la position de lecture à
+    /// chaque frame (nécessaire pour un scrub fluide), mais `version += 1` aurait aussi relancé
+    /// `preparePlayback()`/`engine.prepare()` (recalcul de TOUTE la timeline) à chaque frame — même
+    /// sur-déclenchement que GAP-024, jamais porté jusqu'ici à cette fonction précise.
     func scrub(toFrame frame: Int) {
         if engine.isPlaying { engine.pause() }
         engine.seek(to: frame)
         timeline.setPlayheadFrame(frame, external: true)
-        version += 1
+        renderVersion += 1
     }
 
     /// Index LOCAL (dans `obj.transforms`) à afficher pour le calque `layerIndex` à `frame`, lu

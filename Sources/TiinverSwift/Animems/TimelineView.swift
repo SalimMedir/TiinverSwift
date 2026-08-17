@@ -7,6 +7,22 @@ import SwiftUI
 /// modèle pour toute la durée du geste. Physique de fling (`OverScroller`/`VelocityTracker`)
 /// délibérément PAS reproduite (voir tête de fichier `TimelineViewModel.swift`) — scroll direct
 /// uniquement, pas d'inertie post-relâchement.
+///
+/// **CORRIGÉ le 2026-08-17 (P0-5)** : ce fichier portait la MÊME classe de bug que GAP-024 (déjà
+/// corrigée sur le canevas principal, `AnimemesEditorView.swift`), jamais portée jusqu'ici à ce
+/// fichier sœur — trouvée en le relisant intégralement pour cet audit plutôt que supposé correct
+/// du fait que le canevas principal l'était déjà. Le `Canvas` ci-dessous portait `.id(state.version)`
+/// EN PLUS de `.gesture(combinedDragGesture)`, ET `combinedDragGesture`/`magnificationGesture`
+/// appelaient `state.bumpVersion()` (le compteur STRUCTUREL) à CHAQUE frame de pan/scrub/glisser-
+/// item/redimensionner/pincer-zoomer — changer `.id()` détruit et recrée la vue (donc son
+/// `UIGestureRecognizer` sous-jacent) : le geste s'auto-interrompait à CHAQUE mouvement du doigt,
+/// rendant pan/scrub/déplacement d'item/redimensionnement/zoom de la timeline non fonctionnels
+/// au-delà du tout premier micro-mouvement. `.id()` retiré (le redessin continue de fonctionner
+/// sans lui : `TimelineView` est `@ObservedObject var state`, donc TOUTE mutation `@Published` de
+/// `state`, y compris `renderVersion`, ré-évalue déjà `body`) ; les gestes continus utilisent
+/// désormais `state.bumpRenderVersion()` au lieu de `state.bumpVersion()` (voir sa doc) pour éviter
+/// aussi de relancer `preparePlayback()` à chaque frame — même motif que `renderVersion` sur le
+/// canevas principal.
 struct TimelineView: View {
     @ObservedObject var state: AnimemesEditorState
 
@@ -41,7 +57,6 @@ struct TimelineView: View {
             .onChange(of: geo.size) { model.resize(to: $0) }
         }
         .frame(height: height)
-        .id(state.version)
     }
 
     // MARK: - Dessin
@@ -163,7 +178,9 @@ struct TimelineView: View {
                 case .resizeRight(let id, let anchorX):
                     model.resizeRight(id: id, resizeRightAnchorX: anchorX, deltaPixels: value.location.x - anchorX)
                 }
-                state.bumpVersion()
+                // `renderVersion`, PAS `bumpVersion()` — voir note de tête de fichier (P0-5) :
+                // ceci s'exécute à CHAQUE frame de ce geste continu.
+                state.bumpRenderVersion()
             }
             .onEnded { _ in
                 if case .dragItem = dragMode { state.applyTimelineItemsToLayers() }
@@ -179,7 +196,8 @@ struct TimelineView: View {
                 let pivot = model.pivotFrame(atFocusX: model.viewportWidth / 2)
                 model.applyPinchZoom(scaleFactor: value / lastMagnification, pivotFrame: pivot, focusX: model.viewportWidth / 2)
                 lastMagnification = value
-                state.bumpVersion()
+                // `renderVersion` — même raison que ci-dessus (geste continu, chaque frame de pincement).
+                state.bumpRenderVersion()
             }
             .onEnded { _ in lastMagnification = 1.0 }
     }

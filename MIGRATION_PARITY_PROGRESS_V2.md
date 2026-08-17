@@ -82,3 +82,21 @@ laissant la possibilité qu'UN SEUL contact/membre non conforme revienne à fair
 liste silencieusement — exactement la classe de bug déjà identifiée comme suspecte dans un commentaire
 de code préexistant pour P0-F, mais dont seule la cause ponctuelle (pas le point de fragilité
 structurel) avait été corrigée. Remplacé par le même motif per-item + diagnostic que Feed/Profile.
+
+### 2026-08-17 — Animems (P0-5) — `.id(state.version)` interrompait TOUS les gestes Timeline
+**Commit(s) :** (à committer avec ce lot)
+**Run CI :** à dispatcher après commit
+**Statut AVANT (audit V2) :** `CODE_PRESENT_UNVERIFIED`/`FUNCTIONALLY_FAILED`→corrigé (GAP-024,
+canevas principal uniquement) pour le geste ; Timeline jamais spécifiquement auditée jusqu'ici pour
+cette classe de bug précise
+**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis
+**Preuve du changement de statut :** Relu intégralement `TimelineView.swift` (jamais relu lors du
+correctif GAP-024 initial ni de l'audit V2 Phase 1, qui s'étaient arrêtés à `AnimemesEditorView.swift`/
+`AnimemesEditorState.swift`/`AnimemesGestureController.swift`) — trouvé le MÊME `.id(state.version)`
+sur un `Canvas` porteur de `.gesture()`, en PIRE : `combinedDragGesture`/`magnificationGesture`
+appelaient `state.bumpVersion()` à CHAQUE frame de geste (contre seulement certaines fonctions sur le
+canevas principal), garantissant l'auto-interruption de pan/scrub/glisser-item/redimensionner/
+pincer-zoomer dès le premier mouvement du doigt — Timeline entièrement non-utilisable en pratique.
+Corrigé avec le motif GAP-024 exact : `.id()` retiré, nouveau `AnimemesEditorState.
+bumpRenderVersion()` utilisé par les gestes continus + `scrub(toFrame:)` (au lieu de `bumpVersion()`/
+`version += 1` direct), pour éviter aussi le sur-déclenchement de `preparePlayback()` par frame.

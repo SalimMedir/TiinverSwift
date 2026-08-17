@@ -681,6 +681,25 @@ appliqué. Cette passe a identifié précisément où cette chaîne s'était rom
   geste — dégradant la fluidité perçue sans casser la correction visuelle, un 5ᵉ type de problème
   distinct des précédents (performance, pas correction).
 
+**MISE À JOUR 2026-08-17 (Phase 2, P0-5)** — **LA MÊME rupture de cycle de vie (`.id(state.version)`
+sur un `Canvas` porteur d'un `.gesture()`) a été retrouvée, jamais corrigée, dans `TimelineView.swift`
+(fichier SŒUR du canevas principal, jamais relu lors du correctif GAP-024 initial ni de l'audit V2
+Phase 1 — celui-ci s'était arrêté à `AnimemesEditorView.swift`/`AnimemesEditorState.swift`/
+`AnimemesGestureController.swift` sans redescendre dans `TimelineView.swift`)**. Ici le bug était
+encore plus systématique : `combinedDragGesture`/`magnificationGesture` appelaient `state.
+bumpVersion()` à CHAQUE frame de geste (pas seulement certaines fonctions comme sur le canevas
+principal), garantissant une auto-interruption du geste au premier mouvement pour LES 5 interactions
+Timeline (pan, scrub, glisser-item, redimensionner, pincer-zoomer) — un bug plus sévère que celui du
+canevas principal, jamais rapporté par l'utilisateur (cohérent avec le fait que la Timeline soit un
+écran secondaire moins testé). **Corrigé** avec le même motif exact que GAP-024 : `.id()` retiré,
+nouveau `AnimemesEditorState.bumpRenderVersion()` (miroir de `bumpVersion()`, incrémente
+`renderVersion` au lieu de `version`) utilisé par les 3 gestes continus + `scrub(toFrame:)` (qui
+bump ait `version` directement, même sur-déclenchement `preparePlayback` que GAP-024 partie 2).
+**Statut : `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis** (aucun
+simulateur/device disponible pour confirmer visuellement que pan/scrub/drag/resize/zoom fonctionnent
+désormais en pratique — la correction est déduite de la même logique de cycle de vue SwiftUI déjà
+confirmée exacte pour GAP-024, pas observée directement).
+
 ### Niveau 3 — Parité visuelle
 
 Aucune capture Android réelle de l'éditeur Animems n'a été fournie par l'utilisateur à ce jour

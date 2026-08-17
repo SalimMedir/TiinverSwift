@@ -142,7 +142,7 @@ Android sans équivalent nécessaire, noté).
 | `wallet/TransactionTutorialActivity.java` | Tutoriel transaction | — | ❌ `MISSING` (probablement décoratif, faible priorité) |
 | `wallet/UseBankCardFragment.java` | Formulaire carte bancaire | — | ❌ `MISSING` (StoreKit ne demande jamais de CB directement à l'app) |
 | `exchange/ExChangeActivity.java`/`RechargeActivity.java` | Change/recharge (legacy ?) | — | ❌ `MISSING`, rôle exact non déterminé cette passe |
-| `advertising/ui/BoostActivity.java`/`BoostDashboardFragment.java`/`CreateBoostFragment.java`/`CommandeActivity.java`/`MesBoosts.java` | Système de "boost" de publication (campagnes publicitaires payantes pour un post) | — | ❌ `MISSING` — AUCUN fichier iOS trouvé pour "Boost"/"Sponsored" ; noter : `MediaObject.isBoosted()`/`sponsored` sont LUS côté `CustomCardView`/Feed (affichage), mais la CRÉATION d'un boost (ces 5 classes) semble entièrement absente côté iOS |
+| `advertising/ui/BoostActivity.java`/`BoostDashboardFragment.java`/`CreateBoostFragment.java`/`CommandeActivity.java`/`MesBoosts.java` | Système de "boost" de publication (campagnes publicitaires payantes pour un post) | `Sources/TiinverSwift/Boost/` (nouveau, 2026-08-18 P1) | `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis | **Implémenté le 2026-08-18 (P1)** : 5 fichiers Android (2087 lignes) lus en entier. `AdsRepository.swift` (7 endpoints : `boost/overviews`, `boost/myboost`, `boost/create`/`create2`, `boost/update`, `boost/cancel2`, `searchs/country`), `BoostView.swift` (conteneur 2 onglets), `CreateBoostView.swift` (formulaire, formules `estimateReach` reproduites EXACTEMENT — views×4/likes÷3/followers÷5, division entière), `BoostDashboardView.swift` (vue d'ensemble + liste paginée), `BoostDetailView.swift` (détail + annulation). Point d'entrée : action "Promouvoir" ajoutée au menu "..." du Feed pour ses propres posts (`isOwnPost`, même garde que `promoteBtn` Android) — regroupée dans le menu existant plutôt qu'un bouton dédié sur le rail plein écran (déjà dense), substitution d'UI documentée, pas de comportement. **Bug Android reproduit fidèlement** : la déduction locale de solde après succès écrit TOUJOURS dans le cache `coinsAmount`, même en payant par gemmes (`useGems`) — vérifié dans le code source, pas corrigé. `MediaObject.isBoosted()`/badge "sponsorisé" sur les posts déjà boostés (affichage Feed) PAS vérifié cette passe — hors périmètre de ce lot (création/gestion uniquement). |
 
 ### Certification
 
@@ -816,9 +816,9 @@ fonctionnalité "Fullscreen"). Chiffre honnête, pas un chiffre habillé pour pa
    corrigé cette session (`0a8966b`), non re-testé.
 8. `preparePlayback` sur-déclenché à chaque frame de geste Animems — dégradation de fluidité,
    corrigée cette session (`4c57d08`), non re-testée.
-9. Système de "Boost" (campagnes publicitaires payantes pour un post — `BoostActivity`/
-   `BoostDashboardFragment`/`CreateBoostFragment`/`CommandeActivity`/`MesBoosts`) — `MISSING` total,
-   5 classes Android sans AUCUN équivalent iOS trouvé.
+9. ~~Système de "Boost" (campagnes publicitaires payantes pour un post — `BoostActivity`/
+   `BoostDashboardFragment`/`CreateBoostFragment`/`CommandeActivity`/`MesBoosts`)~~ — **implémenté
+   le 2026-08-18 (P1)**, voir `Sources/TiinverSwift/Boost/`. `BUILD_VALIDATED` à confirmer par CI.
 10. ~~Réglages complets d'une conversation individuelle (mute, heure de livraison programmée,
     `SettingPrivateMessageFragmant`)~~ — **implémentés le 2026-08-18 (P1)**, voir
     `PrivateMessageSettingView.swift`. `BUILD_VALIDATED` à confirmer par CI.

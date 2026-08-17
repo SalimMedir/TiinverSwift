@@ -29,6 +29,12 @@ struct FeedView: View {
     @State private var showReportReasons = false
     @State private var blockTargetPost: FeedActivity?
     @State private var commentsPost: FeedActivity?
+    /// Port de `promoteBtn` (`view/CustomCardView.java:373-381`, visible UNIQUEMENT pour ses
+    /// propres posts, `mediaObject.getActor().equals(mediaObject.getCurrentUserId())`) — bouton
+    /// dédié côté Android (rail du plein écran), regroupé ici dans le menu "..." existant plutôt
+    /// qu'une icône supplémentaire dédiée (rail déjà dense à 4 boutons + "...", même principe de
+    /// simplification de portage que d'autres réagencements déjà documentés dans ce fichier).
+    @State private var boostTargetPost: FeedActivity?
 
     private let columns = [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)]
 
@@ -173,6 +179,10 @@ struct FeedView: View {
         .sheet(item: $commentsPost) { post in
             CommentsView(activityId: post.id)
         }
+        // Port de `promoteBtn` — voir déclaration de `boostTargetPost` ci-dessus.
+        .sheet(item: $boostTargetPost) { post in
+            NavigationStack { BoostView(activityId: post.id) }
+        }
         // Port de `OnclickMoreExpand` (bottom sheet à 5 items, `layout_post_action.xml`) —
         // `delete_content` TOUJOURS affiché (MÊME libellé "Supprimer" qu'on soit propriétaire ou
         // non, fidèle à l'original : `titles[0]` est un texte STATIQUE côté Android, pas conditionné
@@ -188,6 +198,9 @@ struct FeedView: View {
                     } else {
                         viewModel.hideOthersPost(post)
                     }
+                }
+                if isOwnPost {
+                    Button("Promouvoir") { boostTargetPost = post }
                 }
                 if !isOwnPost {
                     Button("Copier le lien") {

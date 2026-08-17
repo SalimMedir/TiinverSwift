@@ -131,3 +131,22 @@ bouton "Bloquer" reproduit FIDÈLEMENT (Android ne fait QUE changer le label ici
 ni appel réseau — pas "corrigé" en un vrai toggle, qui existe déjà ailleurs, `ProfileViewModel.
 toggleBlock`). Le bouton "person.circle" du chat 1:1 (raccourci direct-profil documenté comme gap
 volontairement borné) ouvre désormais ce vrai écran.
+
+### 2026-08-18 — Galerie/Publication (P1) — Implémentation du système Boost
+**Commit(s) :** (à committer avec ce lot)
+**Run CI :** à dispatcher après commit
+**Statut AVANT (audit V2) :** `MISSING` total, 5 classes Android sans équivalent iOS
+**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis
+**Preuve du changement de statut :** Lu en entier les 5 fichiers Android (`AdsRepository.java` 504
+lignes, `CreateBoostFragment.java` 497, `BoostDashboardFragment.java` 243, `BoostActivity.java` 68,
+`CommandeActivity.java` 163, + modèles `AdsData`/`Audience`/`TagModel`). Nouveau dossier
+`Sources/TiinverSwift/Boost/` (6 fichiers) : `AdsRepository.swift` (7 endpoints réels tracés :
+`boost/overviews/{userId}`, `boost/myboost/{userId}/{limit}/{offset}`, `boost/create`/`create2`
+selon devise, `boost/update`, `boost/cancel2`, `searchs/country/{s}`), `BoostView.swift` (conteneur
+2 onglets), `CreateBoostView.swift` (formules `estimateReach` EXACTES — views×4/likes÷3/followers÷5
+division entière —, garde budget<5 silencieuse fidèle), `BoostDashboardView.swift`/
+`BoostDetailView.swift` (vue d'ensemble + liste paginée + annulation). Point d'entrée : action
+"Promouvoir" dans le menu "..." du Feed pour ses propres posts (`isOwnPost`, même garde que
+`promoteBtn`/`CustomCardView.java:238`). Bug Android reproduit fidèlement (pas corrigé) : la
+déduction locale de solde après succès écrit toujours dans `coinsAmount`, même en payant par
+gemmes.

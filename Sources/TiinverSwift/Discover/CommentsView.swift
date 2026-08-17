@@ -48,7 +48,7 @@ struct CommentsView: View {
     @ViewBuilder
     private func commentRow(_ comment: Comment) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            AsyncImage(url: URL(string: comment.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+            CDNAsyncImage(url: URL(string: comment.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
                 Color(.secondarySystemBackground)
             }
             .frame(width: 32, height: 32).clipShape(Circle())

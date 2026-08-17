@@ -39,6 +39,18 @@ final class VideoPlayerManager {
         player.actionAtItemEnd = .none // REPEAT_MODE_ONE côté ExoPlayer — la boucle est gérée via l'observer de fin (voir loopIfNeeded)
     }
 
+    /// **CAUSE RACINE RÉELLE confirmée le 2026-08-17 par test réel** : le CDN de streaming
+    /// (`stream.tiinver.com`) exige un en-tête `Referer` — port fidèle de `ExoPlayerManager.
+    /// initDataSources` (`headers.put("Referer", "https://stream.tiinver.com")`, valeur EXACTE
+    /// reprise du fichier source Android). Aucun `AVURLAsset` de ce fichier ne passait cet
+    /// en-tête (ni `User-Agent`) — chaque vidéo du Feed échouait à charger silencieusement, jamais
+    /// de lecture possible malgré une session/réseau désormais fonctionnels.
+    private static let videoHTTPHeaders = ["User-Agent": "TiinverPlayer/1.0", "Referer": "https://stream.tiinver.com"]
+
+    private static func makeAsset(url: URL) -> AVURLAsset {
+        AVURLAsset(url: url, options: [AVURLAssetHTTPHeaderFieldsKey: videoHTTPHeaders])
+    }
+
     func setStateCallback(_ callback: VideoPlayerStateCallback?) {
         stateCallback = callback
     }
@@ -59,7 +71,7 @@ final class VideoPlayerManager {
         stateCallback?.onBuffering()
 
         let localURL = VideoCacheManager.shared.isCached(url) ? VideoCacheManager.shared.localURL(for: url) : url
-        let asset = preloadAssets.object(forKey: url as NSURL) ?? AVURLAsset(url: localURL)
+        let asset = preloadAssets.object(forKey: url as NSURL) ?? Self.makeAsset(url: localURL)
         let item = AVPlayerItem(asset: asset)
         // Meilleur équivalent atteignable de `LoadControlUtils.createFastStartLoadControl`
         // (`minBufferForPlayback`/`maxBuffer` ExoPlayer) : AVFoundation n'expose pas de contrôle
@@ -90,7 +102,7 @@ final class VideoPlayerManager {
     /// AVFoundation.
     func preload(_ url: URL) {
         guard preloadAssets.object(forKey: url as NSURL) == nil else { return }
-        let asset = AVURLAsset(url: url)
+        let asset = Self.makeAsset(url: url)
         preloadAssets.setObject(asset, forKey: url as NSURL)
         asset.loadValuesAsynchronously(forKeys: ["playable", "duration"], completionHandler: nil)
         VideoCacheManager.shared.precache(url)
@@ -156,7 +168,7 @@ final class VideoPlayerManager {
             isFallbackActive = true
             hasBeenReady = false
             stateCallback?.onBuffering()
-            let item = AVPlayerItem(url: fallbackURL)
+            let item = AVPlayerItem(asset: Self.makeAsset(url: fallbackURL))
             observe(item)
             player.replaceCurrentItem(with: item)
             player.play()

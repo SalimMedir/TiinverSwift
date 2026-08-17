@@ -27,7 +27,7 @@ struct FollowListView: View {
         List(users) { user in
             NavigationLink { ProfileView(userId: String(user.id), isCurrentUser: false) } label: {
                 HStack {
-                    AsyncImage(url: URL(string: user.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+                    CDNAsyncImage(url: URL(string: user.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
                         Color(.secondarySystemBackground)
                     }
                     .frame(width: 44, height: 44).clipShape(Circle())

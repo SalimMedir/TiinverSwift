@@ -108,7 +108,7 @@ struct SearchView: View {
 
     private func userRow(_ user: SearchUserResult) -> some View {
         HStack {
-            AsyncImage(url: URL(string: user.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+            CDNAsyncImage(url: URL(string: user.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
                 Color(.secondarySystemBackground)
             }
             .frame(width: 40, height: 40).clipShape(Circle())
@@ -151,7 +151,7 @@ struct SearchView: View {
     private func postRow(_ post: SearchPostResult) -> some View {
         HStack {
             if let thumb = post.thumbnailURL {
-                AsyncImage(url: thumb) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color(.secondarySystemBackground) }
+                CDNAsyncImage(url: thumb) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color(.secondarySystemBackground) }
                     .frame(width: 48, height: 48).clipShape(RoundedRectangle(cornerRadius: 6))
             }
             VStack(alignment: .leading) {

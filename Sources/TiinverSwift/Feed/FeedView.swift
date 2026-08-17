@@ -306,7 +306,7 @@ struct FeedGridCell: View {
         ZStack(alignment: .bottomLeading) {
             Color(.secondarySystemBackground)
             if let thumb = post.thumbnailURL {
-                AsyncImage(url: thumb) { phase in
+                CDNAsyncImage(url: thumb) { phase in
                     if case .success(let image) = phase {
                         image.resizable().aspectRatio(contentMode: .fill)
                     }
@@ -496,7 +496,7 @@ private struct FeedDetailCell: View {
                         }
                     }
             } else if let thumb = post.thumbnailURL {
-                AsyncImage(url: thumb) { image in
+                CDNAsyncImage(url: thumb) { image in
                     image.resizable().aspectRatio(contentMode: .fill)
                 } placeholder: { Color.black }
             } else {

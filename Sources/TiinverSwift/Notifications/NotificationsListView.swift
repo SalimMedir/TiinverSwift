@@ -80,7 +80,7 @@ private struct NotificationRow: View {
 
     var body: some View {
         HStack {
-            AsyncImage(url: noti.profile.flatMap(URL.init)) { $0.resizable() } placeholder: { Color.gray.opacity(0.3) }
+            CDNAsyncImage(url: noti.profile.flatMap(URL.init)) { $0.resizable() } placeholder: { Color.gray.opacity(0.3) }
                 .frame(width: 44, height: 44)
                 .clipShape(Circle())
 
@@ -111,7 +111,7 @@ private struct NotificationRow: View {
                 .buttonStyle(.borderless)
                 .disabled(justFollowedBack)
             } else if let thumbnailURL {
-                AsyncImage(url: thumbnailURL) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color(.secondarySystemBackground) }
+                CDNAsyncImage(url: thumbnailURL) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color(.secondarySystemBackground) }
                     .frame(width: 44, height: 44)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }

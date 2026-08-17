@@ -33,7 +33,7 @@ struct ContactPickerView: View {
                     } label: {
                         HStack(spacing: 12) {
                             ZStack(alignment: .bottomTrailing) {
-                                AsyncImage(url: URL(string: candidate.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+                                CDNAsyncImage(url: URL(string: candidate.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
                                     Circle().fill(Color(.secondarySystemBackground))
                                 }
                                 .frame(width: 44, height: 44)
@@ -107,7 +107,7 @@ struct ContactPickerView: View {
             HStack(spacing: 8) {
                 ForEach(viewModel.selectedCandidates) { candidate in
                     VStack(spacing: 4) {
-                        AsyncImage(url: URL(string: candidate.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+                        CDNAsyncImage(url: URL(string: candidate.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
                             Circle().fill(Color(.secondarySystemBackground))
                         }
                         .frame(width: 44, height: 44)

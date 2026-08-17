@@ -22,5 +22,37 @@ justifiée séparément (preuve réelle pour `COMPLETE_PARITY_VALIDATED`, compar
 
 ---
 
-(Aucune entrée pour l'instant — l'audit V2 doit être terminé avant toute correction, voir Phase 1
-des instructions.)
+### 2026-08-17 — Galerie/Publication (P0-1) — Reconstruction du vrai pipeline de publication Feed
+**Commit(s) :** `b639057`
+**Run CI :** [32076424332](https://github.com/SalimMedir/TiinverSwift/actions/runs/32076424332) — `status: completed`, `conclusion: success`
+**Statut AVANT (audit V2) :** `FUNCTIONALLY_FAILED` (haute confiance) — le fichier média (photo ou
+vidéo) était envoyé en multipart directement à `activity/add`, un flux qu'aucun client Android réel
+n'emprunte jamais.
+**Statut APRÈS :** `BUILD_VALIDATED` — commit `b639057` — CI SUCCESS — test fonctionnel réel toujours
+requis.
+**Preuve du changement de statut :** Tracé en entier `Activity/service/ActivityService.java`
+(`onStartCommand`/`sendMetaDate`/`uploadImageToBunny`/`getCdnVideoId`/`uploadFileToBunny`) — confirmé
+que `httpFileUploader` n'est référencé que pour `.cancel(true)`, jamais pour un upload réel. Nouveau
+fichier `Feed/FeedMediaUploader.swift` reproduit fidèlement les 2 flux BunnyCDN (Storage photo,
+Video Library vidéo 2-étapes). `FeedRepository.publish` réécrit : upload CDN d'abord, PUIS
+`POST activity/add` avec métadonnées texte SEULEMENT (`cdn_content_id`/`cdn_content_url`/
+`cdn_thumbnail_url`/`cdn_provider`/`object_url`, jamais de fichier). CI verte confirmée sur ce commit
+précis. **Reste non prouvé** : qu'un post publié depuis iOS apparaît réellement dans `feedtimeline`
+avec un média lisible côté client (Android ou iOS), et que `AVPlayer`/`VideoPlayerManager` lit
+correctement le HLS `.m3u8` retourné par la Video Library — nécessite un test Appetize global, pas
+demandé séparément ici par instruction explicite de l'utilisateur (batching).
+
+### 2026-08-17 — Home/Feed (P0-2) — Re-trace complète session→JSON→decode→ViewModel→Grid→Fullscreen
+**Commit(s) :** (aucun — audit uniquement, pas de code changé, aucun gap trouvé)
+**Run CI :** N/A
+**Statut AVANT (audit V2) :** `COMPLETE_PARITY_CANDIDATE`
+**Statut APRÈS :** `COMPLETE_PARITY_CANDIDATE` (inchangé)
+**Preuve du changement de statut :** Relu intégralement `FeedRepository.fetchTimeline`,
+`FeedViewModel.loadNextPage`, `FeedActivity.init(from:)`, `FeedView.body`/`FeedGridCell`/
+`FeedDetailPagerView` sans supposer les correctifs de sessions précédentes suffisants (consigne
+explicite de l'utilisateur : ne pas assumer). Chaque maillon a déjà une instrumentation de diagnostic
+réelle et affichée à l'écran (pas seulement console) pour les 3 causes historiques de "feed vide sans
+erreur" (session invalide silencieuse, décodage `compactMap` avalant les échecs, `errorMessage`/
+`isLoading` jamais rendus). Chaîne Grid→tap→Fullscreen vérifiée intacte. **Aucun nouveau gap trouvé** —
+conclusion honnête : rien à corriger ici, mais aucune preuve de test réel post-derniers-correctifs
+n'existe non plus, donc le statut reste `COMPLETE_PARITY_CANDIDATE` et non `_VALIDATED`.

@@ -270,6 +270,21 @@ lot de travail doit lire chacun individuellement avant de changer leur statut.
 vide, GET-body Alamofire, Keychain silencieux, priorité `playbackURL` inversée, ordre du bloc
 d'infos inversé) — tous corrigés au niveau code, aucun re-testé depuis le dernier lot.
 
+**MISE À JOUR 2026-08-17 (Phase 2, P0-2)** — Re-tracé intégralement la chaîne
+session→endpoint→JSON→decode→ViewModel→Grid→tap→Fullscreen, sans supposer les correctifs antérieurs
+suffisants : `FeedRepository.fetchTimeline` (diagnostics `print()` sur chaque échec `compactMap`,
+`receivedCount` vs `decoded.count` exposé à l'appelant), `FeedViewModel.loadNextPage` (session/requête/
+réponse/UI tracées et AFFICHÉES À L'ÉCRAN, pas seulement en console — `errorMessage`/`isLoading`
+effectivement rendus par `FeedView`, contrairement au bug historique documenté ci-dessus),
+`FeedActivity.init(from:)` (décodage tolérant `id`/`actor`/`isLiked` confirmé contre un échantillon
+JSON réel fourni par l'utilisateur, pas deviné), `FeedView.body` (grille 2 colonnes réelle,
+`onTapGesture` → `detailStartIndex`/`showDetail` → `fullScreenCover` vers `FeedDetailPagerView`,
+chaîne intacte, aucun point de rupture trouvé). **Aucun nouveau gap silencieux trouvé dans cette
+passe** — les correctifs déjà en place (lus en entier, pas juste grep) couvrent bien les 3 causes
+historiques (session invalide silencieuse, décodage strict cassant tout le flux, erreur non
+affichée). Statut inchangé : `COMPLETE_PARITY_CANDIDATE`, test fonctionnel réel sur build à jour
+toujours requis pour passer en `COMPLETE_PARITY_VALIDATED`.
+
 ---
 
 ## FEATURE: Profile
@@ -333,6 +348,21 @@ d'infos inversé) — tous corrigés au niveau code, aucun re-testé depuis le d
 pour les statistiques, **`CODE_PRESENT_UNVERIFIED`** pour l'édition. Historique : `FUNCTIONALLY_FAILED`
 confirmé (profil vide) avant les correctifs de session vide — corrigé au niveau code, dépend du même
 correctif `thumbnailURL` que Home/Feed pour les images de la grille, non re-testé depuis.
+
+**MISE À JOUR 2026-08-17 (Phase 2, P0-3)** — Re-tracé intégralement `ProfileRepository.fetchProfile`/
+`fetchUserPosts`, `ProfileViewModel.loadProfile`/`loadMorePosts`, `ProfileView.body`/`postCell`/tap→
+`FeedDetailPagerView`, sans supposer les correctifs antérieurs suffisants. Endpoint grille re-vérifié
+contre `ProfileRepository.java:153` (`feedtimeline/{actor}/{userId}/{limit}/{offset}`, clé
+`"activities"`) — confirmé identique, RAS. **NOUVEAU GAP RÉEL TROUVÉ** (même classe de bug que le
+Feed déjà corrigé, jamais porté ici) : `fetchUserPosts`/`fetchHashtagPosts` utilisaient
+`try? JSONDecoder().decode([FeedActivity].self, ...) ?? []` — un décodage `Array` Swift lève à la
+PREMIÈRE erreur d'élément (contrairement à `compactMap`), donc `try?` transformait ÇA en tableau
+VIDE ENTIER dès qu'UN SEUL post avait un champ non conforme, rendant la grille Profile
+silencieusement vide (indiscernable de "0 post"). **Corrigé** (commit à suivre) : remplacé par un
+décodage per-item avec diagnostics console, même motif que `FeedRepository.fetchTimeline`. Chaîne
+Grid→tap→Fullscreen (réutilise `FeedDetailPagerView(posts:startIndex:onClose:)`) vérifiée intacte,
+RAS. **Statut : `BUILD_VALIDATED` à confirmer par CI — voir `MIGRATION_PARITY_PROGRESS_V2.md`** pour
+le reste (`COMPLETE_PARITY_CANDIDATE` inchangé pour le reste de la FEATURE).
 
 ---
 
@@ -540,6 +570,20 @@ backend) pour la publication Feed elle-même — c'est l'écart le plus signific
 audit V2, jamais documenté dans aucune passe précédente malgré une tâche antérieure intitulée
 "P0-5 Galerie publish: verify real upload pipeline end to end" marquée complétée — cette tâche n'avait
 PAS comparé `ActivityService.java` (le fichier qui contient la vérité) au flux iOS réel.
+
+**MISE À JOUR 2026-08-17 (Phase 2, P0-1)** — Correctif implémenté : nouveau fichier
+`Feed/FeedMediaUploader.swift` reproduisant fidèlement `ActivityService.uploadImageToBunny` (Storage,
+`PUT storage.bunnycdn.com/tiinver-media/tiinver/photos/{token}.webp`) et `getCdnVideoId`+
+`uploadFileToBunny` (Video Library, 2 appels : `POST .../library/471609/videos` → `guid`, puis `PUT
+.../videos/{guid}` octets bruts sans Content-Type). `FeedRepository.publish` réécrit pour appeler
+`FeedMediaUploader` PUIS `POST activity/add` avec SEULEMENT des métadonnées texte (plus aucun
+multipart/fichier binaire vers cet endpoint). Diagnostics `print()` à chaque étape (upload CDN,
+metadata POST, succès/échec) pour un futur débogage sans re-deviner. Commit `b639057`, CI verte
+(run [32076424332](https://github.com/SalimMedir/TiinverSwift/actions/runs/32076424332), `conclusion:
+success`). **Statut : `BUILD_VALIDATED` — commit `b639057` — CI SUCCESS — test fonctionnel réel
+toujours requis** (aucune preuve encore qu'un post publié depuis iOS apparaît bien dans le Feed avec
+un média lisible — le point #3 de "Required work" ci-dessus, lecture HLS `.m3u8` par `AVPlayer`, reste
+également non re-testé). NE PAS marquer `COMPLETE_PARITY_VALIDATED` avant un test Appetize global.
 
 ---
 

@@ -32,19 +32,55 @@ final class ProfileRepository {
 
     /// Port de `getMediasPubFromServer(actor, userId, limit, offset)` — posts d'UN profil
     /// spécifique (`actor`), PAS le fil personnalisé du visiteur (`FeedRepository.fetchTimeline`,
-    /// module 6, endpoint différent à 3 segments).
+    /// module 6, endpoint différent à 3 segments). Endpoint réel vérifié dans
+    /// `ProfileRepository.java:153` (`"feedtimeline/" + actor + "/" + userId + "/" + limit + "/" +
+    /// offset`, clé de réponse `"activities"`, `gson.fromJson(jsn.toString(), activityLib[].class)`)
+    /// — confirmé identique côté iOS lors du re-trace P0-3 (2026-08-17), rien à corriger sur ce point.
+    ///
+    /// **CORRIGÉ le 2026-08-17 (P0-3)** : `try? JSONDecoder().decode([FeedActivity].self, ...)`
+    /// avalait TOUT le tableau dès qu'UN SEUL item échouait au décodage (le décodage `Codable` d'un
+    /// `Array` s'arrête et lève à la PREMIÈRE erreur d'élément — contrairement à `compactMap`, il ne
+    /// saute pas l'élément fautif) — `try?` transformait ça en `nil` → `?? []`, rendant la grille
+    /// Profile silencieusement vide, EXACTEMENT la même classe de bug déjà trouvée et corrigée dans
+    /// `FeedRepository.fetchTimeline` (2026-08-16) mais jamais portée ici. Corrigé avec le même motif
+    /// per-item + diagnostic console.
     func fetchUserPosts(actor: String, viewerId: String, limit: Int, offset: Int) async throws -> [FeedActivity] {
         let value = try await APIClient.shared.get("feedtimeline/\(actor)/\(viewerId)/\(limit)/\(offset)")
-        guard let data = value["activities"]?.rawData else { return [] }
-        return (try? JSONDecoder().decode([FeedActivity].self, from: data)) ?? []
+        guard let array = try? value.jsonArray("activities") else { return [] }
+        return Self.decodeActivitiesLeniently(array, context: "PROFILE POSTS")
     }
 
     /// Port de `getPostsByHashtag`/`HashtagWorkerTask` — même format de réponse (`"activities"`)
     /// que `fetchUserPosts`, endpoint différent.
+    ///
+    /// **CORRIGÉ le 2026-08-17 (P0-3, même cause racine que `fetchUserPosts` ci-dessus, trouvée dans
+    /// le même fichier lors du même passage)** : même remplacement `try?` global → décodage per-item.
     func fetchHashtagPosts(tag: String, limit: Int, offset: Int) async throws -> [FeedActivity] {
         let value = try await APIClient.shared.get("content/hashtag/\(tag)/posts/\(limit)/\(offset)")
-        guard let data = value["activities"]?.rawData else { return [] }
-        return (try? JSONDecoder().decode([FeedActivity].self, from: data)) ?? []
+        guard let array = try? value.jsonArray("activities") else { return [] }
+        return Self.decodeActivitiesLeniently(array, context: "HASHTAG POSTS")
+    }
+
+    /// Décodage per-item partagé — même motif que `FeedRepository.TimelineResult`'s `compactMap` :
+    /// un item dont le décodage échoue est SAUTÉ (avec un diagnostic console explicite), pas
+    /// silencieusement transformé en tableau vide entier.
+    private static func decodeActivitiesLeniently(_ array: [JSONValue], context: String) -> [FeedActivity] {
+        let decoded = array.compactMap { item -> FeedActivity? in
+            guard let data = item.rawData else {
+                print("\(context): item.rawData nil for one activity — raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+            do {
+                return try JSONDecoder().decode(FeedActivity.self, from: data)
+            } catch {
+                print("\(context): decode failure for one activity — error=\(error) raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+        }
+        if decoded.count != array.count {
+            print("\(context): received=\(array.count) activities, only \(decoded.count) decoded successfully — \(array.count - decoded.count) silently dropped, see decode failures above")
+        }
+        return decoded
     }
 
     /// Port de `TransportData.Following`/`data.getFollowing` — endpoint `follow`,

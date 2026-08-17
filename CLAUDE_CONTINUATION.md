@@ -9,6 +9,39 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
+# CURRENT HANDOFF (2026-08-17, suite 5 — bandeau debug corrigé + BLOQUÉ sur confirmation build Appetize)
+
+**Contexte** : l'utilisateur a fourni 3 nouvelles captures Appetize réelles (Feed Grid vide,
+Fullscreen sans boutons/avatar, création de groupe en mode sélection immédiate) accompagnées d'un
+rappel ferme : ne plus déclarer "corrigé" sans preuve, s'arrêter et demander plutôt que deviner.
+
+**GAP-023 (RÉSOLU)** : le bandeau de diagnostic session (`HomeShellView.userIdDebugBanner`) était
+visible en permanence, y compris sur Appetize — `#if DEBUG` aurait été insuffisant (vérifié :
+`codemagic.yaml` build les DEUX workflows sans `-configuration`, donc en Debug par défaut, chaque
+build Appetize est Debug). Gated derrière un flag `UserDefaults` explicite, désactivé par défaut.
+Commit `f669a89`, CI verte.
+
+**Ratio letterboxé du fullscreen vidéo — vérifié FAITHFUL À ANDROID, pas un bug** :
+`video_expanded_item.xml` (vrai layout Android) ne définit AUCUN `app:resize_mode` sur son
+`PlayerView` → Media3 utilise son défaut `RESIZE_MODE_FIT` (letterbox) — EXACTEMENT le défaut de
+`VideoPlayer` SwiftUI (`.resizeAspect`), confirmé qu'aucune surcharge n'existe côté iOS. Ne PAS
+"corriger" en recadrage plein écran, ce serait une divergence introduite, pas une correction.
+
+**BLOQUÉ, question posée explicitement à l'utilisateur (en attente de réponse)** : les 3 captures
+fournies montrent un fullscreen SANS avatar/boutons Like-Comment-Partager-Plus, et un écran "créer
+groupe" SANS l'étape browse-d'abord — alors que le code actuel sur `main` a DÉJÀ ces deux
+comportements (commits `a796446`/`3bf7ae3` pour le fullscreen, `acbddc7`/`e860d32` pour la création
+de groupe). Le pipeline Codemagic `visual-smoke-test` (qui produit le binaire Appetize) est
+déclenché MANUELLEMENT par l'utilisateur, séparément de la CI GitHub Actions automatique de cette
+session — aucune preuve qu'il ait été relancé depuis ces commits. Demandé explicitement : a-t-il été
+relancé après ces commits ? Réponse nécessaire avant de ré-investiguer ces 2 points comme de
+véritables régressions (au lieu de re-corriger un code déjà correct sans preuve). Même incertitude
+pour le Feed Grid vide (point 1) vis-à-vis des commits `8fd7493`/`eded5f1`.
+
+Détail complet : voir `MIGRATION_AUDIT.md` GAP-023 + la note de vérification qui suit juste après.
+
+---
+
 # CURRENT HANDOFF (2026-08-17, suite 4 — audit exhaustif Other User Profile + cause racine réelle vidéo)
 
 **Contexte** : deux demandes successives de l'utilisateur. (1) "audit municieux, TOUT clic sur un

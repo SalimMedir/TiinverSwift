@@ -80,8 +80,13 @@ struct ContactPickerView: View {
         .navigationDestination(isPresented: $goToGroupCreation) {
             GroupCreationView(members: viewModel.selectedCandidates)
         }
-        .navigationDestination(item: $goToChat) { candidate in
-            ChatView(target: rosterModel(for: candidate))
+        // `navigationDestination(item:)` exige iOS 17 (déploiement iOS 16 de ce projet) — même
+        // contournement `isPresented`+`Binding(get:set:)` que le reste du code base (voir
+        // `MonetizationView.swift`/`FeedView.swift`).
+        .navigationDestination(isPresented: Binding(get: { goToChat != nil }, set: { if !$0 { goToChat = nil } })) {
+            if let candidate = goToChat {
+                ChatView(target: rosterModel(for: candidate))
+            }
         }
         .task { await viewModel.load() }
         .overlay {

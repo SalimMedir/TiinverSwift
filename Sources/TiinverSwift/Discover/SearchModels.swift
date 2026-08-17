@@ -103,9 +103,21 @@ struct SearchPostResult: Codable, Identifiable, Hashable {
         isCertified = container.decodeLenientIntIfPresent(forKey: .isCertified)
     }
 
+    /// Même correctif que `FeedActivity.thumbnailURL` (2026-08-17, port fidèle de
+    /// `BubbleStatusPhoto.setMediaObject`) — cette structure duplique les mêmes champs CDN, donc
+    /// la même cause racine (photos jamais affichées, cette propriété ne lisait QUE
+    /// `cdn_thumbnail_url`, un champ vidéo-uniquement) s'y applique identiquement.
     var thumbnailURL: URL? {
-        guard let cdn_thumbnail_url, !cdn_thumbnail_url.isEmpty else { return nil }
-        return URL(string: cdn_thumbnail_url)
+        let isVideo = object?.caseInsensitiveCompare("videos") == .orderedSame
+        let candidate: String?
+        if isVideo {
+            let hasContentId = cdn_content_id != nil && cdn_content_id != "NULL" && !(cdn_content_id?.isEmpty ?? true)
+            candidate = hasContentId ? cdn_thumbnail_url : object_url
+        } else {
+            candidate = object_url
+        }
+        guard let candidate, !candidate.isEmpty else { return nil }
+        return URL(string: candidate)
     }
 
     /// Port de `UniversalSearchAdapter.java:298-306` (tap sur un résultat "publication" → écran

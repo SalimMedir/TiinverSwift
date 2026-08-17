@@ -43,9 +43,29 @@ struct FeedActivity: Codable, Identifiable, Equatable {
         return URL(string: raw)
     }
 
+    /// **CAUSE RACINE RÉELLE (2026-08-17)** des photos/thumbnails vidéo absents en Grid ET en
+    /// fullscreen, alors que la LECTURE vidéo fonctionnait (`playbackURL`, chemin de code
+    /// entièrement séparé) — port fidèle de `BubbleStatusPhoto.setMediaObject`
+    /// (`view/BubbleStatusPhoto.java`, lu en entier) : contrairement à l'hypothèse précédente
+    /// (cette propriété ne lisait QUE `cdn_thumbnail_url`), Android n'utilise ce champ QUE pour
+    /// certaines vidéos, JAMAIS pour une photo :
+    /// - PHOTO : toujours `object_url` — Android n'utilise JAMAIS `cdn_thumbnail_url` ici, un champ
+    ///   qui n'est même pas censé être renseigné pour ce type de contenu.
+    /// - VIDÉO : `cdn_thumbnail_url` SI `cdn_content_id` est présent et différent de la CHAÎNE
+    ///   littérale `"NULL"` (pas la valeur JSON `null`, vérifié dans le code source Android),
+    ///   SINON repli sur `object_url` (Glide charge alors directement l'URL vidéo brute comme
+    ///   source d'image — peut échouer silencieusement côté Android aussi dans ce cas précis,
+    ///   comportement fidèlement reproduit tel quel, pas "corrigé" au passage).
     var thumbnailURL: URL? {
-        guard let thumb = cdn_thumbnail_url, !thumb.isEmpty else { return nil }
-        return URL(string: thumb)
+        let candidate: String?
+        if isVideo {
+            let hasContentId = cdn_content_id != nil && cdn_content_id != "NULL" && !(cdn_content_id?.isEmpty ?? true)
+            candidate = hasContentId ? cdn_thumbnail_url : object_url
+        } else {
+            candidate = object_url
+        }
+        guard let candidate, !candidate.isEmpty else { return nil }
+        return URL(string: candidate)
     }
 
     var isVideo: Bool {

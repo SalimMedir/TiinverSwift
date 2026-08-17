@@ -9,6 +9,82 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
+# CURRENT HANDOFF (2026-08-17, suite 2 — audit de complétude P0 : Feed Grid/Fullscreen, Profile tap, création de groupe)
+
+**Contexte** : l'utilisateur a REJETÉ la clôture précédente ("les problèmes persistants montrent
+clairement que la migration est encore loin de la parité fonctionnelle"), a explicitement redemandé
+un audit de complétude par fonctionnalité (pas seulement une correction de bugs isolés), et a listé
+5 zones P0 : Feed Grid (images/thumbnails absents malgré vidéo jouable), Fullscreen sans vraie
+parité Android, clic Profile Grid cassé, Animems non fluide, création de groupe impossible. Règle de
+travail : ne jamais déclarer une fonctionnalité "COMPLETE" sur CI verte seule — distinction stricte
+BUILD VALIDATED / FUNCTIONALLY VALIDATED tant qu'aucun test réel ne l'a confirmé.
+
+**CAUSE RACINE #8 (Feed Grid + Fullscreen : photos/thumbnails vidéo absents malgré lecture vidéo
+fonctionnelle)** — port fidèle de `view/BubbleStatusPhoto.java` (`setMediaObject`, lu en entier) :
+`FeedActivity.thumbnailURL` ne lisait QUE `cdn_thumbnail_url`, un champ QUE le backend renseigne
+pour certaines vidéos, JAMAIS pour une photo. Android : PHOTO → toujours `object_url` ; VIDÉO →
+`cdn_thumbnail_url` SI `cdn_content_id` présent et ≠ `"NULL"` (chaîne littérale), sinon repli sur
+`object_url`. Comme la lecture vidéo (`playbackURL`) est un chemin de code totalement séparé, elle
+continuait de fonctionner pendant que Grid ET le fullscreen restaient noirs pour presque tout le
+contenu (essentiellement des photos). Corrigé dans `FeedActivity.swift` et sa réplique
+`SearchModels.SearchPostResult`. Commit `8fd7493`, CI verte.
+
+**CAUSE RACINE #9 (Fullscreen sans parité Android réelle)** — lu `Activity/ui/FeedFragment.java` →
+`ViewPagerAdapter.java` → `view/CustomCardView.java` en entier (le VRAI écran fullscreen, PAS
+`FullscreenActivity.java` qui s'est avéré être un template Android Studio mort/inutilisé — écouteurs
+`OnClickListener` vides, jamais atteint via `onArticleSelected`). Confirmé : like/comment/share/more
+étaient DÉJÀ correctement câblés côté iOS (`FeedDetailCell.actionRail`) — probablement juste rendus
+peu visibles par le bug ci-dessus. RÉELLEMENT manquants : avatar + tap sur l'identité → profil de
+l'AUTEUR du post (`CustomCardView.nameContainer`, jamais reproduit), et le bouton "Suivre"
+(`followBtn`, piloté par `activityLib.java:43`'s `isFollowed`, jamais décodé côté iOS). Les trois
+ajoutés (`FeedActivity.isFollowed`, `FeedViewModel.followFromDetail`, UI dans `FeedDetailCell`/
+navigation dans `FeedDetailPagerView` vers `ProfileView(isCurrentUser:false)`). Commit `a796446`, CI
+verte.
+
+**CAUSE RACINE #10 (clic Profile Grid ne fait rien)** — confirmée par lecture directe du code, pas
+une hypothèse : `ProfileView`'s `ForEach(viewModel.posts) { post in postCell(post) }` n'avait
+**AUCUN** geste attaché, ni navigation, ni état — contrairement à `FeedGridCell` qui ouvrait déjà
+`FeedDetailPagerView`. Corrigé en réutilisant CE MÊME pager (déjà remis à parité ci-dessus) plutôt
+que d'en dupliquer un second, cohérent avec la fusion déjà assumée de ce fichier
+(`UserProfile`+`AddPerfilFoto`). Commit `8fd4356`, CI verte (transitivement, via le build de
+`f4e0dd2` qui inclut ce commit).
+
+**CAUSE RACINE #11 (création de groupe toujours FUNCTIONALLY FAILED)** — DEUX bugs indépendants qui
+se cumulent dans `ContactsRepository.connectedUsers` (`GET connectedusers/{userId}`, alimente
+`ContactPickerView`, ÉTAPE 1 de la création de groupe) :
+1. `GroupMemberCandidate` n'avait pas de décodeur tolérant : si le backend envoie `userId` en NOMBRE
+   JSON pour ne serait-ce qu'UN SEUL contact (Gson tolère cette divergence côté Android via
+   `nextString()`, `Codable` Swift STRICT ne la tolère pas), le décodage du TABLEAU ENTIER échoue,
+   avalé silencieusement par le `try?` du ViewModel → liste "Aucun contact" → aucune sélection
+   possible → chaîne de création bloquée dès la toute première étape. Ajouté `GroupMemberCandidate.
+   init(from:)` + nouveau `decodeLenientString(forKey:)` (`LenientDecoding.swift`).
+2. `connectedUsers()` supposait `"data"` toujours ré-encodé en chaîne (`stringEncodedJSON`), en
+   analogie avec le code Android (`getString`+Gson) — LA MÊME analogie s'est révélée FAUSSE sur
+   `weekly_rank` (cause racine #4 du handoff précédent). Sans JSON réel de CET endpoint précis,
+   tolère maintenant les deux formes. Même traitement appliqué par prudence à `GroupRepository.
+   createGroup`/`fetchGroup`/`fetchMembers` (mêmes symptômes possibles plus loin dans la chaîne),
+   via un nouveau point d'entrée générique `JSONValue.looselyEncodedJSON(_:)` — à utiliser
+   désormais PARTOUT où cette ambiguïté n'a pas été tranchée par un JSON réel.
+Commits `f4e0dd2` + `cccca41`, CI verte.
+
+**Animems (P0-E) — investigué, PAS de correctif appliqué, conformément à la règle "ne pas tâtonner"
+de l'utilisateur** : `AnimemesGestureController.swift`/`AnimemesEditorState.swift` relus en entier.
+Code déjà mature (hit-test par inversion de matrice, translation/rotation/échelle correctement
+composées en "post-", diagnostic `gestureDiagnostics` déjà affiché à l'écran). Aucun bug
+supplémentaire identifiable sans capture/vidéo réelle du problème actuel — en attente des captures
+Appetize promises par l'utilisateur plutôt que d'inventer un correctif spéculatif.
+
+**Résiduel non traité, risque bas** : `GroupMember.userId: Int` (liste des membres d'un groupe
+EXISTANT, `GroupDetailView`) a le même profil de risque théorique que `GroupMemberCandidate.userId`
+avant correction, mais hors du chemin CRÉATION explicitement P0 — pas touché cette passe, à garder
+en tête si un bug similaire est rapporté sur la gestion d'un groupe existant.
+
+**CI VALIDÉ (toutes vertes)** : `8fd7493`, `a796446`, `8fd4356` (via le build de `f4e0dd2`),
+`f4e0dd2`, `cccca41`. **AUCUN de ces correctifs n'a encore été confirmé par un test réel/capture
+Appetize** — statut correct : "CI VALIDATED, FUNCTIONALLY UNVERIFIED" jusqu'à preuve du contraire.
+
+---
+
 # CURRENT HANDOFF (2026-08-17, suite — CDN Referer, Créateurs, Monétisation, solde Wallet, en-tête Home)
 
 **Contexte** : après les 3 causes racines de session vide (voir handoff précédent), l'utilisateur a

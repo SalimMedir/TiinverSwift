@@ -9,6 +9,75 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
+# CURRENT HANDOFF (2026-08-17, suite — CDN Referer, Créateurs, Monétisation, solde Wallet, en-tête Home)
+
+**Contexte** : après les 3 causes racines de session vide (voir handoff précédent), l'utilisateur a
+confirmé que du contenu réel se charge enfin (Feed/Profile avec vrais compteurs), puis a fourni une
+liste de bugs restants + le JSON réel de `weekly_rank` (Créateurs). Tous corrigés et validés CI
+verte ci-dessous.
+
+**CAUSE RACINE #4 (Créateurs, liste des trophées vide)** : `weekly_rank`'s champ `"data"` est un
+TABLEAU JSON DIRECT (confirmé par le JSON réel fourni par l'utilisateur), PAS une chaîne
+ré-encodée comme supposé précédemment par analogie avec d'autres endpoints — `TrophyRepository.
+weeklyRank()` décodait `data` avec `stringEncodedJSON` qui échouait TOUJOURS sur un tableau natif.
+Décodage direct maintenant. **Leçon retenue** : ne plus jamais supposer le format d'un champ
+"data"/"users" par analogie avec un autre endpoint sans preuve — voir `SuggestionsRepository`
+ci-dessous qui tolère les deux formes faute de JSON réel disponible pour CET endpoint précis.
+
+**CAUSE RACINE #5 (images ne s'affichent pas, vidéo ne se lance jamais)** : le CDN Tiinver exige un
+en-tête HTTP `Referer` (`https://tiinver.com` pour les images, `https://stream.tiinver.com` +
+`User-Agent: TiinverPlayer/1.0` pour le streaming vidéo — valeurs EXACTES reprises de
+`ChargerImages.java`/`ExoPlayerManager.java`) et rejette silencieusement toute requête sans cet
+en-tête. `AsyncImage` de SwiftUI n'a AUCUN point d'extension pour ajouter un en-tête personnalisé.
+Corrigé par `CDNAsyncImage.swift` (remplaçant drop-in, tous les ~20 sites d'appel `AsyncImage(`
+migrés) + `VideoPlayerManager.makeAsset(url:)` (`AVURLAsset` avec en-têtes HTTP).
+**Piège rencontré en cours de route** : `AVURLAssetHTTPHeaderFieldsKey` (la constante "officielle")
+n'est PAS exposée au compilateur Swift (clé interne Objective-C jamais déclarée côté Swift dans le
+SDK AVFoundation — confirmé par recherche externe) → échec de compilation CI (commit `f2fef82`).
+Corrigé (commit `7094756`) en passant la même valeur sous forme de `String` littérale brute.
+
+**CAUSE RACINE #6 (solde de pièces Wallet ne s'affiche jamais)** : Android n'a AUCUN endpoint dédié
+"solde du portefeuille" et ne persiste PAS `coinsAmount` à la connexion — le cache local
+(`Settings`/`COINS_AMOUNT`, ici `UserSession.coinsAmount`) n'est mis à jour QUE lors du rechargement
+du PROPRE profil (`AddPerfilFoto.java:636`). `WalletViewModel` lisait déjà ce cache correctement ;
+c'est l'écriture qui manquait, jamais portée. Corrigée dans `ProfileViewModel.loadProfile()`.
+
+**CAUSE RACINE #7 (bouton "monétisation" du Profil mène au même écran que "portefeuille")** :
+conclusion antérieure FAUSSE ("aucun écran Android dédié identifié"), jamais revérifiée après la
+première passe — `wallet/MonetizationActivity.java` (117 lignes) EST bien un écran séparé (hub
+"booster ses revenus" : publier/inviter/parrainage/récompense Animems), porté dans
+`MonetizationView.swift` (nouveau), routage `ProfileView` corrigé.
+
+**Structure de l'en-tête Home (demande explicite de l'utilisateur)** : une décision antérieure de
+CETTE session (avant compaction) avait conclu que le carrousel de suggestions Android était du code
+mort (`// sugestionRecycle.setAdapter(mAdapterSuggest)` commenté dans `MainFragment.java`) et avait
+donc délibérément choisi de NE PAS le reproduire. **Cette conclusion était fausse** : cette ligne
+commentée est un résidu d'un champ DUPLIQUÉ sans rapport ; le VRAI adapter est câblé dans
+`ActivityAdapter.HeaderViewHolder` (`sugestionRecycle.setAdapter(mAdapterSuggest)`, ligne 327,
+DANS le fichier adapter, pas le fragment) — trouvé en relisant `ActivityAdapter.java` en entier
+suite à la demande explicite et réitérée de l'utilisateur. Porté fidèlement (`feed_header_layout.
+xml` : carrousel de comptes suggérés `GET suggestions/{userId}` + bannière AdMob (même ID que
+Wallet) + bannière promo "Gagnez des pièces gratuites" → Referral), toujours visible au-dessus du
+fil (même vide), fidèle à l'item `TYPE_HEADER` de position 0 côté Android.
+
+**CI VALIDÉ** :
+- commit `7094756` (correctif compilation `AVURLAssetHTTPHeaderFieldsKey`) — run `31987473027`, **SUCCESS**.
+- commit `1715e7c` (écran Monétisation + solde Wallet) — inclus dans le run suivant.
+- commit `9ed52b2` (en-tête Home : suggestions/AdMob/bannière promo) — run `31988589990`, **SUCCESS**.
+
+**Pas encore vérifié par un test réel** (build vert ≠ fonctionnellement correct, ne pas déclarer
+"terminé" avant capture d'écran/rapport réel) :
+- Le carrousel de suggestions (`SuggestionsRepository`) tolère DEUX formats possibles pour le champ
+  `"users"` faute de JSON réel de CET endpoint précis — à confirmer/simplifier dès qu'un JSON réel
+  sera fourni (même piège que la leçon `weekly_rank` ci-dessus, anticipé cette fois).
+- Bouton fullscreen Feed "like/comment/share/more" signalé manquant par l'utilisateur — code
+  (`FeedDetailCell.actionRail`) relu et semble correctement câblé, PAS de correctif appliqué faute
+  de preuve (pas de capture d'écran de cet écran précis) — à réexaminer avec une capture fraîche
+  maintenant que le CDN fonctionne (l'écran était peut-être juste rendu illisible par des vignettes
+  grises avant ce correctif).
+
+---
+
 # CURRENT HANDOFF (2026-08-17, TROISIÈME cause racine réelle trouvée — Keychain silencieux)
 
 **Après le correctif GET-sans-corps (voir handoff précédent), un nouveau test réel a montré que la

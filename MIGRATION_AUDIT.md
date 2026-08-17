@@ -1254,6 +1254,76 @@ précédemment, commits `f4e0dd2`/`cccca41`) reste inchangé. PAS encore vérifi
 
 ---
 
+### GAP-023 — Bandeau de diagnostic session visible en permanence (RÉSOLU)
+
+**Domaine :** Diagnostic / Debug
+**Priorité :** P1 (fuite d'information de debug en usage normal)
+**Statut actuel :** DONE [VÉRIFIÉ CETTE SESSION]
+
+#### Constat
+`HomeShellView.userIdDebugBanner` (ajouté le 2026-08-16 à la demande explicite de l'utilisateur pour
+diagnostiquer le bug de session vide, depuis confirmé corrigé) restait affiché EN PERMANENCE sur les
+5 onglets, montrant `userId`/présence d'`apiKey`/statut Keychain — visible sur une capture Appetize
+réelle fournie par l'utilisateur. `#if DEBUG` aurait été insuffisant : **vérifié dans
+`codemagic.yaml`** — ses deux workflows (`checkpoint-build` ET `visual-smoke-test`, celui qui produit
+le binaire réellement testé sur Appetize) appellent `xcodebuild build` SANS `-configuration`, qui
+build en `Debug` par défaut — CHAQUE build Appetize de l'utilisateur est donc en configuration
+Debug, un `#if DEBUG` n'aurait masqué le bandeau nulle part en pratique.
+
+#### Correction
+`HomeShellView.swift` : le bandeau est maintenant conditionné à `UserDefaults.standard.bool(forKey:
+"DebugShowSessionBanner")`, désactivé par défaut — invisible tant que personne ne l'active
+explicitement (pas d'UI pour l'activer ajoutée : à la demande si un besoin de debug futur se
+présente). Code du bandeau conservé, pas supprimé, pour un diagnostic futur si nécessaire.
+
+#### Critère de validation
+Vérifié statiquement (condition désormais toujours fausse par défaut) — à confirmer par une capture
+Appetize montrant son absence.
+
+---
+
+### Note de vérification (2026-08-17) — captures Appetize fournies par l'utilisateur, hypothèse de build non à jour
+
+L'utilisateur a fourni 3 captures Appetize réelles montrant : (1) Feed Grid entièrement vide (aucune
+image), (2) Fullscreen vidéo avec bandes noires ET **aucun** bouton Like/Comment/Share/More, aucun
+avatar/pseudo/légende — seule une flèche retour est visible, (3) écran "créer groupe" affichant
+directement la liste en mode sélection multiple (cases à cocher actives dès l'ouverture).
+
+**Ratio du fullscreen vidéo (point 2, partie 1) — vérifié, PAS un bug** : `res/layout/
+video_expanded_item.xml` (le VRAI layout du fullscreen vidéo, `VideoViewHolder`/`ViewPagerAdapter`,
+lu en entier) place son `androidx.media3.ui.PlayerView` SANS attribut `app:resize_mode` — Media3
+utilise alors son mode par défaut `RESIZE_MODE_FIT` (ajuste en conservant le ratio d'aspect,
+letterbox/pillarbox si nécessaire), **exactement** le comportement par défaut de `VideoPlayer`
+(SwiftUI/AVKit, `videoGravity` par défaut = `.resizeAspect`) — confirmé qu'aucune surcharge n'existe
+côté iOS (`FeedView.swift`, `VideoPlayer(player:)` sans modificateur `.videoGravity`). Les bandes
+noires observées sont donc le comportement PAR DÉFAUT DES DEUX PLATEFORMES pour une vidéo dont le
+ratio natif ne correspond pas exactement à l'écran (la vidéo de la capture porte un filigrane
+TikTok, cohérent avec un contenu réutilisé dont le ratio natif diffère) — **PAS corrigé**, une
+correction "remplir l'écran" (crop) DIVERGERAIT d'Android plutôt que de le suivre fidèlement.
+
+**Points 2 (boutons/avatar absents) et 3 (mode sélection immédiat) — évidence forte d'un build
+antérieur aux correctifs déjà livrés, PAS un bug résiduel confirmé** : le code source actuel
+(vérifié à nouveau à cette date) contient déjà, dans `FeedDetailCell` (`FeedView.swift`), l'avatar +
+pseudo + date + bouton "S'abonner" + le rail Like/Comment/Partager/Plus (commits `a796446`,
+`3bf7ae3`) ; et `ContactPickerView.swift` contient déjà le mode `.browse` par défaut (tap = ouvrir
+une conversation, PAS de sélection) avec bascule vers la sélection multiple via l'en-tête "Créer un
+groupe" (commits `acbddc7`/`e860d32`). Les 3 captures fournies ne montrent AUCUN de ces éléments,
+alors que le pipeline qui produit le binaire testé sur Appetize (`codemagic.yaml`'s
+`visual-smoke-test`) est **déclenché manuellement** par l'utilisateur, séparément de la CI GitHub
+Actions automatique utilisée pour valider chaque commit de cette session — il n'y a aucune preuve
+que ce workflow ait été redéclenché depuis ces commits. **Question posée explicitement à
+l'utilisateur plutôt que de re-corriger un code déjà correct sans preuve** : confirmer si le build
+Appetize testé a bien été relancé après les commits `a796446`/`3bf7ae3`/`acbddc7`/`e860d32` (Feed
+fullscreen + création de groupe) — si non, need un nouveau build avant de pouvoir juger ces 2 points
+; si oui, ce sont de véritables régressions à ré-investiguer immédiatement avec cette confirmation.
+
+**Feed Grid vide (point 1)** : même incertitude de fraîcheur de build — les données (pseudos, likes)
+s'affichent correctement sur la capture, confirmant un build postérieur aux correctifs de session
+vide (début de session), mais rien ne confirme s'il inclut le correctif `thumbnailURL`
+(`8fd7493`)/le contournement de cache (`eded5f1`), commits ultérieurs. Même question posée.
+
+---
+
 ## 4. API PARITY MATRIX
 
 *(Endpoints confirmés par lecture directe du code Android ET Swift — pas une liste exhaustive de

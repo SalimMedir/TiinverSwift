@@ -91,16 +91,21 @@ struct HomeShellView: View {
                 .tabItem { Label("Profil", systemImage: "person.crop.circle.fill") }
                 .tag(4)
         }
-        // Bandeau de diagnostic TEMPORAIRE (2026-08-16, demande explicite de l'utilisateur : "il
-        // faut afficher le userId pourqu'on puisse de savoir si réellement la session fonctionne")
-        // — VISIBLE EN PERMANENCE sur les 5 onglets (contrairement aux panneaux de diagnostic
-        // Feed/Profile, qui n'apparaissent que dans leurs propres écrans et seulement en cas
-        // d'erreur). Lit `UserSession.shared.myId` directement à la construction de cet écran —
-        // reflète exactement la valeur telle qu'elle était juste après la connexion/l'ouverture de
-        // l'app, ce qui est précisément ce qu'il faut vérifier. À retirer une fois la cause du
-        // problème de session confirmée et corrigée.
+        // Bandeau de diagnostic (2026-08-16, demande explicite de l'utilisateur : "il faut afficher
+        // le userId pourqu'on puisse de savoir si réellement la session fonctionne") — sa cause
+        // racine (session vide) est confirmée corrigée depuis (données réelles observées : vrais
+        // pseudos/compteurs de likes visibles sur de vraies captures Appetize). **CORRIGÉ le
+        // 2026-08-17** (retour utilisateur explicite : "ce type de log ne doit JAMAIS être visible
+        // en dehors d'un mode debug explicite") — `#if DEBUG` NE SUFFIT PAS ici : `codemagic.yaml`
+        // compile ses DEUX workflows via `xcodebuild build` SANS `-configuration`, qui build en
+        // Debug par défaut, donc CHAQUE build Appetize testée par l'utilisateur reste en
+        // configuration Debug (vérifié dans le fichier, pas supposé) — un `#if DEBUG` n'aurait
+        // masqué le bandeau nulle part en pratique. Repli sur un drapeau `UserDefaults` explicite,
+        // désactivé par défaut (jamais visible tant que personne ne l'active manuellement).
         .safeAreaInset(edge: .top) {
-            userIdDebugBanner
+            if UserDefaults.standard.bool(forKey: "DebugShowSessionBanner") {
+                userIdDebugBanner
+            }
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {

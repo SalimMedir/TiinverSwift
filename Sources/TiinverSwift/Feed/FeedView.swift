@@ -409,6 +409,10 @@ struct FeedDetailPagerView: View {
     let onClose: () -> Void
 
     @State private var currentIndex: Int
+    /// Port de la navigation `nameContainer` → `UserProfile.class` (P0-C, 2026-08-17) — présenté
+    /// depuis CE pager plutôt que remonté à l'appelant : Android ouvre `UserProfile` comme un
+    /// nouvel écran empilé par-dessus le fullscreen, jamais en le fermant d'abord.
+    @State private var openProfileUserId: String?
 
     /// Port ponctuel : quand ce pager est ouvert directement sur UN post isolé (résolution d'un lien
     /// profond `/post/{token}`, `DeepLinkRouter.swift`) plutôt que sur le fil complet, un
@@ -448,7 +452,9 @@ struct FeedDetailPagerView: View {
                                     onLike: { viewModel.toggleLike(post) },
                                     onComment: { onComment(post) },
                                     onShare: { Task { await viewModel.toggleShare(post) } },
-                                    onMore: { onMore(post) }
+                                    onMore: { onMore(post) },
+                                    onOpenProfile: { if let actor = post.actor { openProfileUserId = actor } },
+                                    onFollow: { Task { await viewModel.followFromDetail(post) } }
                                 )
                             }
                         }
@@ -481,6 +487,18 @@ struct FeedDetailPagerView: View {
             .padding(.top, 8)
             .padding(.leading, 12)
         }
+        .fullScreenCover(isPresented: Binding(get: { openProfileUserId != nil }, set: { if !$0 { openProfileUserId = nil } })) {
+            if let userId = openProfileUserId {
+                NavigationStack {
+                    ProfileView(userId: userId, isCurrentUser: userId == UserSession.shared.myId)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("Fermer") { openProfileUserId = nil }
+                            }
+                        }
+                }
+            }
+        }
     }
 
     /// Port de `ViewPagerAdapter.isAdPosition` (`position > 0 && position < list.size() && position
@@ -511,6 +529,15 @@ private struct FeedDetailCell: View {
     var onComment: () -> Void = {}
     var onShare: () -> Void = {}
     var onMore: () -> Void = {}
+    /// Port de `nameContainer.setOnClickListener` (`CustomCardView.setData`) — tap sur
+    /// l'avatar/le nom ouvre le profil de l'AUTEUR du post (`post.actor`), PAS le profil personnel
+    /// courant, même quand ce post appartient à l'utilisateur courant (Android ne fait pas non
+    /// plus cette distinction ici : il construit toujours un `User` depuis les champs du post).
+    var onOpenProfile: () -> Void = {}
+    /// Port du bouton `followBtn` (visible seulement pour les posts d'AUTRUI non déjà suivis,
+    /// `CustomCardView.setData`: `mediaObject.getCurrentUserId().equals(mediaObject.getActor())`
+    /// → masqué).
+    var onFollow: () -> Void = {}
 
     var body: some View {
         ZStack {
@@ -533,10 +560,44 @@ private struct FeedDetailCell: View {
             VStack {
                 Spacer()
                 HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(post.username.map { "@\($0)" } ?? "")
-                            .font(.headline)
-                            .foregroundStyle(.white)
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Port de `avatar`/`nameContainer` (`CustomCardView.init`/`setData`) —
+                        // absents jusqu'ici du fullscreen iOS (gap confirmé par relecture du code
+                        // Android réel, pas une hypothèse) : avatar rond + pseudo, zone tapable
+                        // entière → profil de l'auteur.
+                        Button(action: onOpenProfile) {
+                            HStack(spacing: 8) {
+                                CDNAsyncImage(url: post.profile.flatMap(URL.init(string:))) { phase in
+                                    if case .success(let image) = phase {
+                                        image.resizable().aspectRatio(contentMode: .fill)
+                                    } else {
+                                        Circle().fill(Color.white.opacity(0.2))
+                                    }
+                                }
+                                .frame(width: 36, height: 36)
+                                .clipShape(Circle())
+                                .overlay(Circle().strokeBorder(.white.opacity(0.8), lineWidth: 1))
+
+                                Text(post.username.map { "@\($0)" } ?? "")
+                                    .font(.headline)
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        // Port de `followBtn` — masqué sur ses propres posts (`getCurrentUserId()
+                        // == getActor()`) et une fois déjà suivi (`isFollowed()`), jamais de
+                        // bascule "ne plus suivre" depuis ce bouton précis (fidèle à Android).
+                        if post.actor != UserSession.shared.myId, post.isFollowed != true {
+                            Button(action: onFollow) {
+                                Text("Suivre")
+                                    .font(.caption.bold())
+                                    .padding(.horizontal, 12).padding(.vertical, 5)
+                                    .background(Color.white, in: Capsule())
+                                    .foregroundStyle(.black)
+                            }
+                        }
+
                         if let message = post.message, !message.isEmpty {
                             Text(message)
                                 .font(.subheadline)

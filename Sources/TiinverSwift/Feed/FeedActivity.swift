@@ -33,6 +33,12 @@ struct FeedActivity: Codable, Identifiable, Equatable {
     var cdn_content_id: String?
     var cdn_content_url: String?
     var cdn_thumbnail_url: String?
+    /// Port de `activityLib.java:43` (`private boolean isFollowed`, clé Gson `"isFollowed"`,
+    /// aucune `@SerializedName`) — champ RÉELLEMENT présent sur chaque item `feedtimeline`,
+    /// jamais porté jusqu'ici (absence confirmée en code, pas juste supposée) : c'est ce champ qui
+    /// pilote `followBtn` dans le fullscreen Android (`CustomCardView.setData`, masqué seulement
+    /// pour ses propres posts) — nécessaire pour reconstruire ce bouton côté iOS (P0-C, 2026-08-17).
+    var isFollowed: Bool?
 
     /// URL à lire : privilégie le CDN si disponible, sinon l'URL brute — même logique que
     /// `NotiEntity.getDisplayUrl()` (module 4), appliquée ici au flux vidéo plutôt qu'aux
@@ -85,7 +91,7 @@ struct FeedActivity: Codable, Identifiable, Equatable {
         share: Int? = nil, object_url: String? = nil, message: String? = nil, userId: Int? = nil,
         profile: String? = nil, location: String? = nil, certified: String? = nil, followers: String? = nil,
         following: String? = nil, username: String? = nil, cdn_content_id: String? = nil,
-        cdn_content_url: String? = nil, cdn_thumbnail_url: String? = nil
+        cdn_content_url: String? = nil, cdn_thumbnail_url: String? = nil, isFollowed: Bool? = nil
     ) {
         self.id = id; self.actor = actor; self.token = token; self.verified = verified; self.verb = verb
         self.lastname = lastname; self.firstname = firstname; self.object = object; self.likes = likes
@@ -94,7 +100,7 @@ struct FeedActivity: Codable, Identifiable, Equatable {
         self.profile = profile; self.location = location; self.certified = certified
         self.followers = followers; self.following = following; self.username = username
         self.cdn_content_id = cdn_content_id; self.cdn_content_url = cdn_content_url
-        self.cdn_thumbnail_url = cdn_thumbnail_url
+        self.cdn_thumbnail_url = cdn_thumbnail_url; self.isFollowed = isFollowed
     }
 
     /// Décodage manuel : `id` (seul champ non-optionnel) doit tolérer une chaîne numérique en plus
@@ -139,5 +145,6 @@ struct FeedActivity: Codable, Identifiable, Equatable {
         cdn_content_id = try container.decodeIfPresent(String.self, forKey: .cdn_content_id)
         cdn_content_url = try container.decodeIfPresent(String.self, forKey: .cdn_content_url)
         cdn_thumbnail_url = try container.decodeIfPresent(String.self, forKey: .cdn_thumbnail_url)
+        isFollowed = container.decodeLenientBoolIfPresent(forKey: .isFollowed)
     }
 }

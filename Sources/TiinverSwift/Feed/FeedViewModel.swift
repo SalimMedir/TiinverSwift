@@ -168,6 +168,18 @@ final class FeedViewModel: ObservableObject {
         try? await profileRepository.follow(userId: actorId, followerId: myId)
     }
 
+    /// Port du bouton `followBtn` de `CustomCardView.setData` (fullscreen, `ViewPagerAdapter`) —
+    /// même motif unidirectionnel que `ProfileViewModel.follow()`/`SuggestionsCarouselView.follow`
+    /// (n'agit QUE si pas déjà suivi, écho optimiste immédiat) : Android masque `followBtn`
+    /// entièrement une fois `mediaObject.isFollowed()==true` plutôt que d'en faire un bascule.
+    func followFromDetail(_ post: FeedActivity) async {
+        guard post.isFollowed != true, let index = posts.firstIndex(where: { $0.id == post.id }),
+            let myId = UserSession.shared.myId, let actorId = post.actor
+        else { return }
+        posts[index].isFollowed = true
+        try? await profileRepository.follow(userId: actorId, followerId: myId)
+    }
+
     /// Port de la branche `block_content` de `OnclickMoreExpand` → `block(mediaObject)` — mêmes
     /// paramètres exacts (`username`=mon pseudo, `username_blocked`=pseudo cible, `userId`=mon id,
     /// `user_blocked_id`=`mediaObject.getActor()`).

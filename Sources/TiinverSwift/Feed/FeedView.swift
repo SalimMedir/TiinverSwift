@@ -560,11 +560,25 @@ private struct FeedDetailCell: View {
             VStack {
                 Spacer()
                 HStack(alignment: .bottom) {
+                    // Ordre EXACT de `reaction_pub_but.xml` (lu en entier, layout du vrai fullscreen
+                    // Android) — auparavant inversé côté iOS (avatar/nom en premier, légende en
+                    // dernier) : `message` (légende/hashtag) est le PREMIER enfant du bloc
+                    // d'informations, suivi de la ligne avatar+pseudo+date, suivie du bouton
+                    // "S'abonner". Capture Android fournie par l'utilisateur confirmant cet ordre
+                    // visuel exact (2026-08-17).
                     VStack(alignment: .leading, spacing: 8) {
-                        // Port de `avatar`/`nameContainer` (`CustomCardView.init`/`setData`) —
-                        // absents jusqu'ici du fullscreen iOS (gap confirmé par relecture du code
-                        // Android réel, pas une hypothèse) : avatar rond + pseudo, zone tapable
-                        // entière → profil de l'auteur.
+                        if let message = post.message, !message.isEmpty {
+                            Text(message)
+                                .font(.subheadline)
+                                .foregroundStyle(.white)
+                                .lineLimit(2)
+                        }
+
+                        // Port de `avatar`/`nameContainer`/`stamp` (`CustomCardView.init`/
+                        // `setData`) — absents jusqu'ici du fullscreen iOS (gap confirmé par
+                        // relecture du code Android réel, pas une hypothèse) : avatar rond +
+                        // pseudo + date (`TimeUtils.getDate`, "yyyy-MM-dd HH:mm:ss" →
+                        // "dd-MM-yy"), zone tapable entière → profil de l'auteur.
                         Button(action: onOpenProfile) {
                             HStack(spacing: 8) {
                                 CDNAsyncImage(url: post.profile.flatMap(URL.init(string:))) { phase in
@@ -578,9 +592,16 @@ private struct FeedDetailCell: View {
                                 .clipShape(Circle())
                                 .overlay(Circle().strokeBorder(.white.opacity(0.8), lineWidth: 1))
 
-                                Text(post.username.map { "@\($0)" } ?? "")
-                                    .font(.headline)
-                                    .foregroundStyle(.white)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(post.username.map { "@\($0)" } ?? "")
+                                        .font(.headline)
+                                        .foregroundStyle(.white)
+                                    if let date = Self.formattedStamp(post.stamp) {
+                                        Text(date)
+                                            .font(.caption2)
+                                            .foregroundStyle(.white.opacity(0.85))
+                                    }
+                                }
                             }
                         }
                         .buttonStyle(.plain)
@@ -590,19 +611,12 @@ private struct FeedDetailCell: View {
                         // bascule "ne plus suivre" depuis ce bouton précis (fidèle à Android).
                         if post.actor != UserSession.shared.myId, post.isFollowed != true {
                             Button(action: onFollow) {
-                                Text("Suivre")
+                                Text("S'abonner")
                                     .font(.caption.bold())
                                     .padding(.horizontal, 12).padding(.vertical, 5)
                                     .background(Color.white, in: Capsule())
                                     .foregroundStyle(.black)
                             }
-                        }
-
-                        if let message = post.message, !message.isEmpty {
-                            Text(message)
-                                .font(.subheadline)
-                                .foregroundStyle(.white)
-                                .lineLimit(2)
                         }
                     }
                     Spacer()
@@ -627,6 +641,28 @@ private struct FeedDetailCell: View {
                 Image(systemName: "ellipsis").font(.title2).foregroundStyle(.white)
             }
         }
+    }
+
+    /// Port de `Utils/TimeUtils.getDate` (lu en entier) — entrée `"yyyy-MM-dd HH:mm:ss"`, sortie
+    /// `"dd-MM-yy"` EXACTEMENT (confirmé par la capture Android fournie : "01-05-26"). `en_US_POSIX`
+    /// plutôt que `Locale.current` — motif Apple standard pour un format fixe non localisé (évite
+    /// que le calendrier persan/hébreu d'un utilisateur ne fasse échouer silencieusement le parsing,
+    /// contrairement à `Locale.getDefault()` côté Java qui n'a pas cette classe de piège).
+    private static let inputStampFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return f
+    }()
+    private static let outputStampFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "dd-MM-yy"
+        return f
+    }()
+    private static func formattedStamp(_ raw: String?) -> String? {
+        guard let raw, !raw.isEmpty, let date = inputStampFormatter.date(from: raw) else { return nil }
+        return outputStampFormatter.string(from: date)
     }
 
     private func actionButton(icon: String, tint: Color, count: Int, action: @escaping () -> Void) -> some View {

@@ -1025,6 +1025,86 @@ déclenche aucun appel réseau, confirmer déclenche l'envoi réel (comportement
 
 ---
 
+### GAP-020 — Feed Fullscreen : écart d'UX Android jamais documenté avant correction (RÉSOLU, documenté rétroactivement à la demande explicite de l'utilisateur)
+
+**Domaine :** Feed
+**Priorité :** P0
+**Statut actuel :** DONE [VÉRIFIÉ CETTE SESSION — CI VALIDATED, PAS ENCORE FUNCTIONALLY VALIDATED]
+
+> **Note de conformité méthodologique** : cette entrée aurait dû être écrite AVANT la correction
+> (commits `8fd7493`/`a796446`), pas après — l'utilisateur l'a signalé explicitement ("Documente
+> l'écart exact... dans MIGRATION_AUDIT.md avant toute correction"). Rédigée ici rétroactivement
+> avec le même niveau de rigueur que si elle avait précédé le correctif, comme trace pour l'audit et
+> comme rappel de procédure pour la suite : lire Android → documenter le gap ICI → corriger.
+
+#### Android — référence réelle
+Chaîne réelle confirmée par lecture complète (pas par extrapolation depuis un nom de fichier) :
+- `Activity/ui/MainFragment.java:1108` (`OnAdapterItemClicked`) — tap sur une cellule de la grille
+  Home construit un `GlobalMedias` (`ACTION_LOAD_ALL_FEED`, la liste complète + l'id de l'item tapé)
+  et appelle `mListener.onArticleSelected(1, arg)`.
+- `Activity/ui/HomeActivity.java:787` (`onArticleSelected`) — remplace le fragment courant par
+  `FeedFragment.newInstance(user, medias)` (**PAS** `Activity/ui/FullscreenActivity.java`, qui s'est
+  avéré être un template Android Studio mort : écouteurs `OnClickListener` vides commentés,
+  `JaimeClic`/`cmt_btn`/`prtg` ne font littéralement rien, jamais atteint par aucun chemin de
+  navigation réel du code — piège identifié en le lisant en entier avant de le prendre comme
+  référence, PAS supposé mort sans vérification).
+- `Activity/ui/FeedFragment.java` (2103 lignes, lu en entier) — héberge un `ViewPager2` VERTICAL
+  (`ORIENTATION_VERTICAL`) avec `ViewPagerAdapter` (`Activity/ui/ViewPagerAdapter.java`, lu en
+  entier) : un item par post, `TYPE_PHOTO`/`TYPE_VIDEO`/`TYPE_AD`/`TYPE_FOOTER`, positionné au
+  démarrage sur l'item tapé (`viewPager2.setCurrentItem(realPos, false)`, `startFeed`).
+- `PhotoViewHolder`/`view/CustomCardView.java` (lu en entier, `image_expanded_item.xml` +
+  `reaction_pub_but.xml` inclus, lus en entier) — la vraie UI par item : média plein écran, ET dans
+  l'ordre vertical EXACT du XML (`reaction_pub_but.xml`) : légende/hashtag (`message`) EN PREMIER,
+  PUIS ligne avatar rond + pseudo + date (`nameContainer`, tap → `Intent UserProfile.class` avec un
+  `User` reconstruit depuis les champs du POST — PAS le profil personnel courant), PUIS bouton
+  `followBtn` ("S'abonner", masqué sur ses propres posts ET une fois déjà suivi). À droite :
+  `containerRectBtn`, rail vertical Like (`jaimClic`)/Comment (`cmt`)/Partager (`prtg`)/Plus
+  (`moreShow`), CHACUN avec un compteur (`jaimeNum`/`qteCmt`/`qteShare`).
+- Date affichée : `Utils/TimeUtils.getDate` (lu en entier) — `"yyyy-MM-dd HH:mm:ss"` en entrée,
+  `"dd-MM-yy"` en sortie EXACTEMENT (confirmé par capture Android réelle fournie par l'utilisateur :
+  "01-05-26").
+
+#### iOS — état actuel (avant ce correctif)
+`Sources/TiinverSwift/Feed/FeedView.swift` — `FeedDetailPagerView`/`FeedDetailCell`. Le paging
+vertical existait DÉJÀ (`TabView` pivoté ±90°, technique de contournement documentée en tête de
+fichier — SwiftUI n'a pas de `TabView` vertical natif en iOS 16). Le rail Like/Comment/Partager/Plus
+(`actionRail`) existait DÉJÀ ET était correctement câblé (vérifié en lisant le code, PAS supposé).
+Manquaient RÉELLEMENT : avatar, tap sur l'identité → profil de l'auteur (aucune navigation du tout,
+pas seulement une mauvaise destination), bouton "S'abonner", date formatée — ET l'ordre vertical du
+bloc d'informations était INVERSÉ par rapport à Android (avatar/nom en premier, légende en dernier,
+alors qu'Android fait l'inverse).
+
+#### Différence exacte
+1. Aucun avatar, aucun moyen de naviguer vers le profil de l'auteur depuis le fullscreen.
+2. Aucun bouton "S'abonner".
+3. Aucune date affichée.
+4. Ordre vertical du bloc d'informations inversé par rapport au XML Android réel.
+(Like/Comment/Partager/Plus : PAS un écart réel — déjà présents et fonctionnels, malgré le rapport
+utilisateur initial ; hypothèse la plus probable, non confirmée : masqués visuellement par le bug
+CDN concurrent — GAP feed Grid/thumbnails, voir handoff `CLAUDE_CONTINUATION.md` 2026-08-17 — qui
+rendait l'arrière-plan noir sur la quasi-totalité des posts avant son correctif.)
+
+#### Action recommandée
+Aucune — corrigé (`FeedActivity.isFollowed` + décodage tolérant, `FeedViewModel.followFromDetail`,
+avatar + zone tapable + bouton "S'abonner" + date dans `FeedDetailCell`, réordonnancement exact du
+bloc d'informations, navigation `fullScreenCover` vers `ProfileView(isCurrentUser: false)` dans
+`FeedDetailPagerView`). Commits `8fd7493`, `a796446`, et le réordonnancement de cette passe.
+
+#### Dépendances
+`ProfileView` (déjà paramétré par `isCurrentUser`, réutilisé tel quel), `CDNAsyncImage` (avatar avec
+`Referer`), `ProfileRepository.follow`.
+
+#### Risque de régression
+LOW — ajouts dans une vue déjà isolée (`FeedDetailCell`), aucune signature publique changée hors
+l'ajout de deux callbacks optionnels (`onOpenProfile`/`onFollow`, valeurs par défaut no-op).
+
+#### Critère de validation
+Capture Appetize du fullscreen Feed montrant, dans cet ordre : légende, avatar+pseudo+date,
+"S'abonner" (si applicable), ET le rail Like/Comment/Partager/Plus fonctionnel à droite — PAS encore
+obtenue au moment de cette entrée.
+
+---
+
 ## 4. API PARITY MATRIX
 
 *(Endpoints confirmés par lecture directe du code Android ET Swift — pas une liste exhaustive de

@@ -1,27 +1,43 @@
 import SwiftUI
 
-/// Port de `contacts/ContactsFragment.java` + `contacts/ChooseFragment.java` (lus en entier,
-/// 2026-08-15) — étape 1 de la création de groupe : liste des contacts Tiinver
-/// (`ConnectedUsersRepository`), sélection multiple, vers `GroupCreationView` (port de
-/// `contacts/Group.java`).
+/// Port de `contacts/ContactsFragment.java` + `contacts/ChooseFragment.java` + `contacts/
+/// Contact.java` (les 3 lus en entier) — **CORRIGÉ le 2026-08-17** : cette vue avait été construite
+/// comme un écran UNIQUE de sélection multiple, alors qu'Android est réellement composé de DEUX
+/// écrans successifs partageant le même `Adapter`/la même liste (`Contact.onArticleSelected`) :
 ///
-/// **Parité UI avec Android corrigée par capture d'écran (2026-08-16)** — 3 écarts visuels réels
-/// trouvés et corrigés : (1) en-tête dédiée sous la barre de titre (icône ronde rose "personnes+"
-/// + "creer groupe" en gras), pas seulement un titre de navigation ; (2) sélection indiquée par un
-/// BADGE superposé au coin de l'avatar (coche sur fond sombre), pas une icône séparée à droite de
-/// la ligne ; (3) une fois au moins un contact sélectionné, une bande horizontale de "chips"
-/// (avatar + nom, fond gris) apparaît sous l'en-tête pour récapituler la sélection, ET le bouton
-/// "Suivant" devient un FAB rond rose bas-droite (icône flèche d'envoi) plutôt qu'un bouton texte
-/// de barre d'outils.
+/// 1. **`ContactsFragment`** (mode `.browse` ci-dessous, écran RÉEL par défaut à l'ouverture,
+///    `Contact.onCreate` → `onArticleSelected(0, null)`) — liste générale des contacts, tap sur une
+///    ligne = **ouvre directement une conversation individuelle** (`Adapter.ContactHolder`,
+///    `Intent(ActivityMsg.class)`), PLUS un en-tête cliquable dédié ("créer un groupe", icône ronde
+///    rouge `ic_baseline_group_add_24` + `R.string.createGroup`, `R.id.createContact`) qui bascule
+///    vers l'écran 2.
+/// 2. **`ChooseFragment`** (mode `.selectForGroup` ci-dessous, `onArticleSelected(1, ...)`) — MÊME
+///    liste, ré-affichée avec des cases à cocher (`Adapter.ViewHolder`, `LAYOUT_CHANGE`), bande de
+///    "chips" des membres choisis (`memberShoosed`), FAB "suivant" (`nextToGroup`) → `Contact.
+///    onArticleSelected(2, selection)` → `Group.java` (port : `GroupCreationView.swift`).
+///
+/// La version précédente de ce fichier sautait directement à l'écran 2 depuis TOUT point d'entrée
+/// (FAB "créer groupe" ET lien "Nouveau message" de `RosterListView`), rendant le tap-pour-discuter
+/// individuel de l'écran 1 totalement inaccessible — écart signalé explicitement par l'utilisateur
+/// ("la liste de contacts... sert normalement aussi à ouvrir une conversation individuelle au
+/// clic"), confirmé exact en relisant `Adapter.java`/`Contact.java` en entier.
 struct ContactPickerView: View {
+    private enum Mode { case browse, selectForGroup }
+
     @StateObject private var viewModel = ContactPickerViewModel()
+    @State private var mode: Mode = .browse
     @State private var goToGroupCreation = false
+    @State private var goToChat: GroupMemberCandidate?
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             VStack(spacing: 0) {
-                header
-                if !viewModel.selectedCandidates.isEmpty { selectedChipsStrip }
+                if mode == .browse {
+                    createGroupHeader
+                } else {
+                    header
+                    if !viewModel.selectedCandidates.isEmpty { selectedChipsStrip }
+                }
                 Text("Mes Contacts")
                     .font(.subheadline).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -29,37 +45,20 @@ struct ContactPickerView: View {
                     .background(Color(.secondarySystemBackground))
                 List(viewModel.candidates) { candidate in
                     Button {
-                        viewModel.toggle(candidate)
-                    } label: {
-                        HStack(spacing: 12) {
-                            ZStack(alignment: .bottomTrailing) {
-                                CDNAsyncImage(url: URL(string: candidate.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
-                                    Circle().fill(Color(.secondarySystemBackground))
-                                }
-                                .frame(width: 44, height: 44)
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.accentColor, lineWidth: viewModel.selected.contains(candidate.id) ? 2 : 0))
-                                if viewModel.selected.contains(candidate.id) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.white, .black)
-                                        .background(Circle().fill(.black))
-                                        .font(.system(size: 16))
-                                }
-                            }
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(candidate.displayName).font(.body).foregroundStyle(.primary)
-                                if let username = candidate.username { Text(username).font(.caption).foregroundStyle(.secondary) }
-                            }
-                            Spacer()
+                        if mode == .browse {
+                            goToChat = candidate // Port de `ContactHolder` — tap = ouvrir la conversation.
+                        } else {
+                            viewModel.toggle(candidate) // Port de `Adapter.ViewHolder` — tap = coche/décoche.
                         }
+                    } label: {
+                        contactRow(candidate)
                     }
                     .buttonStyle(.plain)
                 }
                 .listStyle(.plain)
             }
 
-            if !viewModel.selected.isEmpty {
+            if mode == .selectForGroup, !viewModel.selected.isEmpty {
                 Button { goToGroupCreation = true } label: {
                     Image(systemName: "arrow.up")
                         .font(.title3.bold())
@@ -81,6 +80,9 @@ struct ContactPickerView: View {
         .navigationDestination(isPresented: $goToGroupCreation) {
             GroupCreationView(members: viewModel.selectedCandidates)
         }
+        .navigationDestination(item: $goToChat) { candidate in
+            ChatView(target: rosterModel(for: candidate))
+        }
         .task { await viewModel.load() }
         .overlay {
             if viewModel.isLoading { ProgressView() }
@@ -88,6 +90,70 @@ struct ContactPickerView: View {
                 Text("Aucun contact").foregroundStyle(.secondary)
             }
         }
+    }
+
+    @ViewBuilder
+    private func contactRow(_ candidate: GroupMemberCandidate) -> some View {
+        HStack(spacing: 12) {
+            ZStack(alignment: .bottomTrailing) {
+                CDNAsyncImage(url: URL(string: candidate.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+                    Circle().fill(Color(.secondarySystemBackground))
+                }
+                .frame(width: 44, height: 44)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Color.accentColor, lineWidth: (mode == .selectForGroup && viewModel.selected.contains(candidate.id)) ? 2 : 0))
+                if mode == .selectForGroup, viewModel.selected.contains(candidate.id) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.white, .black)
+                        .background(Circle().fill(.black))
+                        .font(.system(size: 16))
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(candidate.displayName).font(.body).foregroundStyle(.primary)
+                if let username = candidate.username { Text(username).font(.caption).foregroundStyle(.secondary) }
+            }
+            Spacer()
+        }
+    }
+
+    /// Port de `Adapter.ContactHolder.binView`'s `Intent(ActivityMsg.class)` — mêmes champs
+    /// `RosterModel` que `ProfileView.messageTarget` (`openConversation(User)`), construits ici
+    /// depuis un `GroupMemberCandidate` plutôt qu'un `User` de profil.
+    private func rosterModel(for candidate: GroupMemberCandidate) -> RosterModel {
+        var target = RosterModel()
+        target.type = ChatType.chat.wireValue
+        target.nikname = candidate.displayName
+        target.username = candidate.username
+        target.to = candidate.username
+        target.from = UserSession.shared.username
+        target.currentUsername = UserSession.shared.username
+        target.currentUserId = UserSession.shared.myId
+        target.userId = candidate.userId
+        target.title = candidate.displayName
+        target.subTitle = candidate.username
+        target.profile = candidate.profile
+        return target
+    }
+
+    /// Port de `R.id.createContact` (`fragment_contacts.xml`) — en-tête cliquable de l'écran 1,
+    /// bascule vers l'écran 2 (mode `.selectForGroup`).
+    private var createGroupHeader: some View {
+        Button {
+            mode = .selectForGroup
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "person.2.fill")
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.accentColor))
+                Text("Créer un groupe").font(.title3.bold()).foregroundStyle(.primary) // R.string.createGroup
+                Spacer()
+            }
+            .padding()
+        }
+        .buttonStyle(.plain)
     }
 
     private var header: some View {

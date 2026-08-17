@@ -48,16 +48,34 @@ struct CommentsView: View {
     @ViewBuilder
     private func commentRow(_ comment: Comment) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            CDNAsyncImage(url: URL(string: comment.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
-                Color(.secondarySystemBackground)
+            // Port de `CommentAdapter.img_avatar.setOnClickListener`/`ReplayCommentAdapter` (les
+            // DEUX adapters, commentaires ET réponses — `comments/ui/CommentAdapter.java:244-247`,
+            // `ReplayCommentAdapter.java:202-205`) — absent jusqu'ici côté iOS (gap confirmé).
+            NavigationLink {
+                if let actorId = comment.actor {
+                    ProfileView(userId: String(actorId), isCurrentUser: false)
+                }
+            } label: {
+                CDNAsyncImage(url: URL(string: comment.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+                    Color(.secondarySystemBackground)
+                }
+                .frame(width: 32, height: 32).clipShape(Circle())
             }
-            .frame(width: 32, height: 32).clipShape(Circle())
+            .disabled(comment.actor == nil)
 
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text("@\(comment.username ?? "")").font(.caption).bold()
-                    if comment.certified == "1" { Image(systemName: "checkmark.seal.fill").font(.caption2).foregroundStyle(.blue) }
+                NavigationLink {
+                    if let actorId = comment.actor {
+                        ProfileView(userId: String(actorId), isCurrentUser: false)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("@\(comment.username ?? "")").font(.caption).bold().foregroundStyle(.primary)
+                        if comment.certified == "1" { Image(systemName: "checkmark.seal.fill").font(.caption2).foregroundStyle(.blue) }
+                    }
                 }
+                .buttonStyle(.plain)
+                .disabled(comment.actor == nil)
                 if comment.hasGift == true, let emoji = comment.giftEmoji {
                     Label("\(emoji) \(comment.giftName ?? "") — \(comment.giftPrice ?? 0)", systemImage: "gift.fill")
                         .font(.caption2).foregroundStyle(.orange)

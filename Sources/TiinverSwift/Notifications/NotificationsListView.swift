@@ -80,17 +80,29 @@ private struct NotificationRow: View {
 
     var body: some View {
         HStack {
-            CDNAsyncImage(url: noti.profile.flatMap(URL.init)) { $0.resizable() } placeholder: { Color.gray.opacity(0.3) }
-                .frame(width: 44, height: 44)
-                .clipShape(Circle())
+            // Port de `AdapterNoti.img_avatar.setOnClickListener`/`bindAvatarClick` (`NotiLikecmt/
+            // AdapterNoti.java:482-483` et `:587-588`, les DEUX formes de ligne de notification) —
+            // absent jusqu'ici côté iOS (gap confirmé, pas une hypothèse : aucune navigation du
+            // tout sur cette ligne). Zone tapable = avatar + bloc nom/texte, comme Android.
+            NavigationLink {
+                ProfileView(userId: String(noti.userId), isCurrentUser: false)
+            } label: {
+                HStack {
+                    CDNAsyncImage(url: noti.profile.flatMap(URL.init)) { $0.resizable() } placeholder: { Color.gray.opacity(0.3) }
+                        .frame(width: 44, height: 44)
+                        .clipShape(Circle())
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(noti.firstname ?? "") \(noti.lastname == "null" ? "" : (noti.lastname ?? ""))")
-                    .font(.subheadline.bold())
-                Text(bodyText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(noti.firstname ?? "") \(noti.lastname == "null" ? "" : (noti.lastname ?? ""))")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.primary)
+                        Text(bodyText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
+            .buttonStyle(.plain)
             Spacer()
 
             if noti.verb == "follow" {

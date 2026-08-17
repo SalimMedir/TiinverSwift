@@ -15,6 +15,15 @@ struct ChatView: View {
     @State private var showMessageGraphicCompose = false
     @State private var showDeleteOptions = false
     @State private var showGroupDetail = false
+    /// Port de `profile_btn` (`setting/SettingPrivateMessageFragmant.java:91-96`, l'écran de
+    /// réglages d'une conversation 1:1 — `Intent(getContext(), UserProfile.class)`) — cet écran de
+    /// réglages complet (mute, heure de livraison programmée) reste un gap connu et volontairement
+    /// borné (voir `MIGRATION_AUDIT.md` GAP-011, "puis mute privé" jamais fait) ; CE point d'entrée
+    /// précis (accéder au profil du correspondant depuis un chat 1:1) est ajouté directement en
+    /// toolbar, MÊME motif que le bouton "info.circle" déjà existant pour les groupes juste
+    /// au-dessus — pas une fonctionnalité inventée, juste le point d'entrée le plus direct vers
+    /// `ProfileView` sans reconstruire tout l'écran de réglages pour ça seul.
+    @State private var showOtherProfile = false
     @FocusState private var inputFocused: Bool
 
     init(target: RosterModel) {
@@ -80,6 +89,12 @@ struct ChatView: View {
                     groupToken: viewModel.target.token ?? "", groupType: viewModel.target.groupType ?? "",
                     groupDescription: viewModel.target.description, groupProfile: viewModel.target.profile
                 )
+            }
+        }
+        // Port de `profile_btn` (voir déclaration de `showOtherProfile` ci-dessus).
+        .sheet(isPresented: $showOtherProfile) {
+            if let otherUserId = viewModel.target.userId {
+                NavigationStack { ProfileView(userId: otherUserId, isCurrentUser: false) }
             }
         }
         .safeAreaInset(edge: .top, alignment: .center) {
@@ -301,6 +316,11 @@ struct ChatView: View {
                 // groupe côté Android — ne pas le retirer sans preuve.
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showGroupDetail = true } label: { Image(systemName: "info.circle") }
+                }
+            } else if viewModel.target.userId != nil {
+                // Port de `profile_btn` — équivalent 1:1 du bouton "info.circle" ci-dessus.
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { showOtherProfile = true } label: { Image(systemName: "person.circle") }
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {

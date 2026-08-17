@@ -1105,6 +1105,136 @@ obtenue au moment de cette entrée.
 
 ---
 
+### GAP-021 — Other User Profile inaccessible depuis la plupart des points d'entrée réels (RÉSOLU pour les points confirmés reachable)
+
+**Domaine :** Transversal (Feed, Chat, Notifications, Créateurs, Search — Profile est une
+destination partagée)
+**Priorité :** P0
+**Statut actuel :** DONE pour les points d'entrée listés ci-dessous [VÉRIFIÉ CETTE SESSION — CI
+VALIDATED, PAS ENCORE FUNCTIONALLY VALIDATED]
+
+#### Android — référence réelle
+`grep -rl "UserProfile.class"` sur tout le projet Android retourne **16 fichiers**. Classés par
+accessibilité réelle (vérifiée, pas supposée) :
+- **Reachable, vérifiés un par un** : `Activity/ui/AdapterSuggestContact.java` (avatar suggestion
+  Home), `Activity/ui/viewHolder/VideoViewHolder.java`/`VideoViewHolder2.java` (fullscreen vidéo,
+  `nameContainer`), `comments/ui/CommentAdapter.java`/`ReplayCommentAdapter.java` (avatar
+  commentaire/réponse), `creatorOfweek/CreatorAdapter.java`/`CreatorFragment.java` (Créateurs),
+  `NotiLikecmt/AdapterNoti.java` (DEUX points, avatar notification, deux layouts de ligne
+  différents), `partage/ShareActivity.java` (lien profond `/user/{username}`), `Recherche/ui/
+  Adapter.java`/`UniversalSearchAdapter.java` (Search), `setting/SettingPrivateMessageFragmant.java`
+  (`profile_btn`, écran de réglages d'un chat 1:1), `view/CustomCardView.java` (Feed fullscreen
+  photo, déjà couvert GAP-020).
+- **DEAD CODE, confirmé par recherche d'instanciation, PAS traité** : `view/VideoPlayerViewHolder.java`
+  (`avatar_image1`, aucun site d'instanciation trouvé dans tout le projet), `view/
+  VideoPlayerRecyclerView.java`/`view/CustomVideoView.java`/`view/CustomTextView.java` (référencés
+  seulement par `NotiLikecmt/FullScreenMedia.java`, un TROISIÈME visualiseur fullscreen distinct de
+  `ViewPagerAdapter` ET de `FullscreenActivity` — non audité cette passe faute de preuve qu'il est
+  réellement atteint par un chemin de navigation actif, à revérifier si un rapport utilisateur le
+  confirme).
+- `uploadPerfilPhoto/UserProfile.java`'s propre menu "..." (`R.menu.menu_user_profile`, lu en
+  entier) : EXACTEMENT 2 items — `report` (→ `Report`, `report_type="user"`) et `block` (dialogue de
+  confirmation, libellé Bloquer/Débloquer selon l'état, PAS d'appel serveur direct dans le libellé).
+
+#### iOS — état actuel (avant ce correctif)
+`ProfileView.swift` existe déjà et EST DÉJÀ complet (menu "..." avec EXACTEMENT "Signaler"/
+"Bloquer"-"Débloquer", `isCurrentUser` paramétrable) — la destination elle-même n'était PAS le
+problème. Avant ce correctif, `ProfileView(...)` n'était RÉELLEMENT atteignable que depuis :
+Créateurs (`CreatorOfWeekView.swift`), followers/following (`FollowListView.swift`), Search
+(`SearchView.swift`), et le Feed fullscreen (GAP-020, tour précédent). **Aucune navigation** dans
+`NotificationsListView.swift`, `SuggestionsCarouselView.swift` (avatar, le bouton Suivre existait
+mais pas de navigation), `CommentsView.swift`, ni de bouton "voir le profil" pour un chat 1:1
+(`ChatView.swift`).
+
+#### Différence exacte
+1. Aucun avatar/nom tapable dans `NotificationsListView` (aucune navigation du tout sur cette ligne).
+2. Aucun avatar tapable dans `SuggestionsCarouselView` (le carrousel de la home).
+3. Aucun avatar/pseudo tapable dans `CommentsView` (commentaires ET réponses).
+4. Aucun accès au profil du correspondant depuis un chat 1:1 (`ChatView`) — les groupes ont déjà
+   "info.circle" → `GroupDetailView` (GAP-011), rien d'équivalent pour un 1:1.
+
+#### Action recommandée
+Aucune pour les 4 points listés — corrigés :
+`NotificationsListView.swift` (`NavigationLink` sur l'avatar+nom, `noti.userId`), `SuggestionsCarouselView.swift`
+(cette vue vit dans l'onglet Accueil, **PAS enveloppé dans un `NavigationStack`** — `fullScreenCover`
+piloté par état local, MÊME motif que `FeedDetailPagerView.openProfileUserId`, pas un
+`NavigationLink` qui y serait silencieusement inopérant), `CommentsView.swift` (`NavigationLink` sur
+avatar ET pseudo, `comment.actor`), `ChatView.swift` (nouveau bouton toolbar "person.circle" pour un
+chat 1:1 uniquement, MÊME motif que le bouton "info.circle" des groupes — écran de réglages complet
+`SettingPrivateMessageFragmant` PAS reconstruit, reste un gap connu et borné, voir GAP-011).
+**PAS traité** : le 3ᵉ visualiseur fullscreen (`FullScreenMedia`/`CustomVideoView`, accessible depuis
+Notifications ET Search) — accessibilité réelle non confirmée, à revérifier si rapporté.
+
+#### Dépendances
+`ProfileView` (déjà complet), `RosterModel`/`ChatType` (pour le bouton chat 1:1).
+
+#### Risque de régression
+LOW — chaque ajout est une navigation supplémentaire sur une vue déjà isolée, aucune signature
+publique changée de façon incompatible.
+
+#### Critère de validation
+Depuis Notifications, Suggestions (Home), Commentaires, et un chat 1:1 : taper un avatar/nom ouvre
+le profil de LA BONNE personne (pas l'utilisateur courant) — PAS encore vérifié par capture réelle.
+
+---
+
+### GAP-022 — Création de groupe : l'écran 1 (liste générale, tap = ouvrir un chat individuel) était sauté entièrement (RÉSOLU)
+
+**Domaine :** Chat / Messagerie
+**Priorité :** P0
+**Statut actuel :** DONE [VÉRIFIÉ CETTE SESSION — CI VALIDATED, PAS ENCORE FUNCTIONALLY VALIDATED]
+
+#### Android — référence réelle
+`contacts/Contact.java` (Activity hôte, lu en entier) : `onCreate` appelle TOUJOURS
+`onArticleSelected(0, null)` en premier, quel que soit le bouton qui a lancé cette Activity
+(`roster/ui/Roster.java:138`, FAB "créer groupe", ET `wallet/MonetizationActivity.java:78`,
+"Inviter des contacts" — **DEUX** points d'entrée distincts, vérifiés séparément, tous deux
+atterrissent sur le MÊME écran 1). Chaîne réelle à 3 écrans, tous lus en entier :
+1. `contacts/ContactsFragment.java` (écran 1, TOUJOURS montré en premier) — liste générale,
+   `Adapter.ContactHolder` (mode par défaut `NO_LAYOUT_CHANGE`) : **tap sur une ligne = ouvre
+   directement une conversation individuelle** (`Intent(ActivityMsg.class)`, `RosterModel`
+   construit depuis le contact). En-tête cliquable dédié `R.id.createContact` (icône ronde rouge +
+   texte `R.string.createGroup`) → `onButtonPressed(1)` → écran 2.
+2. `contacts/ChooseFragment.java` (écran 2) — MÊME liste que l'écran 1, ré-affichée avec
+   `Adapter.ViewHolder` (mode `LAYOUT_CHANGE`) : tap = coche/décoche (sélection multiple), bande de
+   "chips" des membres choisis (`memberShoosed`), FAB "suivant" (`nextToGroup`) →
+   `onArticleSelected(2, selection)` → écran 3.
+3. `contacts/Group.java` (écran 3, port déjà existant : `GroupCreationView.swift`) — nom du groupe,
+   création réelle, memberships, ouverture du chat de groupe.
+
+#### iOS — état actuel (avant ce correctif)
+`Messagerie/ContactPickerView.swift` sautait DIRECTEMENT à l'équivalent de l'écran 2 (sélection
+multiple) depuis TOUT point d'entrée (`showContactPicker = true` sur le FAB "créer groupe" ET sur le
+lien "Nouveau message" de `RosterListView.swift`) — l'écran 1 (liste générale, tap = ouvrir un chat
+individuel) n'existait pas du tout côté iOS, contrairement à ce que l'utilisateur a explicitement
+signalé attendre ("qui sert normalement aussi à ouvrir une conversation individuelle au clic"),
+confirmé exact en relisant `Adapter.java`/`ContactsFragment.java`/`Contact.java` en entier.
+
+#### Différence exacte
+Impossible d'ouvrir une conversation individuelle depuis la liste de contacts atteinte par le FAB
+"créer groupe" ou "Nouveau message" — seule la sélection multiple pour un groupe était possible,
+l'écran 1 d'Android (mode par défaut) n'était tout simplement jamais rendu.
+
+#### Action recommandée
+Aucune — corrigé : `ContactPickerView.swift` réécrit avec deux modes (`.browse` par défaut = tap
+ouvre `ChatView` via un `RosterModel` construit depuis le contact, MÊME motif que `ProfileView.
+messageTarget`/`openConversation(User)` ; `.selectForGroup` = comportement précédent conservé tel
+quel, atteint via l'en-tête "Créer un groupe").
+
+#### Dépendances
+`ChatView`, `RosterModel`, `GroupCreationView` (déjà porté, inchangé).
+
+#### Risque de régression
+LOW — la sélection multiple existante n'a pas changé de comportement, seul le mode par défaut à
+l'ouverture change + un chemin de navigation supplémentaire est ajouté.
+
+#### Critère de validation
+Depuis Chat → "créer groupe" (ou "Nouveau message") : la liste s'ouvre en mode tap-pour-discuter ;
+taper "Créer un groupe" bascule en sélection multiple ; le reste de la chaîne (déjà validé
+précédemment, commits `f4e0dd2`/`cccca41`) reste inchangé. PAS encore vérifié par capture réelle.
+
+---
+
 ## 4. API PARITY MATRIX
 
 *(Endpoints confirmés par lecture directe du code Android ET Swift — pas une liste exhaustive de

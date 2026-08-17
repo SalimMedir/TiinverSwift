@@ -11,6 +11,13 @@ struct SuggestionsCarouselView: View {
     @State private var users: [User] = []
     @State private var followedIds: Set<Int> = []
     @State private var isLoading = false
+    /// Port de `avatar.setOnClickListener` (`AdapterSuggestContact.ViewHolder.bindView`) — cette
+    /// vue est intégrée dans `FeedView.homeHeader`, elle-même hébergée par l'onglet Accueil de
+    /// `HomeShellView`, qui N'EST PAS enveloppé dans un `NavigationStack` (contrairement aux
+    /// onglets Chat/Créateurs) — un `NavigationLink` y serait silencieusement inopérant. MÊME motif
+    /// que `FeedDetailPagerView.openProfileUserId` : présentation par `fullScreenCover` piloté par
+    /// état local plutôt que `NavigationLink`.
+    @State private var openProfileUserId: String?
 
     var body: some View {
         Group {
@@ -26,20 +33,35 @@ struct SuggestionsCarouselView: View {
             }
         }
         .task { await load() }
+        .fullScreenCover(isPresented: Binding(get: { openProfileUserId != nil }, set: { if !$0 { openProfileUserId = nil } })) {
+            if let userId = openProfileUserId {
+                NavigationStack {
+                    ProfileView(userId: userId, isCurrentUser: false)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("Fermer") { openProfileUserId = nil }
+                            }
+                        }
+                }
+            }
+        }
     }
 
     private func card(for user: User) -> some View {
         VStack(spacing: 6) {
-            CDNAsyncImage(url: user.profile.flatMap(URL.init(string:))) { phase in
-                if let image = phase.image {
-                    image.resizable().scaledToFill()
-                } else {
-                    Circle().fill(Color(.secondarySystemBackground))
-                        .overlay(Image(systemName: "person.fill").foregroundStyle(.secondary))
+            Button(action: { if let id = user.id { openProfileUserId = String(id) } }) {
+                CDNAsyncImage(url: user.profile.flatMap(URL.init(string:))) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill()
+                    } else {
+                        Circle().fill(Color(.secondarySystemBackground))
+                            .overlay(Image(systemName: "person.fill").foregroundStyle(.secondary))
+                    }
                 }
+                .frame(width: 64, height: 64)
+                .clipShape(Circle())
             }
-            .frame(width: 64, height: 64)
-            .clipShape(Circle())
+            .buttonStyle(.plain)
 
             // Port de `AdapterSuggestContact.ViewHolder.safeTrim` — même longueurs max (20/13).
             Text(safeTrim(user.nikname ?? user.username ?? "", 20))

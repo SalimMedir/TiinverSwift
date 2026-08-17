@@ -9,7 +9,42 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-17, CAUSE RACINE RÉELLE CONFIRMÉE — JSON brut fourni par l'utilisateur)
+# CURRENT HANDOFF (2026-08-17, DEUXIÈME cause racine réelle trouvée — erreur Alamofire exacte)
+
+**Après le correctif `errorFieldNormalized` (voir handoff précédent), un nouveau test réel a montré
+que la session fonctionne ENFIN** (`userId(objet reçu)=197 · userId(session persistée)=197`,
+confirmé dans le bandeau permanent) — **mais Feed et Profile échouent encore**, avec cette fois une
+VRAIE erreur de transport visible dans les panneaux de diagnostic :
+```
+error=transport(Alamofire.AFError.urlRequestValidationFailed(reason:
+Alamofire.AFError.URLRequestValidationFailureReason.bodyDataInGETRequest(2 bytes)))
+```
+
+**CAUSE RACINE #2, CONFIRMÉE PAR LE MESSAGE D'ERREUR EXACT, PAS UNE HYPOTHÈSE** : Alamofire
+(depuis la 5.7) rejette désormais TOUTE requête GET porteuse d'un corps HTTP, même vide (`{}`) —
+`APIClient.swift` envoyait volontairement un corps JSON même sur GET, choix de fidélité avec
+Android (`Volley.JsonObjectRequest` envoie toujours un corps) documenté comme "non négociable"
+dans `TIINVER_IOS_PORT_ANALYSIS.md §6.3`. Cette fidélité est devenue **techniquement impossible**
+avec la version moderne d'Alamofire utilisée par ce projet — la requête est rejetée AVANT même
+d'atteindre le réseau. **Vérifié par grep sur tout le projet : AUCUN appel `.get(...)` n'envoie
+jamais de vrais `params`** (chaque endpoint encode ses paramètres dans le CHEMIN de l'URL) — le
+corps vide n'avait donc AUCUNE utilité fonctionnelle. Corrigé : les requêtes GET n'envoient plus
+de corps du tout (`URLEncoding.default` au lieu de `JSONEncoding.default` pour `method == .get`).
+
+**Portée probable** : ce bug affecte TOUTES les requêtes GET de l'app, pas seulement Feed/Profile
+— très probablement la VRAIE raison pour laquelle Home/Feed/Profile/Créateurs/Notifications/
+Recherche/Wallet/Commentaires n'ont JAMAIS fonctionné depuis le tout début du portage, pas
+seulement "depuis hier".
+
+**CI VALIDÉ** : run `31981817316`, commit `c63655a`, **SUCCESS**.
+
+**État à ce stade** : 2 causes racines réelles trouvées et corrigées à partir de preuves directes
+(JSON réel + message d'erreur exact), pas de suppositions. Reste à confirmer par le prochain test
+réel — devrait cette fois révéler si Feed/Profile fonctionnent enfin, ou s'il reste un 3ᵉ problème.
+
+---
+
+# HANDOFF PRÉCÉDENT (2026-08-17, CAUSE RACINE RÉELLE CONFIRMÉE — JSON brut fourni par l'utilisateur)
 
 **L'utilisateur a fourni le JSON RÉEL de `login` et `feedtimeline`** (pas une capture d'écran —
 le payload texte complet), après une frustration légitime sur la lenteur du diagnostic. Ce JSON a

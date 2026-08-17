@@ -492,6 +492,22 @@ appels, pièces jointes). **`MISSING`** confirmé pour réglages 1:1 et recherch
 `FUNCTIONALLY_FAILED` confirmé à plusieurs reprises (bouton créer groupe rapporté absent/inaccessible,
 écran hybride au lieu de 2 écrans distincts) — corrigé au niveau code, AUCUN re-test réel depuis.
 
+**MISE À JOUR 2026-08-17 (Phase 2, P0-4)** — Re-vérifié la chaîne complète `RosterListView` (FAB
+`GoToContact`) → `ContactPickerView` (écran 1 `.browse` par défaut, en-tête "Créer un groupe" →
+écran 2 `.selectForGroup`) → `GroupCreationView`, sans régression trouvée : les 3 écrans, le mode
+tap-pour-discuter de l'écran 1, et la navigation restent intacts. **NOUVEAU GAP RÉEL TROUVÉ** en
+creusant plus loin que la simple présence du bouton (même classe de bug que P0-1/P0-3, cette fois
+dans `ContactsRepository.connectedUsers` ET `GroupRepository.fetchMembers`) : les deux utilisaient
+`try? JSONDecoder().decode([T].self, ...) ?? []` sur le TABLEAU entier — un seul contact/membre au
+format inattendu aurait de nouveau vidé silencieusement TOUTE la liste (le commentaire de code
+préexistant soupçonnait déjà explicitement cette cause pour le P0-F historique "impossible de créer
+un groupe", dont la cause précise — `userId` numérique cassant `GroupMemberCandidate`'s décodage
+strict — avait déjà été corrigée une session précédente via `init(from:)`, mais SANS retirer le
+`try?` englobant qui restait un point de fragilité identique pour tout futur champ non conforme).
+Corrigé avec le même motif per-item + diagnostic que Feed/Profile. **Statut : `BUILD_VALIDATED` à
+confirmer par CI — voir `MIGRATION_PARITY_PROGRESS_V2.md`** pour le reste (`COMPLETE_PARITY_CANDIDATE`
+inchangé pour le reste de la FEATURE Chat/Messaging).
+
 ---
 
 ## FEATURE: Galerie/Publication

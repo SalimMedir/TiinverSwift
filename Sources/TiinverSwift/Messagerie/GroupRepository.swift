@@ -120,10 +120,30 @@ final class GroupRepository {
     /// `GET membership/{groupId}`, réponse `{error, data: "<MemberModel[] JSON>"}`) — utilisé ici
     /// directement plutôt que de reconstruire toute une couche de synchronisation locale pour un
     /// seul écran.
+    /// **DURCI le 2026-08-17 (P0-4, même défense-en-profondeur que `ContactsRepository.
+    /// connectedUsers` ci-dessus, trouvée en vérifiant les autres appelants de ce même motif dans
+    /// ce fichier)** : même remplacement `try?` global sur le TABLEAU entier → décodage per-item,
+    /// pour éviter qu'UN SEUL membre au format inattendu ne vide silencieusement tout l'écran de
+    /// gestion de groupe.
     func fetchMembers(groupId: String) async throws -> [GroupMember] {
         let value = try await APIClient.shared.get("membership/\(groupId)")
-        guard value.isBackendSuccess, let data = value.looselyEncodedJSON("data")?.rawData else { return [] }
-        return (try? JSONDecoder().decode([GroupMember].self, from: data)) ?? []
+        guard value.isBackendSuccess, let array = value.looselyEncodedJSON("data")?.toArray() else { return [] }
+        let decoded = array.compactMap { item -> GroupMember? in
+            guard let data = item.rawData else {
+                print("GROUP MEMBERS: item.rawData nil for one member — raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+            do {
+                return try JSONDecoder().decode(GroupMember.self, from: data)
+            } catch {
+                print("GROUP MEMBERS: decode failure for one member — error=\(error) raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+        }
+        if decoded.count != array.count {
+            print("GROUP MEMBERS: received=\(array.count) members, only \(decoded.count) decoded successfully — \(array.count - decoded.count) silently dropped, see decode failures above")
+        }
+        return decoded
     }
 
     /// Port de `TransportData.updateMember` (`Http/TransportData.java:175-190`) — `POST

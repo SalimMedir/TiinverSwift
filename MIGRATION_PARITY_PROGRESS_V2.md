@@ -56,3 +56,29 @@ erreur" (session invalide silencieuse, décodage `compactMap` avalant les échec
 `isLoading` jamais rendus). Chaîne Grid→tap→Fullscreen vérifiée intacte. **Aucun nouveau gap trouvé** —
 conclusion honnête : rien à corriger ici, mais aucune preuve de test réel post-derniers-correctifs
 n'existe non plus, donc le statut reste `COMPLETE_PARITY_CANDIDATE` et non `_VALIDATED`.
+
+### 2026-08-17 — Profile (P0-3) — Décodage per-item pour `fetchUserPosts`/`fetchHashtagPosts`
+**Commit(s) :** `da89974`
+**Run CI :** en cours de vérification (dispatché après ce commit)
+**Statut AVANT (audit V2) :** `COMPLETE_PARITY_CANDIDATE` (cœur), gap silencieux non détecté
+**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — commit `da89974` — test fonctionnel réel
+toujours requis
+**Preuve du changement de statut :** `ProfileRepository.fetchUserPosts`/`fetchHashtagPosts`
+utilisaient `try? JSONDecoder().decode([FeedActivity].self, ...) ?? []` — un seul post au format
+inattendu aurait vidé silencieusement toute la grille Profile. Remplacé par un décodage per-item +
+diagnostic console (même motif que `FeedRepository.fetchTimeline`). Endpoint grille re-vérifié
+contre `ProfileRepository.java:153` (identique). Chaîne Grid→tap→Fullscreen vérifiée intacte.
+
+### 2026-08-17 — Chat/Messaging (P0-4) — Décodage per-item pour contacts + membres de groupe
+**Commit(s) :** (à committer avec ce lot)
+**Run CI :** à dispatcher après commit
+**Statut AVANT (audit V2) :** `COMPLETE_PARITY_CANDIDATE` (création de groupe 3 écrans), historique
+`FUNCTIONALLY_FAILED` déjà corrigé une fois pour la cause précise `userId` numérique
+**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis
+**Preuve du changement de statut :** Re-vérifié la chaîne FAB→`ContactPickerView`→`GroupCreationView`
+intacte (aucune régression). Trouvé et corrigé un point de fragilité résiduel : `ContactsRepository.
+connectedUsers` et `GroupRepository.fetchMembers` décodaient encore le tableau ENTIER via `try?`,
+laissant la possibilité qu'UN SEUL contact/membre non conforme revienne à faire disparaître toute la
+liste silencieusement — exactement la classe de bug déjà identifiée comme suspecte dans un commentaire
+de code préexistant pour P0-F, mais dont seule la cause ponctuelle (pas le point de fragilité
+structurel) avait été corrigée. Remplacé par le même motif per-item + diagnostic que Feed/Profile.

@@ -21,17 +21,38 @@ final class ContactsRepository {
     /// deux formes plutôt que de reproduire une hypothèse déjà prouvée non fiable en général. Fort
     /// soupçon que ce soit la cause de "impossible de créer un groupe" (P0-F) : liste de contacts
     /// vide si ce décodage échouait silencieusement (`try?`), aucune sélection possible.
+    /// **DURCI le 2026-08-17 (P0-4, même défense-en-profondeur qu'appliquée à `FeedRepository.
+    /// fetchTimeline`/`ProfileRepository.fetchUserPosts` cette même session)** : la cause racine
+    /// concrète (`userId` numérique cassant le décodage `Decodable` strict) est déjà corrigée par
+    /// `GroupMemberCandidate.init(from:)` ci-dessus, MAIS ce point d'appel décodait encore le
+    /// tableau ENTIER via `try? JSONDecoder().decode([GroupMemberCandidate].self, ...)` — un
+    /// `Array` Codable lève à la PREMIÈRE erreur d'élément, donc UN SEUL contact avec un champ
+    /// encore non conforme (futur, non prévu ici) ferait de nouveau disparaître TOUTE la liste sans
+    /// aucun diagnostic, exactement le symptôme "impossible de créer un groupe" déjà rapporté une
+    /// fois pour cette cause précise. Remplacé par un décodage per-item + diagnostic console, même
+    /// motif que le Feed/Profile.
     func connectedUsers(userId: String) async throws -> [GroupMemberCandidate] {
         let value = try await APIClient.shared.get("connectedusers/\(userId)")
         guard value.isBackendSuccess else { return [] }
-        if let nested = try? value.stringEncodedJSON("data"), let data = nested.rawData,
-            let candidates = try? JSONDecoder().decode([GroupMemberCandidate].self, from: data)
-        {
-            return candidates
+        // `looselyEncodedJSON` (voir `JSONValue.swift`) tolère les deux formes possibles
+        // (chaîne JSON ré-encodée OU tableau imbriqué direct) plutôt que de deviner laquelle cet
+        // endpoint précis utilise.
+        guard let array = value.looselyEncodedJSON("data")?.toArray() else { return [] }
+        let decoded = array.compactMap { item -> GroupMemberCandidate? in
+            guard let data = item.rawData else {
+                print("CONTACTS: item.rawData nil for one candidate — raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+            do {
+                return try JSONDecoder().decode(GroupMemberCandidate.self, from: data)
+            } catch {
+                print("CONTACTS: decode failure for one candidate — error=\(error) raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
         }
-        if let data = value["data"]?.rawData, let candidates = try? JSONDecoder().decode([GroupMemberCandidate].self, from: data) {
-            return candidates
+        if decoded.count != array.count {
+            print("CONTACTS: received=\(array.count) candidates, only \(decoded.count) decoded successfully — \(array.count - decoded.count) silently dropped, see decode failures above")
         }
-        return []
+        return decoded
     }
 }

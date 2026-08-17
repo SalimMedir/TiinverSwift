@@ -14,6 +14,12 @@ import SwiftUI
 /// ne prend pas encore de paramètre `offset`.
 struct NotificationsListView: View {
     @StateObject private var viewModel = NotificationCenterViewModel()
+    /// Port de `AdapterNoti`'s tap sur la vignette de contenu → `Intent(FullScreenMedia.class)`
+    /// (`NotiLikecmt/AdapterNoti.java`, réutilise `CustomCardView`/`CustomVideoView` — les MÊMES
+    /// classes déjà remises à parité pour l'avatar/tap-profil dans `FeedDetailCell`, GAP-020) —
+    /// absent jusqu'ici côté iOS. Réutilise `FeedDetailPagerView`'s variante "post isolé" (déjà
+    /// câblée pour les liens profonds), MÊME motif.
+    @State private var detailPost: FeedActivity?
 
     var body: some View {
         NavigationStack {
@@ -28,7 +34,7 @@ struct NotificationsListView: View {
                         .foregroundStyle(.red)
                 } else {
                     List(viewModel.notifications, id: \.id) { noti in
-                        NotificationRow(noti: noti)
+                        NotificationRow(noti: noti, onOpenPost: { detailPost = $0 })
                     }
                     .listStyle(.plain)
                 }
@@ -43,6 +49,9 @@ struct NotificationsListView: View {
             .onDisappear {
                 Task { await viewModel.markAllRead() }
             }
+            .fullScreenCover(item: $detailPost) { post in
+                FeedDetailPagerView(posts: [post], startIndex: 0, onClose: { detailPost = nil })
+            }
         }
     }
 }
@@ -55,12 +64,26 @@ struct NotificationsListView: View {
 /// `LocalNotificationBuilder.activityNotificationContent` (déjà porté), pas un texte réinventé.
 private struct NotificationRow: View {
     let noti: NotiEntity
+    var onOpenPost: (FeedActivity) -> Void = { _ in }
     @State private var justFollowedBack = false
 
     private var thumbnailURL: URL? {
         let raw = noti.cdnThumbnailUrl ?? noti.cdnContentUrl ?? noti.objectUrl
         guard let raw, !raw.isEmpty else { return nil }
         return URL(string: raw)
+    }
+
+    /// Port de `activityId`/`object`/`object_url`/`cdn_*` déjà décodés (`NotificationCenterViewModel`)
+    /// — reconstruit un `FeedActivity` minimal pour réutiliser `FeedDetailPagerView` tel quel plutôt
+    /// que construire un second visualiseur fullscreen pour ce seul point d'entrée.
+    private var reconstructedPost: FeedActivity? {
+        guard noti.activityId > 0 else { return nil }
+        return FeedActivity(
+            id: Int(noti.activityId), actor: String(noti.userId),
+            lastname: noti.lastname == "null" ? nil : noti.lastname, firstname: noti.firstname,
+            object: noti.object, object_url: noti.objectUrl, profile: noti.profile,
+            cdn_content_id: noti.cdnContentId, cdn_content_url: noti.cdnContentUrl, cdn_thumbnail_url: noti.cdnThumbnailUrl
+        )
     }
 
     /// Port de `LocalNotificationBuilder.activityNotificationContent`'s switch sur `verb` — même
@@ -123,9 +146,15 @@ private struct NotificationRow: View {
                 .buttonStyle(.borderless)
                 .disabled(justFollowedBack)
             } else if let thumbnailURL {
-                CDNAsyncImage(url: thumbnailURL) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color(.secondarySystemBackground) }
-                    .frame(width: 44, height: 44)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                Button {
+                    if let post = reconstructedPost { onOpenPost(post) }
+                } label: {
+                    CDNAsyncImage(url: thumbnailURL) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color(.secondarySystemBackground) }
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .disabled(reconstructedPost == nil)
             }
         }
         .opacity(noti.isRead == 0 ? 1 : 0.6)

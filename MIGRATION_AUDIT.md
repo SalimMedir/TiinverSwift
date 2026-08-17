@@ -1154,7 +1154,7 @@ mais pas de navigation), `CommentsView.swift`, ni de bouton "voir le profil" pou
    "info.circle" → `GroupDetailView` (GAP-011), rien d'équivalent pour un 1:1.
 
 #### Action recommandée
-Aucune pour les 4 points listés — corrigés :
+Aucune — TOUS les points identifiés comme réellement reachable sont corrigés :
 `NotificationsListView.swift` (`NavigationLink` sur l'avatar+nom, `noti.userId`), `SuggestionsCarouselView.swift`
 (cette vue vit dans l'onglet Accueil, **PAS enveloppé dans un `NavigationStack`** — `fullScreenCover`
 piloté par état local, MÊME motif que `FeedDetailPagerView.openProfileUserId`, pas un
@@ -1162,8 +1162,27 @@ piloté par état local, MÊME motif que `FeedDetailPagerView.openProfileUserId`
 avatar ET pseudo, `comment.actor`), `ChatView.swift` (nouveau bouton toolbar "person.circle" pour un
 chat 1:1 uniquement, MÊME motif que le bouton "info.circle" des groupes — écran de réglages complet
 `SettingPrivateMessageFragmant` PAS reconstruit, reste un gap connu et borné, voir GAP-011).
-**PAS traité** : le 3ᵉ visualiseur fullscreen (`FullScreenMedia`/`CustomVideoView`, accessible depuis
-Notifications ET Search) — accessibilité réelle non confirmée, à revérifier si rapporté.
+
+**`FullScreenMedia`/`CustomVideoView` (3ᵉ visualiseur fullscreen), tranché** (audit complémentaire,
+même passe) : `FullScreenMedia.java` lu en entier — RÉELLEMENT reachable, lancé par `AdapterNoti.java`
+(tap sur la vignette de contenu d'une notification like/comment/share) ET `UniversalSearchAdapter.java`
+(tap sur un résultat "publication"). Son branch photo réutilise `CustomCardView` (déjà couvert :
+MÊME `nameContainer`→`UserProfile` que le Feed fullscreen, GAP-020) ; son branch vidéo réutilise
+`CustomVideoView` (même `content_title`→`UserProfile`). Côté iOS : le chemin Search→post était DÉJÀ
+câblé vers `FeedDetailPagerView` (`SearchView.detailPost`, déjà remis à parité par GAP-020) — RIEN à
+faire là. Le chemin Notifications→post NE l'était PAS (vignette de contenu sans aucune action) :
+ajouté (`NotificationRow.reconstructedPost`, reconstruit un `FeedActivity` minimal depuis les champs
+déjà décodés de la notification — `activityId`/`object`/`object_url`/`cdn_*` — pour réutiliser
+`FeedDetailPagerView` telle quelle plutôt que construire un 2ᵉ visualiseur).
+
+**Vérifiés et confirmés NE PAS être des gaps** (Android ne le fait pas non plus à ces endroits,
+vérifié par grep dédié plutôt que supposé) : bulles de message dans le Chat
+(`grep UserProfile.class` sur tout `com.tiinver.messagerie` = 0 résultat — aucun tap-avatar→profil
+sur les bulles, même côté Android) ; liste des membres d'un groupe (`messagerie/group/Adapter.java`,
+même vérification, 0 résultat) ; Créateurs (`CreatorOfWeekView.swift` — carte du haut ET liste
+classée en dessous, les DEUX déjà câblées) ; Abonnés/Abonnements (`FollowListView.swift`, une seule
+ligne de rendu partagée, déjà câblée) ; `WalletAdapter.java` (référence `SUGGEST_URI` sans rapport,
+aucune navigation profil).
 
 #### Dépendances
 `ProfileView` (déjà complet), `RosterModel`/`ChatType` (pour le bouton chat 1:1).

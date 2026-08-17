@@ -13,7 +13,10 @@ enum AdMobIdentifiers {
 
     /// Port de `activity_conversion.xml`/`activity_earn_coin.xml`/`activity_retrait.xml`/
     /// `activity_transfert_coins.xml`/`wallet_header_item.xml` (module 15, Wallet) —
-    /// même ID bannière recopié dans TOUS ces layouts (analyse §5.1).
+    /// même ID bannière recopié dans TOUS ces layouts (analyse §5.1). **Aussi réutilisé par
+    /// `feed_header_layout.xml`'s `<AdView>`** (en-tête du fil d'accueil, `ActivityAdapter.
+    /// HeaderViewHolder.adView`, trouvé le 2026-08-17 en portant `FeedView.homeHeader`) — même ID
+    /// numérique, pas un troisième identifiant distinct.
     static let bannerWallet = "ca-app-pub-2461482190230201/5840810574"
     /// Port de `activity_monegtization.xml`/`activity_referral.xml`, seul écran à utiliser un
     /// second ID bannière distinct (`ads_layout.xml`, analyse §5.1) — PAS unifié avec

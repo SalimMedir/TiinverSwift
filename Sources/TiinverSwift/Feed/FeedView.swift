@@ -32,12 +32,39 @@ struct FeedView: View {
 
     private let columns = [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)]
 
+    /// Port de `feed_header_layout.xml` — item `TYPE_HEADER` en position 0 du `RecyclerView`
+    /// (`ActivityAdapter.HeaderViewHolder`), pas un composant décoratif mort : `contacts_suggest`
+    /// (carrousel horizontal de comptes à suivre) est bien câblé (`sugestionRecycle.setAdapter(
+    /// mAdapterSuggest)`, `ActivityAdapter.java:327`) — la ligne commentée du même nom dans
+    /// `MainFragment.onViewCreated` (`// sugestionRecycle.setAdapter(mAdapterSuggest)`) est un
+    /// résidu mort d'un champ dupliqué SANS RAPPORT, pas la preuve d'un adapter jamais branché
+    /// (conclusion précédente FAUSSE, corrigée le 2026-08-17 après relecture complète de
+    /// `ActivityAdapter.java`). Toujours affiché au-dessus du fil, MÊME quand celui-ci est vide,
+    /// fidèle à Android où le header est un item d'adapter indépendant du contenu.
+    private var homeHeader: some View {
+        VStack(spacing: 12) {
+            SuggestionsCarouselView()
+            // Port de `feed_header_layout.xml`'s `<AdView ads:adUnitId="…5840810574"/>` — MÊME ID
+            // bannière que `AdMobIdentifiers.bannerWallet` (vérifié, valeur numérique identique),
+            // réutilisé tel quel plutôt que dupliqué sous un second nom.
+            AdBannerView(adUnitID: AdMobIdentifiers.resolvedBanner(AdMobIdentifiers.bannerWallet))
+                .frame(height: 50)
+            WinFreeCoinsBannerView()
+        }
+        .padding(.top, 8)
+    }
+
     var body: some View {
         Group {
             if viewModel.posts.isEmpty {
-                emptyOrStatusState
+                ScrollView {
+                    homeHeader
+                    emptyOrStatusState
+                }
+                .refreshable { await viewModel.reset() }
             } else {
                 ScrollView {
+                    homeHeader
                     LazyVGrid(columns: columns, spacing: 1) {
                         ForEach(Array(viewModel.posts.enumerated()), id: \.offset) { index, post in
                             FeedGridCell(

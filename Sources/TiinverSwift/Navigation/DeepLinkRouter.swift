@@ -98,39 +98,13 @@ enum DeepLinkRouter {
     }
 
     /// Port de `getGroup(String token)` → `connectToServeur(url,"group")` → `joinGroup(GroupModel,…)`
-    /// — reconstruit le `RosterModel` avec les MÊMES champs que `joinGroup()` (lu en entier),
-    /// `conversationId` via `ConversationIdGenerator.groupConversationId` (déjà porté, utilisé par
-    /// le flux de création de groupe, `GroupCreationView.swift`).
+    /// — construction du `RosterModel` déléguée à `GroupRepository.GroupInfo.rosterModel(myId:
+    /// myUsername:)` (extraite le 2026-08-18, P1, pour être réutilisée à l'identique par la
+    /// recherche de groupe, `ChatSearchView.swift` — MÊME opération qu'un lien profond de groupe :
+    /// ouvrir/rejoindre un groupe connu seulement par son id/token).
     private static func routeToGroup(token: String) async {
         guard let myId = UserSession.shared.myId else { return }
         guard let info = try? await GroupRepository.shared.fetchGroup(token: token, myId: myId) else { return }
-
-        let conversationId = ConversationIdGenerator.groupConversationId(currentUser: myId, remoteUser: String(info.id))
-        var roster = RosterModel()
-        roster.currentUsername = UserSession.shared.username
-        roster.currentUserId = myId
-        roster.token = info.token
-        roster.title = info.name
-        roster.subTitle = "" // Port de `getString(R.string.groupinfo)` — libellé non identifié précisément, vide plutôt que deviné.
-        roster.conversationId = conversationId
-        roster.userId = myId
-        roster.username = UserSession.shared.username
-        roster.nikname = info.nikname
-        roster.from = UserSession.shared.username
-        roster.to = info.token
-        roster.sender = myId
-        roster.receiver = info.token
-        roster.groupId = String(info.id)
-        roster.type = ChatType.group.wireValue
-        roster.groupType = info.type
-        roster.groupName = info.name
-        roster.description = info.description
-        roster.profile = info.profile
-        roster.price = info.price
-        roster.lucrative = info.lucrative
-        roster.groupMember = info.isMember
-        roster.creator = info.creator
-
-        DeepLinkCenter.shared.route(.groupChat(roster))
+        DeepLinkCenter.shared.route(.groupChat(info.rosterModel(myId: myId, myUsername: UserSession.shared.username)))
     }
 }

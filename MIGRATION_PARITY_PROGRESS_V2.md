@@ -100,3 +100,18 @@ pincer-zoomer dès le premier mouvement du doigt — Timeline entièrement non-u
 Corrigé avec le motif GAP-024 exact : `.id()` retiré, nouveau `AnimemesEditorState.
 bumpRenderVersion()` utilisé par les gestes continus + `scrub(toFrame:)` (au lieu de `bumpVersion()`/
 `version += 1` direct), pour éviter aussi le sur-déclenchement de `preparePlayback()` par frame.
+
+### 2026-08-18 — Chat/Messaging (P1) — Implémentation de la recherche de groupe/conversation
+**Commit(s) :** (à committer avec ce lot)
+**Run CI :** à dispatcher après commit
+**Statut AVANT (audit V2) :** `MISSING` confirmé
+**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis
+**Preuve du changement de statut :** Lu `Recherche/ui/ChatAdapter.java:291-313` (click handler,
+manquant de la passe précédente) — confirmé qu'Android ouvre directement `ActivityMsg` au tap, sans
+étape "rejoindre" séparée. Nouveau `ChatSearchView.swift` : filtre local des conversations
+(`RosterListViewModel.rows`) + repli serveur `GroupRepository.searchGroups` (`search/{myId}/{str}`,
+décodage per-item avec diagnostics) si aucun résultat local, debounce 300ms fidèle à l'original.
+Construction du `RosterModel` extraite en `GroupRepository.GroupInfo.rosterModel(myId:myUsername:)`,
+réutilisée par `DeepLinkRouter.routeToGroup` (corrige au passage son `subTitle` vide — chaîne réelle
+`"tab here for group info"` identifiée depuis `RosterListViewModel.refresh()`). Icône loupe ajoutée
+à la toolbar de `RosterListView`.

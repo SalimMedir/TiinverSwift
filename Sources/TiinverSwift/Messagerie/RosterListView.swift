@@ -35,6 +35,10 @@ import SwiftUI
 struct RosterListView: View {
     @StateObject private var viewModel = RosterListViewModel()
     @State private var showContactPicker = false
+    /// Port de `Roster.java:437` (icône loupe de la toolbar) → `RechercheTiinver` en mode
+    /// `tokenSearch="chat"` — voir `ChatSearchView.swift` (2026-08-18, P1, recherche de
+    /// groupe/conversation, confirmée `MISSING` par l'audit V2).
+    @State private var showChatSearch = false
 
     var body: some View {
         Group {
@@ -60,6 +64,13 @@ struct RosterListView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
+                    showChatSearch = true
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
                     Task { await viewModel.refresh() }
                 } label: {
                     Image(systemName: "arrow.clockwise")
@@ -81,6 +92,13 @@ struct RosterListView: View {
         }
         .navigationDestination(isPresented: $showContactPicker) {
             ContactPickerView()
+        }
+        // Présenté en modal (`.sheet`), PAS en push (`navigationDestination`) — `ChatSearchView`
+        // porte sa propre `NavigationStack`/bouton "Fermer" (écran de recherche autonome, fidèle à
+        // Android où `RechercheTiinver` est une Activity séparée avec sa propre pile de retour, pas
+        // un simple fragment inséré dans la pile de `Roster`).
+        .sheet(isPresented: $showChatSearch) {
+            ChatSearchView(rosterViewModel: viewModel)
         }
         .task { await viewModel.refresh() }
         .onChange(of: showContactPicker) { presented in

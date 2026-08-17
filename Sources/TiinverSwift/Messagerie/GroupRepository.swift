@@ -64,6 +64,45 @@ final class GroupRepository {
         var isMember: Bool
         var creator: String
         var type: String
+
+        /// Port de `joinGroup(GroupModel,...)` (`ShareActivity.java`) — construction du
+        /// `RosterModel` d'un groupe pas encore forcément ouvert localement, à partir des SEULES
+        /// données déjà connues côté client (résolution d'un lien profond `/group/{token}` OU,
+        /// depuis le 2026-08-17 (P1), résultat de recherche de groupe `search/{myId}/{str}`, voir
+        /// `ChatSearchView.swift` — MÊME construction dans les deux cas, extraite ici en un seul
+        /// point plutôt que dupliquée). `subTitle` = `R.string.groupinfo` ("tab here for group
+        /// info"), MÊME chaîne déjà identifiée et utilisée par `RosterListViewModel.refresh()` pour
+        /// les groupes déjà dans le roster — corrige la version précédente de
+        /// `DeepLinkRouter.routeToGroup`, qui laissait ce champ vide faute d'avoir alors identifié
+        /// la chaîne réelle.
+        func rosterModel(myId: String, myUsername: String?) -> RosterModel {
+            let conversationId = ConversationIdGenerator.groupConversationId(currentUser: myId, remoteUser: String(id))
+            var roster = RosterModel()
+            roster.currentUsername = myUsername
+            roster.currentUserId = myId
+            roster.token = token
+            roster.title = name
+            roster.subTitle = "tab here for group info"
+            roster.conversationId = conversationId
+            roster.userId = myId
+            roster.username = myUsername
+            roster.nikname = nikname
+            roster.from = myUsername
+            roster.to = token
+            roster.sender = myId
+            roster.receiver = token
+            roster.groupId = String(id)
+            roster.type = ChatType.group.wireValue
+            roster.groupType = type
+            roster.groupName = name
+            roster.description = description
+            roster.profile = profile
+            roster.price = price
+            roster.lucrative = lucrative
+            roster.groupMember = isMember
+            roster.creator = creator
+            return roster
+        }
     }
 
     /// Port de `ShareActivity.getGroup`/`connectToServeur` (`group/{myId}/{token}`, clé de réponse
@@ -88,6 +127,42 @@ final class GroupRepository {
             creator: data.optionalString("creator") ?? "",
             type: data.optionalString("type") ?? "public"
         )
+    }
+
+    /// **Ajouté le 2026-08-18 (P1)** — port de `RechercheTiinver.getItFromServeur` (`Recherche/ui/
+    /// RechercheTiinver.java:687-720`, mode `tokenSearch="chat"` lancé par `Roster.java:437`) :
+    /// repli serveur de la recherche de groupe/conversation quand aucune conversation LOCALE ne
+    /// matche déjà (voir `ChatSearchView.swift`, qui porte le filtre local ET appelle cette
+    /// méthode). `GET search/{myId}/{str}`, clé `"data"` → `GroupModel[]` (Gson) — mêmes champs que
+    /// `GroupInfo` ci-dessus, décodage per-item + diagnostic (même motif que `ContactsRepository.
+    /// connectedUsers`/`fetchMembers`, P0-4, plutôt qu'un `try?` global sur le tableau entier).
+    func searchGroups(myId: String, query: String) async throws -> [GroupInfo] {
+        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return [] }
+        let value = try await APIClient.shared.get("search/\(myId)/\(encoded)")
+        guard value.isBackendSuccess, let array = value.looselyEncodedJSON("data")?.toArray() else { return [] }
+        let decoded = array.compactMap { item -> GroupInfo? in
+            guard item.toDictionary() != nil else {
+                print("GROUP SEARCH: item is not an object — raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+            return GroupInfo(
+                id: (try? item.int("id")) ?? 0,
+                token: item.optionalString("token") ?? "",
+                name: item.optionalString("name") ?? "",
+                nikname: item.optionalString("nikname"),
+                description: item.optionalString("description"),
+                profile: item.optionalString("profile"),
+                price: (try? item.int("price")) ?? 0,
+                lucrative: (try? item.int("lucrative")) ?? 0,
+                isMember: (try? item.bool("isMember")) ?? false,
+                creator: item.optionalString("creator") ?? "",
+                type: item.optionalString("type") ?? "public"
+            )
+        }
+        if decoded.count != array.count {
+            print("GROUP SEARCH: received=\(array.count) groups, only \(decoded.count) usable — \(array.count - decoded.count) skipped, see above")
+        }
+        return decoded
     }
 
     /// Port de la boucle `POST membership` (un appel par membre sélectionné, ligne 389-458) —

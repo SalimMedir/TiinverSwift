@@ -470,7 +470,7 @@ sur plusieurs points de détail (debounce, hashtag, états).
 | Upload pièces jointes | `HttpFileUploader`/BunnyCDN | `ChatMediaUploadService.swift` | `COMPLETE_PARITY_CANDIDATE` | GAP-004c historique, protocole BunnyCDN confirmé DIFFÉRENT du multipart direct du profil |
 | Téléchargement pièces jointes reçues | présent | présent | `COMPLETE_PARITY_CANDIDATE` | GAP-003 historique |
 | Appels audio/vidéo | WebRTC/CallKit-équivalent Android | `CallView.swift`/`WebRTCConnection.swift`/`CallKitManager.swift` | `COMPLETE_PARITY_CANDIDATE` | Audit dédié fait (GAP-005 historique), bug `makingOffer` trouvé et corrigé |
-| Recherche de groupe/conversation | `search/{myId}/{str}` | — | `MISSING` — **flux réel complet tracé le 2026-08-17 (Phase 2, P1)** : `Recherche/ui/RechercheTiinver.java` (le MÊME Activity que le Search principal — voir FEATURE Search) est en réalité DEUX écrans distincts selon l'extra `tokenSearch` reçu à l'ouverture — `"universal"` (Feed/MainFragment → recherche users/posts/hashtags, `content/search`, DÉJÀ PORTÉ) vs `"chat"` (`Roster.java:437` → filtre LOCAL des conversations existantes par titre/message/sous-titre, PUIS repli serveur `search/{myId}/{str}` → `GroupModel[]` = groupes publics rejoignables si aucun résultat local). **Correction d'une note d'audit antérieure erronée** ("aucune extra distinctive" — incomplète, `tokenSearch` EST bien lu et branché, jamais relu jusqu'à cette passe). Reste à porter : barre de recherche dans `RosterListView`, filtre local, repli serveur, ET le comportement de tap sur un résultat groupe serveur (`Recherche/ui/ChatAdapter.java`, 662 lignes, click handler PAS ENCORE LU — probable "rejoindre puis ouvrir" ou "ouvrir en mode non-membre", à déterminer avant d'implémenter). Reporté à la prochaine passe P1 plutôt que bâclé dans ce lot. |
+| Recherche de groupe/conversation | `search/{myId}/{str}` | `ChatSearchView.swift` (nouveau) | `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis | **Implémenté le 2026-08-18 (Phase 2, P1)**, suite du tracé de la passe précédente. `Recherche/ui/ChatAdapter.java:291-313` lu (click handler) : Android n'a PAS d'étape "rejoindre" séparée — tap sur un résultat, local OU serveur, construit un `RosterModel` et ouvre directement `ActivityMsg`/`ChatView`, reproduit tel quel. Construction du `RosterModel` d'un groupe extraite dans `GroupRepository.GroupInfo.rosterModel(myId:myUsername:)` (réutilisée par `DeepLinkRouter.routeToGroup`, qui dupliquait auparavant cette construction ET laissait `subTitle` vide faute d'avoir alors identifié la chaîne réelle `"tab here for group info"`, corrigé au passage). Icône loupe ajoutée à la toolbar `RosterListView`, présente `ChatSearchView` en `.sheet` (écran autonome avec sa propre pile, fidèle à l'Activity séparée d'Android). `GroupRepository.searchGroups` décode `search/{myId}/{str}` per-item avec diagnostics (même motif défensif que P0-4). |
 
 ### Missing / broken / different
 - Réglages complets d'une conversation 1:1 (mute, heure de livraison programmée) : `MISSING`.
@@ -800,8 +800,9 @@ fonctionnalité "Fullscreen"). Chiffre honnête, pas un chiffre habillé pour pa
 2. **[NOUVEAU] Export vidéo Bunny Video Library (guid+HLS) totalement absent côté iOS** — nécessaire
    pour corriger le gap n°1 côté vidéo spécifiquement (0 fichier trouvé référençant
    `video.bunnycdn.com`/`.m3u8`/`471609`).
-3. **[NOUVEAU] Recherche de groupe/conversation (`search/{myId}/{str}`) absente côté iOS** — aucun
-   endpoint équivalent trouvé dans `SearchRepository.swift`/`ChatRepository.swift`.
+3. ~~Recherche de groupe/conversation (`search/{myId}/{str}`) absente côté iOS~~ — **implémentée le
+   2026-08-18 (P1)**, voir `ChatSearchView.swift`/FEATURE Chat/Messaging. `BUILD_VALIDATED` à
+   confirmer par CI, test fonctionnel réel toujours requis.
 4. Feed Grid — statut réel incertain : dernière capture Appetize montre des images absentes malgré
    un correctif déjà livré (`8fd7493`), build testé non confirmé à jour.
 5. Feed Fullscreen — statut réel incertain : dernière capture montre AUCUN des éléments (avatar,

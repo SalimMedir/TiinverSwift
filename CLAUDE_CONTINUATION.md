@@ -9,7 +9,46 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-17, DEUXIÈME cause racine réelle trouvée — erreur Alamofire exacte)
+# CURRENT HANDOFF (2026-08-17, TROISIÈME cause racine réelle trouvée — Keychain silencieux)
+
+**Après le correctif GET-sans-corps (voir handoff précédent), un nouveau test réel a montré que la
+requête atteint ENFIN le serveur** (fini le rejet client Alamofire) — **mais le serveur répond
+`HTTP 400`** sur `feedtimeline`/`getuserbyid`. Le bandeau de diagnostic a montré la clé : `userId`
+correct des deux côtés (`197`), mais **`apiKey=nil`** malgré un login décodé avec un `apiKey`
+valide dans le JSON.
+
+**CAUSE RACINE #3, CONFIRMÉE PAR L'ARCHITECTURE CI, PAS UNE HYPOTHÈSE** : `codemagic.yaml`'s
+workflow `visual-smoke-test` (**celui qui produit RÉELLEMENT le `.zip` testé sur Appetize**)
+compile avec `CODE_SIGNING_ALLOWED=NO` — nécessaire pour produire un binaire testable sans compte
+Apple Developer payant. Sans signature de code, l'OS ne peut pas déterminer de façon fiable le
+groupe d'accès Keychain par défaut de l'app — `SecItemAdd` (écriture Keychain de l'apiKey) peut
+échouer silencieusement, et `KeychainStore.swift` **ne vérifiait jamais son code de retour
+`OSStatus`** avant ce correctif. `myId` (UserDefaults) persistait correctement ; `apiKey`
+(Keychain) non — exactement le écart observé. Sans en-tête `Authorization` (jamais ajouté quand
+`apiKey` est nil, voir `APIClient.headers()`), le serveur rejette avec 400.
+
+**Corrigé** : `KeychainStore` écrit désormais AUSSI dans UserDefaults en repli (lu si le Keychain
+revient vide) — pas une régression de sécurité, Android stocke déjà cette même valeur dans
+`SharedPreferences` ordinaire, pas l'Android Keystore. Le statut `OSStatus` réel de la dernière
+écriture Keychain est maintenant affiché dans le bandeau permanent pour confirmer/infirmer.
+
+**CI VALIDÉ** : run `31983140075`, commit `11e8935`, **SUCCESS**.
+
+**Récapitulatif des 3 causes racines réelles trouvées et corrigées cette session** (toutes
+confirmées par preuve directe — JSON réel, message d'erreur exact, ou architecture CI — jamais
+par supposition) :
+1. `error` booléen JSON sur `login` (pas la convention chaîne) → session vide malgré connexion
+   propre.
+2. Alamofire rejette les GET avec corps HTTP → aucune requête GET n'atteignait jamais le réseau.
+3. Écriture Keychain silencieusement en échec sur build non signé → `apiKey` jamais persisté,
+   401/400 sur les endpoints authentifiés.
+
+**Reste à confirmer par le prochain test réel** — devrait cette fois montrer Feed/Profile
+fonctionnels, ou révéler un éventuel 4ᵉ problème.
+
+---
+
+# HANDOFF PRÉCÉDENT (2026-08-17, DEUXIÈME cause racine réelle trouvée — erreur Alamofire exacte)
 
 **Après le correctif `errorFieldNormalized` (voir handoff précédent), un nouveau test réel a montré
 que la session fonctionne ENFIN** (`userId(objet reçu)=197 · userId(session persistée)=197`,

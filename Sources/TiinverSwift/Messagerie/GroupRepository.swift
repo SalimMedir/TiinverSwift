@@ -33,7 +33,12 @@ final class GroupRepository {
             "profile_picture": "",
         ]
         let value = try await APIClient.shared.post(params, endpoint: "group")
-        guard value.isBackendSuccess, let data = try? value.stringEncodedJSON("data") else {
+        // `looselyEncodedJSON` plutôt que `stringEncodedJSON` seul — voir sa doc (2026-08-17) :
+        // même lecture Android `getString`+Gson qui s'est révélée fausse sur `weekly_rank`, aucun
+        // JSON réel de CET endpoint pour trancher, donc tolère les deux formes plutôt que d'en
+        // supposer une seule (risque concret pour P0-F : create échoue silencieusement dans
+        // `catch` de `GroupCreationView.create()` si l'hypothèse est fausse ici aussi).
+        guard value.isBackendSuccess, let data = value.looselyEncodedJSON("data") else {
             throw JSONError.typeMismatch(value.backendErrorMessage ?? "group")
         }
         return CreatedGroup(
@@ -67,7 +72,7 @@ final class GroupRepository {
     /// 2026-08-16).
     func fetchGroup(token: String, myId: String) async throws -> GroupInfo {
         let value = try await APIClient.shared.get("group/\(myId)/\(token)")
-        guard value.isBackendSuccess, let data = try? value.stringEncodedJSON("data") else {
+        guard value.isBackendSuccess, let data = value.looselyEncodedJSON("data") else {
             throw JSONError.typeMismatch(value.backendErrorMessage ?? "group")
         }
         return GroupInfo(
@@ -117,7 +122,7 @@ final class GroupRepository {
     /// seul écran.
     func fetchMembers(groupId: String) async throws -> [GroupMember] {
         let value = try await APIClient.shared.get("membership/\(groupId)")
-        guard value.isBackendSuccess, let data = try? value.stringEncodedJSON("data").rawData else { return [] }
+        guard value.isBackendSuccess, let data = value.looselyEncodedJSON("data")?.rawData else { return [] }
         return (try? JSONDecoder().decode([GroupMember].self, from: data)) ?? []
     }
 

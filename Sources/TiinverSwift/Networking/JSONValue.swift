@@ -99,6 +99,22 @@ struct JSONValue {
         return try JSONValue.parse(data)
     }
 
+    /// **Ajouté le 2026-08-17** après une leçon coûteuse répétée sur ce backend : la lecture
+    /// Android `object.getString(key)` + `Gson.fromJson(...)` (le motif source d'où vient
+    /// `stringEncodedJSON` ci-dessus) NE garantit PAS que le champ soit réellement une chaîne
+    /// ré-encodée côté JSON — confirmé FAUX sur `weekly_rank` (`TrophyRepository.swift`, JSON réel
+    /// fourni par l'utilisateur = tableau DIRECT malgré un code Android à la même forme), et
+    /// fortement suspecté ailleurs (`ContactsRepository.connectedUsers`, `GroupRepository.
+    /// createGroup`/`fetchGroup`) sans preuve définitive dans un sens ou l'autre. Plutôt que de
+    /// dupliquer le même essai "chaîne d'abord, repli direct ensuite" dans chaque appelant, ce
+    /// point d'entrée unique le fait une fois pour toutes : à utiliser à la place de
+    /// `stringEncodedJSON(_:)` PARTOUT où aucun JSON réel de l'endpoint précis n'a encore confirmé
+    /// laquelle des deux formes le backend envoie réellement.
+    func looselyEncodedJSON(_ key: String) -> JSONValue? {
+        if let nested = try? stringEncodedJSON(key) { return nested }
+        return self[key]
+    }
+
     /// **CAUSE RACINE RÉELLE, CONFIRMÉE le 2026-08-17 par le JSON brut réel fourni par
     /// l'utilisateur** (pas une hypothèse) : `TransportData.java`'s convention "error" = CHAÎNE
     /// ("false"/"true") documentée comme non-négociable NE TIENT PAS sur l'endpoint `login` —

@@ -156,15 +156,17 @@ struct ProfileView: View {
             // Parité UI avec Android corrigée par capture d'écran (2026-08-16) : 2 boutons ronds
             // "portefeuille"/"monétisation" côte à côte, PUIS un large bouton "MODIFIER LE PROFIL"
             // en dessous — pas 2 boutons texte côte à côte comme la version précédente de ce
-            // fichier. "monétisation" route vers `WalletView` (même écran que "portefeuille") :
-            // aucun écran Android dédié à la monétisation seule n'a été identifié/porté séparément
-            // à ce jour, `WalletView` couvre déjà les fonctionnalités financières du profil.
+            // fichier. **Corrigé le 2026-08-17** (retour explicite de l'utilisateur : "monétisation
+            // m'amène dans la même page que wallet") : `wallet/MonetizationActivity.java` EST bien
+            // un écran Android séparé (117 lignes, lu en entier) — l'affirmation précédente
+            // "aucun écran dédié identifié" était fausse, jamais revérifiée après la première
+            // passe. Voir `MonetizationView.swift`, nouveau.
             VStack(spacing: 12) {
                 HStack(spacing: 32) {
                     NavigationLink { WalletView() } label: { // R.id.container_wallet
                         roundIconButton(systemImage: "creditcard.fill", label: "portefeuille", tint: .blue)
                     }
-                    NavigationLink { WalletView() } label: {
+                    NavigationLink { MonetizationView() } label: {
                         roundIconButton(systemImage: "dollarsign.circle.fill", label: "monétisation", tint: .green)
                     }
                 }

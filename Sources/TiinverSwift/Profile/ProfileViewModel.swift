@@ -88,6 +88,20 @@ final class ProfileViewModel: ObservableObject {
             let responseLine = "PROFILE RESPONSE: success username=\(profile?.username ?? "nil") id=\(profile?.id.map(String.init) ?? "nil")"
             print(responseLine)
             diagnostics += "\n" + responseLine
+            // **CAUSE RACINE RÉELLE trouvée le 2026-08-17** (retour utilisateur : "la valeur des
+            // coins ne s'affiche pas dans Wallet") — port fidèle de `AddPerfilFoto.java:636`
+            // (`Settings.setFloatPreference(..., COINS_AMOUNT, user.getCoinsAmount())`, exécuté
+            // À CHAQUE chargement RÉUSSI de SON PROPRE profil) : Android n'a AUCUN endpoint dédié
+            // "solde du portefeuille" et ne persiste PAS `coinsAmount` à la connexion — le cache
+            // local (`Settings`/`UserSession.coinsAmount` ici) n'est mis à jour QUE quand le profil
+            // personnel est rechargé, exactement ce point. `WalletViewModel.coinsAmount` lisait déjà
+            // ce cache correctement ; c'est cette écriture qui manquait, jamais portée.
+            if isCurrentUser, let coins = profile?.coinsAmount {
+                UserSession.shared.coinsAmount = coins
+            }
+            if isCurrentUser, let gems = profile?.gemsAmount ?? profile?.gems {
+                UserSession.shared.gemsAmount = gems
+            }
         } catch {
             profile = nil
             errorMessage = "Impossible de charger le profil : \(error.localizedDescription)"

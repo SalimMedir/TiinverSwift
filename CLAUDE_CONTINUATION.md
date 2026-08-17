@@ -9,6 +9,46 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
+# CURRENT HANDOFF (2026-08-17, suite 4 — audit exhaustif Other User Profile + cause racine réelle vidéo)
+
+**Contexte** : deux demandes successives de l'utilisateur. (1) "audit municieux, TOUT clic sur un
+profil doit rediriger vers Other User Profile" — reprise de GAP-021 pour couvrir le reste de la
+surface. (2) Retest explicite du Feed Grid/Fullscreen (photos/thumbnails/streaming vidéo), malgré le
+correctif déjà appliqué (commit `8fd7493`) — a redemandé de vérifier en tenant compte du `Referer`.
+
+**GAP-021 complété** : `FullScreenMedia.java` (3ᵉ visualiseur fullscreen Android, laissé en suspens
+la fois précédente) lu en entier et TRANCHÉ — réellement reachable depuis `AdapterNoti` (vignette de
+notification) ET `UniversalSearchAdapter` (résultat de recherche "publication"), réutilise
+`CustomCardView`/`CustomVideoView` (déjà couverts par GAP-020). Chemin Search→post était déjà câblé
+(`SearchView.detailPost`) ; chemin Notifications→post ne l'était pas — ajouté
+(`NotificationRow.reconstructedPost`, reconstruit un `FeedActivity` minimal depuis les champs déjà
+décodés de la notification). Vérifié et CONFIRMÉ (pas supposé) que bulles de chat et liste des
+membres de groupe ne sont PAS des gaps : `grep "UserProfile.class"` sur tout `com.tiinver.messagerie`
+= 0 résultat, Android ne le fait pas non plus à ces deux endroits. Créateurs/Abonnés-Abonnements
+revérifiés en détail (liste complète, pas juste un item) — déjà corrects. Commit `df94461`, CI verte.
+
+**CAUSE RACINE RÉELLE #12 (vidéo streaming peu fiable, retest utilisateur)** : `FeedActivity.
+playbackURL` utilisait `cdn_content_url` en PRIORITÉ — l'INVERSE de la vraie priorité Android. Lu en
+entier `Activity/service/VideoPlaybackCoordinator.java` (jamais lu jusqu'ici, malgré 2 passes
+précédentes sur la vidéo) : l'URL PRINCIPALE passée à `playVideo(...)` est TOUJOURS `object_url` —
+confirmé cohérent avec le côté photo (`CustomCardView.setData` charge aussi `object_url`
+directement, jamais `cdn_content_url`). `cdn_content_url` ne sert QU'À construire une URL de REPLI
+distincte (`stream.tiinver.com/{videoId}/play_720p.mp4`, `videoId`=premier segment de chemin de
+`cdn_content_url`), essayée UNIQUEMENT si `object_url` échoue à jouer (`playVideoWithFallback`).
+**Découverte notable** : `VideoPlayerManager.swift` avait DÉJÀ tout le mécanisme de repli-sur-échec
+porté fidèlement depuis une session antérieure (`handlePlaybackFailure`, `currentFallbackURL`) —
+mais `FeedDetailCell` ne lui passait jamais de `fallbackURL:`, le rendant mort en pratique. Ajouté
+`FeedActivity.fallbackPlaybackURL` + branché dans `FeedView.swift`. Corrigé aussi `CDNAsyncImage`
+(`cachePolicy = .reloadIgnoringLocalCacheData`) : un appareil testé AVANT le correctif Referer
+(commit `8fd7493`) a pu mettre en cache une réponse 403 pour ces mêmes URLs — la clé de cache HTTP
+standard ne tient pas compte des en-têtes de requête personnalisés, donc l'échec pouvait persister
+même après le correctif sans que le code soit en cause. Commit `eded5f1`, CI verte.
+
+**CI VALIDÉ (toutes vertes)** : `df94461`, `eded5f1`. **AUCUN de ces correctifs n'a encore été
+confirmé par un test réel** — "CI VALIDATED, FUNCTIONALLY UNVERIFIED" jusqu'à preuve du contraire.
+
+---
+
 # CURRENT HANDOFF (2026-08-17, suite 3 — GAP-020/021/022 : ordre exact Fullscreen, Other User Profile partout, écran 1 création de groupe)
 
 **Contexte** : l'utilisateur a fourni une capture Android réelle du fullscreen Feed (bouton

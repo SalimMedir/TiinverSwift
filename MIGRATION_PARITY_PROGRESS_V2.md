@@ -313,3 +313,24 @@ vrai flux.
 `SearchView.swift:95,97` (`Task.sleep(nanoseconds: 300_000_000)`, `newValue.count < 2`) — identiques
 sur les deux points. Commentaire mis à jour pour refléter la vérification (aucun changement
 fonctionnel).
+
+### 2026-08-18 — Profile (P2) — Vérification édition profil + correctif corruption birthday/gender
+**Commit(s) :** (à committer avec ce lot)
+**Run CI :** à dispatcher après commit
+**Statut AVANT (audit V2) :** 🟡 `CODE_PRESENT_UNVERIFIED`
+**Statut APRÈS :** `COMPLETE_PARITY_CANDIDATE`
+**Preuve du changement de statut :** Lu `EditProfile.java` (190 lignes) et
+`EditPersonalInformation.java` (235 lignes) en entier, comparé champ par champ à
+`EditProfileView.swift`/`EditPersonalInformationView.swift` — les 9 champs/colonnes REST
+correspondent exactement, y compris l'asymétrie réelle `work`/`school` (local) vs `work_At`/
+`school_At` (serveur), déjà documentée et confirmée exacte. **Bug de corruption de données trouvé
+et corrigé** : `EditPersonalInformation.java` N'A AUCUNE logique de pré-remplissage (contrairement
+à `EditProfile.java` voisin, qui pré-remplit via `onResume()`+`ContentProvider`) — chaque champ
+Android est une `TextView` vide par défaut, et `UpdateProfileData()` n'envoie que les champs
+non-vides. La version Swift reproduisait cette garde pour les 5 champs `String` (`""` = vide
+représentable), MAIS PAS pour `birthday`(`Date`)/`gender`(`String` défaut `"M"`) — types Swift ne
+pouvant pas nativement représenter "non touché", ces 2 champs étaient donc envoyés À CHAQUE
+sauvegarde, écrasant silencieusement la date de naissance réelle par la date du jour et le genre
+réel par "M" dès qu'un utilisateur modifiait n'importe quel autre champ de cet écran. Corrigé en
+rendant `birthday`/`gender` `Optional` (`nil` = non touché), envoyés seulement si explicitement
+renseignés — fidèle à la sémantique "TextView vide" d'Android sur CES 2 champs précis.

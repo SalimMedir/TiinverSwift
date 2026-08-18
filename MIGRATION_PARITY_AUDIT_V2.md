@@ -321,7 +321,7 @@ toujours requis pour passer en `COMPLETE_PARITY_VALIDATED`.
 | Menu "..." (autre profil) | EXACTEMENT 2 items : Signaler/Bloquer-Débloquer | EXACTEMENT 2 items identiques (`toolbarContent`) | `COMPLETE_PARITY_CANDIDATE` | Comparé ligne à ligne cette session, déjà présent AVANT ce tour — aucune correction nécessaire |
 | Bouton Follow | écho optimiste avant réponse réseau | écho optimiste identique (`ProfileViewModel.follow()`) | `COMPLETE_PARITY_CANDIDATE` | — |
 | Bouton Message (1:1) | visible si `type==PUBLIC` | `messageTarget` avec même condition (`profile.type == "public"`) | `COMPLETE_PARITY_CANDIDATE` | — |
-| Édition (son propre profil) | `EditProfile.java`/`EditPersonalInformation.java` | `EditProfileView.swift`/`EditPersonalInformationView.swift` | 🟡 `CODE_PRESENT_UNVERIFIED` — fichiers existent, PAS comparés champ par champ cette passe |
+| Édition (son propre profil) | `EditProfile.java`/`EditPersonalInformation.java` | `EditProfileView.swift`/`EditPersonalInformationView.swift` | `COMPLETE_PARITY_CANDIDATE` — **vérifié champ par champ le 2026-08-18 (P2)** : les 9 champs/colonnes REST correspondent exactement (y compris l'asymétrie réelle `work`/`school` local vs `work_At`/`school_At` serveur). **Bug de corruption de données trouvé et corrigé** : `birthday`/`gender` étaient envoyés SANS CONDITION à chaque sauvegarde (types Swift `Date`/`String` non-optionnels ne pouvant pas représenter "champ non touché", contrairement aux `TextView` vides d'Android), écrasant silencieusement ces 2 champs par des valeurs par défaut dès qu'un utilisateur modifiait n'importe quel autre champ — corrigé en les rendant `Optional`, envoyés seulement si explicitement renseignés, fidèle à la garde `isEmpty()` d'Android sur CES 2 champs précis (les seuls sans pré-remplissage ni garde avant ce correctif) |
 | Upload avatar | `HttpFileUploader`, `POST user` multipart | `PhotosPicker` natif + même endpoint | `PARTIAL` assumé — écart d'architecture documenté (Android recadre AVANT envoi via `CroperView`, iOS envoie tel quel) — DÉCISION ASSUMÉE, pas un oubli |
 | Solde pièces (coinsAmount) | rafraîchi à CHAQUE chargement du propre profil (`AddPerfilFoto.java:636`), PAS à la connexion | Même point d'écriture (`ProfileViewModel.loadProfile()`) | `COMPLETE_PARITY_CANDIDATE` | Cause racine réelle trouvée et corrigée session précédente |
 | Certification (badge) | `isCertified`, affiché sur pseudo | Affiché (`ShortTextVIew`-équivalent) | 🟡 non re-vérifié visuellement cette passe |
@@ -332,7 +332,9 @@ toujours requis pour passer en `COMPLETE_PARITY_VALIDATED`.
 
 ### Missing / broken / different
 - Statistiques par post (`StatisticsActivity`) : implémenté le 2026-08-18 (P2), voir `StatisticsView.swift` — point d'entrée Feed câblé, point d'entrée Profile (fullscreen) restant.
-- Édition profil : présence de code confirmée, PAS vérifiée champ par champ (`CODE_PRESENT_UNVERIFIED`).
+- ~~Édition profil : présence de code confirmée, PAS vérifiée champ par champ.~~ **Vérifiée le
+  2026-08-18 (P2)** — `COMPLETE_PARITY_CANDIDATE`, 1 bug de corruption de données trouvé et corrigé
+  (`birthday`/`gender` envoyés sans condition), voir tableau ci-dessus.
 - Aucune preuve de test réel récent (post-correctifs `thumbnailURL`/fullscreen) que la grille de
   posts affiche désormais des images — dépend directement du statut Home/Feed ci-dessus.
 

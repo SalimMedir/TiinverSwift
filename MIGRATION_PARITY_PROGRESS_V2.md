@@ -315,8 +315,8 @@ sur les deux points. Commentaire mis à jour pour refléter la vérification (au
 fonctionnel).
 
 ### 2026-08-18 — Profile (P2) — Vérification édition profil + correctif corruption birthday/gender
-**Commit(s) :** (à committer avec ce lot)
-**Run CI :** à dispatcher après commit
+**Commit(s) :** `bf8100c`
+**Run CI :** [32179186193](https://github.com/SalimMedir/TiinverSwift/actions/runs/32179186193) — `status: completed`, `conclusion: success`
 **Statut AVANT (audit V2) :** 🟡 `CODE_PRESENT_UNVERIFIED`
 **Statut APRÈS :** `COMPLETE_PARITY_CANDIDATE`
 **Preuve du changement de statut :** Lu `EditProfile.java` (190 lignes) et

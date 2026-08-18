@@ -152,10 +152,10 @@ déduction locale de solde après succès écrit toujours dans `coinsAmount`, m�
 gemmes.
 
 ### 2026-08-18 — Profile (P2) — Implémentation de StatisticsActivity (statistiques par post)
-**Commit(s) :** (à committer avec ce lot)
-**Run CI :** à dispatcher après commit
+**Commit(s) :** `174c0d9`
+**Run CI :** [32164904331](https://github.com/SalimMedir/TiinverSwift/actions/runs/32164904331) — `status: completed`, `conclusion: success`
 **Statut AVANT (audit V2) :** `MISSING` confirmé (GAP-016 historique)
-**Statut APRÈS :** `PARTIAL` (`BUILD_VALIDATED` à confirmer par CI) — point d'entrée Feed câblé,
+**Statut APRÈS :** `PARTIAL` (`BUILD_VALIDATED` — CI SUCCESS) — point d'entrée Feed câblé,
 point d'entrée Profile (fullscreen) restant, test fonctionnel réel toujours requis
 **Preuve du changement de statut :** Lu `Activity/ui/StatisticsActivity.java` (228 lignes, entier) +
 `models/activity/StatisticModel.java` (entier). `AdsRepository.fetchStatistics` ajouté (`activity/
@@ -172,8 +172,8 @@ initialiseur SANS `onMore`) n'a pas été câblé — Feed seulement, d'où `PAR
 `COMPLETE_PARITY_CANDIDATE`.
 
 ### 2026-08-18 — Animems (P2) — Reclassification de l'export GIF en `DEAD_CODE`
-**Commit(s) :** (à committer avec ce lot — commentaires seulement, aucune fonctionnalité ajoutée)
-**Run CI :** à dispatcher après commit
+**Commit(s) :** `1892ae8` (commentaires seulement, aucune fonctionnalité ajoutée)
+**Run CI :** [32165179496](https://github.com/SalimMedir/TiinverSwift/actions/runs/32165179496) — `status: completed`, `conclusion: success`
 **Statut AVANT (audit V2) :** `MISSING` confirmé
 **Statut APRÈS :** `DEAD_CODE` — aucun travail requis, la fonctionnalité n'existe pas dans le flux
 Android réel non plus
@@ -190,10 +190,10 @@ de la mission de parité. Commentaires mis à jour dans `AnimemesEditorState.swi
 gap fantôme dans le décompte.
 
 ### 2026-08-18 — Chat/Messaging (P2) — Implémentation de NewMessage (recherche téléphone/email)
-**Commit(s) :** (à committer avec ce lot)
-**Run CI :** à dispatcher après commit
+**Commit(s) :** `2e48d79`
+**Run CI :** [32165684226](https://github.com/SalimMedir/TiinverSwift/actions/runs/32165684226) — `status: completed`, `conclusion: success`
 **Statut AVANT (audit V2) :** `MISSING` confirmé
-**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis
+**Statut APRÈS :** `BUILD_VALIDATED` — commit `2e48d79` — CI SUCCESS — test fonctionnel réel toujours requis
 **Preuve du changement de statut :** Lu `roster/NewMessage.java` (196 lignes, entier).
 `ContactsRepository.lookupByPhoneOrEmail` ajouté (`POST isPhoneOrEmailExiste {phoneOrEmail}`,
 réponse `{user: {...}}` — objet unique, malgré le nom Android `User[] metas` qui enveloppe

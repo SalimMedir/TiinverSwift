@@ -26,6 +26,13 @@ struct CertificationView: View {
                     LabeledContent("Statut", value: status.status ?? "—")
                     if let level = status.level { LabeledContent("Palier", value: level) }
                     if let requestedAt = status.requested_at { LabeledContent("Demandé le", value: requestedAt) }
+                    // Port de `tvExpireDate` (`CertificationState.java:74,102`) — champ décodé
+                    // (`CertificationStatus.expire_at`) mais jamais affiché avant cette passe
+                    // (2026-08-18, P2), trouvé en comparant champ par champ contre le VRAI onglet
+                    // "dashboard" (`CertificationState.java`, PAS `CertificationRequestFragment
+                    // .java` — confirmé `DEAD_CODE`, zéro appelant — que le nom similaire aurait pu
+                    // faire confondre avec le vrai onglet).
+                    if let expireAt = status.expire_at { LabeledContent("Expire le", value: expireAt) }
                     if status.is_certified == 1 {
                         Label("Compte certifié", systemImage: "checkmark.seal.fill").foregroundStyle(.blue)
                     }

@@ -229,3 +229,18 @@ l'arrière-plan" (post-traitement local de l'image générée, `RemoveBackground
 removeBackgroundAdvanced`/`removeBackgroundWithMLKit`) — nécessiterait un pipeline Vision/CoreML
 dédié, le cœur texte+image reste pleinement fonctionnel sans lui. Câblé depuis la toolbar
 `RosterListView` (icône sparkles), même point d'entrée logique que les 3 confirmés côté Android.
+
+### 2026-08-18 — Discover/Certification (P2) — Vérification champ par champ + correctif `expire_at`
+**Commit(s) :** (à committer avec ce lot)
+**Run CI :** à dispatcher après commit
+**Statut AVANT (audit V2) :** `CODE_PRESENT_UNVERIFIED` — correspondance non vérifiée en détail
+**Statut APRÈS :** `COMPLETE_PARITY_CANDIDATE`
+**Preuve du changement de statut :** Lu les 9 fichiers du module `ui/certification` (351+229 lignes
+au total). Confirmé `CertificationRequestFragment.java` `DEAD_CODE` (0 appelant — le vrai onglet
+"dashboard" de `CertificationActivity` est `CertificationState.java`, jamais lu par les passes
+précédentes à cause du nom proche). Comparé `CertificationState.java` (4 champs affichés :
+niveau/statut/date de demande/date d'expiration) champ par champ contre `CertificationView.swift` —
+trouvé `expire_at` décodé (`CertificationStatus.expire_at`) mais jamais rendu à l'écran, corrigé.
+Confirmé `btnRenew`/`btnCancel` non câblés côté Android lui-même (aucun `setOnClickListener` dans
+tout le fichier) — absence fidèle côté iOS, pas un gap. Endpoints `certification/request`
+(multipart)/`certification/{userId}` déjà fidèles depuis GAP-004 (session antérieure), RAS.

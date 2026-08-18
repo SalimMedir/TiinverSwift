@@ -148,7 +148,7 @@ Android sans équivalent nécessaire, noté).
 
 | Android | Rôle | iOS équivalent | Statut |
 |---|---|---|---|
-| `ui/certification/CertificationActivity.java` + `CertificationRequestActivity.java` + `CertificationPlanFragment.java` + `CertificationRequestFragment.java` | Demande de certification (badge vérifié) | `CertificationView.swift`/`CertificationModels.swift` | 🟡 fusion probable en un seul écran iOS, PAS vérifié en détail cette passe |
+| `ui/certification/CertificationActivity.java` (2 onglets réels : `CertificationPlanFragment`+`CertificationState`, PAS `CertificationRequestFragment` — confirmé `DEAD_CODE`, 0 appelant) + `CertificationRequestActivity.java` | Demande de certification (badge vérifié) | `CertificationView.swift`/`CertificationModels.swift` | `COMPLETE_PARITY_CANDIDATE` — **vérifié champ par champ le 2026-08-18 (P2)** : endpoints (`certification/request` multipart, `certification/{userId}`) déjà fidèles (GAP-004, session antérieure) ; 1 gap réel trouvé et corrigé (`expire_at` décodé mais jamais affiché, voir `CertificationState.java:74,102`) ; `btnRenew`/`btnCancel` confirmés NON câblés côté Android lui-même (aucun `setOnClickListener`), donc fidèlement absents côté iOS aussi |
 
 ### Galerie / Édition / Publication (voir aussi FEATURE dédiée)
 
@@ -843,9 +843,10 @@ fonctionnalité "Fullscreen"). Chiffre honnête, pas un chiffre habillé pour pa
     (`Roster.java`/`MonetizationActivity.java`/`MainFragment.java`), qui proxifie tout via le
     backend Tiinver (`ai/chat`/`ai/image/generate`) — AUCUNE clé API client. `BUILD_VALIDATED` à
     confirmer par CI ; mode suppression d'arrière-plan (post-traitement) explicitement non porté.
-15. Système de certification — 4 classes Android (`CertificationActivity`/
-    `CertificationRequestActivity`/2 Fragments) vs `CertificationView.swift` — correspondance non
-    vérifiée en détail (`CODE_PRESENT_UNVERIFIED`).
+15. ~~Système de certification — correspondance non vérifiée en détail.~~ **Vérifié le 2026-08-18
+    (P2)** : `COMPLETE_PARITY_CANDIDATE`, 1 champ manquant (`expire_at`) trouvé et corrigé,
+    `CertificationRequestFragment.java` confirmé `DEAD_CODE` (0 appelant, à ne pas confondre avec
+    le vrai onglet `CertificationState.java`).
 16. Plusieurs écrans Wallet secondaires (`PeerToPeerActivity`/`SelectAmountActivity`/
     `RechargeCoinsActvity`/`TransactionTutorialActivity`/`UseBankCardFragment`) — rôle exact et
     correspondance iOS non déterminés cette passe, possibles redondances ou `MISSING` réels.

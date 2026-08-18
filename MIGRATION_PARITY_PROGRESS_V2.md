@@ -302,3 +302,14 @@ partagé avec Android en production, jamais pensé pour un `CFBundleVersion` iOS
 `LoginManager` (vraie API Facebook Login) introuvables dans tout le projet, 0 appelant — confirmé
 mort, `FacebookSdk.sdkInitialize()` dans `MainActivity.java` est un reliquat jamais suivi d'un
 vrai flux.
+
+### 2026-08-18 — Search (P2) — Vérification de la valeur exacte du debounce
+**Commit(s) :** (à committer avec ce lot — commentaire seulement)
+**Run CI :** à dispatcher après commit
+**Statut AVANT (audit V2) :** 🟡 `CODE_PRESENT_UNVERIFIED` — valeur exacte du debounce non lue
+**Statut APRÈS :** ✅ vérifié
+**Preuve du changement de statut :** `RechercheTiinver.java:85` (`DEBOUNCE_DELAY_MS = 300`) et
+`:399-402` (`query.length() >= 2` → recherche complète, sinon suggestions) comparés à
+`SearchView.swift:95,97` (`Task.sleep(nanoseconds: 300_000_000)`, `newValue.count < 2`) — identiques
+sur les deux points. Commentaire mis à jour pour refléter la vérification (aucun changement
+fonctionnel).

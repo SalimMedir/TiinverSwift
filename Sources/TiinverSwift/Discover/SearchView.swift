@@ -92,7 +92,7 @@ struct SearchView: View {
         .onChange(of: query) { newValue in
             searchTask?.cancel()
             searchTask = Task {
-                try? await Task.sleep(nanoseconds: 300_000_000) // port du debounce (DEBOUNCE_DELAY_MS, valeur exacte non lue)
+                try? await Task.sleep(nanoseconds: 300_000_000) // port du debounce — `DEBOUNCE_DELAY_MS = 300` vérifié le 2026-08-18 (P2), `RechercheTiinver.java:85`
                 guard !Task.isCancelled else { return }
                 if newValue.count < 2 {
                     if newValue.count >= 1 { await suggest(newValue) }

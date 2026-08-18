@@ -398,7 +398,7 @@ le reste (`COMPLETE_PARITY_CANDIDATE` inchangé pour le reste de la FEATURE).
 | Onglets | `all`/`posts`/`users`/`hashtags` | `SearchTab`: `.all`/`.posts`/`.users`/`.hashtags` | `COMPLETE_PARITY_CANDIDATE` | Noms ET valeurs `types` confirmés identiques |
 | Endpoint suggestion | `content/search/suggest?q=` | Même endpoint (`SearchRepository.suggest`) | `COMPLETE_PARITY_CANDIDATE` | — |
 | Endpoint recherche complète | `content/search?q=&types=&limit=10&offset=0` | Même endpoint exact (`SearchRepository.search`) | `COMPLETE_PARITY_CANDIDATE` | — |
-| Debounce | `Handler.postDelayed` | À vérifier — présence d'un `Task`/délai dans `SearchView` non confirmée cette passe | 🟡 `CODE_PRESENT_UNVERIFIED` |
+| Debounce | `Handler.postDelayed(debounceRunnable, DEBOUNCE_DELAY_MS=300)` | `Task.sleep(nanoseconds: 300_000_000)` | ✅ **vérifié le 2026-08-18 (P2)** — valeur ET seuil (`query.length() >= 2` → recherche complète, sinon suggestions) confirmés identiques |
 | Résultat "users" — tap → profil | `img_avatar.setOnClickListener`→`UserProfile` | `NavigationLink`→`ProfileView(isCurrentUser:false)` | `COMPLETE_PARITY_CANDIDATE` | Confirmé GAP-021 (session précédente) |
 | Résultat "users" — bouton Suivre inline | présent (`UniversalSearchAdapter.java:225-247`) | présent (`followButton`) | `COMPLETE_PARITY_CANDIDATE` | Ajouté session antérieure (tâche #35) |
 | Résultat "posts" — tap → fullscreen | ouvre `FullScreenMedia` | `.fullScreenCover(FeedDetailPagerView)` | `COMPLETE_PARITY_CANDIDATE` | Confirmé, réutilise le même fullscreen que Home/Feed (GAP-020 s'y applique aussi) |

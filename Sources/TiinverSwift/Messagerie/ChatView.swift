@@ -26,8 +26,16 @@ struct ChatView: View {
     @State private var showPrivateMessageSettings = false
     @FocusState private var inputFocused: Bool
 
-    init(target: RosterModel) {
-        _viewModel = StateObject(wrappedValue: ChatViewModel(target: target))
+    /// `initialInputText` — port de `NewMessage.mMessage` (`roster/NewMessage.java`, 2026-08-18 P2) :
+    /// Android pré-remplit le champ de saisie AVANT le premier envoi (l'utilisateur tape le message
+    /// sur l'écran de recherche, PAS dans le champ de `ActivityMsg` lui-même) — reproduit en
+    /// pré-remplissant `inputText` du `ChatViewModel` fraîchement créé, envoi réel laissé au VRAI
+    /// pipeline `sendText()` déjà existant plutôt que dupliqué (voir note de `NewMessageView.swift`
+    /// sur l'insertion locale directe `ContentValues` d'Android, délibérément PAS reproduite).
+    init(target: RosterModel, initialInputText: String = "") {
+        let vm = ChatViewModel(target: target)
+        vm.inputText = initialInputText
+        _viewModel = StateObject(wrappedValue: vm)
     }
 
     var body: some View {

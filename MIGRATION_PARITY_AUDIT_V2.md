@@ -93,7 +93,7 @@ Android sans équivalent nécessaire, noté).
 | `Recherche/ui/RechercheTiinver.java` | Recherche universelle | `Discover/SearchView.swift` | 🟡 voir FEATURE Search |
 | `Recherche/ui/RechercheTiinver2.java` | Variante recherche (v2, à déterminer si active) | `Discover/SearchView.swift` (probable fusion) | 🟡 voir FEATURE Search |
 | `roster/ui/Roster.java` | Liste conversations | `Messagerie/RosterListView.swift` | ✅ voir FEATURE Chat |
-| `roster/NewMessage.java` | Recherche téléphone/email pour nouveau contact | — | ❌ `MISSING` (déjà noté GAP existant : "écran dédié recherche téléphone/email, reste hors périmètre") |
+| `roster/NewMessage.java` | Recherche téléphone/email pour nouveau contact | `NewMessageView.swift` (nouveau, 2026-08-18 P2) | `BUILD_VALIDATED` à confirmer par CI — écart assumé : le premier message n'est PAS pré-inséré localement comme Android (`ContentValues`/`ContentProvider`, dépend probablement d'une sync locale hors périmètre), transmis en pré-remplissage à `ChatView` qui l'envoie via son VRAI pipeline `sendText()` déjà fonctionnel |
 | `roster/Invite.java` | Invitation SMS/contact natif | `Wallet/ReferralView.swift` (partiel) | 🟡 `PARTIAL` probable — à vérifier si `Invite.java` = même flux que `ReferralActivity` ou distinct |
 | `messagerie/ui/ActivityMsg.java` | Conversation 1:1/groupe (hôte `ChatFragmentTest`) | `Messagerie/ChatView.swift` | ✅ voir FEATURE Chat |
 | `messagerie/ui/ProfileDetailActivity.java` | Réglages d'1 conversation (lance `SettingPrivateMessageFragmant`) | `PrivateMessageSettingView.swift` | `BUILD_VALIDATED` (CI confirmée verte) — implémenté le 2026-08-18 (P1) |
@@ -830,8 +830,9 @@ fonctionnalité "Fullscreen"). Chiffre honnête, pas un chiffre habillé pour pa
 12. ~~Export GIF Animems — `MISSING` confirmé, auto-documenté dans le code lui-même.~~ **RECLASSIFIÉ
     `DEAD_CODE` le 2026-08-18 (P2)** — l'encodeur Android existe mais n'est câblé nulle part dans le
     flux réel (`AnimemesCompound.java`). Retiré du décompte des gaps à combler.
-13. Écran de recherche téléphone/email pour nouveau contact (`roster/NewMessage.java`) — `MISSING`
-    confirmé (historique, re-confirmé).
+13. ~~Écran de recherche téléphone/email pour nouveau contact (`roster/NewMessage.java`)~~ —
+    **implémenté le 2026-08-18 (P2)**, voir `NewMessageView.swift`. `BUILD_VALIDATED` à confirmer
+    par CI.
 14. Assistant IA (Gemini, `TiinverAIChat`/`TiinverGeminiAIChat`) — présence d'un repository
     (`AiConversationRepository.swift`) mais écran de chat complet non vérifié — `PARTIAL` probable.
 15. Système de certification — 4 classes Android (`CertificationActivity`/

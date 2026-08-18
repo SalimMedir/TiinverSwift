@@ -188,3 +188,21 @@ inventer une fonctionnalité qu'Android lui-même n'expose jamais à l'utilisate
 de la mission de parité. Commentaires mis à jour dans `AnimemesEditorState.swift`/
 `MIGRATION_PARITY_AUDIT_V2.md` pour refléter la classification correcte plutôt que de laisser un
 gap fantôme dans le décompte.
+
+### 2026-08-18 — Chat/Messaging (P2) — Implémentation de NewMessage (recherche téléphone/email)
+**Commit(s) :** (à committer avec ce lot)
+**Run CI :** à dispatcher après commit
+**Statut AVANT (audit V2) :** `MISSING` confirmé
+**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis
+**Preuve du changement de statut :** Lu `roster/NewMessage.java` (196 lignes, entier).
+`ContactsRepository.lookupByPhoneOrEmail` ajouté (`POST isPhoneOrEmailExiste {phoneOrEmail}`,
+réponse `{user: {...}}` — objet unique, malgré le nom Android `User[] metas` qui enveloppe
+artificiellement `"["+meta+"]"` pour réutiliser un décodeur tableau existant). Nouveau
+`NewMessageView.swift`, câblé aux 2 liens "+ Nouveau message" de `RosterListView` (footer + état
+vide), qui pointaient auparavant vers `ContactPickerView` en attendant. **Écart assumé documenté** :
+Android insère le premier message directement en local (`ContentValues`/`ContentProvider`) SANS
+appel réseau visible dans ce fichier précis (dépend probablement d'une synchronisation locale en
+tâche de fond, `MyBackgroundTask`, déjà hors périmètre ailleurs dans ce portage) — reproduire
+l'insertion locale seule aurait laissé le message jamais livré ; à la place, le texte tapé est
+transmis en pré-remplissage à `ChatView` (nouveau paramètre `initialInputText`), qui l'envoie
+réellement via son pipeline `sendText()` déjà fonctionnel.

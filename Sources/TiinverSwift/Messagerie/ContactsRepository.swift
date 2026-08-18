@@ -55,4 +55,16 @@ final class ContactsRepository {
         }
         return decoded
     }
+
+    /// Port de `NewMessage.getUserByPhoneNumber` (`roster/NewMessage.java:157-195`, entier,
+    /// 2026-08-18 P2) — `POST isPhoneOrEmailExiste {phoneOrEmail: str}`, réponse `{user: {...}}`
+    /// (UN SEUL objet, PAS un tableau malgré le nom Android `User[] metas` — Android l'enveloppe
+    /// lui-même artificiellement dans `"["+meta+"]"` avant de le décoder en tableau d'1 élément,
+    /// juste pour réutiliser son décodeur `User[]` existant ; décodé ici directement comme un objet
+    /// unique, plus simple et fidèle au VRAI contrat réseau).
+    func lookupByPhoneOrEmail(_ query: String) async throws -> User? {
+        let value = try await APIClient.shared.post(["phoneOrEmail": query], endpoint: "isPhoneOrEmailExiste")
+        guard let data = value["user"]?.rawData else { return nil }
+        return try? JSONDecoder().decode(User.self, from: data)
+    }
 }

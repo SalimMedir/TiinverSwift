@@ -14,9 +14,8 @@ import SwiftUI
 /// `RosterListAdapter.itemSelected`) ; assistant IA (`TiinverGeminiAIChat`, hors périmètre
 /// `TIINVER_IOS_PORT_ANALYSIS.md`) ; mise à jour temps réel de la liste (présence en ligne/frappe/
 /// nouveau message reçu pendant que l'écran est ouvert — `Roster.organizeAndDisplayMessage`, non
-/// câblé, `refresh()` manuel via le bouton toolbar en attendant) ; `NewMessage.java` (recherche
-/// téléphone/email pour un chat 1:1 direct, écran séparé du sélecteur de contacts). Recherche d'une
-/// conversation existante et navigation vers `ChatView` sont portés.
+/// câblé, `refresh()` manuel via le bouton toolbar en attendant). Recherche d'une conversation
+/// existante et navigation vers `ChatView` sont portés.
 ///
 /// **Création de groupe portée le 2026-08-15** (test Appetize réel, GAP fonctionnel) — port de
 /// `Contact.class` (FAB `GoToContact`) : voir `ContactPickerView.swift`/`GroupCreationView.swift`.
@@ -28,10 +27,11 @@ import SwiftUI
 /// native, pas de FAB flottant standard en SwiftUI" s'est avéré être un ÉCART VISUEL réel gênant
 /// la découverte du bouton, pas une simplification neutre — corrigé pour correspondre exactement).
 /// La capture montre aussi 2 liens texte roses sous la liste des conversations ("+ Nouveau
-/// message", "+ Invitez vos amis et votre famille") — "Nouveau message" reste hors périmètre
-/// (`NewMessage.java`, recherche téléphone/email pour un chat 1:1 direct, toujours pas porté, voir
-/// réserves de portée du fichier) mais affiché fidèlement même si son action reste un stub léger ;
-/// "Invitez vos amis" reste le gap contacts déjà documenté (`CNContactStore` non porté).
+/// message", "+ Invitez vos amis et votre famille") — "Nouveau message" ouvre désormais
+/// `NewMessageView.swift` (2026-08-18, P2, `roster/NewMessage.java` porté — recherche téléphone/
+/// email pour un chat 1:1 direct, confirmée `MISSING` par l'audit V2, corrige le stub léger vers
+/// `ContactPickerView` utilisé jusqu'ici en attendant). "Invitez vos amis" reste le gap contacts
+/// déjà documenté (`CNContactStore` non porté).
 struct RosterListView: View {
     @StateObject private var viewModel = RosterListViewModel()
     @State private var showContactPicker = false
@@ -39,6 +39,8 @@ struct RosterListView: View {
     /// `tokenSearch="chat"` — voir `ChatSearchView.swift` (2026-08-18, P1, recherche de
     /// groupe/conversation, confirmée `MISSING` par l'audit V2).
     @State private var showChatSearch = false
+    /// Port de "+ Nouveau message" (`NewMessage.java`) — voir `NewMessageView.swift`.
+    @State private var showNewMessage = false
 
     var body: some View {
         Group {
@@ -100,22 +102,28 @@ struct RosterListView: View {
         .sheet(isPresented: $showChatSearch) {
             ChatSearchView(rosterViewModel: viewModel)
         }
+        .sheet(isPresented: $showNewMessage) {
+            NewMessageView()
+        }
         .task { await viewModel.refresh() }
         .onChange(of: showContactPicker) { presented in
             // Reflète immédiatement le nouveau groupe dans la liste dès qu'on revient (pas
             // d'observation temps réel de `wk_roster`, voir réserves de portée ci-dessus).
             if !presented { Task { await viewModel.refresh() } }
         }
+        .onChange(of: showNewMessage) { presented in
+            if !presented { Task { await viewModel.refresh() } }
+        }
     }
 
     /// Port des 2 liens texte roses sous la liste (`Roster.java`, capture d'écran) — "Nouveau
-    /// message" route vers le même sélecteur de contacts qu'un groupe (`NewMessage.java` — écran
-    /// dédié recherche téléphone/email — reste hors périmètre, non re-créé ici) ; "Invitez vos
-    /// amis" route vers `ReferralView` (déjà porté, module 15) — lien d'invitation générique,
-    /// fidèle à l'intention du texte même si le flux contacts natif reste absent.
+    /// message" ouvre `NewMessageView` (recherche téléphone/email dédiée, `NewMessage.java`,
+    /// 2026-08-18 P2) ; "Invitez vos amis" route vers `ReferralView` (déjà porté, module 15) —
+    /// lien d'invitation générique, fidèle à l'intention du texte même si le flux contacts natif
+    /// reste absent.
     private var footerLinks: some View {
         Section {
-            Button { showContactPicker = true } label: {
+            Button { showNewMessage = true } label: {
                 Label("Nouveau message", systemImage: "plus.circle.fill")
             }
             .foregroundStyle(Color.accentColor)
@@ -133,7 +141,7 @@ struct RosterListView: View {
         VStack(spacing: 8) {
             Image(systemName: "message").font(.system(size: 40)).foregroundStyle(.secondary)
             Text("Aucune conversation").foregroundStyle(.secondary)
-            Button { showContactPicker = true } label: {
+            Button { showNewMessage = true } label: {
                 Label("Nouveau message", systemImage: "plus.circle.fill")
             }
             NavigationLink {

@@ -208,11 +208,11 @@ transmis en pré-remplissage à `ChatView` (nouveau paramètre `initialInputText
 réellement via son pipeline `sendText()` déjà fonctionnel.
 
 ### 2026-08-18 — Chat/Messaging (P2) — Implémentation de l'assistant IA Gemini
-**Commit(s) :** (à committer avec ce lot)
-**Run CI :** à dispatcher après commit
+**Commit(s) :** `3df3d7a`
+**Run CI :** [32177241332](https://github.com/SalimMedir/TiinverSwift/actions/runs/32177241332) — `status: completed`, `conclusion: success`
 **Statut AVANT (audit V2) :** `PARTIAL` probable (seule la couche de stockage portée)
-**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — mode suppression d'arrière-plan
-explicitement non porté, test fonctionnel réel toujours requis
+**Statut APRÈS :** `BUILD_VALIDATED` — commit `3df3d7a` — CI SUCCESS — mode suppression
+d'arrière-plan explicitement non porté, test fonctionnel réel toujours requis
 **Preuve du changement de statut :** Lu `ai/TiinverGeminiAIChat.java` (823 lignes, entier).
 **Correction d'audit importante** : le fichier voisin `ai/TiinverAIChat.java` (avec
 `OPENAI_API_KEY` en dur, trouvé en cherchant les clés API dans le module `ai`) N'EST PAS le fichier
@@ -231,8 +231,8 @@ dédié, le cœur texte+image reste pleinement fonctionnel sans lui. Câblé dep
 `RosterListView` (icône sparkles), même point d'entrée logique que les 3 confirmés côté Android.
 
 ### 2026-08-18 — Discover/Certification (P2) — Vérification champ par champ + correctif `expire_at`
-**Commit(s) :** (à committer avec ce lot)
-**Run CI :** à dispatcher après commit
+**Commit(s) :** `a2952b3`
+**Run CI :** [32177565133](https://github.com/SalimMedir/TiinverSwift/actions/runs/32177565133) — `status: completed`, `conclusion: success`
 **Statut AVANT (audit V2) :** `CODE_PRESENT_UNVERIFIED` — correspondance non vérifiée en détail
 **Statut APRÈS :** `COMPLETE_PARITY_CANDIDATE`
 **Preuve du changement de statut :** Lu les 9 fichiers du module `ui/certification` (351+229 lignes
@@ -246,11 +246,11 @@ tout le fichier) — absence fidèle côté iOS, pas un gap. Endpoints `certific
 (multipart)/`certification/{userId}` déjà fidèles depuis GAP-004 (session antérieure), RAS.
 
 ### 2026-08-18 — Wallet (P2) — Résolution des 5 écrans Wallet secondaires
-**Commit(s) :** (à committer avec ce lot)
-**Run CI :** à dispatcher après commit
+**Commit(s) :** `c6a9f56`
+**Run CI :** [32177918727](https://github.com/SalimMedir/TiinverSwift/actions/runs/32177918727) — `status: completed`, `conclusion: success`
 **Statut AVANT (audit V2) :** correspondance non déterminée pour les 5 écrans
 **Statut APRÈS :** 4/5 confirmés SUPERSEDED (StoreKit 2, aucun travail requis) ; 1/5
-(`TransactionTutorialActivity`) `BUILD_VALIDATED` à confirmer par CI
+(`TransactionTutorialActivity`) `BUILD_VALIDATED` — commit `c6a9f56` — CI SUCCESS
 **Preuve du changement de statut :** Lu les 5 fichiers Android (441 lignes au total).
 `SelectAmountActivity`/`RechargeCoinsActvity`/`PeerToPeerActivity` (vide, atteint uniquement depuis
 `RechargeCoinsActvity`) font tous partie du flux d'achat manuel déjà remplacé par StoreKit 2
@@ -264,11 +264,11 @@ que `PoliticaDemandView.swift`), câblé en icône "?" toolbar depuis `WithdrawV
 `BuyCoinsView.swift` (son analogue le plus proche de `SelectAmountActivity`/`PurchaseActivity`).
 
 ### 2026-08-18 — Chat/Messaging (P2) — Renommage de groupe + filtre membres + correctif fraîcheur description
-**Commit(s) :** (à committer avec ce lot)
-**Run CI :** à dispatcher après commit
+**Commit(s) :** `91adca3`
+**Run CI :** [32178357069](https://github.com/SalimMedir/TiinverSwift/actions/runs/32178357069) — `status: completed`, `conclusion: success`
 **Statut AVANT (audit V2) :** correspondance non vérifiée pour 3 fichiers Android
 **Statut APRÈS :** `COMPLETE_PARITY_CANDIDATE` (inchangé, gap comblé DANS la même feature) —
-`BUILD_VALIDATED` à confirmer par CI
+`BUILD_VALIDATED` — commit `91adca3` — CI SUCCESS
 **Preuve du changement de statut :** Lu `AddGroupDescriptionActivity.java` (déjà couvert, RAS),
 `ChangeGroupTopicActivity.java` (168 lignes) et `FilterGroupMemberList.java` (410 lignes) en entier.
 **Vrai gap trouvé** : `ChangeGroupTopicActivity` (renommage du groupe, `POST updategroup

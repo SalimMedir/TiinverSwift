@@ -170,3 +170,21 @@ d'entrée : action "Statistiques" ajoutée au menu "..." du Feed pour ses propre
 équivalent depuis le fullscreen de PROFIL (`FeedDetailPagerView(posts:startIndex:onClose:)`,
 initialiseur SANS `onMore`) n'a pas été câblé — Feed seulement, d'où `PARTIAL` plutôt que
 `COMPLETE_PARITY_CANDIDATE`.
+
+### 2026-08-18 — Animems (P2) — Reclassification de l'export GIF en `DEAD_CODE`
+**Commit(s) :** (à committer avec ce lot — commentaires seulement, aucune fonctionnalité ajoutée)
+**Run CI :** à dispatcher après commit
+**Statut AVANT (audit V2) :** `MISSING` confirmé
+**Statut APRÈS :** `DEAD_CODE` — aucun travail requis, la fonctionnalité n'existe pas dans le flux
+Android réel non plus
+**Preuve du changement de statut :** `grep "AnimatedGifEncoder\|GIFView"` exhaustif sur tout le
+module `engine` — ces 2 classes (1282+ lignes) ne sont référencées par AUCUN appelant en dehors
+d'elles-mêmes. Lu `AnimemesCompound.java:2960-2966` (`showSaveDialog()`, le VRAI menu de sauvegarde
+réellement exercé, `AnimemesActionSheet.ActionListener`) : seulement 3 actions exposées
+(`onPublishAnimation`→vidéo, `onSaveTemplate`, `onPublishTemplate`) — aucune action GIF. Même
+classe de code mort que `RechercheTiinver2.java`/`TrimBenchActivity.java`/`FullscreenActivity.java`
+déjà confirmés cette session. **Décision explicite : ne PAS construire cet export côté iOS** —
+inventer une fonctionnalité qu'Android lui-même n'expose jamais à l'utilisateur irait à l'encontre
+de la mission de parité. Commentaires mis à jour dans `AnimemesEditorState.swift`/
+`MIGRATION_PARITY_AUDIT_V2.md` pour refléter la classification correcte plutôt que de laisser un
+gap fantôme dans le décompte.

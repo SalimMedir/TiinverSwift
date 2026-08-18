@@ -610,7 +610,12 @@ final class AnimemesEditorState: ObservableObject {
     /// Port de `save_animemes2` → `showSaveDialog()`/`saveBitmapDrawed()` — branche sur
     /// `isAnimation()` comme l'original : export vidéo réel si au moins un calque est animé, sinon
     /// sauvegarde d'une image statique (JPEG, qualité 70 comme `BitmapManager.fromBitmapToImage`
-    /// côté Android, `createImage`). PAS de GIF (voir `AnimemesExporter`, aucun exporteur GIF porté).
+    /// côté Android, `createImage`). PAS de GIF — **vérifié le 2026-08-18 (P2) : `DEAD_CODE` côté
+    /// Android lui-même**, pas un gap à combler. `android.codec.AnimatedGifEncoder.java`/
+    /// `GIFView.java` existent dans le module `engine` mais ne sont référencés par AUCUN appelant
+    /// (`grep` exhaustif) — `showSaveDialog()` (`AnimemesCompound.java`, le vrai menu de
+    /// sauvegarde) n'expose que vidéo/template, jamais GIF. Construire cet export ici inventerait
+    /// une fonctionnalité qu'Android n'expose jamais à l'utilisateur.
     func export(canvasSize: CGSize, completion: @escaping (URL?) -> Void) {
         guard !composer.layers.isEmpty else { return }
         guard hasAnimation else {

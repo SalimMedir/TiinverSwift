@@ -658,7 +658,7 @@ un média lisible — le point #3 de "Required work" ci-dessus, lecture HLS `.m3
 | Templates communautaires (parcourir/télécharger/appliquer) | `template.RecomposeManager`/`RecomposeTemplate` | `CommunityTemplateRepository.swift`/`CommunityTemplateGalleryView.swift` | COMPLETE_PARITY_CANDIDATE — upload confirmé DEAD_CODE côté Android lui-même |
 | Export image statique | présent | `exportStaticImage` | COMPLETE_PARITY_CANDIDATE |
 | Export vidéo (MP4) | `android.codec.MP4Encoder.java` (2200+ lignes, GPU/OpenGL) | `AnimemesExporter.swift` via `AVAssetWriter` (mécanisme natif différent) | PARTIAL/VISUALLY_DIFFERENT — le fichier iOS documente lui-même ce qui n'a pas été relu en détail (normalisation audio notamment) |
-| Export GIF | `android.codec.AnimatedGifEncoder.java` (confirmé présent) | ABSENT — confirmé par le code lui-même (`AnimemesEditorState.swift:589`) | MISSING confirmé |
+| Export GIF | `android.codec.AnimatedGifEncoder.java`/`GIFView.java` (1282+ lignes, présents dans le module `engine`) | ABSENT | **`DEAD_CODE` (RECLASSIFIÉ le 2026-08-18, P2)** — PAS `MISSING` : `grep "AnimatedGifEncoder\|GIFView"` sur TOUT le module `engine` ne retourne que leurs propres fichiers, JAMAIS référencés depuis `AnimemesCompound.java` (la classe réellement exercée) ni aucun autre appelant. `showSaveDialog()` (`AnimemesCompound.java:2960-2966`, le VRAI menu de sauvegarde, `AnimemesActionSheet.ActionListener`) n'expose que 3 actions : `onPublishAnimation`→vidéo, `onSaveTemplate`/`onPublishTemplate` — AUCUNE action GIF. Même classe de code mort que `RechercheTiinver2.java`/`TrimBenchActivity.java`/`FullscreenActivity.java` déjà confirmés cette session : construire un export GIF côté iOS inventerait une fonctionnalité qu'Android lui-même n'expose jamais à l'utilisateur. |
 | Toolbar/boutons/panels | `AnimemesCompound`/`LayerEditorPanel`/`ShapeAddPanel`/`MaskAddPanel` | `LayerEditorPanelState.swift`/panels correspondants | CODE_PRESENT_UNVERIFIED — parité visuelle non comparée capture à capture cette passe |
 
 ### Niveau 2 — Architecture (points de rupture précis)
@@ -715,7 +715,9 @@ une forte correspondance structurelle de code — ne pas confondre "l'algorithme
    session (commit `0a8966b`).
 2. `preparePlayback` sur-déclenché à chaque frame de geste — dégradation de fluidité, corrigée cette
    session (commit `4c57d08`).
-3. Export GIF — MISSING confirmé (auto-documenté dans le code).
+3. ~~Export GIF — MISSING confirmé (auto-documenté dans le code).~~ **RECLASSIFIÉ `DEAD_CODE` le
+   2026-08-18 (P2)** — `AnimatedGifEncoder.java`/`GIFView.java` jamais appelés depuis
+   `AnimemesCompound.java`, `showSaveDialog()` n'expose que vidéo/template. Rien à porter.
 4. Export vidéo MP4 — PARTIAL : mécanisme différent (AVAssetWriter vs pipeline OpenGL/codec Android),
    zones explicitement documentées comme non comparées en détail (normalisation audio).
 5. Pivot de rotation/scale à 2 doigts — VISUALLY_DIFFERENT mineur, écart assumé.
@@ -825,7 +827,9 @@ fonctionnalité "Fullscreen"). Chiffre honnête, pas un chiffre habillé pour pa
     `PrivateMessageSettingView.swift`. `BUILD_VALIDATED` (CI confirmée verte).
 11. ~~Statistiques par post (`StatisticsActivity`)~~ — **implémenté le 2026-08-18 (P2)**, voir
     `StatisticsView.swift`. `BUILD_VALIDATED` à confirmer par CI ; point d'entrée Profile restant.
-12. Export GIF Animems — `MISSING` confirmé, auto-documenté dans le code lui-même.
+12. ~~Export GIF Animems — `MISSING` confirmé, auto-documenté dans le code lui-même.~~ **RECLASSIFIÉ
+    `DEAD_CODE` le 2026-08-18 (P2)** — l'encodeur Android existe mais n'est câblé nulle part dans le
+    flux réel (`AnimemesCompound.java`). Retiré du décompte des gaps à combler.
 13. Écran de recherche téléphone/email pour nouveau contact (`roster/NewMessage.java`) — `MISSING`
     confirmé (historique, re-confirmé).
 14. Assistant IA (Gemini, `TiinverAIChat`/`TiinverGeminiAIChat`) — présence d'un repository

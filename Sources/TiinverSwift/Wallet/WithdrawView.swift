@@ -71,6 +71,13 @@ struct WithdrawView: View {
             }
         }
         .navigationTitle("Retrait") // R.string.status_of_withdrawal_request (titre d'écran non identifié précisément)
+        // Port de `tutoriel_withdraw`/`TransactionTutorialActivity` — voir `TransactionTutorialView
+        // .swift`, 2026-08-18 P2.
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                NavigationLink { TransactionTutorialView() } label: { Image(systemName: "questionmark.circle") }
+            }
+        }
         .alert("Retrait envoyé", isPresented: $didSubmit) {
             Button("OK") { dismiss() }
         }

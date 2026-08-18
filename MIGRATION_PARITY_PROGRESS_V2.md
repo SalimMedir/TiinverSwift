@@ -244,3 +244,21 @@ trouvé `expire_at` décodé (`CertificationStatus.expire_at`) mais jamais rendu
 Confirmé `btnRenew`/`btnCancel` non câblés côté Android lui-même (aucun `setOnClickListener` dans
 tout le fichier) — absence fidèle côté iOS, pas un gap. Endpoints `certification/request`
 (multipart)/`certification/{userId}` déjà fidèles depuis GAP-004 (session antérieure), RAS.
+
+### 2026-08-18 — Wallet (P2) — Résolution des 5 écrans Wallet secondaires
+**Commit(s) :** (à committer avec ce lot)
+**Run CI :** à dispatcher après commit
+**Statut AVANT (audit V2) :** correspondance non déterminée pour les 5 écrans
+**Statut APRÈS :** 4/5 confirmés SUPERSEDED (StoreKit 2, aucun travail requis) ; 1/5
+(`TransactionTutorialActivity`) `BUILD_VALIDATED` à confirmer par CI
+**Preuve du changement de statut :** Lu les 5 fichiers Android (441 lignes au total).
+`SelectAmountActivity`/`RechargeCoinsActvity`/`PeerToPeerActivity` (vide, atteint uniquement depuis
+`RechargeCoinsActvity`) font tous partie du flux d'achat manuel déjà remplacé par StoreKit 2
+(`CoinStoreManager.swift`, décision de conformité App Store 3.1.1/3.1.5 documentée lors d'une
+session antérieure). `UseBankCardFragment` utilise l'API Google Pay (`com.google.android.gms.
+wallet`), exclusive à Android, aucun équivalent iOS pertinent (StoreKit couvre déjà le même besoin).
+Seul `TransactionTutorialActivity` (2 vidéos YouTube retrait/achat, IDs `C_F2V6qTaGc`/
+`fYxdI6DVlac`, atteint aussi depuis `WithdrawActivity` — TOUJOURS actif, PAS remplacé) était un vrai
+gap. Implémenté `TransactionTutorialView.swift` (lecteur `WKWebView`/`embed` YouTube, même approche
+que `PoliticaDemandView.swift`), câblé en icône "?" toolbar depuis `WithdrawView.swift` ET
+`BuyCoinsView.swift` (son analogue le plus proche de `SelectAmountActivity`/`PurchaseActivity`).

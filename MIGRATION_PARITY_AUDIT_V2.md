@@ -847,9 +847,15 @@ fonctionnalité "Fullscreen"). Chiffre honnête, pas un chiffre habillé pour pa
     (P2)** : `COMPLETE_PARITY_CANDIDATE`, 1 champ manquant (`expire_at`) trouvé et corrigé,
     `CertificationRequestFragment.java` confirmé `DEAD_CODE` (0 appelant, à ne pas confondre avec
     le vrai onglet `CertificationState.java`).
-16. Plusieurs écrans Wallet secondaires (`PeerToPeerActivity`/`SelectAmountActivity`/
-    `RechargeCoinsActvity`/`TransactionTutorialActivity`/`UseBankCardFragment`) — rôle exact et
-    correspondance iOS non déterminés cette passe, possibles redondances ou `MISSING` réels.
+16. ~~Plusieurs écrans Wallet secondaires — rôle exact et correspondance iOS non déterminés.~~
+    **Résolu le 2026-08-18 (P2)** : `SelectAmountActivity`/`RechargeCoinsActvity`/
+    `PeerToPeerActivity` (vide, atteint UNIQUEMENT depuis `RechargeCoinsActvity`)/`UseBankCardFragment`
+    (Google Pay — API Android exclusive, aucun équivalent iOS) sont TOUS remplacés délibérément par
+    StoreKit 2 (`CoinStoreManager.swift`, décision de conformité App Store 3.1.1/3.1.5 déjà
+    documentée, session antérieure) — pas des gaps. Seul `TransactionTutorialActivity` (2 vidéos
+    YouTube retrait/achat, atteint aussi depuis `WithdrawActivity`, TOUJOURS actif) était un vrai
+    gap `MISSING` — implémenté (`TransactionTutorialView.swift`), câblé depuis `WithdrawView.swift`
+    ET `BuyCoinsView.swift`.
 17. `AddGroupDescriptionActivity`/`ChangeGroupTopicActivity`/`FilterGroupMemberList` — correspondance
     avec `GroupDetailView.swift` non vérifiée élément par élément (fusion probable non confirmée).
 18. Bandeau de diagnostic session visible en permanence (y compris sur Appetize) — corrigé cette

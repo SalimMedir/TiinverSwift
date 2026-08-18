@@ -34,6 +34,13 @@ struct BuyCoinsView: View {
             }
         }
         .navigationTitle("Acheter des pièces") // titre non identifié précisément dans le XML Android non lu
+        // Port de `tutoriel_withdraw` (`SelectAmountActivity`, l'écran remplacé par CET écran) —
+        // voir `TransactionTutorialView.swift`, 2026-08-18 P2.
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                NavigationLink { TransactionTutorialView() } label: { Image(systemName: "questionmark.circle") }
+            }
+        }
         .task { await store.loadProducts() }
         .alert("Erreur", isPresented: Binding(get: { store.lastError != nil }, set: { if !$0 { store.lastError = nil } })) {
             Button("OK") {}

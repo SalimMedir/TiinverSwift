@@ -464,7 +464,7 @@ sur plusieurs points de détail (debounce, hashtag, états).
 | Création groupe — écran 2 (sélection multiple) | `ChooseFragment`/`Adapter.ViewHolder` | `ContactPickerView` mode `.selectForGroup` | `COMPLETE_PARITY_CANDIDATE` | — |
 | Création groupe — écran 3 (nom+création) | `Group.java` | `GroupCreationView.swift` | `COMPLETE_PARITY_CANDIDATE` | Endpoint `POST group` vérifié, y compris la faute `type:"pivate"` reproduite |
 | Bouton "créer groupe" — accessible réellement | FAB `Roster.java:84,133-144` | FAB `RosterListView` | `COMPLETE_PARITY_CANDIDATE` | Câblé — **historique : signalé absent/non accessible par l'utilisateur, corrigé, PAS re-testé depuis le dernier correctif de flux (écran 1/2)** |
-| Gestion groupe (membres/rôles) | `GroupDetailActivity`/`SettingGroupMessageFragmant` | `GroupDetailView.swift`/`AddGroupMemberView.swift` | `COMPLETE_PARITY_CANDIDATE` | `GET membership/{groupId}`, `POST /member/update`, `POST deleteMember` vérifiés (GAP-011 historique) |
+| Gestion groupe (membres/rôles/nom/description) | `GroupDetailActivity`/`SettingGroupMessageFragmant`/`ChangeGroupTopicActivity`/`AddGroupDescriptionActivity`/`FilterGroupMemberList` | `GroupDetailView.swift`/`AddGroupMemberView.swift` | `COMPLETE_PARITY_CANDIDATE` | `GET membership/{groupId}`, `POST /member/update`, `POST deleteMember` vérifiés (GAP-011 historique) ; renommage du groupe (`updategroup` column=`name`) et filtre de recherche membres AJOUTÉS le 2026-08-18 (P2) après comparaison champ par champ complète des 3 fichiers Android restants |
 | Réglages 1 conversation (mute, heure programmée) | `SettingPrivateMessageFragmant` (238 lignes, hébergé par `ProfileDetailActivity`, MÊME Activity que `SettingGroupMessageFragmant`) | `PrivateMessageSettingView.swift` | `BUILD_VALIDATED` (CI confirmée verte) — test fonctionnel réel toujours requis | **Implémenté le 2026-08-18 (P1)** — 100% local (`UserDefaults`/`@AppStorage`, AUCUN appel réseau côté Android non plus, vérifié en lisant le fichier en entier). Le bouton "person.circle" du chat 1:1 (raccourci direct-profil, documenté comme gap volontairement borné) ouvre désormais ce VRAI écran, dont `profile_btn` est maintenant une simple rangée. Bouton "Bloquer" reproduit FIDÈLEMENT tel quel (Android ne fait que changer le label, aucun appel réseau ni persistance à cet endroit précis — PAS "corrigé" en un vrai toggle, le vrai blocage fonctionnel existe déjà ailleurs, `ProfileViewModel.toggleBlock`). |
 | Accès profil depuis un chat 1:1 | `profile_btn`→`UserProfile` | bouton toolbar "person.circle" ajouté cette session | `COMPLETE_PARITY_CANDIDATE` | Commit dans GAP-021 |
 | Suppression message (pour moi / pour tous) | dialogue 2 choix (`ChatFragmentTest.java:2493-2521`) | `showDeleteOptions`, même 2 choix | `COMPLETE_PARITY_CANDIDATE` | Câblé session antérieure |
@@ -856,8 +856,15 @@ fonctionnalité "Fullscreen"). Chiffre honnête, pas un chiffre habillé pour pa
     YouTube retrait/achat, atteint aussi depuis `WithdrawActivity`, TOUJOURS actif) était un vrai
     gap `MISSING` — implémenté (`TransactionTutorialView.swift`), câblé depuis `WithdrawView.swift`
     ET `BuyCoinsView.swift`.
-17. `AddGroupDescriptionActivity`/`ChangeGroupTopicActivity`/`FilterGroupMemberList` — correspondance
-    avec `GroupDetailView.swift` non vérifiée élément par élément (fusion probable non confirmée).
+17. ~~`AddGroupDescriptionActivity`/`ChangeGroupTopicActivity`/`FilterGroupMemberList` —
+    correspondance non vérifiée.~~ **Vérifié le 2026-08-18 (P2)** : `AddGroupDescriptionActivity`
+    déjà entièrement couvert (session antérieure). `FilterGroupMemberList` (410 lignes) confirmé
+    fonctionnellement équivalent à `GroupDetailView`'s gestion des membres (même simplification
+    déjà documentée : endpoint réseau direct au lieu de la sync SQLite locale), seule différence
+    réelle = un filtre de recherche, ajouté. **Vrai gap trouvé et corrigé** : `ChangeGroupTopicActivity`
+    (renommage du groupe) N'AVAIT AUCUNE UI côté iOS (`groupName` était `let`, immuable) — implémenté.
+    Corrigé au passage : `groupDescription` était aussi `let`, donc l'en-tête restait figé sur
+    l'ancienne valeur après une modification réussie (même classe de bug).
 18. Bandeau de diagnostic session visible en permanence (y compris sur Appetize) — corrigé cette
     session (`f669a89`), non re-testé.
 19. Export vidéo MP4 Animems — mécanisme différent d'Android (AVAssetWriter vs pipeline OpenGL),

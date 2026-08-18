@@ -262,3 +262,22 @@ Seul `TransactionTutorialActivity` (2 vidéos YouTube retrait/achat, IDs `C_F2V6
 gap. Implémenté `TransactionTutorialView.swift` (lecteur `WKWebView`/`embed` YouTube, même approche
 que `PoliticaDemandView.swift`), câblé en icône "?" toolbar depuis `WithdrawView.swift` ET
 `BuyCoinsView.swift` (son analogue le plus proche de `SelectAmountActivity`/`PurchaseActivity`).
+
+### 2026-08-18 — Chat/Messaging (P2) — Renommage de groupe + filtre membres + correctif fraîcheur description
+**Commit(s) :** (à committer avec ce lot)
+**Run CI :** à dispatcher après commit
+**Statut AVANT (audit V2) :** correspondance non vérifiée pour 3 fichiers Android
+**Statut APRÈS :** `COMPLETE_PARITY_CANDIDATE` (inchangé, gap comblé DANS la même feature) —
+`BUILD_VALIDATED` à confirmer par CI
+**Preuve du changement de statut :** Lu `AddGroupDescriptionActivity.java` (déjà couvert, RAS),
+`ChangeGroupTopicActivity.java` (168 lignes) et `FilterGroupMemberList.java` (410 lignes) en entier.
+**Vrai gap trouvé** : `ChangeGroupTopicActivity` (renommage du groupe, `POST updategroup
+column="name"`) n'avait AUCUNE UI côté iOS — `groupName` était un `let` immuable dans
+`GroupDetailView.swift`. Implémenté : `GroupRepository.updateName`, bouton "Modifier le nom" (admin
+seulement, même emplacement que "Modifier la description"), feuille de saisie, message système
+local `verb="groupNameChanged"` (même motif que `groupDescriptionChanged` déjà en place).
+**Corrigé au passage** (même classe de bug, trouvée en comparant) : `groupDescription` était aussi
+`let` — l'en-tête restait figé sur l'ancienne description après une modification réussie ; converti
+en `@State`, mis à jour après succès. `FilterGroupMemberList` confirmé fonctionnellement équivalent
+au flux membres déjà en place (même simplification "endpoint direct" déjà documentée), seule
+différence réelle = un filtre de recherche (`.searchable`), ajouté.

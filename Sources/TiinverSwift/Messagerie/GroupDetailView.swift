@@ -19,22 +19,52 @@ import SwiftUI
 /// tous deux secondaires par rapport au cœur du gap (membres/rôles/description/lien d'invitation).
 struct GroupDetailView: View {
     let groupId: String
-    let groupName: String
+    /// Port de `ChangeGroupTopicActivity` (168 lignes, entier, 2026-08-18 P2) — `@State` plutôt
+    /// que `let` (auparavant immuable, gap réel trouvé : le renommage du groupe n'avait aucune UI
+    /// côté iOS) pour refléter immédiatement le nouveau nom après un renommage réussi, MÊME motif
+    /// que `descriptionDraft`/`isEditingDescription` déjà en place pour la description.
+    @State private var groupName: String
     let groupToken: String
     let groupType: String
-    let groupDescription: String?
+    /// **CORRIGÉ le 2026-08-18 (P2)** : était `let`, donc l'en-tête restait figé sur l'ANCIENNE
+    /// description après un renommage réussi via `submitDescription()` (jusqu'à re-navigation vers
+    /// cet écran) — même classe de bug que `groupName` (voir sa doc ci-dessus), trouvée en
+    /// appliquant le même motif de correction aux deux champs.
+    @State private var groupDescription: String?
     let groupProfile: String?
 
     @Environment(\.dismiss) private var dismiss
     @State private var members: [GroupMember] = []
+    @State private var memberSearchText = ""
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var showAddMember = false
     @State private var isEditingDescription = false
     @State private var descriptionDraft = ""
+    @State private var isEditingName = false
+    @State private var nameDraft = ""
     @State private var showLeaveConfirm = false
     @State private var memberActionTarget: GroupMember?
     @State private var showInviteShare = false
+
+    init(groupId: String, groupName: String, groupToken: String, groupType: String, groupDescription: String?, groupProfile: String?) {
+        self.groupId = groupId
+        _groupName = State(initialValue: groupName)
+        self.groupToken = groupToken
+        self.groupType = groupType
+        _groupDescription = State(initialValue: groupDescription)
+        self.groupProfile = groupProfile
+    }
+
+    /// Port de `FilterGroupMemberList`'s `SearchView`/`filterMember` (410 lignes, entier — même
+    /// écran de gestion des membres qu'ici, mais sourcé depuis la synchronisation locale SQLite au
+    /// lieu de l'endpoint réseau direct déjà utilisé volontairement, voir note de tête de fichier ;
+    /// SEULE différence fonctionnelle réelle après comparaison ligne à ligne : le filtre de
+    /// recherche, ajouté ici plutôt que dupliquer tout l'écran pour cette unique différence).
+    private var filteredMembers: [GroupMember] {
+        guard !memberSearchText.isEmpty else { return members }
+        return members.filter { $0.displayName.localizedCaseInsensitiveContains(memberSearchText) || ($0.username ?? "").localizedCaseInsensitiveContains(memberSearchText) }
+    }
 
     private var currentUserId: Int? { UserSession.shared.myId.flatMap { Int($0) } }
     private var currentMember: GroupMember? { members.first { $0.userId == currentUserId } }
@@ -59,6 +89,10 @@ struct GroupDetailView: View {
                     }
                 }
                 if isCurrentUserAdmin {
+                    Button("Modifier le nom") { // ChangeGroupTopicActivity
+                        nameDraft = groupName
+                        isEditingName = true
+                    }
                     Button("Modifier la description") { // add_group_description
                         descriptionDraft = groupDescription ?? ""
                         isEditingDescription = true
@@ -77,7 +111,7 @@ struct GroupDetailView: View {
                 if isLoading {
                     ProgressView()
                 } else {
-                    ForEach(members) { member in
+                    ForEach(filteredMembers) { member in
                         memberRow(member)
                     }
                 }
@@ -93,11 +127,28 @@ struct GroupDetailView: View {
         }
         .navigationTitle("Infos du groupe")
         .navigationBarTitleDisplayMode(.inline)
+        // Port de `FilterGroupMemberList`'s `SearchView` — voir `filteredMembers` en tête de fichier.
+        .searchable(text: $memberSearchText, prompt: "Rechercher un membre")
         .task { await loadMembers() }
         .refreshable { await loadMembers() }
         .sheet(isPresented: $showAddMember) {
             AddGroupMemberView(groupId: groupId, existingMemberIds: Set(members.map(\.userId))) {
                 Task { await loadMembers() }
+            }
+        }
+        .sheet(isPresented: $isEditingName) {
+            NavigationStack {
+                Form {
+                    TextField("Nom du groupe", text: $nameDraft)
+                }
+                .navigationTitle("Nom du groupe")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Annuler") { isEditingName = false } }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Enregistrer") { Task { await submitName() } }
+                    }
+                }
             }
         }
         .sheet(isPresented: $isEditingDescription) {
@@ -200,9 +251,24 @@ struct GroupDetailView: View {
         isEditingDescription = false
         do {
             try await GroupRepository.shared.updateDescription(descriptionDraft, groupId: groupId, creatorId: myId, apiKey: apiKey)
+            groupDescription = descriptionDraft
             await insertSystemMessage(verb: "groupDescriptionChanged", text: "\(UserSession.shared.username ?? "")/\(descriptionDraft)")
         } catch {
             errorMessage = "Échec de la mise à jour de la description."
+        }
+    }
+
+    /// Port de `ChangeGroupTopicActivity.updateGroup` — MÊME motif que `submitDescription`
+    /// ci-dessus, `column="name"`/`verb="groupNameChanged"`.
+    private func submitName() async {
+        guard let myId = UserSession.shared.myId, let apiKey = UserSession.shared.apiKey else { return }
+        isEditingName = false
+        do {
+            try await GroupRepository.shared.updateName(nameDraft, groupId: groupId, creatorId: myId, apiKey: apiKey)
+            groupName = nameDraft
+            await insertSystemMessage(verb: "groupNameChanged", text: "\(UserSession.shared.username ?? "")/\(nameDraft)")
+        } catch {
+            errorMessage = "Échec du renommage du groupe."
         }
     }
 

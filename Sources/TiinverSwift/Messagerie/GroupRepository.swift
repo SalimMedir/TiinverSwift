@@ -251,6 +251,15 @@ final class GroupRepository {
         _ = try await APIClient.shared.post(params, endpoint: "updategroup")
     }
 
+    /// Port de `ChangeGroupTopicActivity.updateGroup` (lignes 91-101, entier, 2026-08-18 P2) —
+    /// MÊME endpoint générique `updategroup` qu'`updateDescription` ci-dessus, `column="name"`.
+    func updateName(_ name: String, groupId: String, creatorId: String, apiKey: String) async throws {
+        let params: [String: String] = [
+            "creator": creatorId, "id": groupId, "value": name, "column": "name", "apiKey": apiKey,
+        ]
+        _ = try await APIClient.shared.post(params, endpoint: "updategroup")
+    }
+
     /// Port de `GroupDetailActivity.exit()` (lignes 260-271) — `POST leftgroup`.
     func leaveGroup(groupId: String, userId: String, apiKey: String) async throws {
         let params: [String: String] = ["groupId": groupId, "userId": userId, "apiKey": apiKey]

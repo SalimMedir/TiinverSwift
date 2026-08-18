@@ -8,6 +8,19 @@ final class AdsRepository {
     static let shared = AdsRepository()
     private init() {}
 
+    /// Port de `ActivityViewModel.getActivityStatistics`/`AdsRepository.getActivityStatistics`
+    /// (partage LE MÊME `AdsRepository.java` qu'`AdsViewModel` ci-dessous côté Android, même
+    /// classe réseau réutilisée pour Boost ET Statistiques — reproduit en un seul repository Swift
+    /// plutôt que dupliqué) — `GET activity/statistics/{activityId}/{userId}`, clé `"statistics"`
+    /// (chaîne JSON re-encodée, MÊME motif que `boost/overviews`/`"boosts"`).
+    func fetchStatistics(activityId: Int, userId: String) async throws -> StatisticModel {
+        let value = try await APIClient.shared.get("activity/statistics/\(activityId)/\(userId)")
+        guard value.isBackendSuccess, let data = value.looselyEncodedJSON("statistics")?.rawData else {
+            throw JSONError.typeMismatch(value.backendErrorMessage ?? "activity/statistics")
+        }
+        return try JSONDecoder().decode(StatisticModel.self, from: data)
+    }
+
     /// Port de `getBoostOverview` — `GET boost/overviews/{userId}`, clé `"boosts"` = UN SEUL objet
     /// `AdsData` (agrégat), lu par Android via `getString`+Gson (chaîne JSON re-encodée) —
     /// `looselyEncodedJSON` tolère aussi la forme objet imbriqué direct, jamais confirmée par un

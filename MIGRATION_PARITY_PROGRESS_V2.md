@@ -150,3 +150,23 @@ division entière —, garde budget<5 silencieuse fidèle), `BoostDashboardView.
 `promoteBtn`/`CustomCardView.java:238`). Bug Android reproduit fidèlement (pas corrigé) : la
 déduction locale de solde après succès écrit toujours dans `coinsAmount`, même en payant par
 gemmes.
+
+### 2026-08-18 — Profile (P2) — Implémentation de StatisticsActivity (statistiques par post)
+**Commit(s) :** (à committer avec ce lot)
+**Run CI :** à dispatcher après commit
+**Statut AVANT (audit V2) :** `MISSING` confirmé (GAP-016 historique)
+**Statut APRÈS :** `PARTIAL` (`BUILD_VALIDATED` à confirmer par CI) — point d'entrée Feed câblé,
+point d'entrée Profile (fullscreen) restant, test fonctionnel réel toujours requis
+**Preuve du changement de statut :** Lu `Activity/ui/StatisticsActivity.java` (228 lignes, entier) +
+`models/activity/StatisticModel.java` (entier). `AdsRepository.fetchStatistics` ajouté (`activity/
+statistics/{activityId}/{userId}`, clé `"statistics"`). Nouveau `StatisticsView.swift`. **Bug
+Android reproduit fidèlement, PAS corrigé** : la boucle `for (Map.Entry entry : genderDist)`/
+`ageDist` réaffecte les 3 variables (homme/femme/inconnu, ou les 6 tranches d'âge) à CHAQUE
+itération plutôt que seulement pour la clé courante — un dictionnaire à plusieurs entrées ne peut
+peupler qu'UN SEUL champ (le dernier itéré), les autres retombant à "--" ; reproduit à l'identique
+plutôt que "corrigé" en un mappage propre qu'Android n'affiche jamais dans la pratique. Point
+d'entrée : action "Statistiques" ajoutée au menu "..." du Feed pour ses propres posts (même garde
+`isOwnPost` que "Promouvoir"). **Écart honnête non comblé cette passe** : le point d'entrée
+équivalent depuis le fullscreen de PROFIL (`FeedDetailPagerView(posts:startIndex:onClose:)`,
+initialiseur SANS `onMore`) n'a pas été câblé — Feed seulement, d'où `PARTIAL` plutôt que
+`COMPLETE_PARITY_CANDIDATE`.

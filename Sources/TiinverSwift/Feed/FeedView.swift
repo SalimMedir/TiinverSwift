@@ -35,6 +35,9 @@ struct FeedView: View {
     /// qu'une icône supplémentaire dédiée (rail déjà dense à 4 boutons + "...", même principe de
     /// simplification de portage que d'autres réagencements déjà documentés dans ce fichier).
     @State private var boostTargetPost: FeedActivity?
+    /// Port de `statisticBtn` (`view/CustomCardView.java:238-243`, MÊME garde que `promoteBtn`
+    /// ci-dessus, propres posts uniquement) — voir `StatisticsView.swift`, 2026-08-18 P2.
+    @State private var statsTargetPost: FeedActivity?
 
     private let columns = [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)]
 
@@ -183,6 +186,10 @@ struct FeedView: View {
         .sheet(item: $boostTargetPost) { post in
             NavigationStack { BoostView(activityId: post.id) }
         }
+        // Port de `statisticBtn` — voir déclaration de `statsTargetPost` ci-dessus.
+        .sheet(item: $statsTargetPost) { post in
+            NavigationStack { StatisticsView(activityId: post.id) }
+        }
         // Port de `OnclickMoreExpand` (bottom sheet à 5 items, `layout_post_action.xml`) —
         // `delete_content` TOUJOURS affiché (MÊME libellé "Supprimer" qu'on soit propriétaire ou
         // non, fidèle à l'original : `titles[0]` est un texte STATIQUE côté Android, pas conditionné
@@ -200,6 +207,7 @@ struct FeedView: View {
                     }
                 }
                 if isOwnPost {
+                    Button("Statistiques") { statsTargetPost = post }
                     Button("Promouvoir") { boostTargetPost = post }
                 }
                 if !isOwnPost {

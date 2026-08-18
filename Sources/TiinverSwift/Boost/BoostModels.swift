@@ -58,3 +58,24 @@ struct TagModel: Codable, Identifiable {
     var total_views: String?
     var id: String { tag ?? UUID().uuidString }
 }
+
+/// Port de `models/activity/StatisticModel.java` — `activity/statistics/{activityId}/{userId}`,
+/// clé `"statistics"` (chaîne JSON re-encodée, `object.getString("statistics")` + Gson, MÊME motif
+/// que `boost/overviews`).
+struct StatisticModel: Codable {
+    var views: Int?
+    var likes: Int?
+    var shares: Int?
+    var comments: Int?
+    var followers_total: Int?
+    var followers_period: Int?
+    var revenu_coins: Double?
+    var gender_distribution: [String: Int]?
+    var age_distribution: [String: Int]?
+    var country_distribution: [String: Int]?
+    var city_distribution: [String: Int]?
+    var total_watch_time: Double?
+    var avg_watch_time: Double?
+    var view_rate_3sec: Double?
+    var completion_rate: Double?
+}

@@ -183,7 +183,7 @@ Android sans équivalent nécessaire, noté).
 
 | Android | Rôle | iOS équivalent | Statut |
 |---|---|---|---|
-| `Activity/ui/StatisticsActivity.java` | Statistiques d'un post (créateur) | — | ❌ `MISSING` (GAP-016 historique confirmé : "écran de statistiques créateur entièrement absent") |
+| `Activity/ui/StatisticsActivity.java` | Statistiques d'un post (créateur) | `StatisticsView.swift` (nouveau, 2026-08-18 P2) | `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis |
 | `Activity/ui/Suggerencia.java` | Rôle exact non déterminé cette passe | — | 🟡 à investiguer |
 | `Activity/ui/TiinverCode.java` | Rôle exact non déterminé cette passe | — | 🟡 à investiguer |
 | `partage/ShareActivity.java`/`PartageWenack.java` | Résolution de liens profonds/partage | `Navigation/DeepLinkRouter.swift` | ✅ |
@@ -327,11 +327,11 @@ toujours requis pour passer en `COMPLETE_PARITY_VALIDATED`.
 | Certification (badge) | `isCertified`, affiché sur pseudo | Affiché (`ShortTextVIew`-équivalent) | 🟡 non re-vérifié visuellement cette passe |
 | Blocage | `POST block`, toggle `USER_BLOCKED`/`USER_UNBLOCKED` | Même endpoint (`toggleBlock`) | `COMPLETE_PARITY_CANDIDATE` | — |
 | Grille posts → Fullscreen | tap → même `FeedFragment`/`ViewPagerAdapter` réutilisé | tap → `.fullScreenCover(FeedDetailPagerView)` | `COMPLETE_PARITY_CANDIDATE` | Corrigé cette session (P0-D) — AVANT : aucun geste attaché du tout, `MISSING` confirmé |
-| Statistiques par post | `StatisticsActivity`, lancé depuis le fullscreen SI post = le sien | — | `MISSING` confirmé (GAP-016 historique) |
+| Statistiques par post | `StatisticsActivity`, lancé depuis le fullscreen SI post = le sien | `StatisticsView.swift`, câblé DEPUIS `FeedView` (menu "..."), PAS ENCORE depuis le pager plein écran de `ProfileView` (`FeedDetailPagerView(posts:startIndex:onClose:)`, l'initialiseur SANS `onMore` utilisé par Profile) | `PARTIAL` — implémenté le 2026-08-18 (P2), point d'entrée Feed seulement | Écart honnête : le point d'entrée depuis le fullscreen de PROFIL (mentionné dans la référence Android) reste à câbler, `FeedDetailPagerView` initialisé sans `onMore` à cet endroit précis |
 | État vide/erreur | chrome (avatar/stats/boutons) toujours visible même sans données, erreur affichée à côté | Même comportement (correctif session antérieure) | `COMPLETE_PARITY_CANDIDATE` | — |
 
 ### Missing / broken / different
-- Statistiques par post (`StatisticsActivity`) : `MISSING`.
+- Statistiques par post (`StatisticsActivity`) : implémenté le 2026-08-18 (P2), voir `StatisticsView.swift` — point d'entrée Feed câblé, point d'entrée Profile (fullscreen) restant.
 - Édition profil : présence de code confirmée, PAS vérifiée champ par champ (`CODE_PRESENT_UNVERIFIED`).
 - Aucune preuve de test réel récent (post-correctifs `thumbnailURL`/fullscreen) que la grille de
   posts affiche désormais des images — dépend directement du statut Home/Feed ci-dessus.
@@ -339,7 +339,8 @@ toujours requis pour passer en `COMPLETE_PARITY_VALIDATED`.
 ### Required work
 1. Vérifier `EditProfileView.swift`/`EditPersonalInformationView.swift` champ par champ contre
    `EditProfile.java`/`EditPersonalInformation.java`.
-2. Décider si `StatisticsActivity` doit être porté (P2, hors périmètre P0 actuel).
+2. ~~Décider si `StatisticsActivity` doit être porté (P2, hors périmètre P0 actuel).~~ Implémenté le
+   2026-08-18, câblage Profile (fullscreen) restant — voir `StatisticsView.swift`.
 3. Test réel pour confirmer que la grille affiche désormais des images (dépend du correctif
    `thumbnailURL`, non re-testé).
 
@@ -822,7 +823,8 @@ fonctionnalité "Fullscreen"). Chiffre honnête, pas un chiffre habillé pour pa
 10. ~~Réglages complets d'une conversation individuelle (mute, heure de livraison programmée,
     `SettingPrivateMessageFragmant`)~~ — **implémentés le 2026-08-18 (P1)**, voir
     `PrivateMessageSettingView.swift`. `BUILD_VALIDATED` (CI confirmée verte).
-11. Statistiques par post (`StatisticsActivity`) — `MISSING` confirmé (historique, re-confirmé).
+11. ~~Statistiques par post (`StatisticsActivity`)~~ — **implémenté le 2026-08-18 (P2)**, voir
+    `StatisticsView.swift`. `BUILD_VALIDATED` à confirmer par CI ; point d'entrée Profile restant.
 12. Export GIF Animems — `MISSING` confirmé, auto-documenté dans le code lui-même.
 13. Écran de recherche téléphone/email pour nouveau contact (`roster/NewMessage.java`) — `MISSING`
     confirmé (historique, re-confirmé).

@@ -281,3 +281,24 @@ local `verb="groupNameChanged"` (même motif que `groupDescriptionChanged` déj�
 en `@State`, mis à jour après succès. `FilterGroupMemberList` confirmé fonctionnellement équivalent
 au flux membres déjà en place (même simplification "endpoint direct" déjà documentée), seule
 différence réelle = un filtre de recherche (`.searchable`), ajouté.
+
+### 2026-08-18 — Navigation/Auth (P2) — Reclassification de 3 fichiers en DEAD_CODE, vérification SplashActivity
+**Commit(s) :** documentation uniquement, aucun changement de code (rien à porter)
+**Run CI :** N/A
+**Statut AVANT (audit V2) :** `FacebookActivity.java` `MISSING probable`, `DebutWenack2.java` 🟡 à
+investiguer, `SplashActivity.java`/`SplashActivity2.java` groupés en une seule ligne 🟡
+**Statut APRÈS :** les 3 confirmés `DEAD_CODE` ; `SplashActivity.java` (le seul vrai lanceur)
+confirmé ✅ fidèlement porté
+**Preuve du changement de statut :** Vérifié `AndroidManifest.xml` — SEULE `SplashActivity`
+(PAS `SplashActivity2`) porte `category.LAUNCHER`. `SplashActivity2.java` (261 lignes) et
+`DebutWenack2.java` (359 lignes, commentaire de tête trompeur "Start the MainActivity") confirmés
+0 appelant chacun dans tout le projet Android (`grep` exhaustif) — vrai code mort, pas des variantes
+alternatives actives. Lu `SplashActivity.java` en entier (265 lignes) et comparé à
+`RootRouterView.swift` : routage fidèle (`expire/version → UpdateAppView`, `SessionManager.getUser()
+→ Home sinon Login`), y compris une divergence produit délibérée déjà documentée (comparaison de
+version retirée sur demande explicite du propriétaire du projet — `version_code` Remote Config
+partagé avec Android en production, jamais pensé pour un `CFBundleVersion` iOS indépendant).
+`FacebookActivity.java` (23 lignes) : inflate un layout statique, AUCUNE logique, `LoginButton`/
+`LoginManager` (vraie API Facebook Login) introuvables dans tout le projet, 0 appelant — confirmé
+mort, `FacebookSdk.sdkInitialize()` dans `MainActivity.java` est un reliquat jamais suivi d'un
+vrai flux.

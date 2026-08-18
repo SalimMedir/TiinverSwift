@@ -100,9 +100,9 @@ Android sans équivalent nécessaire, noté).
 | `contacts/Contact.java` | Hôte écran 1/2/3 création de groupe | `Messagerie/ContactPickerView.swift` + `GroupCreationView.swift` | ✅ voir FEATURE Chat |
 | `messagerie/group/GroupDetailActivity.java` | Détail groupe (membres, admin) | `Messagerie/GroupDetailView.swift` | ✅ voir FEATURE Chat |
 | `messagerie/group/AddGroupMemberActivity.java` | Ajout membre | `Messagerie/AddGroupMemberView.swift` | ✅ voir FEATURE Chat |
-| `messagerie/group/AddGroupDescriptionActivity.java` | Modifier description groupe | `Messagerie/GroupDetailView.swift` (probable, intégré) | 🟡 à vérifier si c'est un écran séparé côté Android non reproduit comme tel |
-| `messagerie/group/ChangeGroupTopicActivity.java` | Modifier sujet/nom groupe | `Messagerie/GroupDetailView.swift` (probable) | 🟡 idem |
-| `messagerie/group/FilterGroupMemberList.java` | Filtrer/rechercher parmi les membres | — | ❌ `MISSING` probable, à confirmer |
+| `messagerie/group/AddGroupDescriptionActivity.java` | Modifier description groupe | `Messagerie/GroupDetailView.swift` (intégré) | ✅ vérifié le 2026-08-18 (P2), fidèle |
+| `messagerie/group/ChangeGroupTopicActivity.java` | Modifier sujet/nom groupe | `Messagerie/GroupDetailView.swift` (intégré) | ✅ implémenté le 2026-08-18 (P2) — était `MISSING` réel |
+| `messagerie/group/FilterGroupMemberList.java` | Filtrer/rechercher parmi les membres | `Messagerie/GroupDetailView.swift` (`.searchable`) | ✅ implémenté le 2026-08-18 (P2) |
 | `messagerie/group/InviteLinkActivity.java` | Lien d'invitation groupe | `Messagerie/GroupDetailView.swift` (lien affiché) | 🟡 |
 | `creatorOfweek/CreatorFragment.java` | Classement créateurs | `Creators/CreatorOfWeekView.swift` | ✅ |
 | `NotiLikecmt/ShowNoti.java` | Centre de notifications | `Notifications/NotificationsListView.swift` | ✅ |
@@ -111,7 +111,7 @@ Android sans équivalent nécessaire, noté).
 
 | Android | Rôle | iOS équivalent | Statut |
 |---|---|---|---|
-| `SplashActivity.java`/`SplashActivity2.java` | Écran de lancement | `TiinverApp.swift`/`RootRouterView.swift` | 🟡 |
+| `SplashActivity.java` (SEUL vrai lanceur — `AndroidManifest.xml`, `category.LAUNCHER`, vérifié) | Écran de lancement, routage session/mise à jour forcée | `TiinverApp.swift`/`RootRouterView.swift` | ✅ **vérifié le 2026-08-18 (P2)** : lu en entier (265 lignes), routage `expire/version → UpdateApp` puis `SessionManager.getUser() → Home sinon Login` fidèlement porté, y compris une divergence PRODUIT délibérée déjà documentée (comparaison de version retirée, seule la date d'expiration Remote Config bloque). `SplashActivity2.java` (261 lignes) ET `DebutWenack2.java` (359 lignes, doc "Start the MainActivity" trompeuse) confirmés `DEAD_CODE` — 0 appelant pour les deux dans tout le projet Android. |
 | `Authentification/MainActivity.java` | Hôte des fragments d'auth | `AuthCoordinatorView.swift` | 🟡 |
 | `Authentification/onboarding/OnboardingFragment.java` | Onboarding | `OnboardingView.swift` | 🟡 |
 | `Authentification/login/LoginFragment.java` | Connexion | `LoginView.swift` | ✅ (session vide corrigée, causes racines documentées `MIGRATION_AUDIT.md` historique) |
@@ -120,7 +120,7 @@ Android sans équivalent nécessaire, noté).
 | `Authentification/EmailVerificatiionCode.java`/`MyCodeConfirmFragment.java` | Vérification email | `EmailVerificationView.swift` | 🟡 |
 | `Authentification/passwordrecovery/mdpOublier.java`/`RecoverPassword.java` | Mot de passe oublié | `ForgotPasswordRequestView.swift`/`NewPasswordView.swift` | 🟡 |
 | `Authentification/PoliticaDemand.java` | CGU/politique de confidentialité | `PoliticaDemandView.swift` | 🟡 |
-| `FacebookActivity.java` | Connexion Facebook | — | ❌ `MISSING` probable (pas de SDK Facebook trouvé côté iOS dans la liste des fichiers) — À CONFIRMER, pas supposé sans vérification du flux réel |
+| `FacebookActivity.java` | Connexion Facebook | — | **`DEAD_CODE` confirmé le 2026-08-18 (P2)** — fichier lu en entier (23 lignes) : inflate un layout statique, AUCUNE logique, `LoginButton`/`LoginManager` (vraie API Facebook Login) introuvables dans TOUT le projet Android, 0 appelant pour `FacebookActivity.class`. `FacebookSdk.sdkInitialize()` dans `MainActivity.java` est un reliquat d'initialisation jamais suivi d'un vrai flux de connexion. Rien à porter. |
 
 ### Wallet / Monétisation / Paiement
 
@@ -197,7 +197,7 @@ Android sans équivalent nécessaire, noté).
 | `MyWebView.java` | WebView générique | — | 🟡 probablement remplacé par `SFSafariViewController`/`WKWebView` ponctuel, pas de fichier dédié nécessaire |
 | `animation.java` | Rôle exact non déterminé (nom générique) | — | 🟡 à investiguer |
 | `myFilterClass.java` | Rôle exact non déterminé | — | 🟡 à investiguer |
-| `DebutWenack2.java` | Rôle exact non déterminé (probable écran de démarrage legacy) | — | 🟡 à investiguer |
+| `DebutWenack2.java` | Écran de démarrage legacy (superseded) | — | **`DEAD_CODE` confirmé le 2026-08-18 (P2)** — voir ligne `SplashActivity.java` ci-dessus, 0 appelant |
 
 **Note méthodologique** : les lignes 🟡 "à investiguer"/"à vérifier" reflètent honnêtement le fait
 que CETTE passe n'a pas eu le temps de lire chacun de ces ~40 fichiers en entier — elles ne doivent

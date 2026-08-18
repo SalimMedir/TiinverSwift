@@ -1,4 +1,4 @@
-# MIGRATION_PARITY_AUDIT_V2.md — Audit de parité Android → iOS (nouvelle source de vérité)
+﻿# MIGRATION_PARITY_AUDIT_V2.md — Audit de parité Android → iOS (nouvelle source de vérité)
 
 **Ce fichier remplace `MIGRATION_AUDIT.md`/`MIGRATION_PROGRESS.md`/`CLAUDE_CONTINUATION.md` comme
 source de vérité pour la PARITÉ. Ces trois anciens fichiers restent lisibles comme HISTORIQUE
@@ -96,7 +96,7 @@ Android sans équivalent nécessaire, noté).
 | `roster/NewMessage.java` | Recherche téléphone/email pour nouveau contact | — | ❌ `MISSING` (déjà noté GAP existant : "écran dédié recherche téléphone/email, reste hors périmètre") |
 | `roster/Invite.java` | Invitation SMS/contact natif | `Wallet/ReferralView.swift` (partiel) | 🟡 `PARTIAL` probable — à vérifier si `Invite.java` = même flux que `ReferralActivity` ou distinct |
 | `messagerie/ui/ActivityMsg.java` | Conversation 1:1/groupe (hôte `ChatFragmentTest`) | `Messagerie/ChatView.swift` | ✅ voir FEATURE Chat |
-| `messagerie/ui/ProfileDetailActivity.java` | Réglages d'1 conversation (lance `SettingPrivateMessageFragmant`) | `PrivateMessageSettingView.swift` | `BUILD_VALIDATED` à confirmer par CI — implémenté le 2026-08-18 (P1) |
+| `messagerie/ui/ProfileDetailActivity.java` | Réglages d'1 conversation (lance `SettingPrivateMessageFragmant`) | `PrivateMessageSettingView.swift` | `BUILD_VALIDATED` (CI confirmée verte) — implémenté le 2026-08-18 (P1) |
 | `contacts/Contact.java` | Hôte écran 1/2/3 création de groupe | `Messagerie/ContactPickerView.swift` + `GroupCreationView.swift` | ✅ voir FEATURE Chat |
 | `messagerie/group/GroupDetailActivity.java` | Détail groupe (membres, admin) | `Messagerie/GroupDetailView.swift` | ✅ voir FEATURE Chat |
 | `messagerie/group/AddGroupMemberActivity.java` | Ajout membre | `Messagerie/AddGroupMemberView.swift` | ✅ voir FEATURE Chat |
@@ -142,7 +142,7 @@ Android sans équivalent nécessaire, noté).
 | `wallet/TransactionTutorialActivity.java` | Tutoriel transaction | — | ❌ `MISSING` (probablement décoratif, faible priorité) |
 | `wallet/UseBankCardFragment.java` | Formulaire carte bancaire | — | ❌ `MISSING` (StoreKit ne demande jamais de CB directement à l'app) |
 | `exchange/ExChangeActivity.java`/`RechargeActivity.java` | Change/recharge (legacy ?) | — | ❌ `MISSING`, rôle exact non déterminé cette passe |
-| `advertising/ui/BoostActivity.java`/`BoostDashboardFragment.java`/`CreateBoostFragment.java`/`CommandeActivity.java`/`MesBoosts.java` | Système de "boost" de publication (campagnes publicitaires payantes pour un post) | `Sources/TiinverSwift/Boost/` (nouveau, 2026-08-18 P1) | `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis | **Implémenté le 2026-08-18 (P1)** : 5 fichiers Android (2087 lignes) lus en entier. `AdsRepository.swift` (7 endpoints : `boost/overviews`, `boost/myboost`, `boost/create`/`create2`, `boost/update`, `boost/cancel2`, `searchs/country`), `BoostView.swift` (conteneur 2 onglets), `CreateBoostView.swift` (formulaire, formules `estimateReach` reproduites EXACTEMENT — views×4/likes÷3/followers÷5, division entière), `BoostDashboardView.swift` (vue d'ensemble + liste paginée), `BoostDetailView.swift` (détail + annulation). Point d'entrée : action "Promouvoir" ajoutée au menu "..." du Feed pour ses propres posts (`isOwnPost`, même garde que `promoteBtn` Android) — regroupée dans le menu existant plutôt qu'un bouton dédié sur le rail plein écran (déjà dense), substitution d'UI documentée, pas de comportement. **Bug Android reproduit fidèlement** : la déduction locale de solde après succès écrit TOUJOURS dans le cache `coinsAmount`, même en payant par gemmes (`useGems`) — vérifié dans le code source, pas corrigé. `MediaObject.isBoosted()`/badge "sponsorisé" sur les posts déjà boostés (affichage Feed) PAS vérifié cette passe — hors périmètre de ce lot (création/gestion uniquement). |
+| `advertising/ui/BoostActivity.java`/`BoostDashboardFragment.java`/`CreateBoostFragment.java`/`CommandeActivity.java`/`MesBoosts.java` | Système de "boost" de publication (campagnes publicitaires payantes pour un post) | `Sources/TiinverSwift/Boost/` (nouveau, 2026-08-18 P1) | `BUILD_VALIDATED` (CI confirmée verte) — test fonctionnel réel toujours requis | **Implémenté le 2026-08-18 (P1)** : 5 fichiers Android (2087 lignes) lus en entier. `AdsRepository.swift` (7 endpoints : `boost/overviews`, `boost/myboost`, `boost/create`/`create2`, `boost/update`, `boost/cancel2`, `searchs/country`), `BoostView.swift` (conteneur 2 onglets), `CreateBoostView.swift` (formulaire, formules `estimateReach` reproduites EXACTEMENT — views×4/likes÷3/followers÷5, division entière), `BoostDashboardView.swift` (vue d'ensemble + liste paginée), `BoostDetailView.swift` (détail + annulation). Point d'entrée : action "Promouvoir" ajoutée au menu "..." du Feed pour ses propres posts (`isOwnPost`, même garde que `promoteBtn` Android) — regroupée dans le menu existant plutôt qu'un bouton dédié sur le rail plein écran (déjà dense), substitution d'UI documentée, pas de comportement. **Bug Android reproduit fidèlement** : la déduction locale de solde après succès écrit TOUJOURS dans le cache `coinsAmount`, même en payant par gemmes (`useGems`) — vérifié dans le code source, pas corrigé. `MediaObject.isBoosted()`/badge "sponsorisé" sur les posts déjà boostés (affichage Feed) PAS vérifié cette passe — hors périmètre de ce lot (création/gestion uniquement). |
 
 ### Certification
 
@@ -170,7 +170,7 @@ Android sans équivalent nécessaire, noté).
 |---|---|---|---|
 | `setting/SettingsActivity.java` | Hôte réglages | `SettingsView.swift` | ✅ |
 | `setting/SettingAccountFragment.java` | Compte (déconnexion/suppression) | `SettingSubViews.swift` | 🟡 |
-| `setting/SettingPrivateMessageFragmant.java` | Réglages 1 conversation (mute, etc.) | `PrivateMessageSettingView.swift` (nouveau, 2026-08-18 P1) | `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis |
+| `setting/SettingPrivateMessageFragmant.java` | Réglages 1 conversation (mute, etc.) | `PrivateMessageSettingView.swift` (nouveau, 2026-08-18 P1) | `BUILD_VALIDATED` (CI confirmée verte) — test fonctionnel réel toujours requis |
 | `setting/SettingAboutFragment.java`/`SettingHelpFragment.java` | À propos / Aide | `SettingSubViews.swift` | 🟡 (GAP-010 historique : liens légaux/FAQ génériques signalé) |
 | `setting/SettingAdvertisementFragment.java` | Préférences pub | `SettingSubViews.swift` | 🟡 (GAP-012 historique : clé `AUTHORIZED_ADS` corrigée) |
 | `setting/SettingChatFragment.java` | Préférences chat | `SettingSubViews.swift` | 🟡 |
@@ -361,7 +361,7 @@ VIDE ENTIER dès qu'UN SEUL post avait un champ non conforme, rendant la grille 
 silencieusement vide (indiscernable de "0 post"). **Corrigé** (commit à suivre) : remplacé par un
 décodage per-item avec diagnostics console, même motif que `FeedRepository.fetchTimeline`. Chaîne
 Grid→tap→Fullscreen (réutilise `FeedDetailPagerView(posts:startIndex:onClose:)`) vérifiée intacte,
-RAS. **Statut : `BUILD_VALIDATED` à confirmer par CI — voir `MIGRATION_PARITY_PROGRESS_V2.md`** pour
+RAS. **Statut : `BUILD_VALIDATED` (CI confirmée verte) — voir `MIGRATION_PARITY_PROGRESS_V2.md`** pour
 le reste (`COMPLETE_PARITY_CANDIDATE` inchangé pour le reste de la FEATURE).
 
 ---
@@ -464,13 +464,13 @@ sur plusieurs points de détail (debounce, hashtag, états).
 | Création groupe — écran 3 (nom+création) | `Group.java` | `GroupCreationView.swift` | `COMPLETE_PARITY_CANDIDATE` | Endpoint `POST group` vérifié, y compris la faute `type:"pivate"` reproduite |
 | Bouton "créer groupe" — accessible réellement | FAB `Roster.java:84,133-144` | FAB `RosterListView` | `COMPLETE_PARITY_CANDIDATE` | Câblé — **historique : signalé absent/non accessible par l'utilisateur, corrigé, PAS re-testé depuis le dernier correctif de flux (écran 1/2)** |
 | Gestion groupe (membres/rôles) | `GroupDetailActivity`/`SettingGroupMessageFragmant` | `GroupDetailView.swift`/`AddGroupMemberView.swift` | `COMPLETE_PARITY_CANDIDATE` | `GET membership/{groupId}`, `POST /member/update`, `POST deleteMember` vérifiés (GAP-011 historique) |
-| Réglages 1 conversation (mute, heure programmée) | `SettingPrivateMessageFragmant` (238 lignes, hébergé par `ProfileDetailActivity`, MÊME Activity que `SettingGroupMessageFragmant`) | `PrivateMessageSettingView.swift` | `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis | **Implémenté le 2026-08-18 (P1)** — 100% local (`UserDefaults`/`@AppStorage`, AUCUN appel réseau côté Android non plus, vérifié en lisant le fichier en entier). Le bouton "person.circle" du chat 1:1 (raccourci direct-profil, documenté comme gap volontairement borné) ouvre désormais ce VRAI écran, dont `profile_btn` est maintenant une simple rangée. Bouton "Bloquer" reproduit FIDÈLEMENT tel quel (Android ne fait que changer le label, aucun appel réseau ni persistance à cet endroit précis — PAS "corrigé" en un vrai toggle, le vrai blocage fonctionnel existe déjà ailleurs, `ProfileViewModel.toggleBlock`). |
+| Réglages 1 conversation (mute, heure programmée) | `SettingPrivateMessageFragmant` (238 lignes, hébergé par `ProfileDetailActivity`, MÊME Activity que `SettingGroupMessageFragmant`) | `PrivateMessageSettingView.swift` | `BUILD_VALIDATED` (CI confirmée verte) — test fonctionnel réel toujours requis | **Implémenté le 2026-08-18 (P1)** — 100% local (`UserDefaults`/`@AppStorage`, AUCUN appel réseau côté Android non plus, vérifié en lisant le fichier en entier). Le bouton "person.circle" du chat 1:1 (raccourci direct-profil, documenté comme gap volontairement borné) ouvre désormais ce VRAI écran, dont `profile_btn` est maintenant une simple rangée. Bouton "Bloquer" reproduit FIDÈLEMENT tel quel (Android ne fait que changer le label, aucun appel réseau ni persistance à cet endroit précis — PAS "corrigé" en un vrai toggle, le vrai blocage fonctionnel existe déjà ailleurs, `ProfileViewModel.toggleBlock`). |
 | Accès profil depuis un chat 1:1 | `profile_btn`→`UserProfile` | bouton toolbar "person.circle" ajouté cette session | `COMPLETE_PARITY_CANDIDATE` | Commit dans GAP-021 |
 | Suppression message (pour moi / pour tous) | dialogue 2 choix (`ChatFragmentTest.java:2493-2521`) | `showDeleteOptions`, même 2 choix | `COMPLETE_PARITY_CANDIDATE` | Câblé session antérieure |
 | Upload pièces jointes | `HttpFileUploader`/BunnyCDN | `ChatMediaUploadService.swift` | `COMPLETE_PARITY_CANDIDATE` | GAP-004c historique, protocole BunnyCDN confirmé DIFFÉRENT du multipart direct du profil |
 | Téléchargement pièces jointes reçues | présent | présent | `COMPLETE_PARITY_CANDIDATE` | GAP-003 historique |
 | Appels audio/vidéo | WebRTC/CallKit-équivalent Android | `CallView.swift`/`WebRTCConnection.swift`/`CallKitManager.swift` | `COMPLETE_PARITY_CANDIDATE` | Audit dédié fait (GAP-005 historique), bug `makingOffer` trouvé et corrigé |
-| Recherche de groupe/conversation | `search/{myId}/{str}` | `ChatSearchView.swift` (nouveau) | `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis | **Implémenté le 2026-08-18 (Phase 2, P1)**, suite du tracé de la passe précédente. `Recherche/ui/ChatAdapter.java:291-313` lu (click handler) : Android n'a PAS d'étape "rejoindre" séparée — tap sur un résultat, local OU serveur, construit un `RosterModel` et ouvre directement `ActivityMsg`/`ChatView`, reproduit tel quel. Construction du `RosterModel` d'un groupe extraite dans `GroupRepository.GroupInfo.rosterModel(myId:myUsername:)` (réutilisée par `DeepLinkRouter.routeToGroup`, qui dupliquait auparavant cette construction ET laissait `subTitle` vide faute d'avoir alors identifié la chaîne réelle `"tab here for group info"`, corrigé au passage). Icône loupe ajoutée à la toolbar `RosterListView`, présente `ChatSearchView` en `.sheet` (écran autonome avec sa propre pile, fidèle à l'Activity séparée d'Android). `GroupRepository.searchGroups` décode `search/{myId}/{str}` per-item avec diagnostics (même motif défensif que P0-4). |
+| Recherche de groupe/conversation | `search/{myId}/{str}` | `ChatSearchView.swift` (nouveau) | `BUILD_VALIDATED` (CI confirmée verte) — test fonctionnel réel toujours requis | **Implémenté le 2026-08-18 (Phase 2, P1)**, suite du tracé de la passe précédente. `Recherche/ui/ChatAdapter.java:291-313` lu (click handler) : Android n'a PAS d'étape "rejoindre" séparée — tap sur un résultat, local OU serveur, construit un `RosterModel` et ouvre directement `ActivityMsg`/`ChatView`, reproduit tel quel. Construction du `RosterModel` d'un groupe extraite dans `GroupRepository.GroupInfo.rosterModel(myId:myUsername:)` (réutilisée par `DeepLinkRouter.routeToGroup`, qui dupliquait auparavant cette construction ET laissait `subTitle` vide faute d'avoir alors identifié la chaîne réelle `"tab here for group info"`, corrigé au passage). Icône loupe ajoutée à la toolbar `RosterListView`, présente `ChatSearchView` en `.sheet` (écran autonome avec sa propre pile, fidèle à l'Activity séparée d'Android). `GroupRepository.searchGroups` décode `search/{myId}/{str}` per-item avec diagnostics (même motif défensif que P0-4). |
 
 ### Missing / broken / different
 - Réglages complets d'une conversation 1:1 (mute, heure de livraison programmée) : `MISSING`.
@@ -697,7 +697,7 @@ canevas principal, jamais rapporté par l'utilisateur (cohérent avec le fait qu
 nouveau `AnimemesEditorState.bumpRenderVersion()` (miroir de `bumpVersion()`, incrémente
 `renderVersion` au lieu de `version`) utilisé par les 3 gestes continus + `scrub(toFrame:)` (qui
 bump ait `version` directement, même sur-déclenchement `preparePlayback` que GAP-024 partie 2).
-**Statut : `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis** (aucun
+**Statut : `BUILD_VALIDATED` (CI confirmée verte) — test fonctionnel réel toujours requis** (aucun
 simulateur/device disponible pour confirmer visuellement que pan/scrub/drag/resize/zoom fonctionnent
 désormais en pratique — la correction est déduite de la même logique de cycle de vue SwiftUI déjà
 confirmée exacte pour GAP-024, pas observée directement).
@@ -818,10 +818,10 @@ fonctionnalité "Fullscreen"). Chiffre honnête, pas un chiffre habillé pour pa
    corrigée cette session (`4c57d08`), non re-testée.
 9. ~~Système de "Boost" (campagnes publicitaires payantes pour un post — `BoostActivity`/
    `BoostDashboardFragment`/`CreateBoostFragment`/`CommandeActivity`/`MesBoosts`)~~ — **implémenté
-   le 2026-08-18 (P1)**, voir `Sources/TiinverSwift/Boost/`. `BUILD_VALIDATED` à confirmer par CI.
+   le 2026-08-18 (P1)**, voir `Sources/TiinverSwift/Boost/`. `BUILD_VALIDATED` (CI confirmée verte).
 10. ~~Réglages complets d'une conversation individuelle (mute, heure de livraison programmée,
     `SettingPrivateMessageFragmant`)~~ — **implémentés le 2026-08-18 (P1)**, voir
-    `PrivateMessageSettingView.swift`. `BUILD_VALIDATED` à confirmer par CI.
+    `PrivateMessageSettingView.swift`. `BUILD_VALIDATED` (CI confirmée verte).
 11. Statistiques par post (`StatisticsActivity`) — `MISSING` confirmé (historique, re-confirmé).
 12. Export GIF Animems — `MISSING` confirmé, auto-documenté dans le code lui-même.
 13. Écran de recherche téléphone/email pour nouveau contact (`roster/NewMessage.java`) — `MISSING`

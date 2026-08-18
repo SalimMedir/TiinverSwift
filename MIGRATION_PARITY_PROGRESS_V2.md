@@ -59,9 +59,9 @@ n'existe non plus, donc le statut reste `COMPLETE_PARITY_CANDIDATE` et non `_VAL
 
 ### 2026-08-17 — Profile (P0-3) — Décodage per-item pour `fetchUserPosts`/`fetchHashtagPosts`
 **Commit(s) :** `da89974`
-**Run CI :** en cours de vérification (dispatché après ce commit)
+**Run CI :** [32077274517](https://github.com/SalimMedir/TiinverSwift/actions/runs/32077274517) — `status: completed`, `conclusion: success`
 **Statut AVANT (audit V2) :** `COMPLETE_PARITY_CANDIDATE` (cœur), gap silencieux non détecté
-**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — commit `da89974` — test fonctionnel réel
+**Statut APRÈS :** `BUILD_VALIDATED` — commit `da89974` — CI SUCCESS — test fonctionnel réel
 toujours requis
 **Preuve du changement de statut :** `ProfileRepository.fetchUserPosts`/`fetchHashtagPosts`
 utilisaient `try? JSONDecoder().decode([FeedActivity].self, ...) ?? []` — un seul post au format
@@ -70,11 +70,11 @@ diagnostic console (même motif que `FeedRepository.fetchTimeline`). Endpoint gr
 contre `ProfileRepository.java:153` (identique). Chaîne Grid→tap→Fullscreen vérifiée intacte.
 
 ### 2026-08-17 — Chat/Messaging (P0-4) — Décodage per-item pour contacts + membres de groupe
-**Commit(s) :** (à committer avec ce lot)
-**Run CI :** à dispatcher après commit
+**Commit(s) :** `07f3e51`
+**Run CI :** [32077495705](https://github.com/SalimMedir/TiinverSwift/actions/runs/32077495705) — `status: completed`, `conclusion: success`
 **Statut AVANT (audit V2) :** `COMPLETE_PARITY_CANDIDATE` (création de groupe 3 écrans), historique
 `FUNCTIONALLY_FAILED` déjà corrigé une fois pour la cause précise `userId` numérique
-**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis
+**Statut APRÈS :** `BUILD_VALIDATED` — commit `07f3e51` — CI SUCCESS — test fonctionnel réel toujours requis
 **Preuve du changement de statut :** Re-vérifié la chaîne FAB→`ContactPickerView`→`GroupCreationView`
 intacte (aucune régression). Trouvé et corrigé un point de fragilité résiduel : `ContactsRepository.
 connectedUsers` et `GroupRepository.fetchMembers` décodaient encore le tableau ENTIER via `try?`,
@@ -84,12 +84,12 @@ de code préexistant pour P0-F, mais dont seule la cause ponctuelle (pas le poin
 structurel) avait été corrigée. Remplacé par le même motif per-item + diagnostic que Feed/Profile.
 
 ### 2026-08-17 — Animems (P0-5) — `.id(state.version)` interrompait TOUS les gestes Timeline
-**Commit(s) :** (à committer avec ce lot)
-**Run CI :** à dispatcher après commit
+**Commit(s) :** `e7736af`
+**Run CI :** [32077883055](https://github.com/SalimMedir/TiinverSwift/actions/runs/32077883055) — `status: completed`, `conclusion: success`
 **Statut AVANT (audit V2) :** `CODE_PRESENT_UNVERIFIED`/`FUNCTIONALLY_FAILED`→corrigé (GAP-024,
 canevas principal uniquement) pour le geste ; Timeline jamais spécifiquement auditée jusqu'ici pour
 cette classe de bug précise
-**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis
+**Statut APRÈS :** `BUILD_VALIDATED` — commit `e7736af` — CI SUCCESS — test fonctionnel réel toujours requis
 **Preuve du changement de statut :** Relu intégralement `TimelineView.swift` (jamais relu lors du
 correctif GAP-024 initial ni de l'audit V2 Phase 1, qui s'étaient arrêtés à `AnimemesEditorView.swift`/
 `AnimemesEditorState.swift`/`AnimemesGestureController.swift`) — trouvé le MÊME `.id(state.version)`
@@ -102,10 +102,10 @@ bumpRenderVersion()` utilisé par les gestes continus + `scrub(toFrame:)` (au li
 `version += 1` direct), pour éviter aussi le sur-déclenchement de `preparePlayback()` par frame.
 
 ### 2026-08-18 — Chat/Messaging (P1) — Implémentation de la recherche de groupe/conversation
-**Commit(s) :** (à committer avec ce lot)
-**Run CI :** à dispatcher après commit
+**Commit(s) :** `eae0e8e`
+**Run CI :** [32079879361](https://github.com/SalimMedir/TiinverSwift/actions/runs/32079879361) — `status: completed`, `conclusion: success`
 **Statut AVANT (audit V2) :** `MISSING` confirmé
-**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis
+**Statut APRÈS :** `BUILD_VALIDATED` — commit `eae0e8e` — CI SUCCESS — test fonctionnel réel toujours requis
 **Preuve du changement de statut :** Lu `Recherche/ui/ChatAdapter.java:291-313` (click handler,
 manquant de la passe précédente) — confirmé qu'Android ouvre directement `ActivityMsg` au tap, sans
 étape "rejoindre" séparée. Nouveau `ChatSearchView.swift` : filtre local des conversations
@@ -117,10 +117,10 @@ réutilisée par `DeepLinkRouter.routeToGroup` (corrige au passage son `subTitle
 à la toolbar de `RosterListView`.
 
 ### 2026-08-18 — Chat/Messaging (P1) — Implémentation des réglages de conversation 1:1
-**Commit(s) :** (à committer avec ce lot)
-**Run CI :** à dispatcher après commit
+**Commit(s) :** `bcbb05e`
+**Run CI :** [32080225502](https://github.com/SalimMedir/TiinverSwift/actions/runs/32080225502) — `status: completed`, `conclusion: success`
 **Statut AVANT (audit V2) :** `MISSING` confirmé (seul un raccourci direct-vers-profil existait)
-**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis
+**Statut APRÈS :** `BUILD_VALIDATED` — commit `bcbb05e` — CI SUCCESS — test fonctionnel réel toujours requis
 **Preuve du changement de statut :** Lu `setting/SettingPrivateMessageFragmant.java` (238 lignes,
 entier) — confirmé hébergé par `messagerie/ui/ProfileDetailActivity.java`, la MÊME Activity que
 `SettingGroupMessageFragmant`/`GroupDetailView.swift` (déjà porté) selon `chatType`, atteint en tapant
@@ -133,10 +133,10 @@ toggleBlock`). Le bouton "person.circle" du chat 1:1 (raccourci direct-profil do
 volontairement borné) ouvre désormais ce vrai écran.
 
 ### 2026-08-18 — Galerie/Publication (P1) — Implémentation du système Boost
-**Commit(s) :** (à committer avec ce lot)
-**Run CI :** à dispatcher après commit
+**Commit(s) :** `7d57f93`
+**Run CI :** [32080739229](https://github.com/SalimMedir/TiinverSwift/actions/runs/32080739229) — `status: completed`, `conclusion: success`
 **Statut AVANT (audit V2) :** `MISSING` total, 5 classes Android sans équivalent iOS
-**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — test fonctionnel réel toujours requis
+**Statut APRÈS :** `BUILD_VALIDATED` — commit `7d57f93` — CI SUCCESS — test fonctionnel réel toujours requis
 **Preuve du changement de statut :** Lu en entier les 5 fichiers Android (`AdsRepository.java` 504
 lignes, `CreateBoostFragment.java` 497, `BoostDashboardFragment.java` 243, `BoostActivity.java` 68,
 `CommandeActivity.java` 163, + modèles `AdsData`/`Audience`/`TagModel`). Nouveau dossier

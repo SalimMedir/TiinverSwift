@@ -189,7 +189,7 @@ Android sans équivalent nécessaire, noté).
 | `partage/ShareActivity.java`/`PartageWenack.java` | Résolution de liens profonds/partage | `Navigation/DeepLinkRouter.swift` | ✅ |
 | `report/Report.java` | Signalement (post/user) | `ReportView.swift` | ✅ (GAP-015 historique : motifs de signalement à vérifier fidèles) |
 | `Following/FollowList.java` | Liste abonnés/abonnements | `Discover/FollowListView.swift` | ✅ |
-| `ai/TiinverAIChat.java`/`TiinverGeminiAIChat.java` | Assistant IA (Gemini) | `AiConversationRepository.swift` | 🟡 `PARTIAL` probable — présence d'un repository ne garantit pas un écran de chat IA complet, à vérifier |
+| `ai/TiinverGeminiAIChat.java` | Assistant IA (Gemini, chat texte + génération d'image) | `AIChatRepository.swift`/`AIChatViewModel.swift`/`AIChatView.swift` (nouveau, 2026-08-18 P2) | `BUILD_VALIDATED` à confirmer par CI — mode "supprimer l'arrière-plan" (post-traitement local de l'image générée) explicitement PAS porté (pipeline Vision/CoreML dédié, hors périmètre), reste `MISSING` documenté ; cœur texte+image fonctionnel |
 | `ui/categorie/CategoryActivity.java` | Sélection de catégorie (contenu) | — | ❌ `MISSING`, à confirmer où ce flux est utilisé côté Android avant de conclure |
 | `ui/filetransfer/FileTransferActivity.java` | Transfert de fichier (rôle exact à vérifier) | — | 🟡 à investiguer |
 | `messagerie/ui/call/CallActivity.java`/`IncomingCallActivity.java` | Appels audio/vidéo | `CallView.swift`/`CallKitManager.swift`/`CallCoordinator.swift`/`WebRTCConnection.swift` | ✅ (GAP-005 historique : audit WebRTC/CallKit fait en profondeur) |
@@ -798,13 +798,16 @@ fonctionnalité "Fullscreen"). Chiffre honnête, pas un chiffre habillé pour pa
 
 ### TOP 20 DES GAPS LES PLUS IMPORTANTS (par impact réel, pas par ordre de découverte)
 
-1. **[CRITIQUE, NOUVEAU] Publication Feed (photo ET vidéo) envoie le fichier au MAUVAIS endroit** —
-   `activity/add` ne reçoit QUE des métadonnées côté Android (upload réel en 2 étapes vers BunnyCDN
-   Storage/Video Library AVANT), iOS envoie le fichier binaire complet en multipart DIRECTEMENT à
-   `activity/add`. `FUNCTIONALLY_FAILED` haute confiance. Voir FEATURE Galerie/Publication.
-2. **[NOUVEAU] Export vidéo Bunny Video Library (guid+HLS) totalement absent côté iOS** — nécessaire
-   pour corriger le gap n°1 côté vidéo spécifiquement (0 fichier trouvé référençant
-   `video.bunnycdn.com`/`.m3u8`/`471609`).
+1. ~~Publication Feed (photo ET vidéo) envoie le fichier au MAUVAIS endroit~~ — **corrigé le
+   2026-08-17 (P0-1)**, commit `b639057`, CI verte. Nouveau pipeline réel : upload direct BunnyCDN
+   Storage (photo) / Video Library 2-étapes (vidéo, guid+HLS) PUIS `activity/add` métadonnées
+   texte seulement, voir `FeedMediaUploader.swift`/`FeedRepository.swift` et FEATURE
+   Galerie/Publication. `BUILD_VALIDATED` — test fonctionnel réel (post visible après publication)
+   toujours requis, PAS encore `COMPLETE_PARITY_VALIDATED`.
+2. ~~Export vidéo Bunny Video Library (guid+HLS) totalement absent côté iOS~~ — **résolu par le même
+   correctif P0-1** (`FeedMediaUploader.uploadVideo`, `POST video.bunnycdn.com/library/471609/
+   videos` → guid, PUIS `PUT .../videos/{guid}`). Reste à confirmer : lecture HLS `.m3u8` réelle
+   par `VideoPlayerManager`/`AVPlayer` côté client (jamais testée pour CE cas précis).
 3. ~~Recherche de groupe/conversation (`search/{myId}/{str}`) absente côté iOS~~ — **implémentée le
    2026-08-18 (P1)**, voir `ChatSearchView.swift`/FEATURE Chat/Messaging. `BUILD_VALIDATED` à
    confirmer par CI, test fonctionnel réel toujours requis.
@@ -833,8 +836,13 @@ fonctionnalité "Fullscreen"). Chiffre honnête, pas un chiffre habillé pour pa
 13. ~~Écran de recherche téléphone/email pour nouveau contact (`roster/NewMessage.java`)~~ —
     **implémenté le 2026-08-18 (P2)**, voir `NewMessageView.swift`. `BUILD_VALIDATED` à confirmer
     par CI.
-14. Assistant IA (Gemini, `TiinverAIChat`/`TiinverGeminiAIChat`) — présence d'un repository
-    (`AiConversationRepository.swift`) mais écran de chat complet non vérifié — `PARTIAL` probable.
+14. ~~Assistant IA (Gemini, `TiinverGeminiAIChat`) — écran de chat complet non vérifié.~~
+    **Implémenté le 2026-08-18 (P2)**, voir `Sources/TiinverSwift/AI/`. **Correction d'audit** :
+    `TiinverAIChat.java` (le fichier VOISIN avec `OPENAI_API_KEY` en dur) N'EST PAS le fichier réel
+    — 0 appelant trouvé pour `TiinverAIChat.class`, seulement pour `TiinverGeminiAIChat.class`
+    (`Roster.java`/`MonetizationActivity.java`/`MainFragment.java`), qui proxifie tout via le
+    backend Tiinver (`ai/chat`/`ai/image/generate`) — AUCUNE clé API client. `BUILD_VALIDATED` à
+    confirmer par CI ; mode suppression d'arrière-plan (post-traitement) explicitement non porté.
 15. Système de certification — 4 classes Android (`CertificationActivity`/
     `CertificationRequestActivity`/2 Fragments) vs `CertificationView.swift` — correspondance non
     vérifiée en détail (`CODE_PRESENT_UNVERIFIED`).

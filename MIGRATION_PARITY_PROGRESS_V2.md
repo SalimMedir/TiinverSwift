@@ -206,3 +206,26 @@ tâche de fond, `MyBackgroundTask`, déjà hors périmètre ailleurs dans ce por
 l'insertion locale seule aurait laissé le message jamais livré ; à la place, le texte tapé est
 transmis en pré-remplissage à `ChatView` (nouveau paramètre `initialInputText`), qui l'envoie
 réellement via son pipeline `sendText()` déjà fonctionnel.
+
+### 2026-08-18 — Chat/Messaging (P2) — Implémentation de l'assistant IA Gemini
+**Commit(s) :** (à committer avec ce lot)
+**Run CI :** à dispatcher après commit
+**Statut AVANT (audit V2) :** `PARTIAL` probable (seule la couche de stockage portée)
+**Statut APRÈS :** `BUILD_VALIDATED` à confirmer par CI — mode suppression d'arrière-plan
+explicitement non porté, test fonctionnel réel toujours requis
+**Preuve du changement de statut :** Lu `ai/TiinverGeminiAIChat.java` (823 lignes, entier).
+**Correction d'audit importante** : le fichier voisin `ai/TiinverAIChat.java` (avec
+`OPENAI_API_KEY` en dur, trouvé en cherchant les clés API dans le module `ai`) N'EST PAS le fichier
+réellement exercé — `grep "TiinverAIChat.class"` = 0 appelant, alors que `TiinverGeminiAIChat.class`
+a 3 vrais appelants (`Roster.java:443`, `MonetizationActivity.java:109`, `MainFragment.java:1456`).
+`TiinverGeminiAIChat` proxifie tout via le backend Tiinver (`POST ai/chat`/`POST ai/image/generate`)
+— confirmé AUCUNE clé API Google/Gemini côté client. Nouveaux `AIChatModels.swift`/
+`AIChatRepository.swift`/`AIChatViewModel.swift`/`AIChatView.swift` : chat texte avec compteur de
+quota (`used`/`limit`/`remaining`), génération d'image (jointe optionnelle), dialogue solde
+insuffisant (`IMAGE_COST = 50` pièces, pré-vérification locale puis le serveur tranche, fidèle à
+`checkCoinsAndGenerateImage`), persistance via `AiConversationRepository` déjà porté (purge des
+messages expirés à 3 jours au chargement). **Non porté, documenté** : mode "supprimer
+l'arrière-plan" (post-traitement local de l'image générée, `RemoveBackground.
+removeBackgroundAdvanced`/`removeBackgroundWithMLKit`) — nécessiterait un pipeline Vision/CoreML
+dédié, le cœur texte+image reste pleinement fonctionnel sans lui. Câblé depuis la toolbar
+`RosterListView` (icône sparkles), même point d'entrée logique que les 3 confirmés côté Android.

@@ -64,6 +64,14 @@ struct RosterListView: View {
         // marque, fidèle à la capture (titre rendu dans la couleur d'accent, pas noir/systeme).
         .navigationTitle("Chats")
         .toolbar {
+            // Port de `action_AI`/`action_AI2` (`Roster.java:443-445`) — voir `AIChatView.swift`,
+            // 2026-08-18 P2, confirmé `PARTIAL` par l'audit V2 (seule la couche de stockage était
+            // déjà portée).
+            ToolbarItem(placement: .navigationBarTrailing) {
+                NavigationLink { AIChatView() } label: {
+                    Image(systemName: "sparkles")
+                }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     showChatSearch = true

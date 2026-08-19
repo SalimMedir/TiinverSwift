@@ -548,3 +548,52 @@ plus large :
 
 **Ce plan n'est PAS exécuté dans cette passe — Phase A s'arrête ici. Attente du feu vert explicite
 de l'utilisateur avant Phase B.**
+
+---
+
+## 23. PHASE B — Statuts mis à jour (2026-08-19, feu vert reçu)
+
+Phase B exécutée en 11 lots, chacun commité et poussé séparément (voir `ANIMEMS_PARITY_PROGRESS_V1.md`
+pour le détail chronologique complet, preuves, commits, CI). **Cette section met à jour les statuts
+du tableau §4 pour les fonctionnalités traitées — les lignes non mentionnées ici gardent leur statut
+Phase A d'origine.** Rappel : `BUILD_VALIDATED` = CI verte confirmée ; `COMPLETE_PARITY_CANDIDATE` =
+comparaison code-à-code approfondie faite, code corrigé et poussé, AUCUN test réel device/Appetize
+encore (conforme à la consigne de ne pas déclencher Appetize pendant ce travail).
+
+| ID | Ancien statut (Phase A) | Nouveau statut | Lot | Résumé du correctif |
+|---|---|---|---|---|
+| F-05 | `FUNCTIONALLY_FAILED` | `COMPLETE_PARITY_CANDIDATE` | 1 | `didPlayFrame`/`animationEngineDidEnd`/`animationEngineDidInvalidate` utilisent `bumpRenderVersion()` au lieu de `version` — plus de double rebuild complet à chaque frame de lecture |
+| F-13 | `COMPLETE_PARITY_CANDIDATE` (commentaire obsolète) | `COMPLETE_PARITY_CANDIDATE` (commentaire corrigé) | 1 | Cosmétique, pas de changement de comportement |
+| F-11 / F-14 | `FUNCTIONALLY_FAILED` | `COMPLETE_PARITY_CANDIDATE` | 2 | Bouton "masque" ajouté (`bottomToolbar`, `disabled(selectedId == nil)`) → `isMaskEditMode = true`. 2 bugs connexes trouvés et corrigés pendant le câblage : sortie du mode sans effacer le masque (bouton "✓" distinct de "Aucun"), `deleteSelected()` ne réinitialisait pas `isMaskEditMode` |
+| F-28 / F-31 | `CODE_PRESENT_UNVERIFIED` | `COMPLETE_PARITY_CANDIDATE` | 3 | `LayerEditorPanelView.swift` (nouveau) monté sur `LayerEditorPanelState` déjà écrit — déclenché par un bouton dédié "propriétés" plutôt que l'appui long Android sur la timeline (substitution documentée, risque de composition de geste évité) |
+| F-30 | `MISSING` | `COMPLETE_PARITY_CANDIDATE` | 4 | Bouton "dupliquer" → `AnimationObjectData.duplicate(_:)` (déjà écrit, jamais appelé) |
+| F-21 | `PARTIAL` | `COMPLETE_PARITY_CANDIDATE` | 5 | `ShapePreviewEditorPanelView.swift` (nouveau) monté sur `ShapePreviewEditorPanelState` déjà écrit — remplace l'insertion à valeurs codées en dur par un vrai panneau de configuration (couleur/opacité/arrondi/épaisseur/contour) avant insertion |
+| F-27 | `MISSING` | `COMPLETE_PARITY_CANDIDATE` | 6 | Bouton "bezier" toggle `BezierEditorView` déjà écrit. **Trouvaille de fidélité** : la courbe éditée n'est consommée nulle part côté Android non plus (`setOnControlPointChangedListener` jamais appelé) — reproduit comme outil visuel inerte, PAS relié au moteur d'easing (l'ajouter aurait été une fonctionnalité qu'Android lui-même n'expose pas) |
+| F-26 | `MISSING` | `COMPLETE_PARITY_CANDIDATE` | 7 | `ic_paint` branche désormais sur `autoCaptureEnabled` comme Android ; nouveau mode capturé multi-frame (`PaintCaptureSheetView.swift`) alimente le mécanisme de cyclage bitmap déjà existant (`setBitmaps`/`bitmapChangeIntervalMs`) |
+| F-40 | `COMPLETE_PARITY_CANDIDATE` (fonctionnel) + doublon mort | `PARTIAL` (révisé — voir ci-dessous) | 8 | Orphelin `CanvasZoomState`/`CanvasZoomControls` intégré (algorithme de clamp min/max plus fidèle). **Nouveau bug trouvé pendant ce lot** : l'ancien zoom ne zoomait RIEN visuellement (juste un label). Le remplacement corrige l'algorithme mais **ne zoome toujours pas le canevas** — appliquer `.scaleEffect` risquerait de désynchroniser les coordonnées de `combinedGesture`, jugé trop risqué sans test réel après 2 bugs de geste déjà survenus cette session. Statut révisé à `PARTIAL` pour refléter honnêtement que l'effet visuel manque toujours |
+| F-20 | `MISSING` | `COMPLETE_PARITY_CANDIDATE` | 9 | Bouton "Compose" → `AnimemesEditorState.performRecompose()` (nouveau) → `AnimemesRecompose.buildComposedLayer(from:)` (déjà écrit, jamais appelé). **Correction de portée** : pas de sélection manuelle nécessaire, Android fusionne tous les calques visibles non verrouillés en un seul tap — plus simple que ce que l'audit Phase A supposait |
+| F-19 | `PARTIAL` | `COMPLETE_PARITY_CANDIDATE` | 10 | `applyTemplate` applique désormais TOUTES les pistes dans l'ordre (auto-création pour formes/masques, consommation des calques existants pour bitmap/texte), plus une alerte de correspondance (`templateMismatch`) fidèle au comportement RÉEL d'Android (2 options effectives, pas 3 malgré l'apparence à 3 boutons) |
+| F-29 | `MISSING` | `COMPLETE_PARITY_CANDIDATE` | 11a | Bouton "fond" → `removeBackgroundFromSelected()` (nouveau), réutilise `RemoveBackground.swift` déjà écrit pour la Galerie (même fichier Android source, catégorie partagée "A+G") |
+| F-33 | `MISSING` | `MISSING` (inchangé, raison affinée) | — | **Non traité, décision explicite** : le fichier `MovementControllerState.swift` documente lui-même que la logique de transformation réelle (`applySeekBarTransformOnAnchor`/`anchorTouchExecute`) n'a jamais été lue ni portée — contrairement aux autres lots (câblage UI sur logique déjà existante), celui-ci exigerait de PORTER une nouvelle logique moteur en premier. Nécessite son propre lot dédié, hors budget de cette passe |
+| F-34 | `MISSING` | `MISSING` (inchangé, gap plus profond découvert) | — | **Non traité — nouvelle découverte pendant ce lot** : `AnimemesEditorView.swift`, le callback `onVideoPicked` du sélecteur média jette l'URL de la vidéo choisie et ferme simplement le picker (`{ _ in showGalleryPicker = false }`) — **importer une vidéo comme calque/fond ne fait RIEN aujourd'hui côté iOS**, un gap plus fondamental que l'extraction audio elle-même, qui en dépend. Voir F-45 ci-dessous |
+| F-45 (nouveau) | — | `MISSING` (nouveau finding) | — | Import vidéo dans Animems (`ic_add` → sélection vidéo) est un no-op complet côté iOS — `GalleryPickerView.onVideoPicked` ne fait qu'ignorer l'URL. Bloque F-34 en amont. Priorité P1 pour une future passe (nécessite de décoder une vidéo en séquence de frames bitmap ou équivalent, un morceau de travail substantiel, pas une simple correction de câblage) |
+
+### 23.1 Comptage synthétique après Phase B
+
+| Statut | Avant Phase B | Après Phase B |
+|---|---|---|
+| `COMPLETE_PARITY_VALIDATED` | 0 | 0 (toujours aucun test réel device/Appetize) |
+| `COMPLETE_PARITY_CANDIDATE` | 21 | 32 |
+| `PARTIAL` | 9 | 8 (F-19/F-20/F-21/F-26/F-27/F-28/F-29/F-30 sortis, F-40 révisé y entre) |
+| `FUNCTIONALLY_FAILED` | 4 | 0 |
+| `MISSING` | 10 | 8 (F-19/F-20/F-21/F-26/F-27/F-29/F-30 sortis ; F-45 nouveau y entre ; F-33/F-34 restent) |
+| `CODE_PRESENT_UNVERIFIED` | 2 | 0 |
+| `ANDROID_ONLY` | 2 | 2 (inchangé) |
+| `IOS_IMPROVED` | 1 | 1 (inchangé) |
+
+**12 des 14 items P0/P1 du plan §21/§22 traités** (F-05, F-11/F-14, F-19, F-20, F-21, F-23, F-26,
+F-27, F-28/F-31, F-29, F-30, F-40-partiel). **2 P1/P2 restent délibérément différés** (F-33, F-34)
+avec raison précise documentée, pas silencieusement abandonnés. **1 nouveau gap découvert et
+documenté** (F-45, import vidéo). Aucun de ces correctifs n'a été validé par un test réel
+device/Appetize — voir `ANIMEMS_PARITY_PROGRESS_V1.md` pour le statut CI (`BUILD_VALIDATED`) de
+chaque lot.

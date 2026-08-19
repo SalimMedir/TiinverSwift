@@ -70,6 +70,20 @@ struct AnimemesEditorView: View {
     /// tant que "Ajouter" n'a pas été pressé.
     @State private var pendingShapeData: AnimationObjectData?
     @State private var showShapeConfigPanel = false
+    /// Port de `btn_bezier` (`AnimemesCompound.java:1970-1980`, confirmé réel par DEUX lectures
+    /// indépendantes cette session, résolvant le risque mono-source noté au §18.2 de
+    /// `ANIMEMS_PARITY_AUDIT_V1.md`). **Fidélité importante trouvée en traçant ce bouton** :
+    /// `bezierEditor.setOnControlPointChangedListener(...)` (l'API RÉELLE de sortie de
+    /// `BezierEditorView.java`, confirmée par lecture de ce fichier) n'est JAMAIS appelé dans
+    /// `AnimemesCompound.java` — la courbe éditée n'est donc consommée NULLE PART côté Android,
+    /// `Keyframe.EasingType` (4 valeurs fixes : linear/easeIn/easeOut/easeInOut) n'a d'ailleurs pas
+    /// de cas pour une courbe custom. C'est un outil visuel réellement togglable mais SANS effet
+    /// sur l'animation, des deux côtés — reproduit tel quel ici (afficher/masquer un
+    /// `BezierEditorView.swift` déjà entièrement porté, sans le relier au moteur de keyframes) :
+    /// le relier réellement au easing serait AJOUTER une fonctionnalité qu'Android lui-même
+    /// n'expose pas, pas combler un écart de parité.
+    @State private var showBezierEditor = false
+    @State private var bezierPoints = BezierControlPoints.easeInOutDefault
     @State private var templateSavedToast = false
     @State private var showTimeline = true
     @State private var showRightTools = true
@@ -94,6 +108,13 @@ struct AnimemesEditorView: View {
             playbackBar
             if state.isMaskEditMode, let selectedId = state.selectedId, let obj = state.layers.first(where: { $0.id == selectedId }) {
                 maskPanel(for: obj)
+            } else if showBezierEditor {
+                // Port de `bezierEditor` remplaçant timeline/frameList/mRecyclerView pendant
+                // qu'il est visible (`AnimemesCompound.java:1972-1975`) — même agencement ici,
+                // remplace la zone timeline plutôt que de se superposer.
+                BezierEditorView(points: $bezierPoints)
+                    .frame(height: 220)
+                    .background(Color.black)
             } else if showTimeline {
                 TimelineView(state: state)
                 if showDurationSlider, let selectedId = state.selectedId, let obj = state.layers.first(where: { $0.id == selectedId }) {
@@ -752,6 +773,12 @@ struct AnimemesEditorView: View {
                 // F-30, Phase B Lot 4**) — voir `AnimemesEditorState.duplicateSelected()`.
                 bottomButton(icon: "plus.square.on.square", label: "dupliquer") { state.duplicateSelected() }
                     .disabled(state.selectedId == nil)
+                // Port de `btn_bezier` (**ajouté le 2026-08-19, ANIMEMS_PARITY_AUDIT_V1.md F-27,
+                // Phase B Lot 6**) — voir la note complète sur `showBezierEditor` ci-dessus :
+                // toggle réel côté Android, SANS effet sur l'animation des deux côtés.
+                bottomButton(icon: "point.topleft.down.curvedto.point.bottomright.up", label: "bezier") {
+                    showBezierEditor.toggle()
+                }
                 bottomButton(icon: "trash", label: "supprimer") { state.deleteSelected() }
                     .disabled(state.selectedId == nil)
                 bottomButton(icon: "arrow.counterclockwise", label: "réinitialiser") { state.resetSelected() }

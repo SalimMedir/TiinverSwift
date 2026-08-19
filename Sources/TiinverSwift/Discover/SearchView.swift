@@ -67,7 +67,7 @@ struct SearchView: View {
                     if !results.posts.isEmpty {
                         Section("Publications") { // R.string equivalent non identifié
                             ForEach(results.posts) { post in
-                                postRow(post).contentShape(Rectangle()).onTapGesture { detailPost = post.asFeedActivity }
+                                postRow(post).contentShape(Rectangle()).onTapGesture { Task { await openDetail(for: post) } }
                             }
                         }
                     }
@@ -103,6 +103,26 @@ struct SearchView: View {
         }
         .fullScreenCover(item: $detailPost) { post in
             FeedDetailPagerView(posts: [post], startIndex: 0, onClose: { detailPost = nil })
+        }
+    }
+
+    /// **Corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-004 SEARCH-04, Phase B P1)** —
+    /// port de `UniversalSearchAdapter.java:298-306` : le tap Android sur un résultat "publication"
+    /// ne transporte QUE `activityId`/`userId`/`type` vers `FullScreenMedia`, qui recharge lui-même
+    /// la publication fraîche par ID — `item` (les données de recherche, potentiellement obsolètes
+    /// : compteurs de likes/commentaires figés au moment de la recherche) n'est JAMAIS réutilisé
+    /// directement pour l'affichage plein écran. `post.asFeedActivity` (utilisé auparavant tel
+    /// quel) reproduisait exactement ce défaut. Recharge maintenant via `getactivity/{token}`
+    /// (`FeedRepository.fetchPost(byToken:)`, déjà utilisé pour les liens profonds — `SearchPostResult.
+    /// token` existe déjà, jamais exploité ici) ; repli sur les données de recherche potentiellement
+    /// obsolètes UNIQUEMENT si le rechargement échoue (réseau), pour ne jamais bloquer l'ouverture.
+    private func openDetail(for post: SearchPostResult) async {
+        if let token = post.token, !token.isEmpty,
+            let fresh = try? await FeedRepository().fetchPost(byToken: token)
+        {
+            detailPost = fresh
+        } else {
+            detailPost = post.asFeedActivity
         }
     }
 

@@ -602,6 +602,29 @@ final class AnimemesEditorState: ObservableObject {
         version += 1
     }
 
+    /// Port du chemin `automateCapture == true` d'`ic_paint` (`PaintPreviewEditorPanel.java`,
+    /// confirmé réel par l'audit export/outils : DEUX modes distincts derrière ce même bouton
+    /// selon `auto_checkbox`, pas un seul comme le laissait supposer l'en-tête d'origine
+    /// d'`AnimemesDrawingView.swift`). **Ajouté le 2026-08-19 (ANIMEMS_PARITY_AUDIT_V1.md F-26,
+    /// Phase B Lot 7)** — `PaintCaptureController.frames` (une image par capture, cadence
+    /// `delayMs`) alimente `setBitmaps`/`bitmapChangeIntervalMs`, mécanisme de cyclage bitmap déjà
+    /// existant et câblé (`advanceBitmapFrame`, `AnimationEngine.tick`) — pas de nouveau moteur de
+    /// lecture nécessaire, juste un nouveau POINT D'ENTRÉE alimentant un chemin déjà fonctionnel.
+    func addCapturedPaintFrames(_ frames: [CGImage], delayMs: Int, canvasSize: CGSize) {
+        guard let first = frames.first else { return }
+        let obj = AnimationObjectData()
+        obj.objectType = .bitmap
+        obj.setBitmaps(frames)
+        obj.bitmapChangeIntervalMs = delayMs
+        let size = CGSize(width: first.width, height: first.height)
+        configureNewObject(obj, canvasSize: canvasSize, size: size)
+        obj.offsetX = 0
+        obj.offsetY = 0
+        composer.addLayer(obj)
+        syncTimeline()
+        version += 1
+    }
+
     // MARK: - Lecture / scrub (port de `MemesView2.play/pause`, bouton play `AnimemesCompound.
     // java:2007-2019` + `onPlayheadMoved`/`TimelineView.OnTimelineListener`)
 

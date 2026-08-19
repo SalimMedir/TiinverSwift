@@ -46,6 +46,9 @@ struct AnimemesEditorView: View {
     @State private var showStickerPrompt = false
     @State private var newSticker = ""
     @State private var showDrawing = false
+    /// Port du mode `automateCapture == true` d'`ic_paint` — voir doc du bouton dans
+    /// `rightToolbar` (Phase B Lot 7).
+    @State private var showPaintCapture = false
     @State private var showAudioPicker = false
     @State private var showShapePanel = false
     @State private var lastMagnification: CGFloat = 1.0
@@ -157,6 +160,16 @@ struct AnimemesEditorView: View {
                     showDrawing = false
                 },
                 onCancel: { showDrawing = false }
+            )
+        }
+        .fullScreenCover(isPresented: $showPaintCapture) {
+            PaintCaptureSheetView(
+                canvasSize: canvasSize,
+                onDone: { frames, delayMs in
+                    state.addCapturedPaintFrames(frames, delayMs: delayMs, canvasSize: canvasSize)
+                    showPaintCapture = false
+                },
+                onCancel: { showPaintCapture = false }
             )
         }
         .confirmationDialog("Ajouter une forme", isPresented: $showShapePanel, titleVisibility: .visible) {
@@ -438,7 +451,13 @@ struct AnimemesEditorView: View {
             }
             if showRightTools {
                 Button { showTextPrompt = true } label: { Text("Tt").font(.headline.bold()) } // ic_text
-                Button { showDrawing = true } label: { Image(systemName: "pencil") } // ic_paint
+                // Port de `ic_paint` — branche sur `automateCapture` comme Android
+                // (`AnimemesCompound.java:2078-2095`, confirmé réel par l'audit export/outils :
+                // DEUX modes derrière ce même bouton, pas un seul). **Modifié le 2026-08-19,
+                // ANIMEMS_PARITY_AUDIT_V1.md F-26, Phase B Lot 7.**
+                Button {
+                    if state.autoCaptureEnabled { showPaintCapture = true } else { showDrawing = true }
+                } label: { Image(systemName: "pencil") } // ic_paint
                 Button { showStickerPrompt = true } label: { Image(systemName: "face.smiling") } // ic_smile
                 Button { showStickerPrompt = true } label: { Image(systemName: "photo.badge.plus") } // ic_sticker — même clavier emoji natif que ic_smile, voir doc de tête de fichier PhotoToolsView sur l'absence de catalogue custom côté Android
                 Button { showGalleryPicker = true } label: { Image(systemName: "plus") } // ic_add

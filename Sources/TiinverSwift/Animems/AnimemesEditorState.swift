@@ -436,6 +436,13 @@ final class AnimemesEditorState: ObservableObject {
         updated.remove(at: idx)
         composer.setLayers(updated)
         selectedId = nil
+        // **Ajouté le 2026-08-19 (ANIMEMS_PARITY_AUDIT_V1.md F-11, lot mode masque)** — supprimer
+        // le calque en cours d'édition de masque doit aussi fermer le mode : sinon `isMaskEditMode`
+        // reste bloqué à `true` en arrière-plan (le panneau disparaît puisqu'il exige `selectedId`,
+        // mais l'état ne se réinitialise pas), et le PROCHAIN calque sélectionné hériterait
+        // silencieusement du geste de masque au lieu du geste de transformation normal
+        // (`combinedGesture` teste `state.isMaskEditMode` avant tout).
+        isMaskEditMode = false
         syncTimeline()
         version += 1
     }

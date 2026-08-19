@@ -600,6 +600,18 @@ struct AnimemesEditorView: View {
         VStack(spacing: 10) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
+                    // **Ajouté le 2026-08-19 (ANIMEMS_PARITY_AUDIT_V1.md F-11, trouvé pendant le
+                    // câblage du point d'entrée ci-dessus)** — port de `onDismiss()`
+                    // (`AnimemesCompound.java:1067-1071`, `closeBtn`→`onCancelClicked()` dans
+                    // `MaskPreviewEditorPanel.java:199/352`), DISTINCT de `onRemoveMask()`
+                    // (`AnimemesCompound.java:1044-1064`, notre "Aucun" ci-dessous) : Android ferme
+                    // le panneau SANS effacer le masque déjà appliqué. Avant ce correctif, "Aucun"
+                    // était la SEULE façon de sortir du mode masque côté iOS — rouvrir le panneau
+                    // pour ajuster un réglage puis fermer aurait donc SUPPRIMÉ un masque déjà
+                    // appliqué, une perte de données pour l'utilisateur, pas seulement une lacune.
+                    Button { state.isMaskEditMode = false } label: {
+                        Image(systemName: "checkmark").font(.caption.bold())
+                    }
                     Button {
                         state.setMaskType(nil)
                         state.isMaskEditMode = false
@@ -664,6 +676,18 @@ struct AnimemesEditorView: View {
                     .opacity(0.4)
                     .disabled(true)
                 bottomButton(icon: "square.grid.2x2", label: "Modèle") { showTemplateGallery = true }
+                // Port de `btn_mask` (`AnimemesCompound.java:1986-1988` — `showMaskAddPanel();
+                // v.setSelected(true)`) — **ajouté le 2026-08-19 (ANIMEMS_PARITY_AUDIT_V1.md F-11,
+                // P0)**. Avant ce correctif, `isMaskEditMode` n'était JAMAIS mis à `true` nulle
+                // part dans le projet : le moteur de masque (7 formes, rendu, gestes) était
+                // entièrement câblé mais 100% inaccessible, faute de point d'entrée. Android exige
+                // un calque sélectionné avant d'ouvrir le panneau (`showMaskPreviewEditor` retourne
+                // immédiatement si `obj == null`, `AnimemesCompound.java:1143-1148`) — reproduit
+                // ici par `.disabled(state.selectedId == nil)`. La sortie du mode (bouton "Aucun"
+                // dans `maskPanel(for:)`, qui appelle déjà `state.setMaskType(nil)` +
+                // `state.isMaskEditMode = false`) existait déjà et n'a pas besoin d'être ajoutée.
+                bottomButton(icon: "circle.dashed", label: "masque") { state.isMaskEditMode = true }
+                    .disabled(state.selectedId == nil)
                 bottomButton(icon: "trash", label: "supprimer") { state.deleteSelected() }
                     .disabled(state.selectedId == nil)
                 bottomButton(icon: "arrow.counterclockwise", label: "réinitialiser") { state.resetSelected() }

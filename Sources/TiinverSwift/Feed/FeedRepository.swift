@@ -114,10 +114,36 @@ final class FeedRepository {
     /// en 2 étapes : (1) upload direct vers BunnyCDN (`FeedMediaUploader.uploadPhoto`/`uploadVideo`,
     /// Storage pour les photos, Video Library HLS pour les vidéos) ; (2) `POST activity/add` avec
     /// SEULEMENT des métadonnées texte (`cdn_content_id`/`cdn_content_url`/`cdn_thumbnail_url`/
-    /// `cdn_provider`/`object_url`) — jamais de fichier. `category`/`metadata`/`template_id`/
-    /// `consentAi` restent délibérément omis (non envoyés par le vrai client Android non plus,
-    /// vérifié dans `sendMetaDate`).
-    func publish(actorId: String, object: String, message: String, hashtags: [String], fileData: Data) async throws {
+    /// `cdn_provider`/`object_url`) — jamais de fichier.
+    ///
+    /// **Corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-017 BUNNY-01, Phase B P1)** — la
+    /// prétention "category/metadata/template_id/consentAi non envoyés par Android non plus,
+    /// vérifié dans sendMetaDate" était fausse, un mélange entre 2 appels HTTP DIFFÉRENTS :
+    /// `HttpFileUploader.uploadRequestBody` (upload binaire multipart vers Bunny, où ces champs
+    /// n'ont effectivement pas leur place) VS `ActivityService.java:184-201` — le VRAI appel
+    /// `activity/add`, qui envoie bien `category`/`video_duration`/`width`/`height`/`metadata`/
+    /// `template_id`/`consentAi`. Confirmé aussi (`PublishFragment.java:274-283,350-362`) que
+    /// `category` est OBLIGATOIRE et BLOQUE la publication tant que l'utilisateur n'a pas défini de
+    /// catégorie de compte (`CategoryActivity`, écran forcé si `ACCOUNT_URI.category` est vide).
+    ///
+    /// **Portée de ce correctif** : `category` (best-effort, lu depuis le profil courant), `width`/
+    /// `height` (dimensions réelles du média) envoyés. `metadata`/`template_id` envoyés vides,
+    /// `consentAi` envoyé à `"0"` — valeurs par défaut fidèles à un post Galerie standard sans
+    /// gabarit Animems ni consentement IA explicite (aucun bascule de consentement IA n'existe dans
+    /// `PublishComposeView` actuellement — gap distinct, non construit ici). **NE reproduit PAS** le
+    /// blocage de publication tant qu'aucune catégorie n'est définie (`CategoryActivity` n'a pas
+    /// d'équivalent iOS — MIGRATION_PARITY_AUDIT_V3.md V3-F-058 PROFILE-03, écran distinct non
+    /// construit dans ce lot) : si `category` est vide, la publication continue quand même côté
+    /// iOS, contrairement à Android — gap documenté, pas silencieusement fermé.
+    func publish(
+        actorId: String, object: String, message: String, hashtags: [String], fileData: Data,
+        width: Int? = nil, height: Int? = nil, videoDurationMs: Int? = nil
+    ) async throws {
+        // Port de `getCurrentCategory()` (`ContentResolver.query(ACCOUNT_URI, "category")`) — lu ici
+        // via un rafraîchissement réseau du profil courant plutôt qu'un cache Core Data dédié (pas
+        // encore câblé côté session), best-effort : une catégorie manquante n'empêche PAS la
+        // publication (voir portée ci-dessus).
+        let category = try? await ProfileRepository.shared.fetchProfile(userId: actorId, viewerId: actorId).category
         // Port de `Cryptography.generateUniqueBase64ID(myId)` — UNE SEULE valeur générée ici,
         // réutilisée comme nom de fichier BunnyCDN ET comme paramètre `token` de `activity/add`,
         // exactement comme Android réutilise le même `data.getToken()` aux deux endroits.
@@ -157,8 +183,17 @@ final class FeedRepository {
             "cdn_content_id": cdnContentId,
             "cdn_content_url": cdnContentUrl,
             "object_url": cdnContentUrl,
+            // Port de `ActivityService.java:186-197` — voir le commentaire de tête pour la portée
+            // exacte de ce correctif (V3-F-017).
+            "metadata": "",
+            "template_id": "",
+            "consentAi": "0",
         ]
         if let cdnThumbnailUrl { params["cdn_thumbnail_url"] = cdnThumbnailUrl }
+        if let category, !category.isEmpty { params["category"] = category }
+        if let width { params["width"] = String(width) }
+        if let height { params["height"] = String(height) }
+        if object == "videos", let videoDurationMs { params["video_duration"] = String(videoDurationMs) }
 
         print("FEED PUBLISH: step=2/2 endpoint=activity/add actor=\(actorId) object=\(object)")
         let value: JSONValue

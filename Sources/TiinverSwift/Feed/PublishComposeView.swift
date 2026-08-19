@@ -5,10 +5,15 @@ import SwiftUI
 /// `PublishFragment.java` (légende/hashtags) — lus en entier, 2026-08-15. Flux RÉEL, mis à jour
 /// 2026-08-16 : choix du mode de recadrage (rectangle/ovale/forme libre) → recadrage → outils
 /// (`PhotoToolsView` : flip, suppression d'arrière-plan, peinture, texte) → légende + hashtags.
-/// Catégorie/IA-consent d'Android PAS reproduits : confirmé qu'ils ne sont PAS envoyés au serveur
-/// par `HttpFileUploader.uploadRequestBody` malgré leur présence dans l'UI Android — reproduire le
-/// comportement RÉEL, pas l'écran local. Stickers/emoji et image composée (ajout d'une seconde
-/// image) restent hors périmètre — voir `MIGRATION_AUDIT.md`.
+///
+/// **Corrigé le 2026-08-19 (V3-F-017 BUNNY-01, Phase B P1)** — l'affirmation précédente
+/// ("Catégorie/IA-consent PAS envoyés au serveur, confirmé dans `HttpFileUploader.
+/// uploadRequestBody`") mélangeait 2 appels HTTP distincts : `uploadRequestBody` est le SEUL upload
+/// binaire vers Bunny (où ces champs n'ont effectivement pas leur place), PAS l'appel de métadonnées
+/// `activity/add` (`ActivityService.java`, séparé), qui les envoie bien réellement — voir
+/// `FeedRepository.publish` pour la trace complète et la portée exacte de ce qui est maintenant
+/// envoyé. Stickers/emoji et image composée (ajout d'une seconde image) restent hors périmètre —
+/// voir `MIGRATION_AUDIT.md`.
 enum PublishMedia: Identifiable {
     case photo(UIImage)
     case video(URL)
@@ -192,16 +197,40 @@ struct PublishComposeView: View {
                     return
                 }
                 print("PUBLISH REQUEST: object=photos captionLength=\(caption.count) fileBytes=\(jpegData.count) — flux réel : BunnyCDN Storage puis activity/add (métadonnées)")
+                // Port de `ActivityService.java` `width`/`height` (V3-F-017) — dimensions réelles en
+                // pixels de l'image publiée, pas la taille du `UIImage` mise à l'échelle pour l'écran.
+                let pixelSize = CGSize(width: image.size.width * image.scale, height: image.size.height * image.scale)
                 try await FeedRepository().publish(
                     actorId: actorId, object: "photos", message: caption, hashtags: hashtags,
-                    fileData: jpegData
+                    fileData: jpegData, width: Int(pixelSize.width), height: Int(pixelSize.height)
                 )
             case .video(let url):
                 let videoData = try Data(contentsOf: url)
                 print("PUBLISH REQUEST: object=videos captionLength=\(caption.count) fileBytes=\(videoData.count) — flux réel : BunnyCDN Video Library puis activity/add (métadonnées)")
+                // Port de `ActivityService.java` `width`/`height`/`video_duration` (V3-F-017) —
+                // dimensions natives + durée réelle de la vidéo publiée. Unité de `video_duration`
+                // NON confirmée dans le code source Android lu cette passe (aucun producteur trouvé
+                // de l'extra `"duration"` dans le flux Galerie de base, seulement transmis tel quel
+                // par `PublishFragment`) — millisecondes retenues par convention Android standard
+                // (`MediaMetadataRetriever`/`MediaPlayer.getDuration()`), à vérifier sur un test réel.
+                let asset = AVURLAsset(url: url)
+                var videoWidth: Int?
+                var videoHeight: Int?
+                var videoDurationMs: Int?
+                if let track = try? await asset.loadTracks(withMediaType: .video).first,
+                    let naturalSize = try? await track.load(.naturalSize),
+                    let transform = try? await track.load(.preferredTransform)
+                {
+                    let oriented = naturalSize.applying(transform)
+                    videoWidth = Int(abs(oriented.width))
+                    videoHeight = Int(abs(oriented.height))
+                }
+                if let seconds = try? await asset.load(.duration).seconds, seconds.isFinite, seconds > 0 {
+                    videoDurationMs = Int(seconds * 1000)
+                }
                 try await FeedRepository().publish(
                     actorId: actorId, object: "videos", message: caption, hashtags: hashtags,
-                    fileData: videoData
+                    fileData: videoData, width: videoWidth, height: videoHeight, videoDurationMs: videoDurationMs
                 )
             }
             print("PUBLISH RESPONSE: success")

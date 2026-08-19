@@ -332,3 +332,99 @@ Gabarit pour chaque entrée de PHASE B, à dupliquer :
 **Statut final** : <statut mis à jour selon la taxonomie V3, ne JAMAIS utiliser
 COMPLETE_PARITY_VALIDATED sans un résultat de test réel positif documenté ci-dessus>
 -->
+
+## 2026-08-19 — Phase B, P1 : début (méthode identique aux P0, poursuite automatique autorisée)
+
+Les 8 P0 sont tous BUILD_VALIDATED ou (P0-7) mitigés avec dépendance backend documentée. Poursuite
+automatique vers les items P1 de l'audit (§8), même méthode stricte, sans nouvel audit.
+
+## 2026-08-19 — Lot P1-A : V3-F-069/070 (Groupes payants — catalogue de prix + abonnement inerte)
+
+**Commit** : `e330e6c` — CI verte (run 32296613502).
+
+**V3-F-070** — gap réel plus sévère que décrit : `ChatListItem.subscriptionRequired`/
+`.subscriptionRenewal` n'étaient construits nulle part (confirmé par grep), la bannière ne
+s'affichait JAMAIS. Chaîne Android complète retracée (`ChatFragmentTest.java` :
+`!isGroupMember()` → bannière immédiate ; `checkSubcribtion()` → `GET
+group/checksubscription/{userId}/{groupId}` ; `Subscribe.bind`/`RenewSubscription.bind` → `POST
+group/subscribe`/`group/renewsubscription` ; `subscribeSuccefully()` → message système local).
+Implémenté intégralement : `GroupRepository.checkSubscription/subscribeToGroup/
+renewGroupSubscription`, `ChatListItem` étendu avec `groupId`/`creatorId`,
+`ChatViewModel.checkGroupSubscription()` appelé sur CHAQUE `loadInitial()` de groupe (pas
+seulement `lucrative`, fidèle à Android), `resolveGroupSubscription()` avec vérification de solde
+AVANT l'appel réseau (`>` strict, comme Android), retrait de bannière + déblocage composeur +
+message "a rejoint" UNIQUEMENT sur confirmation serveur réelle.
+
+**V3-F-069** — contradiction résolue AVANT tout correctif : le finding original affirmait que les
+vraies valeurs Android sont 250/500/1250/2500/5000. Tracé `Group.java` directement : ces 5 valeurs
+ne sont que les LIBELLÉS du spinner (`prixList`) ; le prix RÉELLEMENT soumis vient de
+`getPrice(position)`, qui pour un spinner à 5 éléments ne peut jamais renvoyer que 100/200/400/500
+(bug réel Android de libellé/valeur, confirmé). iOS envoyait déjà ces 4 valeurs correctement ;
+seuls 3 choix morts (700/800/1000, inatteignables sur Android) ont été retirés — PAS de
+remplacement par 250/500/1250/2500/5000, qui aurait cassé la parité réelle des valeurs soumises.
+
+**Test réel requis** : oui pour les deux — un groupe payant réel, un utilisateur non-membre et un
+autre avec abonnement expiré, pour confirmer bannières + déblocage composeur + crédit correct.
+
+**Statut final** : V3-F-070 → BUILD_VALIDATED. V3-F-069 → requalifié COMPLETE_PARITY_CANDIDATE
+(la prémisse du finding original était fausse, la valeur réellement soumise était déjà correcte).
+
+---
+
+## 2026-08-19 — Lot P1-B : V3-F-006 (texte anglais non traduit affiché aux utilisateurs)
+
+**Commit** : `38d5e99` — CI verte.
+
+Le commentaire iOS précédent affirmait que cette chaîne n'était "pas traduite côté source Android
+non plus". Vérifié directement : `values/strings.xml` (anglais, texte de développement) VS
+`values-fr/strings.xml:313` — la traduction française réelle existe :
+"onglet ici pour les informations sur le groupe". iOS affichait le texte anglais brut aux 3 sites
+d'appel (liste de conversations, sous-titre par défaut de groupe, résultats de recherche). Corrigé
+aux 3 endroits avec la vraie traduction française (pas d'infrastructure de localisation dans ce
+projet — confirmé, aucun fichier `.strings`/`NSLocalizedString` — chaînes françaises codées en dur
+partout, fidèle à la convention établie de ce portage).
+
+**Test réel requis** : non-bloquant — visuel simple, vérifiable par capture d'écran au prochain
+test réel du module Chat.
+
+**Statut final** : BUILD_VALIDATED.
+
+---
+
+## 2026-08-19 — Lot P1-C : V3-F-091/092 (Wallet — upload photo erreur avalée + pub récompensée)
+
+**Commit** : `aa83ab4` — CI verte.
+
+**V3-F-091** — contradiction résolue, AUCUN code modifié : vérifié `AddPerfilFoto.java:655-658`,
+`onError(String message)` est ÉGALEMENT vide côté Android réel (aucun Toast, aucun feedback) — le
+finding original supposait à tort qu'Android affichait une erreur. Réutiliser
+`ProfileViewModel.errorMessage` ici aurait remplacé l'écran de profil entier par un bandeau
+"recharger le profil", une régression UX RÉELLE pire que le silence actuel (l'utilisateur perdrait
+la vue du profil qu'il regarde). Requalifié COMPLETE_PARITY_CANDIDATE (bug partagé), non modifié.
+
+**V3-F-092** — bug PLUS sévère trouvé en traçant `EarnCoinsActivity.java:227-238,342-396` en
+entier, au-delà de ce que décrivait le finding original :
+1. (Décrit) `pendingCoinsAmount`/`pendingGemsAmount` jamais relus — un gain perdu au premier échec
+   restait perdu pour toujours.
+2. (Découvert, plus grave) `updateToServer` calcule `currentAmouont = pendingCoinCount +
+   currenGainCoins` pour le champ `"coins"` réellement envoyé au serveur — un DELTA (ce gain +
+   solde en attente), PAS le solde total du compte (qui, lui, n'est utilisé QUE pour la mise à
+   jour locale). L'ancien code iOS envoyait le solde total du compte dans ce même champ à CHAQUE
+   récompense — si le serveur additionne ce champ à son solde existant (cohérent avec le nom
+   `rewardedCoins` et le calcul Android), le solde réel aurait environ DOUBLÉ à chaque publicité
+   regardée au lieu d'augmenter du montant réellement gagné.
+
+Corrigé pour correspondre exactement à Android : crédit local optimiste inconditionnel conservé,
+mais le rapport serveur envoie maintenant `pendingAmount + divided` (jamais le solde total), et le
+compteur en attente n'est remis à 0 qu'après confirmation serveur réelle.
+
+**Test réel requis** : oui, impérativement pour V3-F-092 — changement à risque financier réel basé
+sur une preuve directe du code source Android (pas une supposition), mais jamais exécuté contre un
+vrai flux de récompense/backend dans cette session.
+
+**Résultat du test réel** : non effectué (aucun des 3 lots ci-dessus).
+
+**Statut final** : V3-F-091 → COMPLETE_PARITY_CANDIDATE (bug partagé, non modifié). V3-F-092 →
+BUILD_VALIDATED. Aucun COMPLETE_PARITY_VALIDATED déclaré.
+
+---

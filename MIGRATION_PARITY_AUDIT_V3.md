@@ -136,7 +136,7 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 | V3-F-003 (SEARCH-03) | Tap résultat utilisateur | IOS_INTENTIONAL_DIFFERENCE | P2 | Zone tapable élargie (amélioration) | HIGH |
 | V3-F-004 (SEARCH-04) | Tap résultat publication → plein écran | PARTIAL | P1 | Pas de refetch avant affichage (Android en fait un) — état like/compteurs possiblement obsolète | MEDIUM |
 | V3-F-005 (SEARCH-05) | Tap hashtag → fil | COMPLETE_PARITY_CANDIDATE | P2 | Aucun | HIGH |
-| V3-F-006 (SEARCH-06) | Recherche groupe — texte placeholder | **PARTIAL** | **P1** | Chaîne littérale anglaise `"tab here for group info"` affichée à l'utilisateur pour tout résultat groupe serveur | HIGH |
+| V3-F-006 (SEARCH-06) | Recherche groupe — texte placeholder | BUILD_VALIDATED (corrigé `38d5e99`, Phase B lot P1 — vraie traduction française vérifiée dans `values-fr/strings.xml`, CI verte — test réel requis) | **P1** | Chaîne littérale anglaise `"tab here for group info"` affichée à l'utilisateur pour tout résultat groupe serveur | HIGH |
 | V3-F-007 (SEARCH-07) | Tap `#hashtag`/`@mention` dans une légende | **MISSING** | **P1** | Fonctionnalité entière absente (pas de `MentionTextView` équivalent) | HIGH |
 | V3-F-008 (SEARCH-08) | États loading/empty/erreur | COMPLETE_PARITY_CANDIDATE | P2 | Lié à V3-F-002 | HIGH |
 
@@ -227,8 +227,8 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 | V3-F-066 (GROUPS-03) | Rejoindre/quitter | COMPLETE_PARITY_CANDIDATE | P1 | Aucun | HIGH |
 | V3-F-067 (GROUPS-04) | Membres + actions admin | COMPLETE_PARITY_CANDIDATE | P1 | Aucun | HIGH |
 | V3-F-068 (GROUPS-05) | Renommage + description | COMPLETE_PARITY_CANDIDATE | P2 | Correctif déjà appliqué | HIGH |
-| V3-F-069 (GROUPS-06) | Groupes payants — catalogue de prix erroné | **PARTIAL** | **P1** | 7 paliers iOS (`[100,200,400,500,700,800,1000]`) ne correspondent à AUCUNE des 5 vraies valeurs Android (`250/500/1250/2500/5000`) | HIGH |
-| V3-F-070 (GROUPS-07) | **Abonnement/renouvellement groupe payant — bouton inerte** | **FUNCTIONALLY_FAILED** | **P1** | Closure vide `{}`, justifiée par un commentaire périmé ("attend le module Wallet" — qui existe désormais intégralement) | HIGH |
+| V3-F-069 (GROUPS-06) | Groupes payants — catalogue de prix erroné | **CORRIGÉ EN COMPLETE_PARITY_CANDIDATE** (contradiction résolue, `e330e6c` — voir Progress_V3 : les 5 valeurs 250/500/1250/2500/5000 ne sont que des libellés d'affichage `Group.java`, le prix RÉELLEMENT soumis vient de `getPrice(position)` et ne peut jamais être autre chose que 100/200/400/500 pour un spinner à 5 éléments ; iOS envoyait déjà ces 4 valeurs, seuls 3 choix morts (700/800/1000) ont été retirés) | **P1** | 7 paliers iOS (`[100,200,400,500,700,800,1000]`) ne correspondent à AUCUNE des 5 vraies valeurs Android (`250/500/1250/2500/5000`) — **prémisse invalidée, voir statut** | HIGH |
+| V3-F-070 (GROUPS-07) | **Abonnement/renouvellement groupe payant — bouton inerte** | **BUILD_VALIDATED** (corrigé `e330e6c`, Phase B lot P1, CI verte — test réel requis ; gap réel plus sévère que décrit, voir Progress_V3 : la bannière ne s'affichait JAMAIS, pas seulement le bouton) | **P1** | Closure vide `{}`, justifiée par un commentaire périmé ("attend le module Wallet" — qui existe désormais intégralement) | HIGH |
 | V3-F-071 (GROUPS-08) | Affichage nom/icône groupe en chat | COMPLETE_PARITY_CANDIDATE | P2 | Aucun | HIGH |
 
 ### Notifications / Deep Links / Payments / Boost (V3-F-072 à 090)
@@ -257,8 +257,8 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 | ID | Domaine | Statut | Prio | Écart | Confiance |
 |---|---|---|---|---|---|
 | V3-F-090 (SILENT-01) | **Décodage messages chat entrants fragile** | **BUILD_VALIDATED** (corrigé `57fd300`, Phase B Lot 1 — `decodeMessages` passé en `compactMap` per-item, CI verte — test réel requis) | **P0** | `ChatRepository.decodeMessages` décode le tableau ENTIER, pas per-item — un seul message malformé fait disparaître tout le lot socket entrant, sans trace | HIGH |
-| V3-F-091 (SILENT-02) | Upload photo de profil — erreur avalée | FUNCTIONALLY_FAILED | P1 | `catch {}` vide, `errorMessage` jamais alimenté | HIGH |
-| V3-F-092 (SILENT-03) | **Gains de pub récompensée perdus silencieusement** | **FUNCTIONALLY_FAILED** | **P1** | `pendingCoinsAmount`/`pendingGemsAmount` écrits une fois, jamais réinjectés (Android le fait) — écrasés par le solde serveur au prochain reload | HIGH |
+| V3-F-091 (SILENT-02) | Upload photo de profil — erreur avalée | **CORRIGÉ EN COMPLETE_PARITY_CANDIDATE (bug partagé)** — vérifié directement dans `AddPerfilFoto.java:655-658` : `onError(String message)` est ÉGALEMENT vide côté Android réel (aucun Toast, aucun feedback), le finding original supposait à tort qu'Android faisait mieux ; réutiliser `ProfileViewModel.errorMessage` ici aurait remplacé tout l'écran profil par un bandeau "recharger", une régression UX pire que le silence actuel — non modifié | P1 | `catch {}` vide, `errorMessage` jamais alimenté | HIGH |
+| V3-F-092 (SILENT-03) | **Gains de pub récompensée perdus silencieusement** | **BUILD_VALIDATED** (corrigé `aa83ab4`, Phase B lot P1, CI verte — test réel requis ; bug plus sévère que décrit, voir Progress_V3 : le champ `"coins"` envoyé au serveur était le solde total du compte au lieu d'un delta, risque de doublement du solde à chaque pub, pas seulement une perte du solde en attente) | **P1** | `pendingCoinsAmount`/`pendingGemsAmount` écrits une fois, jamais réinjectés (Android le fait) — écrasés par le solde serveur au prochain reload | HIGH |
 | V3-F-093 (SILENT-04) | Décodage tableau entier — Wallet/Discover/Créateurs | CODE_PRESENT_UNVERIFIED | P2 | Risque résiduel atténué par les décodages tolérants déjà en place | MEDIUM |
 | V3-F-094 (SILENT-05) | Navigation profil "créateur de la semaine" avec id vide | CODE_PRESENT_UNVERIFIED | P2 | Pas de filet de sécurité pour `isCurrentUser==false` | MEDIUM |
 | V3-F-095 (ORPHAN-01) | Analytics temps de visionnage jamais collectées | DEAD_CODE / MISSING | P2 | `ViewEventRepository` complet, zéro appelant — Android collecte activement | HIGH |

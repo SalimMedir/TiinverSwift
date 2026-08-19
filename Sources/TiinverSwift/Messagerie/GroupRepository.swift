@@ -82,7 +82,10 @@ final class GroupRepository {
             roster.currentUserId = myId
             roster.token = token
             roster.title = name
-            roster.subTitle = "tab here for group info"
+            // Port de `R.string.groupinfo`, corrigé avec `RosterListView.swift` (V3-F-006, P1) —
+            // vraie traduction française (`values-fr/strings.xml:313`), pas le texte de
+            // développement anglais.
+            roster.subTitle = "onglet ici pour les informations sur le groupe"
             roster.conversationId = conversationId
             roster.userId = myId
             roster.username = myUsername

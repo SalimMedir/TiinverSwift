@@ -64,7 +64,9 @@ struct ChatSearchView: View {
                                     guard let myId = UserSession.shared.myId else { return }
                                     openTarget = group.rosterModel(myId: myId, myUsername: UserSession.shared.username)
                                 } label: {
-                                    ChatSearchRow(title: group.name, subtitle: "tab here for group info", profile: group.profile)
+                                    // Port de `R.string.groupinfo`, corrigé avec `RosterListView.swift`/
+                                    // `GroupRepository.swift` (V3-F-006, P1) — vraie traduction française.
+                                    ChatSearchRow(title: group.name, subtitle: "onglet ici pour les informations sur le groupe", profile: group.profile)
                                 }
                                 .buttonStyle(.plain)
                             }

@@ -235,10 +235,15 @@ final class RosterListViewModel: ObservableObject {
             let type = entity.type ?? ChatType.chat.wireValue
             let isGroup = type == ChatType.group.wireValue
             let title = isGroup ? (entity.groupName ?? "") : (entity.nikname ?? entity.username ?? "")
-            // Port de `R.string.groupinfo` — chaîne Android réelle ("tab here for group info"),
-            // reprise verbatim, PAS corrigée/traduite ici (le reste de l'app est en français, mais
-            // cette chaîne précise ne l'est pas côté source non plus).
-            let subtitle = isGroup ? "tab here for group info" : (entity.username ?? "")
+            // Port de `R.string.groupinfo` — **corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md
+            // V3-F-006 SEARCH-06, P1)** : le commentaire précédent affirmait à tort que cette
+            // chaîne n'était "pas traduite côté source non plus" — vérifié directement dans
+            // `values-fr/strings.xml:313`, la vraie chaîne vue par un utilisateur Android en
+            // français est "onglet ici pour les informations sur le groupe" (`values/strings.xml`
+            // ne contient que le texte de développement anglais, `values-fr` le traduit
+            // réellement) ; iOS affichait le texte de développement anglais brut à TOUS les
+            // utilisateurs, jamais la traduction réelle.
+            let subtitle = isGroup ? "onglet ici pour les informations sur le groupe" : (entity.username ?? "")
 
             var model = RosterModel()
             model.id = Int(entity.localId)

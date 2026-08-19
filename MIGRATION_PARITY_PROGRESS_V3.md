@@ -501,3 +501,38 @@ depuis la recherche sont à jour, pas figés au moment de la recherche.
 **Statut final** : BUILD_VALIDATED.
 
 ---
+
+## 2026-08-19 — Lot P1-G : V3-F-058 (Édition de catégorie de compte, écran manquant) — clôt aussi V3-F-017
+
+**Commit** : `5ebf13a` — CI verte.
+
+`CategoryActivity.java` lu en entier : 37 catégories réelles (ids + libellés français exacts de
+`values-fr/strings.xml`), liste à sélection unique, bouton Enregistrer désactivé tant qu'aucun choix
+n'est fait, `POST user` avec `column="category"` (motif déjà porté ailleurs sous
+`ProfileRepository.updateProfileField`, réutilisé tel quel). Confirmé aussi que Android BLOQUE la
+publication tant que le compte n'a pas de catégorie (`PublishFragment.java:274-283,350-362` — lance
+`CategoryActivity` et n'appelle `proceedToPublish` qu'après un choix confirmé).
+
+Créé `CategoryPickerView.swift` (catalogue + écran), réutilisé dans 2 contextes :
+1. **Blocage forcé** dans `PublishComposeView.publish()` — vérifie la catégorie du compte avant
+   d'appeler `FeedRepository.publish` ; si absente, ouvre le sélecteur et ARRÊTE (reprend depuis
+   `onSaved`, qui rappelle `publish()`). Ferme ainsi le gap qui restait ouvert dans V3-F-017 (Lot
+   P1-E) — la portée de ce finding est donc maintenant complète, pas seulement partielle.
+2. **Édition libre** dans `SettingAccountView` (nouvelle rangée "Catégorie du compte") — emplacement
+   choisi par analogie avec les autres champs de profil éditables de cet écran, le layout XML des
+   réglages Android n'étant pas disponible pour confirmer l'emplacement exact.
+
+`FeedRepository.publish` reçoit maintenant `category` en paramètre explicite plutôt que de la
+refetcher en interne (évite un double appel réseau redondant avec la vérification de blocage faite
+en amont par l'appelant).
+
+**Test réel requis** : oui — vérifier le blocage réel (compte sans catégorie → sélecteur → retour
+au flux de publication après choix), l'édition libre depuis les réglages, et la persistance
+serveur de la valeur choisie.
+
+**Résultat du test réel** : non effectué.
+
+**Statut final** : BUILD_VALIDATED pour V3-F-058 ET V3-F-017 (portée désormais complète pour ce
+dernier, plus "partielle").
+
+---

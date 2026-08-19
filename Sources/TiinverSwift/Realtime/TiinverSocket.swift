@@ -10,17 +10,26 @@ import SocketIO
 ///  - Reconnection infinie avec backoff 1s → 30s, `randomizationFactor = 0.5`.
 ///  - Timeout de connexion 10s.
 ///
-/// ⚠️ DÉCISION AUTONOME À VÉRIFIER SUR MACOS (voir MIGRATION_PROGRESS.md, journal de décisions) :
-/// `Socket.IO-Client-Swift` (16.x) n'expose pas avec certitude un équivalent 1:1 du champ `auth`
-/// du protocole Socket.IO v4 (celui que le serveur lit via `socket.handshake.auth.token`, cf.
-/// commentaire Java `SocketInit.java:35`). L'option `.connectParams` ci-dessous envoie les données
-/// comme paramètres de requête Engine.IO (`handshake.query`), ce qui est l'approche la plus
-/// proche disponible dans la configuration déclarative de la lib, mais CE N'EST PAS
-/// garanti identique à `handshake.auth` côté serveur — à valider dès qu'un premier build/run
-/// réel est possible (device ou simulateur macOS), en vérifiant côté serveur quel champ du
-/// handshake reçoit effectivement le token. Si `handshake.auth.token` reste vide, il faudra
-/// examiner la version exacte de la lib pour une option `auth` dédiée, ou construire le socket
-/// manuellement via `SocketManager(socketURL:config:)` avec une configuration plus bas niveau.
+/// **Corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-024 CHAT-03, Phase B P0-8)** —
+/// l'incertitude précédemment documentée ici est résolue avec preuve à l'appui, pas devinée.
+/// Confirmé : `SocketInit.java:37` (Android) envoie `opts.auth = {"token": apiKey}`, un vrai champ
+/// `IO.Options.auth` de `socket.io-client-java`, lu côté serveur via `socket.handshake.auth.token`
+/// (commentaire Java ligne 35). Confirmé aussi (documentation officielle de la bibliothèque Swift
+/// épinglée, `Socket.IO-Client-Swift` 16.1.1 — dernière version publiée, vérifiée via la page
+/// `SocketIOClientOption` du site de docs généré) : `SocketIOClientConfiguration`/
+/// `SocketIOClientOption` n'a AUCUN cas `.auth` — `.connectParams` (utilisé par l'ancienne version
+/// de ce fichier) envoie le jeton comme paramètre de requête Engine.IO (`handshake.query`), PAS
+/// comme `handshake.auth`, un canal différent que le serveur ne lit pas d'après le commentaire
+/// Android. En revanche `SocketIOClient` expose bien `connect(withPayload:timeoutAfter:
+/// withHandler:)` (vérifié sur la page de docs `SocketIOClient`) : le paramètre `withPayload`
+/// envoie un dictionnaire comme charge utile du paquet CONNECT Socket.IO v4 pour ce namespace —
+/// c'est le mécanisme réellement équivalent à `IO.Options.auth`, PAS `.connectParams`. `.
+/// connectParams` est donc retiré de la configuration ci-dessous ; le jeton est maintenant transmis
+/// via `withPayload` au moment de `connect()`, ce qui a un avantage supplémentaire : il n'est plus
+/// figé dans une configuration mémoïsée à la construction (`ensureSocket`), il est envoyé frais à
+/// chaque appel de `connect()`/`reset()`. **Reste à vérifier sur une connexion réelle** que le
+/// serveur associe bien la session au bon utilisateur après ce changement (aucun test réel possible
+/// dans cette session, conformément à la consigne permanente de ne pas déclencher Appetize).
 final class TiinverSocket {
     static let shared = TiinverSocket()
 
@@ -41,9 +50,13 @@ final class TiinverSocket {
     /// et recrée avec un nouveau token, utilisé après un login qui a lieu APRÈS qu'un premier
     /// singleton anonyme ait déjà pu être créé — voir `ChatRepository.swift` pour le point d'appel
     /// réel de `reset(apiKey:)`).
-    private func ensureSocket(apiKey: String?) -> SocketIOClient? {
+    /// Le jeton n'est plus passé ici (voir `connect(apiKey:)`, P0-8) — cette fonction ne construit
+    /// plus qu'une configuration transport SANS auth, mémoïsée une seule fois comme côté Android
+    /// (`getSocket()` construit le `Socket` une fois, l'auth est envoyée séparément à chaque
+    /// `connect()` via le paquet CONNECT, pas figée dans les options de transport).
+    private func ensureSocket() -> SocketIOClient? {
         if let socket { return socket }
-        var config: SocketIOClientConfiguration = [
+        let config: SocketIOClientConfiguration = [
             .forceNew(false),
             .reconnects(true),
             .reconnectAttempts(-1),   // Integer.MAX_VALUE côté Android == retries illimités
@@ -53,9 +66,6 @@ final class TiinverSocket {
             .secure(true),
             .forceWebsockets(true)    // transports = ["websocket"], pas de fallback polling
         ]
-        if let apiKey, !apiKey.isEmpty {
-            config.insert(.connectParams(["token": apiKey]))
-        }
 
         guard let url = URL(string: APIEnvironment.socketURL) else { return nil }
         let manager = SocketIO.SocketManager(socketURL: url, config: config)
@@ -66,14 +76,17 @@ final class TiinverSocket {
 
     /// Port de `App.connectSocket()` — IDEMPOTENT : ne (re)lance une connexion que si le socket
     /// n'est pas déjà connecté/en cours de connexion, fidèle au `if (!socket.connected())`
-    /// original (`App.java:120-129`).
+    /// original (`App.java:120-129`). Le jeton est transmis via `withPayload`, port réel de
+    /// `IO.Options.auth` (voir le commentaire de tête de fichier, P0-8) — envoyé frais à chaque
+    /// appel, jamais figé dans une configuration mémoïsée.
     func connect(apiKey: String?) {
-        guard let socket = ensureSocket(apiKey: apiKey) else { return }
+        guard let socket = ensureSocket() else { return }
         switch socket.status {
         case .connected, .connecting:
             return
         default:
-            socket.connect(timeoutAfter: 10, withHandler: nil)
+            let payload: [String: Any]? = (apiKey?.isEmpty == false) ? ["token": apiKey!] : nil
+            socket.connect(withPayload: payload, timeoutAfter: 10, withHandler: nil)
         }
     }
 

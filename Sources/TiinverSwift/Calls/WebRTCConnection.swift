@@ -177,6 +177,17 @@ final class WebRTCConnection: NSObject {
     }
 
     /// Port de `createOffer()`.
+    ///
+    /// **Corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-026 WEBRTC-01, Phase B P0-8)** —
+    /// bug frère de celui déjà corrigé ailleurs (le correctif symétrique existe dans `process()`,
+    /// gérant les collisions d'offre entrantes) : sur ÉCHEC, la branche `guard...else` remettait
+    /// déjà `makingOffer = false` correctement, mais sur SUCCÈS `makingOffer` n'était JAMAIS
+    /// remis à `false` — contrairement à `iceRestart()` juste au-dessus, qui le fait explicitement
+    /// après `sendMessage`. Conséquence réelle : après le premier `createOffer()` réussi de
+    /// l'initiateur d'un appel, `makingOffer` reste bloqué à `true` en permanence pour toute la
+    /// durée de la connexion — `offerCollision` (ligne ~248) traite alors CHAQUE offre entrante
+    /// suivante comme une collision, cassant potentiellement toute renégociation ultérieure
+    /// (changement de caméra, reprise après coupure réseau, etc.) pour le pair initiateur.
     func createOffer() {
         guard let peerConnection, let sdpMediaConstraints else { return }
         makingOffer = true
@@ -189,6 +200,7 @@ final class WebRTCConnection: NSObject {
             let newDesc = RTCSessionDescription(type: sdp.type, sdp: munged)
             peerConnection.setLocalDescription(newDesc) { _ in }
             self.sendMessage(type: "offer", sdp: sdp.sdp)
+            self.makingOffer = false
         }
     }
 

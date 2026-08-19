@@ -6,16 +6,24 @@ import Foundation
 ///
 /// **Décision d'architecture pour l'export** (comme MetalPetal/Vision/TOCropViewController aux
 /// modules 7-9) : Android pilote l'export via ExoPlayer (aperçu) + un pipeline de transformation
-/// custom (`Utils/media/VideoTransformer`, confirmé MORT/non branché prod par
-/// `TIINVER_IOS_PORT_ANALYSIS.md` §2.2 — cluster "v2" jamais atteint car non déclaré dans le
-/// manifest Android, message de commit `c5c2c3d` "WIP: passthrough trimmer... non branché prod").
-/// Remplacé par `AVAssetExportSession`+`AVMutableComposition` (trim via `timeRange`) +
-/// `AVMutableVideoComposition`/`AVMutableVideoCompositionLayerInstruction` (rotation/recadrage,
-/// `setTransform(_:at:)`) — API native Apple de haut niveau, pas une librairie tierce à vérifier
-/// comme TOCropViewController/Vision, mais À VÉRIFIER contre la documentation réelle au moment
-/// d'écrire l'export lui-même (pas encore fait ici — seul l'état est porté cette passe).
-/// `Utils/media/VideoFrameExtractorCodecAsync.java` (355 lignes, extraction de vignettes) a un
-/// équivalent natif direct `AVAssetImageGenerator` — non porté ligne à ligne pour la même raison.
+/// custom `Utils/media/VideoTransformer`.
+///
+/// **Correction du 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-032 GALERIE-01, Phase B P0-6)** —
+/// le commentaire précédent affirmait ce pipeline "confirmé MORT/non branché prod" (citant
+/// `TIINVER_IOS_PORT_ANALYSIS.md §2.2`). Cette affirmation était FAUSSE et a été invalidée par
+/// relecture directe et fraîche de `VideoTrimmerView.java` (module 10) avant d'écrire le correctif
+/// P0-6 : le fichier contient un `import com.animems.engine.Utils.media.VideoTransformer` réel et
+/// un appel réel `VideoTransformer.process(params, callback)` à la ligne 700, à l'intérieur de
+/// `startTrimWithCrop()` — méthode active, appelée depuis le bouton de validation de l'écran de
+/// trim réellement monté en production. Une seconde méthode, `startTrimWithCrop2()`
+/// (`VideoTrimmerView.java:807-854`), existe en parallèle comme repli RAPIDE sans transformation
+/// (trim temporel seul, pas de recadrage/rotation) — architecture à deux chemins, pas un vestige
+/// mort. `MediaTrimView.swift` porte maintenant les deux chemins à l'identique : export rapide
+/// (`AVAssetExportPresetPassthrough`) quand aucune transformation n'est active, export
+/// ré-encodé (`AVMutableComposition`+`AVMutableVideoComposition`, `.presetHighestQuality`) sinon.
+/// `Utils/media/VideoFrameExtractorCodecAsync.java` (355 lignes, extraction de vignettes) reste à
+/// part, avec un équivalent natif direct `AVAssetImageGenerator` — non porté ligne à ligne, ceci
+/// n'est pas remis en cause par la correction ci-dessus (fichier distinct, rôle distinct).
 struct VideoTrimState: Equatable {
     /// Port du cycle `currentRotation` — 0 → 90 → 180 → 270 → 0, un cran par appui sur le bouton
     /// pivot (`btnPivot`).

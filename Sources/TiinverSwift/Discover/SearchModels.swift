@@ -103,18 +103,22 @@ struct SearchPostResult: Codable, Identifiable, Hashable {
         isCertified = container.decodeLenientIntIfPresent(forKey: .isCertified)
     }
 
-    /// Même correctif que `FeedActivity.thumbnailURL` (2026-08-17, port fidèle de
-    /// `BubbleStatusPhoto.setMediaObject`) — cette structure duplique les mêmes champs CDN, donc
-    /// la même cause racine (photos jamais affichées, cette propriété ne lisait QUE
-    /// `cdn_thumbnail_url`, un champ vidéo-uniquement) s'y applique identiquement.
+    /// **Corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-009, Phase B P0-2)** — même
+    /// correctif que `FeedActivity.thumbnailURL`/`effectiveObjectURLString` (voir ce fichier pour
+    /// la preuve complète, `MediaObject.getObject_url()` lu ligne par ligne) : cette structure
+    /// duplique les mêmes champs CDN pour son propre rendu de résultat de recherche (`SearchView.
+    /// postRow`, pas seulement via `asFeedActivity`), donc la même correction de priorité
+    /// (`cdn_content_url` prioritaire quand `cdn_content_id` est valide, sinon repli `object_url`)
+    /// s'y applique identiquement pour la branche photo — la branche vidéo (`cdn_thumbnail_url`)
+    /// était déjà correcte, non modifiée.
     var thumbnailURL: URL? {
         let isVideo = object?.caseInsensitiveCompare("videos") == .orderedSame
+        let hasContentId = cdn_content_id != nil && cdn_content_id != "NULL" && !(cdn_content_id?.isEmpty ?? true)
         let candidate: String?
         if isVideo {
-            let hasContentId = cdn_content_id != nil && cdn_content_id != "NULL" && !(cdn_content_id?.isEmpty ?? true)
             candidate = hasContentId ? cdn_thumbnail_url : object_url
         } else {
-            candidate = object_url
+            candidate = hasContentId ? (cdn_content_url ?? object_url) : object_url
         }
         guard let candidate, !candidate.isEmpty else { return nil }
         return URL(string: candidate)

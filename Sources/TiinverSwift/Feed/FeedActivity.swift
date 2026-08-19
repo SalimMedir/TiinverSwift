@@ -40,25 +40,44 @@ struct FeedActivity: Codable, Identifiable, Equatable {
     /// pour ses propres posts) — nécessaire pour reconstruire ce bouton côté iOS (P0-C, 2026-08-17).
     var isFollowed: Bool?
 
-    /// **CAUSE RACINE RÉELLE (2026-08-17, retest utilisateur)** de la lecture vidéo peu fiable —
-    /// cette propriété privilégiait `cdn_content_url`, l'INVERSE de la priorité réelle Android.
-    /// Port fidèle de `VideoPlaybackCoordinator.tryPlayAt` (lu en entier) : l'URL PRINCIPALE
-    /// passée à `playerManager.playVideo(...)` est TOUJOURS `current.getObject_url()` — `object_url`
-    /// est le champ "média réel" universel (confirmé aussi côté photo : `CustomCardView.setData`
-    /// charge `mediaObject.getObject_url()` directement, JAMAIS `cdn_content_url`).
-    /// `cdn_content_url` n'est utilisé QUE pour construire une URL de REPLI distincte
-    /// (`fallbackPlaybackURL` ci-dessous), essayée seulement si `object_url` échoue à jouer —
-    /// jamais comme source principale.
+    /// **Corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-009, Phase B P0-2)** — le
+    /// commentaire précédent affirmait que `VideoPlaybackCoordinator.tryPlayAt` utilise TOUJOURS
+    /// `object_url`, jamais `cdn_content_url` — **confusion entre le NOM de la méthode Java
+    /// `getObject_url()` et le CHAMP JSON `object_url`** : lecture directe de
+    /// `MediaObject.java:352-357` confirme que `getObject_url()` est en réalité une méthode de
+    /// PRIORITÉ (une ancienne version simple, qui retournait juste `object_url`, est encore
+    /// commentée juste au-dessus — preuve d'un changement de comportement délibéré) :
+    /// ```java
+    /// public String getObject_url() {
+    ///     return (cdn_content_id==null || cdn_content_id.equals("NULL") || cdn_content_id.isEmpty())
+    ///         ? object_url : cdn_content_url;
+    /// }
+    /// ```
+    /// `VideoPlaybackCoordinator.tryPlayAt` (`current.getObject_url()`, lignes 144/153) ET
+    /// `BubbleStatusPhoto.setMediaObject` (photo, `mediaObject.getObject_url()`, lignes 158/164)
+    /// appellent TOUS LES DEUX cette méthode de priorité, pas le champ brut — reproduit ici comme
+    /// `effectiveObjectURLString`, utilisé par `playbackURL` (vidéo) ET la branche photo de
+    /// `thumbnailURL` ci-dessous.
+    private var effectiveObjectURLString: String? {
+        let hasContentId = cdn_content_id != nil && cdn_content_id != "NULL" && !(cdn_content_id?.isEmpty ?? true)
+        return hasContentId ? (cdn_content_url ?? object_url) : object_url
+    }
+
     var playbackURL: URL? {
-        guard let raw = object_url, !raw.isEmpty else { return nil }
+        guard let raw = effectiveObjectURLString, !raw.isEmpty else { return nil }
         return URL(string: raw)
     }
 
-    /// Port de `VideoPlaybackCoordinator.tryPlayAt`'s construction de `fallbackUrl` : `CDN_STREAM_
-    /// BASE_URL_V1 + ExoPlayerManager.extractVideoId(cdn_content_url) + "/play_720p.mp4"` —
-    /// `extractVideoId` prend simplement le PREMIER segment de chemin de `cdn_content_url` (le GUID
-    /// vidéo), reproduit ici via `URLComponents.path`. `stream.tiinver.com` (pas `cdn.tiinver.com`)
-    /// — valeur EXACTE de `infoContract.CDN_STREAM_BASE_URL_V1`, cohérente avec le `Referer`
+    /// Port de `VideoPlaybackCoordinator.tryPlayAt`'s construction de `fallbackUrl` (lignes
+    /// 115-121) : `CDN_STREAM_BASE_URL_V1 + ExoPlayerManager.extractVideoId(cdn_content_url) +
+    /// "/play_720p.mp4"` — un SECOND usage de `cdn_content_url`, distinct de la priorité
+    /// `effectiveObjectURLString` ci-dessus : Android construit ce repli à partir du champ BRUT
+    /// `cdn_content_url` (pas de `getObject_url()`), toujours essayé en complément si non-vide,
+    /// PAS conditionné sur `cdn_content_id` — les deux usages coexistent réellement côté Android
+    /// (confirmé par lecture directe), pas une simplification de ce portage. `extractVideoId`
+    /// prend simplement le PREMIER segment de chemin de `cdn_content_url` (le GUID vidéo),
+    /// reproduit ici via `URLComponents.path`. `stream.tiinver.com` (pas `cdn.tiinver.com`) —
+    /// valeur EXACTE de `infoContract.CDN_STREAM_BASE_URL_V1`, cohérente avec le `Referer`
     /// `https://stream.tiinver.com` déjà utilisé par `VideoPlayerManager` pour ce même hôte.
     var fallbackPlaybackURL: URL? {
         guard let cdn = cdn_content_url, !cdn.isEmpty,
@@ -67,26 +86,28 @@ struct FeedActivity: Codable, Identifiable, Equatable {
         return URL(string: "https://stream.tiinver.com/\(videoId)/play_720p.mp4")
     }
 
-    /// **CAUSE RACINE RÉELLE (2026-08-17)** des photos/thumbnails vidéo absents en Grid ET en
-    /// fullscreen, alors que la LECTURE vidéo fonctionnait (`playbackURL`, chemin de code
-    /// entièrement séparé) — port fidèle de `BubbleStatusPhoto.setMediaObject`
-    /// (`view/BubbleStatusPhoto.java`, lu en entier) : contrairement à l'hypothèse précédente
-    /// (cette propriété ne lisait QUE `cdn_thumbnail_url`), Android n'utilise ce champ QUE pour
-    /// certaines vidéos, JAMAIS pour une photo :
-    /// - PHOTO : toujours `object_url` — Android n'utilise JAMAIS `cdn_thumbnail_url` ici, un champ
-    ///   qui n'est même pas censé être renseigné pour ce type de contenu.
-    /// - VIDÉO : `cdn_thumbnail_url` SI `cdn_content_id` est présent et différent de la CHAÎNE
-    ///   littérale `"NULL"` (pas la valeur JSON `null`, vérifié dans le code source Android),
-    ///   SINON repli sur `object_url` (Glide charge alors directement l'URL vidéo brute comme
-    ///   source d'image — peut échouer silencieusement côté Android aussi dans ce cas précis,
-    ///   comportement fidèlement reproduit tel quel, pas "corrigé" au passage).
+    /// Port fidèle de `BubbleStatusPhoto.setMediaObject` (`view/BubbleStatusPhoto.java:135-174`,
+    /// lu en entier) — deux branches RÉELLEMENT différentes, vérifiées ligne par ligne, PAS
+    /// symétriques :
+    /// - PHOTO (`!isVideo`, lignes 157-172) : `mediaObject.getObject_url()` — la méthode de
+    ///   PRIORITÉ (voir `effectiveObjectURLString` ci-dessus), **corrigé le 2026-08-19** : la
+    ///   version précédente de cette propriété lisait TOUJOURS le champ brut `object_url`, jamais
+    ///   `cdn_content_url`, la même confusion nom-de-méthode/nom-de-champ que `playbackURL`.
+    /// - VIDÉO (`isVideo`, lignes 139-143) : **CHAMP DIFFÉRENT** — `cdn_thumbnail_url` (PAS
+    ///   `cdn_content_url`) SI `cdn_content_id` est présent et différent de la CHAÎNE littérale
+    ///   `"NULL"` (pas la valeur JSON `null`, vérifié dans le code source Android), SINON repli
+    ///   sur `object_url` brut (Glide charge alors directement l'URL vidéo brute comme source
+    ///   d'image — peut échouer silencieusement côté Android aussi dans ce cas précis,
+    ///   comportement fidèlement reproduit tel quel, pas "corrigé" au passage). Cette branche
+    ///   était déjà correcte avant ce correctif — vérifiée à nouveau ici pour confirmation, pas
+    ///   modifiée.
     var thumbnailURL: URL? {
         let candidate: String?
         if isVideo {
             let hasContentId = cdn_content_id != nil && cdn_content_id != "NULL" && !(cdn_content_id?.isEmpty ?? true)
             candidate = hasContentId ? cdn_thumbnail_url : object_url
         } else {
-            candidate = object_url
+            candidate = effectiveObjectURLString
         }
         guard let candidate, !candidate.isEmpty else { return nil }
         return URL(string: candidate)

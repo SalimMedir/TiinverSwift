@@ -50,28 +50,47 @@ struct EarnCoinsView: View {
         .navigationTitle("Gagner des pièces")
     }
 
-    /// Port de `showRewardedVideo`/`OnUserEarnedRewardListener.onUserEarnedReward` — crédit local
-    /// optimiste, puis rapport serveur (`rewardedCoins`, `type` selon `adsRewardAsGems`), avec repli
-    /// `pendingCoinsAmount`/`pendingGemsAmount` en cas d'échec réseau (fidèle à
-    /// `updateToServer`/`updateGemsToServer`, `catch` implicite via `try?`).
+    /// Port de `showRewardedVideo`/`OnUserEarnedRewardListener.onUserEarnedReward` → `addCoins`/
+    /// `updateToServer`/`updateGemsToServer` (`EarnCoinsActivity.java:227-238,342-396`, relu en
+    /// entier pour ce correctif) — crédit local optimiste (`coinCount += coins`, persisté et
+    /// affiché immédiatement, INCONDITIONNELLEMENT), puis rapport serveur séparé.
+    ///
+    /// **Corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-092 SILENT-03, P1)** — deux bugs
+    /// distincts trouvés en retraçant `updateToServer`/`updateGemsToServer` ligne par ligne, pas
+    /// seulement celui décrit dans le finding original :
+    /// 1. (Bug décrit dans le finding) `pendingCoinsAmount`/`pendingGemsAmount` étaient bien écrits
+    ///    en cas d'échec réseau, mais JAMAIS relus nulle part — un gain perdu au premier échec
+    ///    restait perdu pour toujours, contrairement à Android qui les relit à `onCreate`
+    ///    (`pendingCoinCount = Settings.getIntegerPreference(...)`, ligne 121) et les réinjecte à
+    ///    CHAQUE appel suivant de `updateToServer`.
+    /// 2. **Bug plus grave, non décrit dans le finding original, découvert en traçant la valeur
+    ///    RÉELLEMENT envoyée au serveur** : `updateToServer(totalAmoun, currenGainCoins)` calcule
+    ///    `currentAmouont = pendingCoinCount + currenGainCoins` — le champ `"coins"` envoyé à
+    ///    `rewardedCoins` est un DELTA (ce gain + le solde en attente), PAS le solde total du
+    ///    compte (`totalAmoun`, qui lui n'est utilisé QUE pour la mise à jour locale optimiste,
+    ///    ligne 352/382). La version précédente de cette fonction envoyait `newTotal` (le solde
+    ///    COMPLET du compte après crédit local) dans ce même champ `"coins"` — si le serveur traite
+    ///    ce champ comme un delta à ADDITIONNER au solde serveur existant (cohérent avec le nom de
+    ///    l'endpoint et avec le calcul Android), chaque publicité regardée aurait fait
+    ///    ~DOUBLER le solde réel côté serveur au lieu de l'incrémenter du montant réellement gagné.
     private func onRewardEarned(_ rewardAmount: Double) async {
         let divided = rewardAmount / max(config.rewardDividedBy, 1)
         lastReward = divided
         guard let userId = UserSession.shared.myId else { return }
         if config.adsRewardAsGems {
-            let newTotal = UserSession.shared.gemsAmount + divided
-            UserSession.shared.gemsAmount = newTotal
+            UserSession.shared.gemsAmount += divided
+            let amountToReport = Double(UserSession.shared.pendingGemsAmount) + divided
             do {
-                try await WalletRepository.shared.creditReward(userId: userId, totalAmount: newTotal, type: "gems")
+                try await WalletRepository.shared.creditReward(userId: userId, totalAmount: amountToReport, type: "gems")
                 UserSession.shared.pendingGemsAmount = 0
             } catch {
                 UserSession.shared.pendingGemsAmount += Int(divided)
             }
         } else {
-            let newTotal = UserSession.shared.coinsAmount + divided
-            UserSession.shared.coinsAmount = newTotal
+            UserSession.shared.coinsAmount += divided
+            let amountToReport = Double(UserSession.shared.pendingCoinsAmount) + divided
             do {
-                try await WalletRepository.shared.creditReward(userId: userId, totalAmount: newTotal, type: "coins")
+                try await WalletRepository.shared.creditReward(userId: userId, totalAmount: amountToReport, type: "coins")
                 UserSession.shared.pendingCoinsAmount = 0
             } catch {
                 UserSession.shared.pendingCoinsAmount += Int(divided)

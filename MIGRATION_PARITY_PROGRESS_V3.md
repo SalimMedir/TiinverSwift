@@ -258,6 +258,56 @@ conformément à la consigne explicite de l'utilisateur pour ce P0 spécifiqueme
 
 ---
 
+## 2026-08-19 — Lot 8 : P0-8 (Transport auth socket + bug frère WebRTC `makingOffer`)
+
+**Finding ID** : V3-F-024 (CHAT-03) + V3-F-026 (WEBRTC-01) — regroupés dans le même lot car §7/§29
+de l'audit notent explicitement que WEBRTC-01 dépend des correctifs socket pour être atteignable.
+
+**Commit** : `136388b`
+
+**Fichiers modifiés** : `Realtime/TiinverSocket.swift`, `Calls/WebRTCConnection.swift`
+
+**Nature du correctif** :
+- **V3-F-024** — L'incertitude "MEDIUM confidence" du finding original a été résolue avec preuve,
+  pas devinée. Vérifié : `SocketInit.java:37` (Android) envoie un vrai `opts.auth = {"token":
+  apiKey}` (`socket.io-client-java`), lu côté serveur via `socket.handshake.auth.token`
+  (commentaire Java ligne 35). Vérifié via la documentation officielle générée de la bibliothèque
+  Swift épinglée (`Socket.IO-Client-Swift` 16.1.1, dernière version publiée au 2026-08-19,
+  confirmé via la liste des tags GitHub) : `SocketIOClientOption` n'a AUCUN cas `.auth` —
+  `.connectParams` (utilisé jusqu'ici) envoie le jeton comme paramètre de requête Engine.IO
+  (`handshake.query`), un canal DIFFÉRENT de `handshake.auth` que le serveur ne lit pas d'après le
+  commentaire Android. Vérifié en revanche que `SocketIOClient.connect(withPayload:timeoutAfter:
+  withHandler:)` existe bien et envoie son paramètre comme charge utile du paquet CONNECT
+  Socket.IO v4 — le vrai équivalent de `IO.Options.auth`. `.connectParams` est retiré de la
+  configuration ; le jeton est maintenant transmis via `withPayload`, envoyé frais à chaque
+  `connect()`/`reset()` plutôt que figé dans la configuration mémoïsée du `SocketManager`.
+- **V3-F-026** — En relisant `createOffer()`, le bug réel est l'inverse de l'intitulé du finding :
+  la branche ÉCHEC (`guard...else`) remettait déjà `makingOffer=false` correctement ; c'est la
+  branche SUCCÈS qui ne le faisait jamais, contrairement à `iceRestart()` juste au-dessus qui le
+  fait explicitement après `sendMessage`. Conséquence réelle : après la première offre réussie de
+  l'initiateur, `makingOffer` reste bloqué à `true` pour toute la durée de l'appel, ce qui fait
+  traiter chaque offre entrante suivante comme une collision — cassant potentiellement toute
+  renégociation ultérieure (changement caméra, reprise réseau) pour le pair initiateur. Corrigé
+  pour suivre exactement le motif de `iceRestart()`.
+
+**Build/CI** : run GitHub Actions 32294052929 sur `136388b` — **succès** (vérifié).
+
+**Statut post-build** : BUILD_VALIDATED pour les deux findings.
+
+**Test réel requis** : oui pour les deux — (1) connexion socket réelle avec un compte authentifié,
+confirmer côté serveur/logs que l'utilisateur est bien identifié (pas seulement que le WebSocket
+s'ouvre) ; (2) appel WebRTC avec au moins une renégociation après la première offre (ex. coupure
+réseau puis reprise, changement de caméra) pour confirmer que `makingOffer` ne bloque plus les
+offres suivantes.
+
+**Résultat du test réel** : non effectué.
+
+**Statut final** : BUILD_VALIDATED pour V3-F-024 et V3-F-026. PAS COMPLETE_PARITY_VALIDATED —
+aucun des deux correctifs n'a été observé fonctionner sur une connexion/appel réel dans cette
+session.
+
+---
+
 <!--
 Gabarit pour chaque entrée de PHASE B, à dupliquer :
 

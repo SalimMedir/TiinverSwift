@@ -216,31 +216,29 @@ final class AnimemesEditorState: ObservableObject {
         version += 1
     }
 
-    /// Port de `showShapeAddPanel()`/`btn_shape` — formes RASTÉRISÉES immédiatement
-    /// (`ShapeFactory`, même stratégie que le moteur Android d'origine : "shapes are rasterized
-    /// into Bitmap so they plug directly into the existing AnimationObjectData bitmap pipeline").
-    func addShape(_ type: AnimationObjectData.ObjectType, canvasSize: CGSize) {
-        let image: CGImage?
-        let size: CGSize
-        switch type {
-        case .shapeRect:
-            image = ShapeFactory.createRect(w: 150, h: 100, color: 0xFFFF_3B30, alpha: 1, cornerRadius: 12, strokeWidth: 0)
-            size = CGSize(width: 150, height: 100)
-        case .shapeCircle:
-            image = ShapeFactory.createCircle(diameter: 140, color: 0xFF34_C759, alpha: 1, strokeWidth: 0)
-            size = CGSize(width: 140, height: 140)
-        case .shapeLine:
-            image = ShapeFactory.createLine(length: 200, thickness: 8, color: 0xFF00_7AFF, alpha: 1)
-            size = CGSize(width: 200, height: 12)
-        default:
-            return
-        }
-        guard let image else { return }
-        let obj = AnimationObjectData()
-        obj.objectType = type
-        obj.addBitmap(image)
-        configureNewObject(obj, canvasSize: canvasSize, size: size)
-        composer.addLayer(obj)
+    /// Port de `showShapeAddPanel()`→`ShapeAddPanel` (choix du type) — ouvre le panneau de
+    /// configuration (`ShapePreviewEditorPanelState.makeDefault`, déjà porté) plutôt que d'ajouter
+    /// directement avec des valeurs codées en dur. **Remplacé le 2026-08-19
+    /// (ANIMEMS_PARITY_AUDIT_V1.md F-21, Phase B Lot 5)** — voir `finalizeShape(_:canvasSize:)`
+    /// pour la suite du flux (`ShapePreviewEditorPanel`→confirmation).
+    func beginAddingShape(_ type: AnimationObjectData.ObjectType, canvasSize: CGSize) -> AnimationObjectData {
+        ShapePreviewEditorPanelState.makeDefault(
+            shapeType: type, canvasW: Int(canvasSize.width), canvasH: Int(canvasSize.height)
+        )
+    }
+
+    /// Port de `ShapePreviewEditorPanel.OnConfirmListener.onConfirm(data)` →
+    /// `addShapeFromData(data)` → `ShapeFactory.rerenderShape(data, ...)` — rastérise la forme
+    /// TELLE QUE CONFIGURÉE par l'utilisateur dans le panneau (couleur/opacité/arrondi/épaisseur/
+    /// contour, déjà écrites dans `data` par les contrôles du panneau) et l'ajoute comme nouveau
+    /// calque, centré comme les autres formes (`configureNewObject`).
+    func finalizeShape(_ data: AnimationObjectData, canvasSize: CGSize) {
+        guard let image = ShapeFactory.rerender(data, canvasW: Int(canvasSize.width), canvasH: Int(canvasSize.height))
+        else { return }
+        data.addBitmap(image)
+        let size = CGSize(width: max(data.shapeW, 4), height: max(data.shapeH, 4))
+        configureNewObject(data, canvasSize: canvasSize, size: size)
+        composer.addLayer(data)
         syncTimeline()
         version += 1
     }

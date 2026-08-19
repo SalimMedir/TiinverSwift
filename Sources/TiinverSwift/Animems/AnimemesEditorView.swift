@@ -63,6 +63,13 @@ struct AnimemesEditorView: View {
     /// dédié plutôt qu'appui long sur la timeline, Phase B Lot 3).
     @State private var showLayerEditor = false
     @State private var layerEditorSnapshot: LayerEditorPanelState?
+    /// Port de `ShapeAddPanel`→`ShapePreviewEditorPanel` — voir
+    /// `AnimemesEditorState.beginAddingShape(_:canvasSize:)`/`finalizeShape(_:canvasSize:)` (Phase
+    /// B Lot 5). `AnimationObjectData` étant une classe, cet objet en cours de configuration est
+    /// muté EN PLACE par le panneau avant confirmation — pas encore ajouté à `composer.layers`
+    /// tant que "Ajouter" n'a pas été pressé.
+    @State private var pendingShapeData: AnimationObjectData?
+    @State private var showShapeConfigPanel = false
     @State private var templateSavedToast = false
     @State private var showTimeline = true
     @State private var showRightTools = true
@@ -132,10 +139,35 @@ struct AnimemesEditorView: View {
             )
         }
         .confirmationDialog("Ajouter une forme", isPresented: $showShapePanel, titleVisibility: .visible) {
-            Button("Rectangle") { state.addShape(.shapeRect, canvasSize: canvasSize) }
-            Button("Cercle") { state.addShape(.shapeCircle, canvasSize: canvasSize) }
-            Button("Ligne") { state.addShape(.shapeLine, canvasSize: canvasSize) }
+            Button("Rectangle") {
+                pendingShapeData = state.beginAddingShape(.shapeRect, canvasSize: canvasSize)
+                showShapeConfigPanel = true
+            }
+            Button("Cercle") {
+                pendingShapeData = state.beginAddingShape(.shapeCircle, canvasSize: canvasSize)
+                showShapeConfigPanel = true
+            }
+            Button("Ligne") {
+                pendingShapeData = state.beginAddingShape(.shapeLine, canvasSize: canvasSize)
+                showShapeConfigPanel = true
+            }
             Button("Annuler", role: .cancel) {}
+        }
+        .sheet(isPresented: $showShapeConfigPanel) {
+            if let data = pendingShapeData {
+                ShapePreviewEditorPanelView(
+                    data: data, canvasSize: canvasSize,
+                    onConfirm: { finalized in
+                        state.finalizeShape(finalized, canvasSize: canvasSize)
+                        showShapeConfigPanel = false
+                        pendingShapeData = nil
+                    },
+                    onCancel: {
+                        showShapeConfigPanel = false
+                        pendingShapeData = nil
+                    }
+                )
+            }
         }
         .fileImporter(isPresented: $showAudioPicker, allowedContentTypes: [.audio]) { result in
             if case .success(let url) = result { state.audioURL = url }

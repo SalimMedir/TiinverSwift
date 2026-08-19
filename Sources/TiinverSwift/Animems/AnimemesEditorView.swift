@@ -54,6 +54,21 @@ struct AnimemesEditorView: View {
     @State private var lastMagnification: CGFloat = 1.0
     @State private var isPinching = false
     @State private var exportedURL: URL?
+    /// Port du chaînage `bundleDeliver(RESULT_IMAGE|RESULT_VIDEO)` → `MediaEditor`/`MediaTrim` →
+    /// `PublishFragment` (`MemesFragment.java:327-351/410-433`, `CameraActivity.java:138-208`) —
+    /// **ajouté le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-022 BUNNY-06, Phase B P0-3)**.
+    /// Avant ce correctif, `exportedURL` n'alimentait QU'un `ShareLink` système — aucun chemin ne
+    /// menait à `PublishComposeView`/`FeedRepository.publish`, contrairement à Android où l'export
+    /// Animems rejoint TOUJOURS le pipeline de publication standard (crop/trim intermédiaire puis
+    /// `PublishFragment`, le MÊME écran final que pour une photo/vidéo caméra/galerie classique).
+    /// Choix assumé, documenté : le résultat Animems est injecté directement comme `PublishMedia`
+    /// dans `PublishComposeView` — CE portage a déjà unifié tout le recadrage/les outils dans cet
+    /// écran unique (`PhotoCropView`/`PhotoToolsView`), donc reproduire un second écran
+    /// intermédiaire séparé (`MediaEditor`/`MediaTrim` d'Android) réinventerait un chemin qui existe
+    /// déjà — l'utilisateur retrouve exactement le même recadrage/légende qu'une photo/vidéo
+    /// classique, la parité FONCTIONNELLE (pas la parité d'écran) est respectée.
+    @State private var pendingPublishMedia: PublishMedia?
+    @State private var publishConversionError: String?
     @State private var showDurationSlider = false
     @State private var lastMaskDragTranslation: CGSize = .zero
     @State private var lastMaskMagnification: CGFloat = 1.0
@@ -209,8 +224,42 @@ struct AnimemesEditorView: View {
             if case .success(let url) = result { state.audioURL = url }
         }
         .sheet(item: Binding(get: { exportedURL.map(ExportedVideo.init) }, set: { exportedURL = $0?.url })) { export in
-            ShareLink(item: export.url) { Label("Partager l'export", systemImage: "square.and.arrow.up") }
-                .padding()
+            VStack(spacing: 16) {
+                // Port du choix réel `PublishFragment` — le chemin principal Android, ajouté ici
+                // (voir doc de `pendingPublishMedia`).
+                Button {
+                    Task {
+                        if let media = await Self.publishMedia(from: export.url) {
+                            pendingPublishMedia = media
+                            exportedURL = nil
+                        } else {
+                            publishConversionError = "Impossible de préparer ce fichier pour la publication."
+                        }
+                    }
+                } label: {
+                    Label("Publier sur Tiinver", systemImage: "paperplane.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                ShareLink(item: export.url) { Label("Partager l'export", systemImage: "square.and.arrow.up") }
+            }
+            .padding()
+            .presentationDetents([.height(160)])
+        }
+        .fullScreenCover(item: $pendingPublishMedia) { media in
+            PublishComposeView(
+                media: media,
+                onPublished: {
+                    pendingPublishMedia = nil
+                    onClose() // Port du retour à l'app hôte après `PublishFragment` réussi — Android
+                    // ne revient JAMAIS dans l'éditeur Animems après une publication réussie.
+                },
+                onCancel: { pendingPublishMedia = nil }
+            )
+        }
+        .alert("Publication impossible", isPresented: Binding(get: { publishConversionError != nil }, set: { if !$0 { publishConversionError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(publishConversionError ?? "")
         }
         .confirmationDialog("Enregistrer", isPresented: $showSaveOptions, titleVisibility: .visible) {
             Button("Exporter la vidéo") { state.export(canvasSize: canvasSize) { url in exportedURL = url } }
@@ -883,4 +932,20 @@ struct AnimemesEditorView: View {
 private struct ExportedVideo: Identifiable {
     let url: URL
     var id: String { url.absoluteString }
+}
+
+private extension AnimemesEditorView {
+    /// Convertit le fichier exporté par Animems (`AnimemesEditorState.export`) en `PublishMedia` —
+    /// **ajouté le 2026-08-19, Phase B P0-3**. Distingue image/vidéo par extension : `export()`
+    /// écrit systématiquement un `.mp4` pour une animation (`AnimemesExporter`) ou un `.jpg` pour
+    /// une image statique (`exportStaticImage`, `BitmapManager.fromBitmapToImage`-équivalent) —
+    /// pas d'ambiguïté possible, les deux fonctions n'écrivent jamais l'extension de l'autre.
+    static func publishMedia(from url: URL) async -> PublishMedia? {
+        let ext = url.pathExtension.lowercased()
+        if ext == "mp4" || ext == "mov" {
+            return .video(url)
+        }
+        guard let data = try? Data(contentsOf: url), let image = UIImage(data: data) else { return nil }
+        return .photo(image)
+    }
 }

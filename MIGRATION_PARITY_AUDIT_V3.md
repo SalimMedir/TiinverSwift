@@ -143,7 +143,7 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 ### Feed / Grid / Fullscreen / Media (V3-F-009 à 015)
 | ID | Domaine | Statut | Prio | Écart | Confiance |
 |---|---|---|---|---|---|
-| V3-F-009 (FEED-01) | **Priorité URL média photo+vidéo inversée** | **FUNCTIONALLY_FAILED** | **P0** | iOS lit toujours `object_url` brut, jamais `cdn_content_url` — Android priorise `cdn_content_url` via `getObject_url()`. Vérifié personnellement, voir §3 | HIGH |
+| V3-F-009 (FEED-01) | **Priorité URL média photo+vidéo inversée** | **BUILD_VALIDATED** (corrigé `afc44bf`, Phase B Lot 2, CI verte — test réel requis) | **P0** | iOS lit toujours `object_url` brut, jamais `cdn_content_url` — Android priorise `cdn_content_url` via `getObject_url()`. Vérifié personnellement, voir §3 | HIGH |
 | V3-F-010 (FEED-02) | Cache disque vidéo cassé (headers manquants) | FUNCTIONALLY_FAILED | P1 | `VideoCacheManager.precache` utilise `Data(contentsOf:)` sans header `Referer` → 403 probable → cache jamais rempli | HIGH |
 | V3-F-011 (FEED-03) | Décodage tableau entier fragile (suggestions) | PARTIAL | P2 | `SuggestionsRepository` n'a pas le motif per-item déjà appliqué ailleurs | MEDIUM |
 | V3-F-012 (FEED-04) | Cache HTTP désactivé pour toutes les images | PARTIAL | P2 | `.reloadIgnoringLocalCacheData` trop large (correctif défensif historique jamais restreint) | MEDIUM |
@@ -159,13 +159,13 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 | V3-F-019 (BUNNY-03) | Progression upload + mémoire | PARTIAL | P2 | Pas de % réel, vidéo chargée entière en RAM avant envoi (Android streame par blocs de 8192o) | MEDIUM |
 | V3-F-020 (BUNNY-04) | Publication vidéo — chaîne cœur Bunny Stream | COMPLETE_PARITY_CANDIDATE | P2 | Aucun | HIGH |
 | V3-F-021 (BUNNY-05) | En-tête `Accept` manquant sur PUT vidéo | PARTIAL | P2 | Écart HTTP certain, impact incertain | LOW |
-| V3-F-022 (BUNNY-06) | **Animems export → publication : rupture totale** | **MISSING** | **P0** | Android : export Animems rejoint le pipeline `PublishFragment`/`activity/add` standard. iOS : `exportedURL` alimente UNIQUEMENT un `ShareLink` système — aucun chemin vers `PublishComposeView`/`FeedRepository.publish`. **Confirmé indépendamment par vérification personnelle** (voir §3 de l'historique de session, `AnimemesEditorView.swift:211-220`) | HIGH |
+| V3-F-022 (BUNNY-06) | **Animems export → publication : rupture totale** | **BUILD_VALIDATED** (corrigé `5164acf`, Phase B Lot 3, CI verte — test réel requis) | **P0** | Android : export Animems rejoint le pipeline `PublishFragment`/`activity/add` standard. iOS : `exportedURL` alimente UNIQUEMENT un `ShareLink` système — aucun chemin vers `PublishComposeView`/`FeedRepository.publish`. **Confirmé indépendamment par vérification personnelle** (voir §3 de l'historique de session, `AnimemesEditorView.swift:211-220`) | HIGH |
 
 ### Chat / Socket.IO / WebRTC (V3-F-016, V3-F-023 à 031)
 | ID | Domaine | Statut | Prio | Écart | Confiance |
 |---|---|---|---|---|---|
-| V3-F-016 (CHAT-01) | **Socket jamais connecté** | **FUNCTIONALLY_FAILED** | **P0** | `TiinverSocket.connect(apiKey:)` n'a AUCUN site d'appel dans tout le projet — vérifié 2× indépendamment (agent + moi-même, voir §3). Racine probable de la quasi-totalité des échecs réels de chat déjà rapportés | HIGH |
-| V3-F-023 (CHAT-02) | Architecture socket figée (`let`) | FUNCTIONALLY_FAILED | P0 | Même après correction de V3-F-016, tout ordre d'init défavorable fige `socket=nil` à vie pour le process | HIGH |
+| V3-F-016 (CHAT-01) | **Socket jamais connecté** | **BUILD_VALIDATED** (corrigé `57fd300`, Phase B Lot 1, CI verte — test réel requis) | **P0** | `TiinverSocket.connect(apiKey:)` n'a AUCUN site d'appel dans tout le projet — vérifié 2× indépendamment (agent + moi-même, voir §3). Racine probable de la quasi-totalité des échecs réels de chat déjà rapportés | HIGH |
+| V3-F-023 (CHAT-02) | Architecture socket figée (`let`) | BUILD_VALIDATED (corrigé `57fd300`, `socket` devenu `var`, reset via `attachToCurrentSocket()` — test réel requis) | P0 | Même après correction de V3-F-016, tout ordre d'init défavorable fige `socket=nil` à vie pour le process | HIGH |
 | V3-F-024 (CHAT-03) | Transport du token d'auth socket différent | CODE_PRESENT_UNVERIFIED | P0 | `connectParams` (query) au lieu d'`auth` (bibliothèque Swift ne l'expose pas) — impact dépend du serveur | MEDIUM |
 | V3-F-025 (CHAT-04) | Mapping des noms d'événements | CODE_PRESENT_UNVERIFIED | P1 | Fidèle à la lecture statique, mais invérifiable tant que V3-F-016 n'est pas résolu | MEDIUM |
 | V3-F-026 (WEBRTC-01) | `makingOffer` jamais reseté sur échec de `createOffer` (bug frère) | FUNCTIONALLY_FAILED | P1 | Le correctif symétrique existe dans `process()` mais pas dans `createOffer()` — même classe de bug déjà "corrigée" ailleurs | HIGH |
@@ -178,7 +178,7 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 ### Galerie / Éditeur photo / Éditeur vidéo (V3-F-032 à 046)
 | ID | Domaine | Statut | Prio | Écart | Confiance |
 |---|---|---|---|---|---|
-| V3-F-032 (GALERIE-01) | **Vidéo — crop/rotation/miroir absents** | **MISSING** | **P0** | Aucun bouton, aucun code — capacité 100% absente côté iOS, présente et câblée jusqu'à l'export réel côté Android | HIGH |
+| V3-F-032 (GALERIE-01) | **Vidéo — crop/rotation/miroir absents** | **BUILD_VALIDATED** (corrigé `f519361`, Phase B Lot 5, CI verte — test réel requis, voir §3/Progress pour la contradiction VideoTransformer résolue) | **P0** | Aucun bouton, aucun code — capacité 100% absente côté iOS, présente et câblée jusqu'à l'export réel côté Android | HIGH |
 | V3-F-033 (GALERIE-02) | Vidéo — peinture/texte/stickers | COMPLETE_PARITY_CANDIDATE | — | Absence symétrique confirmée (pas un écart) | HIGH |
 | V3-F-034 (GALERIE-03) | Flux de choix du mode de recadrage | PARTIAL | P1 | Android permet de changer de mode en cours ; iOS impose un choix figé irréversible | MEDIUM |
 | V3-F-035 (GALERIE-04) | Recadrage ovale — contrainte 1:1 possible | PARTIAL | P1 | `TOCropViewController.circular` pourrait forcer un cercle vs ellipse libre Android | MEDIUM |
@@ -201,7 +201,7 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 | V3-F-048 (AUTH-02) | Login — race condition navigation | COMPLETE_PARITY_CANDIDATE | P1 | Correctif déjà appliqué (persistance synchrone), tient | HIGH |
 | V3-F-049 (AUTH-03) | Persistance de session — jeu de champs | COMPLETE_PARITY_CANDIDATE | P1 | Identique, `apiKey` mieux protégé (Keychain) | HIGH |
 | V3-F-050 (AUTH-04) | Restauration de session au relancement | COMPLETE_PARITY_CANDIDATE | P1 | Identique | HIGH |
-| V3-F-051 (AUTH-05) | **Déconnexion ne réinitialise jamais la racine de navigation** | **FUNCTIONALLY_FAILED** | **P0** | `RootRouterView.authenticatedUser` n'est jamais remis à `nil` au logout — utilisateur bloqué sur un Home mort tant que l'app n'est pas tuée et relancée | HIGH |
+| V3-F-051 (AUTH-05) | **Déconnexion ne réinitialise jamais la racine de navigation** | **BUILD_VALIDATED** (corrigé `57fd300`, Phase B Lot 1, CI verte — test réel requis) | **P0** | `RootRouterView.authenticatedUser` n'est jamais remis à `nil` au logout — utilisateur bloqué sur un Home mort tant que l'app n'est pas tuée et relancée | HIGH |
 | V3-F-052 (AUTH-06) | Bug "stale userId" Profil | COMPLETE_PARITY_CANDIDATE | P1 | Correctif déjà appliqué, tient | HIGH |
 | V3-F-053 (AUTH-07) | Autres sites de la classe "stale userId" | COMPLETE_PARITY_CANDIDATE | P2 | Aucun autre site trouvé (revue statique) | MEDIUM |
 | V3-F-054 (AUTH-08) | Gestion 401/session expirée | COMPLETE_PARITY_CANDIDATE (parité d'absence) | P2 | Ni Android ni iOS ne gèrent ce cas — pas une régression | HIGH |
@@ -237,7 +237,7 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 | V3-F-072 (NOTIF-01) | Enregistrement token push | COMPLETE_PARITY_CANDIDATE | P2 | Aucun | HIGH |
 | V3-F-073 (NOTIF-02) | Événements socket `pushNotification*` | DEAD_CODE (2 côtés) | P2 | Reproduction fidèle de code mort Android ; commentaire iOS à corriger (trompeur) | HIGH |
 | V3-F-074 (NOTIF-03) | Notifications "activité" (like/comment/follow) | COMPLETE_PARITY_CANDIDATE | P1 | Aucun | HIGH |
-| V3-F-075 (NOTIF-04) | **Aucune notification pour un nouveau message de chat en arrière-plan** | **FUNCTIONALLY_FAILED** | **P0** | `LocalNotificationBuilder.chatMessageNotificationContent` existe, jamais appelé depuis `ChatRepository.handleNewMessage` | HIGH |
+| V3-F-075 (NOTIF-04) | **Aucune notification pour un nouveau message de chat en arrière-plan** | **BUILD_VALIDATED** (corrigé `6f5f0ca`, Phase B Lot 4, CI verte — test réel requis) | **P0** | `LocalNotificationBuilder.chatMessageNotificationContent` existe, jamais appelé depuis `ChatRepository.handleNewMessage` | HIGH |
 | V3-F-076 (NOTIF-05) | Réveil app tuée (contrainte plateforme) | IOS_INTENTIONAL_DIFFERENCE | P1 | Limitation Apple réelle, dépend du format serveur (hors périmètre client) | MEDIUM |
 | V3-F-077 (NOTIF-06) | Navigation au tap notification | PARTIAL | P2 | Bloqué en aval par V3-F-075 pour les messages | HIGH |
 | V3-F-078 (DEEPLINK-01) | **Universal Links `https://tiinver.com/...` non fonctionnels** | **PARTIAL** | **P1** | Aucun AASA hébergé, aucun droit Associated Domains — code de routage prêt mais jamais atteint | HIGH |
@@ -256,13 +256,13 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 ### Views/UI, bugs silencieux, code mort (V3-F-090 à 098)
 | ID | Domaine | Statut | Prio | Écart | Confiance |
 |---|---|---|---|---|---|
-| V3-F-090 (SILENT-01) | **Décodage messages chat entrants fragile** | **FUNCTIONALLY_FAILED** | **P0** | `ChatRepository.decodeMessages` décode le tableau ENTIER, pas per-item — un seul message malformé fait disparaître tout le lot socket entrant, sans trace | HIGH |
+| V3-F-090 (SILENT-01) | **Décodage messages chat entrants fragile** | **BUILD_VALIDATED** (corrigé `57fd300`, Phase B Lot 1 — `decodeMessages` passé en `compactMap` per-item, CI verte — test réel requis) | **P0** | `ChatRepository.decodeMessages` décode le tableau ENTIER, pas per-item — un seul message malformé fait disparaître tout le lot socket entrant, sans trace | HIGH |
 | V3-F-091 (SILENT-02) | Upload photo de profil — erreur avalée | FUNCTIONALLY_FAILED | P1 | `catch {}` vide, `errorMessage` jamais alimenté | HIGH |
 | V3-F-092 (SILENT-03) | **Gains de pub récompensée perdus silencieusement** | **FUNCTIONALLY_FAILED** | **P1** | `pendingCoinsAmount`/`pendingGemsAmount` écrits une fois, jamais réinjectés (Android le fait) — écrasés par le solde serveur au prochain reload | HIGH |
 | V3-F-093 (SILENT-04) | Décodage tableau entier — Wallet/Discover/Créateurs | CODE_PRESENT_UNVERIFIED | P2 | Risque résiduel atténué par les décodages tolérants déjà en place | MEDIUM |
 | V3-F-094 (SILENT-05) | Navigation profil "créateur de la semaine" avec id vide | CODE_PRESENT_UNVERIFIED | P2 | Pas de filet de sécurité pour `isCurrentUser==false` | MEDIUM |
 | V3-F-095 (ORPHAN-01) | Analytics temps de visionnage jamais collectées | DEAD_CODE / MISSING | P2 | `ViewEventRepository` complet, zéro appelant — Android collecte activement | HIGH |
-| V3-F-096 (ORPHAN-02) | Contrôles rotation/flip/ratio vidéo (état) jamais montés | DEAD_CODE / MISSING | P1 | `VideoTrimState` écrit en prévision, jamais utilisé — recoupe directement V3-F-032 | HIGH |
+| V3-F-096 (ORPHAN-02) | Contrôles rotation/flip/ratio vidéo (état) jamais montés | BUILD_VALIDATED (corrigé `f519361`, Phase B Lot 5 — `VideoTrimState` maintenant monté dans `MediaTrimView` — test réel requis) | P1 | `VideoTrimState` écrit en prévision, jamais utilisé — recoupe directement V3-F-032 | HIGH |
 | V3-F-097 | Absence confirmée hors Animems : `.id()`+geste, `AnyView`/`AnyGesture` dangereux, `@StateObject` à id vide, `opacity(0)`/`.hidden()` piégeux, `guard`→`EmptyView()` sans état d'erreur | — | — | Recherché explicitement, NON trouvé (négatif confirmé) | HIGH |
 | V3-F-098 | Animems — voir section 14 | — | — | Renvoi | — |
 

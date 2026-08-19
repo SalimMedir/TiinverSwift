@@ -45,7 +45,13 @@ final class VideoPlayerManager {
     /// reprise du fichier source Android). Aucun `AVURLAsset` de ce fichier ne passait cet
     /// en-tête (ni `User-Agent`) — chaque vidéo du Feed échouait à charger silencieusement, jamais
     /// de lecture possible malgré une session/réseau désormais fonctionnels.
-    private static let videoHTTPHeaders = ["User-Agent": "TiinverPlayer/1.0", "Referer": "https://stream.tiinver.com"]
+    /// Visibilité `internal` + `nonisolated` (pas `private`) — **réutilisé depuis le 2026-08-19 par
+    /// `VideoCacheManager.precache` (MIGRATION_PARITY_AUDIT_V3.md V3-F-010 FEED-02, Phase P1)**, qui
+    /// souffrait EXACTEMENT de la même cause racine (`Data(contentsOf:)` sans `Referer` → 403
+    /// probable → cache jamais rempli) — même en-têtes, même serveur, une seule source de vérité.
+    /// `nonisolated` explicite : `VideoCacheManager` n'est PAS `@MainActor` (file d'attente dédiée),
+    /// un simple `static let` hériterait sinon de l'isolation `@MainActor` de cette classe.
+    nonisolated static let videoHTTPHeaders = ["User-Agent": "TiinverPlayer/1.0", "Referer": "https://stream.tiinver.com"]
 
     // **Correctif CI du 2026-08-17** : `AVURLAssetHTTPHeaderFieldsKey` n'est PAS exposée au
     // compilateur Swift (clé interne ObjC jamais déclarée côté Swift dans le SDK AVFoundation —

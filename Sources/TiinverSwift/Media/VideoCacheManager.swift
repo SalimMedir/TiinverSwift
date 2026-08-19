@@ -40,11 +40,31 @@ final class VideoCacheManager {
 
     /// Port de `ExoPlayerManager.preCachePrefix`/`submitPrecache` — télécharge en arrière-plan
     /// vers le cache disque, sans bloquer la lecture (équivalent `precacheExecutor`).
+    ///
+    /// **Corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-010 FEED-02, Phase B P1)** —
+    /// `Data(contentsOf: remoteURL)` n'envoie AUCUN en-tête HTTP ; le CDN de streaming
+    /// (`stream.tiinver.com`) exige `Referer`, cause racine déjà confirmée par test réel pour la
+    /// lecture elle-même (voir `VideoPlayerManager.videoHTTPHeaders`, `ExoPlayerManager.
+    /// initDataSources` côté Android) — le préchargement disque souffrait du même 403 probable,
+    /// donc ne remplissait jamais réellement le cache malgré l'absence d'erreur visible (`try?`
+    /// avalait silencieusement l'échec). Bascule vers `URLSession` + `URLRequest` portant les
+    /// MÊMES en-têtes que la lecture réelle, une seule source de vérité
+    /// (`VideoPlayerManager.videoHTTPHeaders`).
     func precache(_ remoteURL: URL) {
         queue.async { [weak self] in
             guard let self, !self.isCached(remoteURL) else { return }
-            guard let data = try? Data(contentsOf: remoteURL) else { return } // best-effort, comme l'original (catch Exception silencieux)
-            try? data.write(to: self.localURL(for: remoteURL))
+            var request = URLRequest(url: remoteURL)
+            for (field, value) in VideoPlayerManager.videoHTTPHeaders {
+                request.setValue(value, forHTTPHeaderField: field)
+            }
+            let semaphore = DispatchSemaphore(value: 0)
+            let task = URLSession.shared.dataTask(with: request) { data, response, _ in
+                defer { semaphore.signal() }
+                guard let data, let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else { return }
+                try? data.write(to: self.localURL(for: remoteURL))
+            }
+            task.resume()
+            semaphore.wait() // Cette closure s'exécute déjà sur `queue` (utility, dédiée), pas le thread principal.
             self.evictIfNeeded()
             self.touch(remoteURL)
         }

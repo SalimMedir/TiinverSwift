@@ -77,7 +77,11 @@ final class AnimationObjectData {
     // MARK: - Mask auto frames (mode isOnAutoMode)
 
     /// Port de `maskTransforms` — stockage direct par index, prioritaire sur les `KeyframeTrack`
-    /// au rendu si non vide (comportement à reproduire au moment du rendu, pas encore écrit).
+    /// au rendu si non vide. **Confirmé implémenté le 2026-08-19** (ANIMEMS_PARITY_AUDIT_V1.md
+    /// F-13) — `LayerRenderer.drawLastTransform`/`drawObjectFrame` (`LayerRenderer.swift:79-88`/
+    /// `:169-177`) branchent bien sur `obj.hasMaskTransforms` en priorité avant de retomber sur
+    /// l'interpolation `KeyframeTrack`. Ce commentaire indiquait auparavant ce comportement comme
+    /// "pas encore écrit" — obsolète, corrigé.
     private(set) var maskTransforms: [Transform] = []
 
     func addMaskTransform(_ t: Transform) { maskTransforms.append(t) }

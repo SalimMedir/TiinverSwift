@@ -81,8 +81,20 @@ final class AnimemesEditorState: ObservableObject {
     /// contrairement à la version précédente de cette passe.
     private static let durationFrames = 90
 
+    /// **Ajouté le 2026-08-19 (ANIMEMS_PARITY_AUDIT_V1.md F-23, P0)** — source de vérité UNIQUE
+    /// pour la police/couleur du texte dans Animems, partagée par `textRect` (canvas live + export
+    /// image statique, ci-dessous) ET explicitement passée à `AnimemesExporter` dans `export()`.
+    /// Avant ce correctif, `AnimemesExporter.init` avait ses PROPRES valeurs par défaut
+    /// (`.systemFont(14)`) jamais écrasées par son seul appelant — tout calque TEXTE apparaissait
+    /// nettement plus petit et non-gras dans la vidéo exportée que dans l'éditeur. En nommant les
+    /// deux constantes ici et en les passant explicitement au constructeur de l'exporteur (au lieu
+    /// de compter sur des valeurs par défaut qui coïncideraient), un futur changement de police ne
+    /// peut plus dériver silencieusement entre éditeur et export.
+    static let textFont: UIFont = .boldSystemFont(ofSize: 32)
+    static let textColor: UIColor = .white
+
     init() {
-        textRect = TextRect(font: .boldSystemFont(ofSize: 32), textColor: .white)
+        textRect = TextRect(font: Self.textFont, textColor: Self.textColor)
         engine.delegate = self
         timeline.layers = composer.layers
     }
@@ -624,7 +636,10 @@ final class AnimemesEditorState: ObservableObject {
         }
         isExporting = true
         exportError = nil
-        let exporter = AnimemesExporter(composer: composer)
+        // Port de la note tête de fichier F-23 : passer explicitement la police/couleur réelles de
+        // l'éditeur (`Self.textFont`/`Self.textColor`), au lieu de laisser l'exporteur retomber sur
+        // ses propres valeurs par défaut divergentes — voir la note complète au-dessus de `init()`.
+        let exporter = AnimemesExporter(composer: composer, font: Self.textFont, textColor: Self.textColor)
         exporter.outputSize = canvasSize
         exporter.viewSize = canvasSize
         exporter.audioURL = audioURL // port de "Ajouter un son" — déjà pris en charge par l'exporteur.
@@ -698,13 +713,28 @@ final class AnimemesEditorState: ObservableObject {
 /// n'arrivent pas dans un contexte statiquement connu comme `@MainActor` (même motif que
 /// `CallKitManager`/`CXProviderDelegate` déjà dans ce projet) : conformité `nonisolated`, saut
 /// explicite vers `MainActor` avant de muter l'état.
+///
+/// **Corrigé le 2026-08-19 (ANIMEMS_PARITY_AUDIT_V1.md F-05, P0)** : les 3 callbacks ci-dessous
+/// bumpaient `version` — qui pilote `.onChange(of: state.version) { preparePlayback() }`
+/// (`AnimemesEditorView.swift`), un rebuild O(objets×frames) de TOUTE la table de transformation
+/// via `engine.prepare(composer:)`. `AnimationEngine.tick(...)` (`AnimationEngine.swift:211-218`)
+/// appelle `didPlayFrame` PUIS `animationEngineDidInvalidate` À CHAQUE FRAME de lecture (~30×/s) —
+/// ce qui déclenchait donc DEUX rebuilds complets par frame rendue pendant toute la durée de la
+/// lecture. Or `preparePlayback()` n'est nécessaire QU'UNE FOIS, avant le début de la lecture
+/// (`togglePlayback()` l'appelle déjà explicitement, ligne ~515, avant `engine.play(...)`) — la
+/// table de transformation ne change pas pendant la lecture elle-même (aucun calque/keyframe n'est
+/// ajouté/retiré), seul le playhead avance, ce qui necessite un REDESSIN, pas un rebuild structurel.
+/// Les 3 callbacks utilisent donc maintenant `bumpRenderVersion()` (même mécanisme léger déjà
+/// utilisé par les gestes continus, voir sa doc de tête de fichier) — `animationEngineDidPause`
+/// n'a jamais eu besoin de toucher `version`/`renderVersion` (aucun changement visuel à ce moment,
+/// `isPlaying = false` suffit à mettre à jour l'icône play/pause via `@Published`).
 extension AnimemesEditorState: AnimationEnginePlaybackDelegate {
     nonisolated func animationEngine(_ engine: AnimationEngine, didPlayFrame frame: Int) {
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.timeline.setPlayheadFrame(frame, external: false)
             self.isPlaying = true
-            self.version += 1
+            self.bumpRenderVersion()
         }
     }
 
@@ -717,11 +747,11 @@ extension AnimemesEditorState: AnimationEnginePlaybackDelegate {
             guard let self else { return }
             self.isPlaying = false
             self.timeline.setPlayheadFrame(0, external: false)
-            self.version += 1
+            self.bumpRenderVersion()
         }
     }
 
     nonisolated func animationEngineDidInvalidate(_ engine: AnimationEngine) {
-        Task { @MainActor [weak self] in self?.version += 1 }
+        Task { @MainActor [weak self] in self?.bumpRenderVersion() }
     }
 }

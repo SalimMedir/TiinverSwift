@@ -757,19 +757,85 @@ final class AnimemesEditorState: ObservableObject {
         return true
     }
 
-    /// Port de `MotionTemplateGalleryView.OnTemplateActionListener.onTemplateSelected` →
-    /// `MotionTemplateManager.apply` — applique la piste (mouvement/keyframes/masque) au calque
-    /// SÉLECTIONNÉ, sans toucher à son bitmap/texte propre (fidèle à `apply()`, qui ne reconstruit
-    /// une bitmap QUE pour les pistes forme/masque, jamais bitmap/texte — un modèle de mouvement
-    /// anime le contenu de L'UTILISATEUR, il ne le remplace pas). **Simplification assumée** : un
-    /// modèle à plusieurs pistes n'expose que la piste 0 ici — l'UI Android de sélection parmi
-    /// plusieurs pistes n'a pas été relue en détail (hors périmètre de l'audit qui a scopé cette
-    /// passe), la plupart des modèles réels étant des animations mono-calque.
+    /// Port de `applyMotionTemplateInternal`/`applyTemplateWithAutoCreate`
+    /// (`AnimemesCompound.java:2697-2784`) — **remplace la simplification "piste 0 seulement sur
+    /// le calque sélectionné"** (ANIMEMS_PARITY_AUDIT_V1.md F-19, Phase B Lot 10) par le vrai
+    /// algorithme multi-piste : chaque piste `i` du template est appliquée dans l'ORDRE, soit à un
+    /// NOUVEAU calque vide auto-créé (pistes forme/masque — `isAutoCreatableTrack`, elles génèrent
+    /// leur propre bitmap via `ShapeFactory`/masque, pas besoin de contenu existant), soit au
+    /// PROCHAIN calque existant non encore consommé dans l'ordre du tableau (pistes bitmap/texte —
+    /// elles animent un contenu qui doit déjà exister, fidèle à `apply()` qui ne reconstruit jamais
+    /// leur bitmap). **PAS porté** : redimensionnement du canvas d'édition à `template.canvasWidth/
+    /// Height` (`mView.setCustomSize`) — le ratio d'export reste celui choisi par l'utilisateur
+    /// dans `spinnerResolution`, changer silencieusement ce réglage depuis un template serait une
+    /// action inattendue non demandée par l'audit ; les icônes de piste (`updateTrackIcon`) —
+    /// détail visuel de la timeline Android, sans équivalent dans `TimelineView.swift` actuel.
     func applyTemplate(_ template: MotionTemplate, canvasSize: CGSize) {
-        guard let id = selectedId, let obj = layers.first(where: { $0.id == id }) else { return }
-        MotionTemplateManager.apply(template, to: obj, trackIndex: 0, targetCanvasWidth: Int(canvasSize.width), targetCanvasHeight: Int(canvasSize.height))
+        let tracks = template.tracks
+        guard !tracks.isEmpty else { return }
+        let cW = Int(canvasSize.width), cH = Int(canvasSize.height)
+
+        let existingLayers = layers
+        let neededExisting = tracks.filter { !Self.isAutoCreatableTrack($0) }.count
+        if existingLayers.count < neededExisting, neededExisting > 0 {
+            templateMismatch = (needed: neededExisting, has: existingLayers.count)
+            pendingTemplateApplication = { [weak self] in self?.applyTemplateTracks(template, existingLayers: existingLayers, cW: cW, cH: cH) }
+            return
+        }
+        applyTemplateTracks(template, existingLayers: existingLayers, cW: cW, cH: cH)
+    }
+
+    /// Port d'`AnimationUtils.isAutoCreatableTrack` — SHAPE_*/MASK_RENDER n'ont pas besoin d'un
+    /// calque existant (ils génèrent leur propre bitmap). Le repli Android sur le préfixe de label
+    /// `"mask_"` (pistes masque LEGACY) n'est PAS porté — fidèle à la décision déjà documentée en
+    /// tête de fichier `MotionTemplateManager.swift` : ce port ne produit jamais un tel label.
+    private static func isAutoCreatableTrack(_ track: MotionTrack) -> Bool {
+        track.isShape || track.isMaskRender
+    }
+
+    /// Port de la boucle centrale d'`applyTemplateWithAutoCreate`.
+    private func applyTemplateTracks(_ template: MotionTemplate, existingLayers: [AnimationObjectData], cW: Int, cH: Int) {
+        var existingIndex = 0
+        for (i, track) in template.tracks.enumerated() {
+            let targetObj: AnimationObjectData
+            if Self.isAutoCreatableTrack(track) {
+                let obj = AnimationObjectData()
+                obj.id = UUID().uuidString
+                obj.visible = true
+                obj.isBackgroundTransparent = true
+                obj.transforms = [Transform()]
+                obj.label = track.label ?? "auto"
+                composer.addLayer(obj)
+                targetObj = obj
+            } else {
+                guard existingIndex < existingLayers.count else { continue }
+                targetObj = existingLayers[existingIndex]
+                existingIndex += 1
+            }
+            MotionTemplateManager.apply(template, to: targetObj, trackIndex: i, targetCanvasWidth: cW, targetCanvasHeight: cH)
+        }
         syncTimeline()
         version += 1
+    }
+
+    /// Port de `showTemplateMismatchDialog` — Android propose 3 boutons mais DEUX ("Appliquer
+    /// quand même"/"Sur l'objet sélectionné") appellent la MÊME méthode avec les MÊMES arguments
+    /// (lu ligne par ligne : aucune branche réelle ne les distingue), donc net-net seulement 2
+    /// comportements réels existent (appliquer quand même / annuler) — reproduit avec exactement
+    /// ces 2 options, pas une simplification par rapport à Android, une fidélité à son comportement
+    /// RÉEL plutôt qu'à son apparence à 3 boutons.
+    @Published var templateMismatch: (needed: Int, has: Int)?
+    private var pendingTemplateApplication: (() -> Void)?
+
+    func confirmTemplateMismatch() {
+        pendingTemplateApplication?()
+        pendingTemplateApplication = nil
+        templateMismatch = nil
+    }
+
+    func cancelTemplateMismatch() {
+        pendingTemplateApplication = nil
+        templateMismatch = nil
     }
 
     /// Port de `save_animemes2` → `showSaveDialog()`/`saveBitmapDrawed()` — branche sur

@@ -245,6 +245,21 @@ struct AnimemesEditorView: View {
         } message: {
             Text("Il faut au moins 2 calques visibles et non verrouillés pour utiliser Compose.")
         }
+        // Port de `showTemplateMismatchDialog` — voir `AnimemesEditorState.templateMismatch`.
+        .alert(
+            "Template incomplet",
+            isPresented: Binding(
+                get: { state.templateMismatch != nil },
+                set: { if !$0 { state.cancelTemplateMismatch() } }
+            )
+        ) {
+            Button("Appliquer quand même") { state.confirmTemplateMismatch() }
+            Button("Annuler", role: .cancel) { state.cancelTemplateMismatch() }
+        } message: {
+            if let mismatch = state.templateMismatch {
+                Text("Ce modèle nécessite \(mismatch.needed) photo(s)/objet(s). Vous en avez \(mismatch.has).")
+            }
+        }
         .sheet(isPresented: $showLayerEditor) {
             if let snapshot = layerEditorSnapshot, let selectedId = state.selectedId,
                let obj = state.layers.first(where: { $0.id == selectedId }) {

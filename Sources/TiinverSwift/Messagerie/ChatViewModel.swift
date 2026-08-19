@@ -17,6 +17,11 @@ final class ChatViewModel: ObservableObject {
     @Published var quote: QuoteState?
     @Published var selection: Set<String> = []
     @Published var isSelecting = false
+    /// Port de `block_layout.setVisibility(VISIBLE/GONE)` (`ChatFragmentTest.java`, plusieurs sites,
+    /// voir `checkGroupSubscription()`) — **ajouté le 2026-08-19, V3-F-070 GROUPS-07, P1** :
+    /// composeur désactivé tant qu'un groupe payant affiche une bannière d'abonnement/renouvellement
+    /// non résolue.
+    @Published private(set) var isComposerBlocked = false
 
     /// Port de `RosterModel` passé en argument de `ChatFragmentTest.newInstance` — identité de la
     /// conversation ouverte, fournie par l'appelant (écran de liste des conversations, PAS encore
@@ -74,6 +79,73 @@ final class ChatViewModel: ObservableObject {
         for mlib in page ?? [] { appendWithDateSeparator(mlib, into: &built) }
         items = built
         await markConversationRead()
+        await checkGroupSubscription()
+    }
+
+    // MARK: - Groupes payants (port du bloc `if (userData.getType().equals(GROUP)){...}` de
+    // `onViewCreated`, lignes 618-629, + `checkSubcribtion`, lignes 707-749) — **ajouté le
+    // 2026-08-19, V3-F-070 GROUPS-07, P1**. Avant ce correctif, `ChatListItem.subscriptionRequired`/
+    // `.subscriptionRenewal` n'étaient construits NULLE PART (confirmé par grep) : la bannière ne
+    // s'affichait jamais, PAS seulement "bouton inerte" comme décrit dans le finding original.
+
+    /// Port fidèle de la logique à 2 branches Android : non-membre → bannière "s'abonner"
+    /// IMMÉDIATE (pas d'appel réseau) ; membre → `GET group/checksubscription` détermine si un
+    /// abonnement expiré (bannière "renouveler") ou un accès restreint (bannière "s'abonner")
+    /// doit être affiché. Appelé pour TOUS les groupes (pas seulement `lucrative`), fidèle au
+    /// `if (type==GROUP)` original — un groupe gratuit renvoie simplement `error:"false"` côté
+    /// serveur et ne déclenche aucune bannière.
+    private func checkGroupSubscription() async {
+        guard target.isGroup, let groupId = target.groupId, !groupId.isEmpty else { return }
+        if !target.groupMember {
+            isComposerBlocked = true
+            items.append(
+                .subscriptionRequired(
+                    id: myId, groupName: target.groupName ?? "", groupId: groupId,
+                    creatorId: target.creator ?? "", price: target.price))
+            return
+        }
+        let state = await GroupRepository.shared.checkSubscription(userId: myId, groupId: groupId)
+        switch state {
+        case .active:
+            break
+        case .expired:
+            isComposerBlocked = true
+            items.append(.subscriptionRenewal(id: myId, groupId: groupId, creatorId: target.creator ?? "", price: target.price))
+        case .restricted:
+            isComposerBlocked = true
+            items.append(
+                .subscriptionRequired(
+                    id: myId, groupName: target.groupName ?? "", groupId: groupId,
+                    creatorId: target.creator ?? "", price: target.price))
+        }
+    }
+
+    /// Port commun de `Subscribe.bind`/`RenewSubscription.bind`'s click handlers + `subscribeSuccefully()`
+    /// (`ChatFragmentTest.java:3023-3057`) — solde vérifié AVANT l'appel réseau (`coinCount >
+    /// mlib.getPrice()`, PAS `>=`, reproduit à l'identique), débit local optimiste + retrait de la
+    /// bannière + déblocage du composeur + message système "a rejoint" sur succès. `isRenewal`
+    /// distingue `group/subscribe` de `group/renewsubscription`, seule différence réelle entre les
+    /// 2 gestionnaires Android (payload et logique de bannière identiques sinon).
+    func resolveGroupSubscription(itemId: String, groupId: String, creatorId: String, price: Int, isRenewal: Bool) {
+        guard UserSession.shared.coinsAmount > Double(price) else { return }
+        Task {
+            do {
+                if isRenewal {
+                    try await GroupRepository.shared.renewGroupSubscription(groupId: groupId, userId: myId, creatorId: creatorId, price: price)
+                } else {
+                    try await GroupRepository.shared.subscribeToGroup(groupId: groupId, userId: myId, creatorId: creatorId, price: price)
+                }
+            } catch {
+                return // Port de `onError` — ré-affiche simplement le bouton côté Android, aucun message d'erreur montré.
+            }
+            items.removeAll { $0.id == (isRenewal ? "renew-\(itemId)" : "sub-\(itemId)") }
+            isComposerBlocked = items.contains { if case .subscriptionRequired = $0 { return true }; if case .subscriptionRenewal = $0 { return true }; return false }
+            UserSession.shared.coinsAmount -= Double(price)
+            var joined = buildOutgoingBase(object: "information")
+            joined.verb = "joinGroup"
+            appendOptimistic(joined)
+            Task { try? await messages.insertTextMessage(joined) }
+        }
     }
 
     /// Port de `loadMoreData` (déclenché par `onScrolled`/`RecyclerView` proche du haut, ou par le

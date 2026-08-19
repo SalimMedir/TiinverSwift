@@ -265,4 +265,57 @@ final class GroupRepository {
         let params: [String: String] = ["groupId": groupId, "userId": userId, "apiKey": apiKey]
         _ = try await APIClient.shared.post(params, endpoint: "leftgroup")
     }
+
+    // MARK: - Groupes payants (port de `ChatFragmentTest.checkSubcribtion`/`displaySubscriptionInfo`/
+    // `renewSubscription`/`Subscribe.bind`/`RenewSubscription.bind`, module 11) — **ajouté le
+    // 2026-08-19, V3-F-070 GROUPS-07, P1**. Aucun de ces 3 points n'était appelé nulle part côté
+    // iOS avant ce correctif : `ChatListItem.subscriptionRequired`/`.subscriptionRenewal` étaient
+    // déclarés dans l'énum et gérés dans le `switch` de rendu, mais RIEN ne les construisait jamais
+    // (0 site d'appel, confirmé par grep) — la bannière d'abonnement ne s'affichait donc jamais du
+    // tout, un gap plus sévère que "bouton inerte" tel que décrit initialement dans le finding.
+
+    /// Résultat de `GET group/checksubscription/{userId}/{groupId}` — port de `checkSubcribtion`
+    /// (`ChatFragmentTest.java:707-749`). Le serveur répond `error:"false"` (abonnement actif, rien
+    /// à afficher) ou `error:"true"` avec `message` égal à l'une des 2 chaînes EXACTES vérifiées
+    /// dans `infoContract.java:49-50` (`"subscription expires."`/`"Restricted access."` — fautes de
+    /// frappe/casse Android reproduites telles quelles, ce sont les valeurs réellement comparées).
+    enum GroupSubscriptionState {
+        case active
+        case expired
+        case restricted
+    }
+
+    func checkSubscription(userId: String, groupId: String) async -> GroupSubscriptionState {
+        guard let value = try? await APIClient.shared.get("group/checksubscription/\(userId)/\(groupId)")
+        else { return .active }
+        guard !value.isBackendSuccess, let message = value.backendErrorMessage else { return .active }
+        switch message {
+        case "subscription expires.": return .expired
+        case "Restricted access.": return .restricted
+        default: return .active
+        }
+    }
+
+    /// Port de `Subscribe.bind`'s `subscribe.setOnClickListener` (`MessageListAdapter.java:267-314`)
+    /// — `POST group/subscribe`. Champs fidèles à l'original, y compris `joined`/`invited`/`role`
+    /// toujours fixés à `"1"`/`"0"`/`"user"` (aucune variation observée dans le code source).
+    func subscribeToGroup(groupId: String, userId: String, creatorId: String, price: Int) async throws {
+        let params: [String: String] = [
+            "groupId": groupId, "userId": userId, "receiver": creatorId,
+            "quantity": String(price), "joined": "1", "invited": "0", "role": "user",
+        ]
+        _ = try await APIClient.shared.post(params, endpoint: "group/subscribe")
+    }
+
+    /// Port de `RenewSubscription.bind`'s `subscribe.setOnClickListener`
+    /// (`MessageListAdapter.java:365-412`) — MÊME payload que `subscribeToGroup`, endpoint différent
+    /// (`group/renewsubscription`, tout en minuscules — vérifié, contrairement à
+    /// `group/checksubscription` qui a la même casse).
+    func renewGroupSubscription(groupId: String, userId: String, creatorId: String, price: Int) async throws {
+        let params: [String: String] = [
+            "groupId": groupId, "userId": userId, "receiver": creatorId,
+            "quantity": String(price), "joined": "1", "invited": "0", "role": "user",
+        ]
+        _ = try await APIClient.shared.post(params, endpoint: "group/renewsubscription")
+    }
 }

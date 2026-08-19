@@ -44,7 +44,19 @@ struct ChatView: View {
             if let quote = viewModel.quote {
                 quoteBar(quote)
             }
-            inputBar
+            // Port de `block_layout.setVisibility(VISIBLE)` (`ChatFragmentTest.java`, voir
+            // `ChatViewModel.checkGroupSubscription`, V3-F-070 P1) — composeur remplacé par un
+            // message tant qu'un abonnement groupe payant n'est pas résolu, comme Android masque
+            // entièrement la barre de saisie derrière `block_layout`.
+            if viewModel.isComposerBlocked {
+                Text("Abonne-toi pour continuer à participer à ce groupe.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(8)
+                    .background(.bar)
+            } else {
+                inputBar
+            }
         }
         .navigationTitle(viewModel.target.isGroup ? (viewModel.target.groupName ?? "") : (viewModel.target.nikname ?? viewModel.target.to ?? ""))
         .navigationBarTitleDisplayMode(.inline)
@@ -153,11 +165,15 @@ struct ChatView: View {
             DateSeparatorRow(text: text)
         case .groupHeader(_, let description):
             GroupHeaderRow(description: description)
-        case .subscriptionRequired(_, let groupName, let price):
+        case .subscriptionRequired(let id, let groupName, let groupId, let creatorId, let price):
             // R.string.subscribe_title / R.string.renewable_monthly
-            SubscriptionBannerRow(title: "\(groupName) — abonnement \(price) pièces/mois", isRenewal: false) {}
-        case .subscriptionRenewal(_, let price):
-            SubscriptionBannerRow(title: "Renouveler pour \(price) pièces", isRenewal: true) {}
+            SubscriptionBannerRow(title: "\(groupName) — abonnement \(price) pièces/mois", isRenewal: false) {
+                viewModel.resolveGroupSubscription(itemId: id, groupId: groupId, creatorId: creatorId, price: price, isRenewal: false)
+            }
+        case .subscriptionRenewal(let id, let groupId, let creatorId, let price):
+            SubscriptionBannerRow(title: "Renouveler pour \(price) pièces", isRenewal: true) {
+                viewModel.resolveGroupSubscription(itemId: id, groupId: groupId, creatorId: creatorId, price: price, isRenewal: true)
+            }
         }
     }
 

@@ -25,19 +25,25 @@ enum ChatListItem: Identifiable, Equatable {
     /// groupe, affiché uniquement si `RosterModel.description` est non vide.
     case groupHeader(id: String, description: String)
     /// Port de `object == "subscribe"`/`"renewSubscription"` (`displaySubscriptionInfo`/
-    /// `renewSubscription`) — bandeau de paiement groupe. **Action de paiement réelle PAS portée**
-    /// (dépend du module 15 Wallet/Paiements, pas encore atteint) — le bandeau s'affiche, le bouton
-    /// "s'abonner" est un point d'ancrage documenté, pas une action fonctionnelle.
-    case subscriptionRequired(id: String, groupName: String, price: Int)
-    case subscriptionRenewal(id: String, price: Int)
+    /// `renewSubscription`) — bandeau de paiement groupe.
+    ///
+    /// **Corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-070 GROUPS-07, P1)** — ces 2 cas
+    /// existaient déjà mais N'ÉTAIENT CONSTRUITS NULLE PART dans tout le projet (confirmé par grep
+    /// exhaustif), donc la bannière ne s'affichait jamais, PAS seulement "bouton inerte" comme
+    /// l'énonçait le finding original. `groupId`/`creatorId` ajoutés (absents avant, nécessaires
+    /// pour appeler réellement `group/subscribe`/`group/renewsubscription`, voir
+    /// `GroupRepository.swift`) — le module Wallet existe désormais intégralement, le motif
+    /// "attend le module Wallet" n'est plus une raison valable de laisser l'action vide.
+    case subscriptionRequired(id: String, groupName: String, groupId: String, creatorId: String, price: Int)
+    case subscriptionRenewal(id: String, groupId: String, creatorId: String, price: Int)
 
     var id: String {
         switch self {
         case .message(let m): return m.messageId ?? UUID().uuidString
         case .dateSeparator(let id, _, _): return "date-\(id)"
         case .groupHeader(let id, _): return "header-\(id)"
-        case .subscriptionRequired(let id, _, _): return "sub-\(id)"
-        case .subscriptionRenewal(let id, _): return "renew-\(id)"
+        case .subscriptionRequired(let id, _, _, _, _): return "sub-\(id)"
+        case .subscriptionRenewal(let id, _, _, _): return "renew-\(id)"
         }
     }
 

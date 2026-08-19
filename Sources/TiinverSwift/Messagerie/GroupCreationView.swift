@@ -23,7 +23,24 @@ struct GroupCreationView: View {
     /// `token` du `POST group`).
     @State private var localToken = String(Int64(Date().timeIntervalSince1970 * 1000))
 
-    private let priceOptions = [100, 200, 400, 500, 700, 800, 1000]
+    /// **Corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-069 GROUPS-06, P1)** — contradit
+    /// délibérément la conclusion initiale du finding (qui affirmait qu'Android utilise
+    /// 250/500/1250/2500/5000, valeurs QUE CE FICHIER N'A JAMAIS UTILISÉES). Vérifié directement
+    /// dans `Group.java` (module Android `contacts`) : ces 5 valeurs ne sont que les LIBELLÉS
+    /// AFFICHÉS du spinner (`prixList`, lignes 188-192) — le prix RÉELLEMENT soumis au serveur
+    /// (`price`, ligne 203/286) vient d'une méthode complètement différente,
+    /// `getPrice(int position)` (lignes 508-533), indexée sur la position du spinner (0-4, PAS les
+    /// valeurs affichées) : position 0 → `default` → 100 ; position 1 → `case 1` → 100 ; position 2
+    /// → `case 2` → 200 ; position 3 → `case 3` → 400 ; position 4 → `case 4` → 500. C'est un bug
+    /// Android réel (libellé "5000" soumet en fait 500), mais le résultat NUMÉRIQUE réellement
+    /// transmis au serveur ne peut donc JAMAIS être autre chose que {100, 200, 400, 500} — les cases
+    /// 5/6/7 (700/800/1000) du switch sont du code mort, un spinner à 5 éléments ne produit jamais
+    /// une position ≥5. La version précédente de cette liste (`[100, 200, 400, 500, 700, 800,
+    /// 1000]`) était donc déjà correcte sur les 4 premières valeurs, mais exposait 3 choix
+    /// (700/800/1000) qu'aucun utilisateur Android ne peut jamais produire — retirés pour une
+    /// fidélité stricte au comportement RÉEL (pas au bug d'étiquetage, qu'il n'y a aucune raison de
+    /// reproduire côté iOS puisque ce fichier n'affiche jamais de libellé trompeur).
+    private let priceOptions = [100, 200, 400, 500]
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {

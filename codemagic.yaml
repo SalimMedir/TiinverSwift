@@ -537,11 +537,12 @@ workflows:
     # exhaustif : aucun `CODE_SIGN_STYLE`/`DEVELOPMENT_TEAM`/`PROVISIONING_PROFILE` dans
     # `project.yml`, aucun `xcodebuild archive`/`-exportArchive`/`ExportOptions.plist` nulle part).
     #
-    # **Prérequis à créer dans Codemagic AVANT de lancer ce workflow (Team settings > Environment
-    # variables), groupe "ios_signing_browserstack"** — volontairement PAS inventés ni recherchés
-    # ici, doivent venir d'un certificat de signature RÉEL généré sur un Mac avec un Apple ID
-    # (gratuit ou payant — voir le rapport d'audit du 2026-08-20 pour l'explication précise de ce
-    # que chaque option permet/limite) :
+    # **3 variables à AJOUTER dans Codemagic au groupe EXISTANT "firebase_ios_secrets"** (Team
+    # settings > Environment variables — pas de nouveau groupe à créer, réutilise celui déjà
+    # configuré pour GOOGLE_SERVICE_INFO_PLIST_BASE64) — volontairement PAS inventées ni
+    # recherchées ici, doivent venir d'un certificat de signature RÉEL généré sur un Mac avec un
+    # Apple ID (gratuit ou payant — voir le rapport d'audit du 2026-08-20 pour l'explication
+    # précise de ce que chaque option permet/limite) :
     #   - CM_CERTIFICATE : certificat de signature iOS (.p12) encodé en base64
     #     (`base64 -i Certificates.p12` sur macOS/Linux, `certutil -encode Certificates.p12 -`
     #     sur Windows en retirant les lignes BEGIN/END), marqué "Secure".
@@ -551,15 +552,14 @@ workflows:
     #     OU Ad Hoc OU Enterprise conviennent toutes les 3 pour BrowserStack App Live (confirmé,
     #     PAS App Store) — BrowserStack re-signe l'app avec son propre profil wildcard à
     #     l'installation, aucun UDID BrowserStack à enregistrer dans ce profil.
-    # Si ce groupe de variables n'existe pas ou est incomplet, ce workflow ÉCHOUE EXPLICITEMENT dès
-    # la vérification ci-dessous plutôt que de produire un faux succès sans `.ipa`.
+    # Si l'une de ces 3 variables est absente, ce workflow ÉCHOUE EXPLICITEMENT dès la vérification
+    # ci-dessous plutôt que de produire un faux succès sans `.ipa`.
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
       <<: *checkpoint_env
       groups:
         - firebase_ios_secrets
-        - ios_signing_browserstack
       vars:
         # `ad-hoc` par défaut (nécessite un compte Apple Developer payant pour générer le
         # certificat/profil, mais reste valide 1 an et sans limite de 3 apps/7 jours) — changer en
@@ -595,7 +595,7 @@ workflows:
             echo "Ce workflow NE PEUT PAS produire de .ipa sans un certificat de signature RÉEL"
             echo "et un provisioning profile RÉEL pour com.tiinver.ios — voir le commentaire de tête"
             echo "de ce workflow (browserstack-ipa-build) dans codemagic.yaml pour la procédure"
-            echo "exacte d'obtention et de configuration (groupe 'ios_signing_browserstack')."
+            echo "exacte d'obtention et de configuration (à ajouter au groupe existant 'firebase_ios_secrets')."
             exit 1
           fi
           echo "OK — CM_CERTIFICATE, CM_CERTIFICATE_PASSWORD, CM_PROVISIONING_PROFILE sont tous définis."

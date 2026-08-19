@@ -450,3 +450,34 @@ source unique aux deux fichiers plutôt que de dupliquer le dictionnaire.
 **Statut final** : BUILD_VALIDATED.
 
 ---
+
+## 2026-08-19 — Lot P1-E : V3-F-017 (Bunny `activity/add` — métadonnées incomplètes)
+
+**Commit** : `4ee582e` — CI verte.
+
+Le commentaire précédent affirmait que `category`/`metadata`/`template_id`/`consentAi` "ne sont pas
+envoyés par Android non plus, vérifié dans `sendMetaDate`" — mélange entre 2 appels HTTP distincts :
+`HttpFileUploader.uploadRequestBody` (upload binaire vers Bunny, où ces champs n'ont effectivement
+pas leur place) VS `ActivityService.java:184-201` — le VRAI appel `activity/add`, qui les envoie
+tous. Confirmé aussi que `category` est OBLIGATOIRE côté Android : `PublishFragment.java:274-283,
+350-362` bloque la publication et force `CategoryActivity` si le compte n'a pas encore de catégorie.
+
+Portée du correctif : `category` (best-effort, lu via `ProfileRepository.fetchProfile`, pas encore
+mis en cache localement), `width`/`height` réels (photo ET vidéo), `video_duration` (vidéos
+uniquement, en millisecondes — unité non confirmée avec certitude dans le code Android lu cette
+passe, aucun producteur trouvé de l'extra `"duration"` dans le flux Galerie de base). `metadata`/
+`template_id` envoyés vides, `consentAi` envoyé à `"0"` (aucun bascule de consentement IA n'existe
+dans `PublishComposeView`, gap distinct non construit ici).
+
+**Explicitement NON reproduit** : le blocage de publication sans catégorie de compte
+(`CategoryActivity` n'a pas d'équivalent iOS — V3-F-058 PROFILE-03, écran distinct manquant, pas
+construit dans ce lot). Si `category` est vide, iOS publie quand même — gap réel documenté.
+
+**Test réel requis** : oui — confirmer côté serveur que les champs sont bien acceptés/persistés,
+et vérifier l'unité réelle de `video_duration`.
+
+**Résultat du test réel** : non effectué.
+
+**Statut final** : BUILD_VALIDATED (partiel, portée volontairement limitée et documentée).
+
+---

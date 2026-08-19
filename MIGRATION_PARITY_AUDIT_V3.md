@@ -144,7 +144,7 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 | ID | Domaine | Statut | Prio | Écart | Confiance |
 |---|---|---|---|---|---|
 | V3-F-009 (FEED-01) | **Priorité URL média photo+vidéo inversée** | **BUILD_VALIDATED** (corrigé `afc44bf`, Phase B Lot 2, CI verte — test réel requis) | **P0** | iOS lit toujours `object_url` brut, jamais `cdn_content_url` — Android priorise `cdn_content_url` via `getObject_url()`. Vérifié personnellement, voir §3 | HIGH |
-| V3-F-010 (FEED-02) | Cache disque vidéo cassé (headers manquants) | FUNCTIONALLY_FAILED | P1 | `VideoCacheManager.precache` utilise `Data(contentsOf:)` sans header `Referer` → 403 probable → cache jamais rempli | HIGH |
+| V3-F-010 (FEED-02) | Cache disque vidéo cassé (headers manquants) | **BUILD_VALIDATED** (corrigé `3854676`, Phase B lot P1, CI verte — bascule vers `URLSession`+`URLRequest` avec les mêmes en-têtes que la lecture réelle — test réel requis) | P1 | `VideoCacheManager.precache` utilise `Data(contentsOf:)` sans header `Referer` → 403 probable → cache jamais rempli | HIGH |
 | V3-F-011 (FEED-03) | Décodage tableau entier fragile (suggestions) | PARTIAL | P2 | `SuggestionsRepository` n'a pas le motif per-item déjà appliqué ailleurs | MEDIUM |
 | V3-F-012 (FEED-04) | Cache HTTP désactivé pour toutes les images | PARTIAL | P2 | `.reloadIgnoringLocalCacheData` trop large (correctif défensif historique jamais restreint) | MEDIUM |
 | V3-F-013 (FEED-05) | Décodage per-item flux principal | COMPLETE_PARITY_CANDIDATE | P2 | Positif — motif correct | HIGH |

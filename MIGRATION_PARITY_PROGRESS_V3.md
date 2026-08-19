@@ -428,3 +428,25 @@ vrai flux de récompense/backend dans cette session.
 BUILD_VALIDATED. Aucun COMPLETE_PARITY_VALIDATED déclaré.
 
 ---
+
+## 2026-08-19 — Lot P1-D : V3-F-010 (Cache disque vidéo — headers manquants)
+
+**Commit** : `3854676` — CI verte (run 32298999202).
+
+`VideoCacheManager.precache` utilisait `Data(contentsOf: remoteURL)`, qui n'envoie aucun en-tête
+HTTP. Même cause racine que le correctif de lecture réelle du 2026-08-17
+(`VideoPlayerManager.videoHTTPHeaders`, confirmé par test réel à l'époque : le CDN
+`stream.tiinver.com` exige `Referer`) — jamais appliquée au chemin de préchargement disque, qui
+échouait donc probablement en 403 silencieux (`try?` avalait l'erreur) et ne remplissait jamais
+réellement le cache. Corrigé en basculant vers `URLSession`+`URLRequest` portant les mêmes
+en-têtes, `VideoPlayerManager.videoHTTPHeaders` rendu `internal`+`nonisolated` pour servir de
+source unique aux deux fichiers plutôt que de dupliquer le dictionnaire.
+
+**Test réel requis** : oui — confirmer que le fichier apparaît réellement dans
+`Caches/media/` après un `precache()`, pas seulement l'absence de crash.
+
+**Résultat du test réel** : non effectué.
+
+**Statut final** : BUILD_VALIDATED.
+
+---

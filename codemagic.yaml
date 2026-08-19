@@ -522,3 +522,150 @@ workflows:
     # workflow ne fait QUE de la capture d'écran diagnostique sur simulateur, voir avertissement de
     # tête de workflow. Ne remplace PAS "CHECKPOINT 3 ATTEINT ET VALIDÉ" (compilation) ni un futur
     # test manuel réel sur device — voir "État réel du projet" dans MIGRATION_PROGRESS.md.
+
+  browserstack-ipa-build:
+    name: Build .ipa signé (device réel) pour BrowserStack App Live
+    # Workflow SÉPARÉ des deux ci-dessus, ne les modifie pas et ne dépend pas d'eux — build son
+    # propre binaire DEVICE (pas simulateur), avec signature RÉELLE. Ajouté le 2026-08-20 : ni
+    # `checkpoint-build` ni `visual-smoke-test` ne peuvent produire de `.ipa`, tous deux compilent
+    # pour `generic/platform=iOS Simulator` avec `CODE_SIGNING_ALLOWED=NO` — un binaire simulateur
+    # est une architecture différente d'un binaire device, structurellement ininstallable sur un
+    # vrai appareil (BrowserStack App Live en particulier) quelle que soit la signature. Ce
+    # workflow corrige les 2 causes cumulatives : (1) mauvaise plateforme de build → `generic/
+    # platform=iOS` via `xcode-project build-ipa` (archive+export réel, pas juste `xcodebuild
+    # build`) ; (2) aucune infrastructure de signature n'existait dans ce dépôt (confirmé par grep
+    # exhaustif : aucun `CODE_SIGN_STYLE`/`DEVELOPMENT_TEAM`/`PROVISIONING_PROFILE` dans
+    # `project.yml`, aucun `xcodebuild archive`/`-exportArchive`/`ExportOptions.plist` nulle part).
+    #
+    # **Prérequis à créer dans Codemagic AVANT de lancer ce workflow (Team settings > Environment
+    # variables), groupe "ios_signing_browserstack"** — volontairement PAS inventés ni recherchés
+    # ici, doivent venir d'un certificat de signature RÉEL généré sur un Mac avec un Apple ID
+    # (gratuit ou payant — voir le rapport d'audit du 2026-08-20 pour l'explication précise de ce
+    # que chaque option permet/limite) :
+    #   - CM_CERTIFICATE : certificat de signature iOS (.p12) encodé en base64
+    #     (`base64 -i Certificates.p12` sur macOS/Linux, `certutil -encode Certificates.p12 -`
+    #     sur Windows en retirant les lignes BEGIN/END), marqué "Secure".
+    #   - CM_CERTIFICATE_PASSWORD : mot de passe de ce .p12, marqué "Secure".
+    #   - CM_PROVISIONING_PROFILE : profil de provisionnement (.mobileprovision) pour
+    #     `com.tiinver.ios`, encodé en base64 de la même façon, marqué "Secure". Méthode Development
+    #     OU Ad Hoc OU Enterprise conviennent toutes les 3 pour BrowserStack App Live (confirmé,
+    #     PAS App Store) — BrowserStack re-signe l'app avec son propre profil wildcard à
+    #     l'installation, aucun UDID BrowserStack à enregistrer dans ce profil.
+    # Si ce groupe de variables n'existe pas ou est incomplet, ce workflow ÉCHOUE EXPLICITEMENT dès
+    # la vérification ci-dessous plutôt que de produire un faux succès sans `.ipa`.
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      <<: *checkpoint_env
+      groups:
+        - firebase_ios_secrets
+        - ios_signing_browserstack
+      vars:
+        # `ad-hoc` par défaut (nécessite un compte Apple Developer payant pour générer le
+        # certificat/profil, mais reste valide 1 an et sans limite de 3 apps/7 jours) — changer en
+        # `development` si seul un compte Apple gratuit ("Personal Team") est disponible, les deux
+        # sont acceptés par BrowserStack App Live (voir commentaire ci-dessus).
+        IPA_EXPORT_METHOD: "ad-hoc"
+    scripts:
+      - name: Installer XcodeGen
+        script: |
+          brew list xcodegen &>/dev/null || brew install xcodegen
+
+      - name: Décoder GoogleService-Info.plist depuis le secret d'environnement
+        script: |
+          if [ -z "${GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" ]; then
+            echo "ERREUR : la variable d'environnement GOOGLE_SERVICE_INFO_PLIST_BASE64 n'est pas définie."
+            echo "À configurer dans Codemagic : Team settings > Environment variables > groupe 'firebase_ios_secrets'."
+            exit 1
+          fi
+          mkdir -p Resources
+          echo "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > Resources/GoogleService-Info.plist
+          plutil -lint Resources/GoogleService-Info.plist
+
+      - name: Vérifier la présence des secrets de signature (échoue explicitement si absents)
+        script: |
+          # Vérification AVANT toute étape coûteuse (xcodegen/SPM/build) — pas de faux succès sans
+          # .ipa : si ce step échoue, le reste du workflow ne s'exécute jamais.
+          missing=()
+          [ -z "${CM_CERTIFICATE:-}" ] && missing+=("CM_CERTIFICATE")
+          [ -z "${CM_CERTIFICATE_PASSWORD:-}" ] && missing+=("CM_CERTIFICATE_PASSWORD")
+          [ -z "${CM_PROVISIONING_PROFILE:-}" ] && missing+=("CM_PROVISIONING_PROFILE")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "ERREUR : variable(s) de signature manquante(s) : ${missing[*]}"
+            echo "Ce workflow NE PEUT PAS produire de .ipa sans un certificat de signature RÉEL"
+            echo "et un provisioning profile RÉEL pour com.tiinver.ios — voir le commentaire de tête"
+            echo "de ce workflow (browserstack-ipa-build) dans codemagic.yaml pour la procédure"
+            echo "exacte d'obtention et de configuration (groupe 'ios_signing_browserstack')."
+            exit 1
+          fi
+          echo "OK — CM_CERTIFICATE, CM_CERTIFICATE_PASSWORD, CM_PROVISIONING_PROFILE sont tous définis."
+
+      - name: xcodegen generate
+        script: |
+          xcodegen generate
+
+      - name: Install Metal Toolchain
+        script: |
+          xcodebuild -downloadComponent MetalToolchain
+
+      - name: Résoudre les dépendances Swift Package Manager
+        script: |
+          xcodebuild -resolvePackageDependencies \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME"
+
+      - name: Importer le certificat et le provisioning profile (outils CLI Codemagic officiels)
+        script: |
+          # `keychain`/`xcode-project` : outils `codemagic-cli-tools`, pré-installés sur les
+          # runners Mac Codemagic (pas une dépendance à installer ici) — flux de signature MANUELLE
+          # officiellement documenté par Codemagic (docs.codemagic.io/yaml-code-signing), repris
+          # tel quel plutôt qu'une combinaison `security`/`xcodebuild` réinventée à la main.
+          keychain initialize
+
+          echo "$CM_CERTIFICATE" | base64 --decode > /tmp/certificate.p12
+          keychain add-certificates \
+            --certificate /tmp/certificate.p12 \
+            --certificate-password "$CM_CERTIFICATE_PASSWORD"
+
+          PROFILES_HOME="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          mkdir -p "$PROFILES_HOME"
+          echo "$CM_PROVISIONING_PROFILE" | base64 --decode > "$PROFILES_HOME/browserstack.mobileprovision"
+
+          # Configure la signature du projet Xcode généré pour utiliser ce profil, ET génère
+          # automatiquement l'ExportOptions.plist correspondant (méthode choisie ci-dessus) — pas
+          # besoin d'écrire cet ExportOptions.plist à la main.
+          xcode-project use-profiles \
+            --project "$XCODE_PROJECT" \
+            --archive-method "$IPA_EXPORT_METHOD"
+
+      - name: Archiver et exporter le .ipa (device réel, pas simulateur)
+        script: |
+          # `xcode-project build-ipa` enchaîne `xcodebuild archive -destination 'generic/
+          # platform=iOS'` PUIS `xcodebuild -exportArchive` avec l'ExportOptions.plist généré par
+          # l'étape précédente — c'est ICI, et seulement ici dans tout ce dépôt, qu'un build DEVICE
+          # (pas simulateur) est réellement produit.
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME" \
+            --ipa-directory "$CM_BUILD_DIR/build/ios/ipa"
+
+      - name: Vérifier explicitement qu'un .ipa a bien été produit
+        script: |
+          IPA_COUNT=$(find "$CM_BUILD_DIR/build/ios/ipa" -maxdepth 1 -name "*.ipa" 2>/dev/null | wc -l | tr -d ' ')
+          echo "Nombre de .ipa trouvés dans $CM_BUILD_DIR/build/ios/ipa : $IPA_COUNT"
+          if [ "$IPA_COUNT" -eq 0 ]; then
+            echo "ERREUR : aucun .ipa produit malgré un step précédent réussi — ce workflow échoue"
+            echo "explicitement ici plutôt que de laisser la section Artifacts silencieusement vide."
+            exit 1
+          fi
+          ls -la "$CM_BUILD_DIR/build/ios/ipa"
+
+    artifacts:
+      # Nom exact dépend du nom du scheme/projet — Xcode nomme le .ipa exporté d'après le produit
+      # buildé (TiinverSwift.ipa attendu, confirmé par le step de vérification ci-dessus qui liste
+      # le contenu réel du dossier sur chaque run).
+      - $CM_BUILD_DIR/build/ios/ipa/*.ipa
+
+    # Volontairement AUCUNE section `publishing:` (pas de TestFlight/App Store Connect) — le .ipa
+    # produit est destiné à un téléversement MANUEL sur BrowserStack App Live
+    # (https://app-live.browserstack.com), pas à une distribution Apple automatisée.

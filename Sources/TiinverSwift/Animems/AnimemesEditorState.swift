@@ -522,6 +522,38 @@ final class AnimemesEditorState: ObservableObject {
         return true
     }
 
+    /// Port de `btn_removebg`/`onRemoveBgClicked` (`AnimemesCompound.java:3853-3908`) — **ajouté le
+    /// 2026-08-19 (ANIMEMS_PARITY_AUDIT_V1.md F-29, Phase B Lot 11)**. Aucune implémentation
+    /// n'existait dans le module Animems, mais `RemoveBackground.swift` (module Galerie/éditeur
+    /// photo simple) est le port du MÊME fichier Android partagé (`Utils/RemoveBackground.java`,
+    /// catégorie "A+G" — importé par `AnimemesCompound.java` ET `CroperView.java` côté Android) —
+    /// réutilisé tel quel, pas réécrit. Traite CHAQUE bitmap du calque (pas seulement le courant,
+    /// fidèle à `onRemoveBgClicked` qui boucle sur `obj.getBitmaps()` en entier — un calque à
+    /// plusieurs frames/textures doit garder son fond retiré sur toutes ses frames). Repli sur le
+    /// bitmap d'origine si les deux tentatives échouent (`out[0] != null ? out[0] : src`, pas
+    /// d'erreur propagée). Traitement sur une file d'arrière-plan (`DispatchQueue.global`), fidèle
+    /// au thread dédié + `runOnUi` d'Android plutôt qu'un blocage du thread principal.
+    @Published var isRemovingBackground = false
+
+    func removeBackgroundFromSelected() {
+        guard let id = selectedId, let obj = layers.first(where: { $0.id == id }), !obj.bitmaps.isEmpty
+        else { return }
+        isRemovingBackground = true
+        let source = obj.bitmaps
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let results = source.map { src in
+                RemoveBackground.removeBackgroundWithVision(src) ?? RemoveBackground.removeBackgroundAdvanced(src) ?? src
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isRemovingBackground = false
+                guard let target = self.layers.first(where: { $0.id == id }) else { return }
+                target.setBitmaps(results)
+                self.version += 1
+            }
+        }
+    }
+
     /// Port de `btn_duplicate` (`AnimemesCompound.java:1959-1965` → `AnimationObjectData.
     /// duplicate(data)` COPIE PROFONDE, PAS `duplicate2` — confirmé par lecture directe du site
     /// d'appel, pas supposé depuis le nom de méthode le plus probable) →

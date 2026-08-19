@@ -842,6 +842,19 @@ struct AnimemesEditorView: View {
                 bottomButton(icon: "point.topleft.down.curvedto.point.bottomright.up", label: "bezier") {
                     showBezierEditor.toggle()
                 }
+                // Port de `btn_removebg` (**ajouté le 2026-08-19, ANIMEMS_PARITY_AUDIT_V1.md F-29,
+                // Phase B Lot 11**) — voir `AnimemesEditorState.removeBackgroundFromSelected()`.
+                Group {
+                    if state.isRemovingBackground {
+                        VStack(spacing: 4) { ProgressView().tint(.white); Text("fond").font(.caption2) }
+                            .foregroundStyle(.white)
+                    } else {
+                        bottomButton(icon: "person.crop.rectangle", label: "fond") {
+                            state.removeBackgroundFromSelected()
+                        }
+                        .disabled(state.selectedId == nil)
+                    }
+                }
                 bottomButton(icon: "trash", label: "supprimer") { state.deleteSelected() }
                     .disabled(state.selectedId == nil)
                 bottomButton(icon: "arrow.counterclockwise", label: "réinitialiser") { state.resetSelected() }

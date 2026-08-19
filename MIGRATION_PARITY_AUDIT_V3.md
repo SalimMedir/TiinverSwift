@@ -134,7 +134,7 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 | V3-F-001 (SEARCH-01) | Recherche universelle réseau/decode | COMPLETE_PARITY_CANDIDATE | P1 | Aucun | HIGH |
 | V3-F-002 (SEARCH-02) | Décodage résidu strict | PARTIAL | P2 | `try?` avale une erreur réelle de décodage en "0 résultat" au lieu d'"erreur" | MEDIUM |
 | V3-F-003 (SEARCH-03) | Tap résultat utilisateur | IOS_INTENTIONAL_DIFFERENCE | P2 | Zone tapable élargie (amélioration) | HIGH |
-| V3-F-004 (SEARCH-04) | Tap résultat publication → plein écran | PARTIAL | P1 | Pas de refetch avant affichage (Android en fait un) — état like/compteurs possiblement obsolète | MEDIUM |
+| V3-F-004 (SEARCH-04) | Tap résultat publication → plein écran | **BUILD_VALIDATED** (corrigé `77b1fc8`, Phase B lot P1, CI verte — refetch via `getactivity/{token}`, repli sur les données obsolètes seulement si le réseau échoue ; test réel requis) | P1 | Pas de refetch avant affichage (Android en fait un) — état like/compteurs possiblement obsolète | MEDIUM |
 | V3-F-005 (SEARCH-05) | Tap hashtag → fil | COMPLETE_PARITY_CANDIDATE | P2 | Aucun | HIGH |
 | V3-F-006 (SEARCH-06) | Recherche groupe — texte placeholder | BUILD_VALIDATED (corrigé `38d5e99`, Phase B lot P1 — vraie traduction française vérifiée dans `values-fr/strings.xml`, CI verte — test réel requis) | **P1** | Chaîne littérale anglaise `"tab here for group info"` affichée à l'utilisateur pour tout résultat groupe serveur | HIGH |
 | V3-F-007 (SEARCH-07) | Tap `#hashtag`/`@mention` dans une légende | **MISSING** | **P1** | Fonctionnalité entière absente (pas de `MentionTextView` équivalent) | HIGH |

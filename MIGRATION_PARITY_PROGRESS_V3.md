@@ -481,3 +481,23 @@ et vérifier l'unité réelle de `video_duration`.
 **Statut final** : BUILD_VALIDATED (partiel, portée volontairement limitée et documentée).
 
 ---
+
+## 2026-08-19 — Lot P1-F : V3-F-004 (Search — pas de refetch avant plein écran)
+
+**Commit** : `77b1fc8` — CI verte (run confirmé).
+
+`UniversalSearchAdapter.java:298-306` confirmé : le tap Android ne transporte que `activityId`/
+`userId`/`type`, `FullScreenMedia` recharge lui-même la publication fraîche. iOS convertissait
+directement les données de recherche (potentiellement obsolètes) via `post.asFeedActivity`. Corrigé
+en rechargeant via `FeedRepository.fetchPost(byToken:)` (déjà utilisé pour les liens profonds,
+`SearchPostResult.token` jamais exploité ici avant) ; repli sur les données obsolètes uniquement si
+le réseau échoue.
+
+**Test réel requis** : oui — vérifier que les compteurs like/commentaire affichés en plein écran
+depuis la recherche sont à jour, pas figés au moment de la recherche.
+
+**Résultat du test réel** : non effectué.
+
+**Statut final** : BUILD_VALIDATED.
+
+---

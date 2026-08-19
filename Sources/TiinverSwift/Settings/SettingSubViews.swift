@@ -37,6 +37,11 @@ struct SettingAccountView: View {
         // `LocalDataPurger.swift` pour le détail complet et la justification de cette découverte.
         await LocalDataPurger.purgeAll()
         UserSession.shared.clear()
+        // Port du reset de pile de tâches Android (`FLAG_ACTIVITY_CLEAR_TASK` vers `SplashActivity`
+        // — **ajouté le 2026-08-19, MIGRATION_PARITY_AUDIT_V3.md V3-F-051, Phase B P0-4**. Sans ce
+        // signal, `RootRouterView.authenticatedUser` restait peuplé et l'utilisateur restait
+        // visuellement sur `HomeShellView` avec une session sous-jacente vide.
+        NotificationCenter.default.post(name: .userDidLogout, object: nil)
     }
 
     private func deleteAccount() async {
@@ -46,6 +51,7 @@ struct SettingAccountView: View {
         try? await ProfileRepository.shared.deleteAccount(userId: userId)
         await LocalDataPurger.purgeAll()
         UserSession.shared.clear()
+        NotificationCenter.default.post(name: .userDidLogout, object: nil)
     }
 }
 

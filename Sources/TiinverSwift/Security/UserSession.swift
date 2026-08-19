@@ -158,3 +158,16 @@ final class UserSession {
         defaults.removeObject(forKey: Keys.referralCode)
     }
 }
+
+/// Port du reset de pile de tâches d'Android au logout (`Intent(SplashActivity)` avec
+/// `FLAG_ACTIVITY_CLEAR_TASK`, voir `RootRouterView.swift`) — **ajouté le 2026-08-19**
+/// (MIGRATION_PARITY_AUDIT_V3.md V3-F-051, Phase B P0-4). `UserSession` n'est PAS un
+/// `ObservableObject` (singleton `final class` simple, décision d'architecture antérieure non
+/// remise en cause ici) — `NotificationCenter` est le mécanisme le plus direct et le moins
+/// invasif pour que `RootRouterView` (qui possède l'état de navigation racine local,
+/// `@State private var authenticatedUser`) soit informé d'un logout survenu ailleurs dans l'app,
+/// sans convertir `UserSession` en `ObservableObject` (changement d'architecture plus large que
+/// nécessaire pour ce correctif précis).
+extension Notification.Name {
+    static let userDidLogout = Notification.Name("com.tiinver.userDidLogout")
+}

@@ -26,14 +26,43 @@ final class ChatRepository {
     /// et vérifié dès maintenant sans dépendre de l'existence du module 12.
     static var isOnCall = false
 
-    private let socket: SocketIOClient?
+    /// **Corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-016/023, Phase B P0-1)** —
+    /// `let` → `var` : capturer le socket une seule fois à l'init figeait `nil` pour toujours si
+    /// ce singleton était touché avant que `TiinverSocket` ait un socket réel (cas réel : ce
+    /// fichier est déjà touché très tôt via `CallCoordinator.chatRepository`/`PBSViewModel`,
+    /// potentiellement avant authentification) — port du bug CHAT-02 identifié dans l'audit V3,
+    /// distinct du bug "connect() jamais appelé" (V3-F-016, ci-dessous) mais qui l'aurait de toute
+    /// façon réintroduit une fois celui-ci corrigé seul. Reflète maintenant fidèlement `mSocket`
+    /// (Android, champ mutable réassigné par `App.resetSocket()` — voir `attachToCurrentSocket()`).
+    private var socket: SocketIOClient?
     private let messages: MessageRepository
     private var isConnected = false
     private var isReconnecting = false
 
+    /// Port du constructeur `ChatRepository(Context)` (`ChatRepository.java:211-224`) —
+    /// `getSocket()` (lazy, avec le token DISPONIBLE MAINTENANT, potentiellement absent avant
+    /// login) + `connectSocket()` (idempotent) + `registerAllListeners()`. **Corrigé le
+    /// 2026-08-19** : avant ce correctif, `connect(apiKey:)` n'était appelé nulle part dans tout
+    /// le projet (confirmé par grep exhaustif, MIGRATION_PARITY_AUDIT_V3.md V3-F-016) — le socket
+    /// ne se connectait donc jamais, quelle que soit la fidélité du reste de ce fichier.
     private init(messages: MessageRepository = MessageRepository()) {
-        self.socket = TiinverSocket.shared.socket
         self.messages = messages
+        TiinverSocket.shared.connect(apiKey: UserSession.shared.apiKey)
+        self.socket = TiinverSocket.shared.socket
+        registerAllListeners()
+    }
+
+    /// Port de la séquence `App.resetSocket()` → nouveau `mSocket` → ré-attachement des listeners
+    /// — appelé APRÈS un login réussi (`RootRouterView.swift`), le cas réel où ce singleton a déjà
+    /// pu être touché (et donc déjà créé un socket, potentiellement anonyme/sans jeton) AVANT que
+    /// l'utilisateur ne se connecte. Sans cet appel explicite, le socket resterait bloqué sur le
+    /// jeton (ou l'absence de jeton) capturé au tout premier accès à `ChatRepository.shared` —
+    /// exactement le scénario réel derrière CHAT-02. Idempotent-sûr : recrée le socket même s'il
+    /// était déjà valide, fidèle à `resetSocket()` qui ne fait pas de distinction.
+    func attachToCurrentSocket() {
+        TiinverSocket.shared.reset(apiKey: UserSession.shared.apiKey)
+        self.socket = TiinverSocket.shared.socket
+        isConnected = false
         registerAllListeners()
     }
 
@@ -519,10 +548,35 @@ final class ChatRepository {
 
     // MARK: - Helpers
 
+    /// **Corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-090 SILENT-01, Phase B P0-1)** —
+    /// décodait le tableau ENTIER en un seul appel (`decode([MessageLib].self, ...)`) : un décodage
+    /// Swift `Array<Codable>` échoue en bloc dès le PREMIER élément mal formé (`width`/`height`/
+    /// `duration` etc. envoyés en nombre plutôt qu'en chaîne par le serveur, cas déjà rencontré et
+    /// corrigé pour Feed/Profil/Contacts/Groupes mais jamais reporté ici) — un seul message
+    /// "problématique" dans un lot socket entrant (`new message`/`new message group`/suppression/
+    /// statut hors-ligne) faisait disparaître TOUT le lot, silencieusement (`try?`), sans aucune
+    /// trace. Remplacé par le même motif per-item + diagnostic déjà utilisé dans
+    /// `FeedRepository.fetchTimeline`/`ProfileRepository`/`ContactsRepository`/`GroupRepository` :
+    /// un message individuellement malformé est désormais écarté seul, pas tout le lot.
     private static func decodeMessages(from payload: [String: Any]) -> [MessageLib]? {
-        guard let dataArray = payload["data"] else { return nil }
-        guard let data = try? JSONSerialization.data(withJSONObject: dataArray) else { return nil }
-        return try? JSONDecoder().decode([MessageLib].self, from: data)
+        guard let dataArray = payload["data"] as? [Any] else { return nil }
+        let decoder = JSONDecoder()
+        let decoded = dataArray.compactMap { item -> MessageLib? in
+            guard let itemData = try? JSONSerialization.data(withJSONObject: item) else {
+                print("CHAT SOCKET: impossible de sérialiser un message reçu — item=\(item)")
+                return nil
+            }
+            do {
+                return try decoder.decode(MessageLib.self, from: itemData)
+            } catch {
+                print("CHAT SOCKET: échec de décodage d'un message reçu — error=\(error) item=\(item)")
+                return nil
+            }
+        }
+        if decoded.count != dataArray.count {
+            print("CHAT SOCKET: reçu \(dataArray.count) message(s), seulement \(decoded.count) décodé(s) avec succès — \(dataArray.count - decoded.count) silencieusement perdu(s), voir échecs de décodage ci-dessus")
+        }
+        return decoded
     }
 
     private static func decodeProfile(_ jsonString: String) -> ChatProfile? {

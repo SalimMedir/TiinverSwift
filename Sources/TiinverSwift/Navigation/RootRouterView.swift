@@ -42,6 +42,15 @@ struct RootRouterView: View {
             } else {
                 AuthCoordinatorView { user in
                     authenticatedUser = user
+                    // Port de `HomeActivity.onNetworkChange` → `App.resetSocket()`+`connectSocket()`
+                    // (`HomeActivity.java:485-487`), le point réel où Android (re)connecte le
+                    // socket avec le jeton fraîchement obtenu après un login. **Ajouté le
+                    // 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-016/023, Phase B P0-1)** —
+                    // sans cet appel, `ChatRepository.shared` (déjà touché au lancement de l'app
+                    // via `CallCoordinator.start()`, potentiellement AVANT authentification)
+                    // resterait figé sur un socket anonyme/sans jeton pour tout le reste du
+                    // process, même après un login réussi dans la même session.
+                    ChatRepository.shared.attachToCurrentSocket()
                 }
             }
         }
@@ -55,6 +64,18 @@ struct RootRouterView: View {
         // nécessitent une session (même mécanisme que les notifications push).
         .onOpenURL { url in
             DeepLinkRouter.handle(url)
+        }
+        // Port du reset de pile de tâches d'Android au logout
+        // (`transportDataBackground.deleteaccount()` → `Intent(SplashActivity)` avec
+        // `FLAG_ACTIVITY_NEW_TASK|FLAG_ACTIVITY_CLEAR_TASK`, `transportDataBackground.java:176-180`)
+        // — **ajouté le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-051, Phase B P0-4)**. Avant
+        // ce correctif, `authenticatedUser` (un `@State` local, jamais réinitialisé) primait sur
+        // TOUTE nouvelle lecture de `UserSession.shared.cachedUser()` après un logout survenu SANS
+        // relancer l'app — l'utilisateur restait visuellement sur `HomeShellView` avec une session
+        // sous-jacente totalement vide. `SettingSubViews.logout()`/`deleteAccount()` postent
+        // `.userDidLogout` juste après `UserSession.shared.clear()` — voir `UserSession.swift`.
+        .onReceive(NotificationCenter.default.publisher(for: .userDidLogout)) { _ in
+            authenticatedUser = nil
         }
     }
 

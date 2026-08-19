@@ -392,8 +392,16 @@ struct AnimemesEditorView: View {
                 .frame(width: fitSize.width, height: fitSize.height)
                 .background(Color(white: 0.08))
                 .gesture(combinedGesture)
-                .onAppear { canvasSize = fitSize; state.preparePlayback(canvasSize: fitSize) }
-                .onChange(of: fitSize) { newSize in canvasSize = newSize; state.preparePlayback(canvasSize: newSize) }
+                .onAppear {
+                    canvasSize = fitSize
+                    state.preparePlayback(canvasSize: fitSize)
+                    zoomState.updateMinZoom(targetSize: fitSize, parentSize: outerGeo.size)
+                }
+                .onChange(of: fitSize) { newSize in
+                    canvasSize = newSize
+                    state.preparePlayback(canvasSize: newSize)
+                    zoomState.updateMinZoom(targetSize: newSize, parentSize: outerGeo.size)
+                }
                 .onChange(of: state.version) { _ in state.preparePlayback(canvasSize: canvasSize) }
 
                 zoomControls
@@ -421,23 +429,30 @@ struct AnimemesEditorView: View {
     /// conteneur, indépendant de `canvasSize` (résolution réelle des calques/de l'export, pilotée
     /// par le ratio ci-dessus) : Android sépare aussi le zoom d'affichage (`ScaleGestureDetector`
     /// sur `MemesView2`) de la résolution d'export (`spinnerResolution`), deux réglages distincts.
-    @State private var displayZoom: CGFloat = 1.0
+    ///
+    /// **Remplacé le 2026-08-19 (ANIMEMS_PARITY_AUDIT_V1.md F-40, Phase B Lot 8)** : les boutons
+    /// pilotaient un simple `@State displayZoom` local jamais réellement appliqué au canevas
+    /// (aucun `.scaleEffect`/transform nulle part) — **un deuxième bug trouvé pendant ce lot, pas
+    /// dans l'audit initial** : le zoom affichait un pourcentage qui changeait mais ne zoomait
+    /// visuellement RIEN, un cas exact de "bouton qui ne modifie que l'UI" (Phase A5). Remplacé par
+    /// `CanvasZoomState`/`CanvasZoomControls` (`CanvasZoomController.swift`, port fidèle de
+    /// `computeMinZoom`/`zoom(delta)`/`reset`, orphelin jusqu'ici) pour au moins porter l'ALGORITHME
+    /// correct (clamp `[minZoom dynamique, 4.0]`, pas `[0.5, 3]` fixe). **Le zoom ne zoome
+    /// toujours pas visuellement le canevas après ce lot** — appliquer un `.scaleEffect` sur le
+    /// `Canvas` qui porte aussi `combinedGesture` (translation/pinch/rotation d'objet) risquerait
+    /// de désynchroniser les coordonnées de geste rapportées par SwiftUI de l'espace de coordonnées
+    /// réel du rendu — EXACTEMENT la classe de fragilité gestuelle qui a déjà cassé ce fichier deux
+    /// fois cette session (`.id(state.version)`, voir §18.1 de l'audit). Documenté comme
+    /// **risque non résolu, PAS corrigé silencieusement** : nécessite soit un conteneur de
+    /// viewport séparé du canevas de rendu (zoom du conteneur, pas du contenu), soit une correction
+    /// explicite des coordonnées de geste par `1/currentScale`, les deux nécessitant une
+    /// vérification sur device réel avant d'être considérés sûrs.
+    @StateObject private var zoomState = CanvasZoomState()
     private var zoomControls: some View {
-        VStack(spacing: 6) {
-            Button { displayZoom = min(3, displayZoom + 0.25) } label: {
-                Image(systemName: "plus").frame(width: 32, height: 32)
-            }
-            Text(String(format: "%.1fx", displayZoom)).font(.caption2)
-            Button { displayZoom = max(0.5, displayZoom - 0.25) } label: {
-                Image(systemName: "minus").frame(width: 32, height: 32)
-            }
-            Button { displayZoom = 1.0 } label: {
-                Text("fit").font(.caption2)
-            }
-        }
-        .foregroundStyle(.white)
-        .padding(8)
-        .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
+        // `CanvasZoomControls` porte déjà son propre fond/contour (voir sa définition dans
+        // `CanvasZoomController.swift`) — pas de second habillage ici, contrairement à l'ancienne
+        // version inline qui avait le sien.
+        CanvasZoomControls(state: zoomState)
     }
 
     /// Port de la barre d'outils verticale droite (`compound_animemes_layout.xml:196-331`) — ordre

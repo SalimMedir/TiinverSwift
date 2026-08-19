@@ -496,6 +496,25 @@ final class AnimemesEditorState: ObservableObject {
         renderVersion += 1
     }
 
+    /// Port de `btn_duplicate` (`AnimemesCompound.java:1959-1965` → `AnimationObjectData.
+    /// duplicate(data)` COPIE PROFONDE, PAS `duplicate2` — confirmé par lecture directe du site
+    /// d'appel, pas supposé depuis le nom de méthode le plus probable) →
+    /// `duplicateTimeline(dup, item)`, qui ajoute le duplicata comme nouveau calque avec le MÊME
+    /// label/couleur/plage de frames que la source, SANS le sélectionner automatiquement (fidèle :
+    /// aucun `itemSelected.put(0, item)` dans `duplicateTimeline`, et aucune des fonctions
+    /// `addImage`/`addText`/`addShape`/`addSticker` de ce fichier ne sélectionne non plus le calque
+    /// qu'elle vient de créer — cohérence avec le reste du fichier, pas une omission). **Ajouté le
+    /// 2026-08-19 (ANIMEMS_PARITY_AUDIT_V1.md F-30, Phase B Lot 4)** : `AnimationObjectData.
+    /// duplicate(_:)` existait déjà (copie profonde complète, jamais appelée) — seul le point
+    /// d'entrée UI manquait.
+    func duplicateSelected() {
+        guard let id = selectedId, let obj = layers.first(where: { $0.id == id }) else { return }
+        let dup = AnimationObjectData.duplicate(obj)
+        composer.addLayer(dup)
+        syncTimeline()
+        version += 1
+    }
+
     /// Port d'`undo` → `mView.deletePrecedenteDraw()` — supprime le DERNIER calque ajouté (pas une
     /// pile d'annulation multi-niveaux généralisée, fidèle à ce bouton précis côté Android).
     func removeLast() {

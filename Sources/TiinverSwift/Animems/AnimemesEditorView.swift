@@ -716,6 +716,10 @@ struct AnimemesEditorView: View {
                     }
                 }
                 .disabled(state.selectedId == nil)
+                // Port de `btn_duplicate` (**ajouté le 2026-08-19, ANIMEMS_PARITY_AUDIT_V1.md
+                // F-30, Phase B Lot 4**) — voir `AnimemesEditorState.duplicateSelected()`.
+                bottomButton(icon: "plus.square.on.square", label: "dupliquer") { state.duplicateSelected() }
+                    .disabled(state.selectedId == nil)
                 bottomButton(icon: "trash", label: "supprimer") { state.deleteSelected() }
                     .disabled(state.selectedId == nil)
                 bottomButton(icon: "arrow.counterclockwise", label: "réinitialiser") { state.resetSelected() }

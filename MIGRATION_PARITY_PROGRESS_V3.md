@@ -199,6 +199,65 @@ exporté.
 
 ---
 
+## 2026-08-19 — Lot 6 : P0-7 (Achat StoreKit non persisté côté serveur — risque financier)
+
+**Finding ID** : V3-F-084 (PAY-03)
+
+**Commit** : `9c5dd02`
+
+**Fichiers modifiés** : `Wallet/CoinStoreManager.swift`
+
+**Nature du correctif** : Investigation d'abord, conformément à la consigne stricte de ne jamais
+simuler une validation serveur inexistante :
+- `WalletRepository.submitPurchasseRequest`/`submitPurchasseByCrypto` (Android) attendent un
+  payload mobile money/crypto (numéro de transaction saisi à la main), incompatible avec une
+  preuve d'achat StoreKit (`transactionId`/`originalTransactionId` Apple) — réutiliser ces
+  endpoints aurait été un mensonge fonctionnel, écarté.
+- Confirmé qu'AUCUN endpoint backend n'accepte actuellement une preuve d'achat StoreKit ;
+  `storekit/verify-purchase`, déjà appelé côté client, retourne 404 (`APIClient`
+  `.validate(statusCode: 200..<300)` lève, avalé auparavant par un `try?`).
+- Tracé le mécanisme de perte complet : `transaction.finish()` était appelé inconditionnellement
+  après l'échec silencieux du rapport serveur — reçu Apple consommé, aucune nouvelle tentative
+  possible. La prochaine relecture du profil personnel (`ProfileViewModel.swift:99-100`) écrase
+  ensuite `UserSession.shared.coinsAmount` avec la valeur serveur (jamais incrémentée), effaçant
+  silencieusement et définitivement le crédit local — argent réel dépensé, crédit perdu, aucune
+  trace.
+
+Correctif appliqué : **cycle de vie StoreKit local uniquement, AUCUN nouveau chemin réseau créé**.
+`creditAndReport` retourne maintenant si le serveur a réellement confirmé (`isBackendSuccess`) ;
+`transaction.finish()` n'est appelé QUE dans ce cas. Sinon la transaction est laissée
+délibérément non terminée — StoreKit la redélivre automatiquement au prochain lancement via
+`Transaction.updates`, donnant un vrai point de nouvelle tentative une fois l'endpoint serveur
+créé, au lieu d'une perte silencieuse et irréversible. `lastError` informe désormais l'utilisateur
+quand l'achat a réussi côté Apple mais n'est pas confirmé côté serveur.
+
+**Travail backend requis, documenté dans le code (`CoinStoreManager.swift`, commentaire de
+`creditAndReport`), PAS implémenté ici** : créer `storekit/verify-purchase` côté serveur —
+recevoir `userId`/`productId`/`transactionId`/`originalTransactionId`, vérifier auprès de l'App
+Store Server API (`https://api.storekit.itunes.apple.com/inApps/v1/transactions/{transactionId}`,
++ fallback sandbox), ne créditer `coinsAmount` qu'après vérification réussie, et rendre l'opération
+idempotente sur un `transactionId` déjà traité (pas de double crédit en cas de rejeu).
+
+**Build/CI** : run GitHub Actions 32292309223 sur `9c5dd02` — **succès** (vérifié).
+
+**Statut post-build** : BUILD_VALIDATED pour le correctif client lui-même (le cycle de vie StoreKit
+est maintenant correct et compile).
+
+**Test réel requis** : oui — mais insuffisant pour la parité complète tant que l'endpoint serveur
+n'existe pas. Un test réel confirmerait seulement que l'achat sandbox se déroule, que l'erreur
+s'affiche, et qu'aucun crash ne survient ; il NE PEUT PAS prouver un crédit serveur durable, qui
+reste structurellement impossible sans le travail backend documenté ci-dessus.
+
+**Résultat du test réel** : non effectué.
+
+**Statut final** : **V3-F-084 reste FUNCTIONALLY_FAILED** au sens strict de la parité (l'argent
+réel dépensé n'est toujours jamais durablement crédité côté serveur) — ce lot réduit le risque de
+perte silencieuse et documente précisément le travail serveur manquant, mais NE DOIT PAS être
+présenté comme une résolution complète. Aucune déclaration COMPLETE_PARITY_* n'est faite ici,
+conformément à la consigne explicite de l'utilisateur pour ce P0 spécifiquement.
+
+---
+
 <!--
 Gabarit pour chaque entrée de PHASE B, à dupliquer :
 

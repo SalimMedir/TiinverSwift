@@ -246,7 +246,7 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 | V3-F-081 (DEEPLINK-04) | Chemin `update/` (mise à jour forcée) | PARTIAL | P2 | `appStoreId=nil`, attendu avant publication réelle | HIGH |
 | V3-F-082 (PAY-01) | Référence Android — mobile money/crypto hors app | ANDROID_ONLY | — | Justifié (conformité App Store) | HIGH |
 | V3-F-083 (PAY-02) | Substitution StoreKit 2 | IOS_INTENTIONAL_DIFFERENCE | P1 | Justifiée (règle 3.1.1/3.1.5 App Store) | HIGH |
-| V3-F-084 (PAY-03) | **Achat StoreKit non persisté serveur** | **FUNCTIONALLY_FAILED** | **P0** | `storekit/verify-purchase` n'existe pas côté backend, documenté dans le code lui-même — argent réel dépensé, crédit perdu à la prochaine resynchronisation | HIGH |
+| V3-F-084 (PAY-03) | **Achat StoreKit non persisté serveur** | **FUNCTIONALLY_FAILED** (mitigé côté client par `9c5dd02`, Phase B Lot 6, CI verte — endpoint backend `storekit/verify-purchase` toujours INEXISTANT, voir Progress_V3 pour le détail exact du travail serveur requis ; statut délibérément PAS remonté à BUILD_VALIDATED car la parité fonctionnelle réelle — crédit durable côté serveur — reste absente) | **P0** | `storekit/verify-purchase` n'existe pas côté backend, documenté dans le code lui-même — argent réel dépensé, crédit perdu à la prochaine resynchronisation | HIGH |
 | V3-F-085 (PAY-04) | Retrait/conversion/transfert/parrainage | COMPLETE_PARITY_CANDIDATE | P2 | Aucun | HIGH |
 | V3-F-086 (BOOST-01) | Création de campagne — champs/endpoint | COMPLETE_PARITY_CANDIDATE | P2 | Aucun — vérifié indépendamment, pas un mock | HIGH |
 | V3-F-087 (BOOST-02) | Calculs budget/durée/estimation | COMPLETE_PARITY_CANDIDATE | P2 | Aucun | HIGH |

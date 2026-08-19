@@ -386,6 +386,84 @@ final class AnimemesEditorState: ObservableObject {
         version += 1
     }
 
+    // MARK: - Panneau d'édition de calque (`LayerEditorPanel.java`)
+
+    /// Port de `showPanelEditor` — trace Android complète : `LayerEditorPanel` s'ouvre via
+    /// `onTrackLongPressed(TimelineItem)` (`AnimemesCompound.java:1634-1637`, listener
+    /// `TimelineView.OnTimelineListener`, appui long sur une piste). **Note d'implémentation** :
+    /// `TimelineView.swift` compose déjà `DragGesture`+`MagnificationGesture` pour pan/scrub/
+    /// glisser-item/redimensionner/pincer-zoomer — ce fichier a subi 2 fois cette session la même
+    /// classe de bug (`.id(state.version)` détruisant le geste en cours, GAP-024 et sa réplique
+    /// P0-5). Ajouter un `LongPressGesture` tiers en composition avec ces deux gestes déjà fragiles
+    /// risquerait de réintroduire cette classe de bug sans un vrai test réel pour le vérifier (voir
+    /// ANIMEMS_PARITY_AUDIT_V1.md §18.1). Choix assumé : un bouton dédié dans `bottomToolbar`
+    /// (même famille que "masque"/"supprimer"/"réinitialiser", déjà gatés sur `selectedId != nil`)
+    /// déclenche `bound(to:)` au lieu du long-press — substitution de DÉCLENCHEUR, PAS
+    /// d'invention de fonctionnalité : le panneau, ses réglages et son résultat final restent
+    /// identiques à Android, seul le geste d'ouverture diffère (plus détectable qu'un appui long
+    /// non indicé visuellement, cohérent avec l'objectif de parité fonctionnelle > parité de geste
+    /// exacte quand l'un des deux est nettement plus sûr à implémenter que l'autre).
+    func snapshotLayerEditor() -> LayerEditorPanelState? {
+        guard let id = selectedId, let obj = layers.first(where: { $0.id == id }) else { return nil }
+        return LayerEditorPanelState.bound(to: obj)
+    }
+
+    /// Port de `applyPropertiesToLayerForPreview` — écrit directement dans la DERNIÈRE `Transform`
+    /// du calque sélectionné (lue en direct par `LayerRenderer.resolveVisualProperties`/
+    /// `drawText`/etc., pas besoin de dupliquer un bitmap de travail comme Android : le rendu Core
+    /// Graphics est déjà un re-rendu live à chaque frame, l'aperçu est donc gratuit). `renderVersion`
+    /// — appelé à chaque glissement de slider, plusieurs fois par seconde, aucun changement
+    /// structurel (pas de nouvelle piste de keyframe tant que "Valider" n'a pas été pressé).
+    func applyLayerEditorPreview(_ panel: LayerEditorPanelState) {
+        guard let id = selectedId, let obj = layers.first(where: { $0.id == id }),
+              var tfm = obj.transforms.last
+        else { return }
+        tfm.opacity = panel.opacity
+        tfm.cornerRadius = panel.cornerRadius
+        tfm.feather = panel.feather
+        tfm.color = Self.packTint(color: panel.tintColor, strength: panel.tintStrength)
+        obj.transforms[obj.transforms.count - 1] = tfm
+        bumpRenderVersion()
+    }
+
+    /// Port de `validateAndCreateKeyframe` — Android crée là 4 keyframes visuels (opacité/teinte/
+    /// arrondi/flou) à la frame COURANTE du playhead, en plus d'écrire la valeur finale (déjà fait
+    /// par `applyLayerEditorPreview` ci-dessus, appelé juste avant par l'appelant SwiftUI). `tint`
+    /// Android est `(tintColor, tintStrength)` séparés ; iOS n'a qu'UNE seule piste `color` (ARGB
+    /// packé, l'alpha EST la force de teinte — voir `LayerRenderer.drawTinted`, qui applique déjà
+    /// la teinte proportionnellement à l'alpha) : `tintStrength` est donc fusionné dans l'octet
+    /// alpha de `addColorKeyframe` plutôt que porté comme piste séparée, fidèle au modèle de rendu
+    /// déjà en place plutôt qu'une reproduction 1:1 de la séparation interne d'Android qui n'a pas
+    /// d'équivalent utile ici. `version` (pas `renderVersion`) — même choix que `recordKeyframe()`
+    /// ci-dessus, la création d'une piste de keyframe est traitée comme structurelle par convention
+    /// existante dans ce fichier, pas une décision nouvelle prise isolément pour cette fonction.
+    func validateLayerEditor(_ panel: LayerEditorPanelState) {
+        guard let id = selectedId, let obj = layers.first(where: { $0.id == id }) else { return }
+        applyLayerEditorPreview(panel)
+        let ns = timeline.frameToTimestampNs(timeline.playheadFrame)
+        obj.addOpacityKeyframe(ts: ns, v: panel.opacity)
+        obj.addCornerRadiusKeyframe(ts: ns, v: panel.cornerRadius)
+        obj.addFeatherKeyframe(ts: ns, v: panel.feather)
+        obj.addColorKeyframe(ts: ns, argb: Self.packTint(color: panel.tintColor, strength: panel.tintStrength))
+        version += 1
+    }
+
+    /// Port de `cancelLayerEditorPreview` — restaure la DERNIÈRE `Transform` à l'état capturé par
+    /// `snapshotLayerEditor()` avant toute modification (pas de duplication de bitmap nécessaire,
+    /// voir note d'`applyLayerEditorPreview`).
+    func cancelLayerEditor(_ original: LayerEditorPanelState) {
+        applyLayerEditorPreview(original)
+    }
+
+    /// `tintStrength` (`[0, 1]`) devient l'octet alpha du ARGB packé — `tintColor` fourni par la
+    /// palette est déjà opaque (`0xFF......`, voir `LayerEditorPanelState.palette`), seul l'alpha
+    /// est recalculé ici.
+    private static func packTint(color: UInt32, strength: Float) -> UInt32 {
+        guard color != 0 else { return 0 }
+        let alpha = UInt32(max(0, min(1, strength)) * 255) << 24
+        return alpha | (color & 0x00FF_FFFF)
+    }
+
     /// Port du glisser-déposer direct du masque (`MaskEditController`/`maskApplyDrag`) —
     /// `deltaTranslation` est un DELTA (pas cumulatif, contrairement à `RotationGesture`/
     /// `MagnificationGesture` de SwiftUI) : l'appelant (`AnimemesEditorView.maskEditGesture`)

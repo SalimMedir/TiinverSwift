@@ -58,6 +58,11 @@ struct AnimemesEditorView: View {
     @State private var showSaveOptions = false
     @State private var showTemplateGallery = false
     @State private var showCommunityGallery = false
+    /// Port de `showPanelEditor`/`LayerEditorPanel` — voir
+    /// `AnimemesEditorState.snapshotLayerEditor()` pour le raisonnement complet (déclencheur bouton
+    /// dédié plutôt qu'appui long sur la timeline, Phase B Lot 3).
+    @State private var showLayerEditor = false
+    @State private var layerEditorSnapshot: LayerEditorPanelState?
     @State private var templateSavedToast = false
     @State private var showTimeline = true
     @State private var showRightTools = true
@@ -166,6 +171,18 @@ struct AnimemesEditorView: View {
         }
         .alert("Modèle enregistré", isPresented: $templateSavedToast) {
             Button("OK", role: .cancel) {}
+        }
+        .sheet(isPresented: $showLayerEditor) {
+            if let snapshot = layerEditorSnapshot, let selectedId = state.selectedId,
+               let obj = state.layers.first(where: { $0.id == selectedId }) {
+                LayerEditorPanelView(
+                    objectType: obj.objectType, original: snapshot,
+                    onPreview: { state.applyLayerEditorPreview($0) },
+                    onValidate: { state.validateLayerEditor($0) },
+                    onCancel: { state.cancelLayerEditor($0) },
+                    onDismiss: { showLayerEditor = false }
+                )
+            }
         }
     }
 
@@ -688,6 +705,17 @@ struct AnimemesEditorView: View {
                 // `state.isMaskEditMode = false`) existait déjà et n'a pas besoin d'être ajoutée.
                 bottomButton(icon: "circle.dashed", label: "masque") { state.isMaskEditMode = true }
                     .disabled(state.selectedId == nil)
+                // Port de `showPanelEditor`/`LayerEditorPanel` (**ajouté le 2026-08-19,
+                // ANIMEMS_PARITY_AUDIT_V1.md F-28, Phase B Lot 3**) — voir la doc complète sur
+                // `AnimemesEditorState.snapshotLayerEditor()` pour le raisonnement sur le
+                // déclencheur (bouton dédié au lieu de l'appui long Android sur la timeline).
+                bottomButton(icon: "slider.horizontal.3", label: "propriétés") {
+                    if let snapshot = state.snapshotLayerEditor() {
+                        layerEditorSnapshot = snapshot
+                        showLayerEditor = true
+                    }
+                }
+                .disabled(state.selectedId == nil)
                 bottomButton(icon: "trash", label: "supprimer") { state.deleteSelected() }
                     .disabled(state.selectedId == nil)
                 bottomButton(icon: "arrow.counterclockwise", label: "réinitialiser") { state.resetSelected() }

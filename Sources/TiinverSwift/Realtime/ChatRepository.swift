@@ -261,6 +261,7 @@ final class ChatRepository {
                         emitDelivered(packet)
                     }
                     chatEvents.send(.message(meta))
+                    notifyIfNeeded(meta)
                 } catch {
                     print("❌ ChatRepository.handleNewMessage:", error)
                 }
@@ -273,11 +274,42 @@ final class ChatRepository {
                         emitDelivered(packet)
                     }
                     chatEvents.send(.message(meta))
+                    notifyIfNeeded(meta)
                 } catch {
                     print("❌ ChatRepository.handleNewMessage (groupe):", error)
                 }
             }
         }
+    }
+
+    /// Port de `NewPrivateMessage`/`NewGroupMessage` → `fcms.notificationShow(context, meta)`
+    /// (`ChatManager.java:1150/1254`) → `NotificationUtils.displayNotificationOrPushMessage` →
+    /// `show(...)`. **Ajouté le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-075 NOTIF-04, Phase B
+    /// P0-5)** — `LocalNotificationBuilder.chatMessageNotificationContent`/`.present` existaient
+    /// déjà (déjà écrits pour porter `displayNotificationOrPushMessage`) mais n'étaient appelés
+    /// NULLE PART depuis ce fichier, confirmé par recherche exhaustive avant ce correctif — un
+    /// message entrant persistait bien localement et mettait à jour l'UI ouverte
+    /// (`chatEvents.send`), mais ne déclenchait jamais de notification système.
+    ///
+    /// **Vérifié avant d'écrire ce correctif, pas supposé** : `NotificationUtils.show(...)`
+    /// (lignes 342-381) N'UTILISE PAS `isActivityChatContext`/`isMainActivityContext` (calculés
+    /// dans le constructeur mais jamais lus dans `show`/`displayNotificationOrPushMessage`) — la
+    /// notification Android s'affiche donc INCONDITIONNELLEMENT à chaque message entrant, même si
+    /// la conversation exacte est déjà ouverte à l'écran. Reproduit fidèlement ici : PAS de garde
+    /// "conversation déjà ouverte" ajoutée qui n'existe pas côté Android, même si cela peut
+    /// sembler redondant en UX.
+    ///
+    /// Exclu délibérément : `object == "voicecall"` — déjà géré par `CallCoordinator`/CallKit
+    /// (UI d'appel entrant native iOS), une notification locale générique EN PLUS serait non
+    /// standard sur cette plateforme (contrairement à Android qui n'a pas d'équivalent CallKit à
+    /// respecter) ; branché dans le `if meta.object == "voicecall"` séparé ci-dessus, jamais dans
+    /// cette fonction.
+    private func notifyIfNeeded(_ meta: MessageLib) {
+        let title = meta.nikname?.isEmpty == false ? meta.nikname! : (meta.username ?? meta.from ?? "Tiinver")
+        let payload = LocalNotificationBuilder.ChatMessagePayload(
+            title: title, message: meta.message ?? "", object: meta.object ?? "text"
+        )
+        LocalNotificationBuilder.present(LocalNotificationBuilder.chatMessageNotificationContent(payload))
     }
 
     private func handleDeleteMessage(_ data: [Any]) async {

@@ -494,6 +494,34 @@ final class AnimemesEditorState: ObservableObject {
         renderVersion += 1
     }
 
+    /// Port de `onRecomposeClicked`/`performRecompose` (`AnimemesCompound.java:3464-3556`) —
+    /// **beaucoup plus simple que prévu par l'audit initial** : contrairement à l'hypothèse d'une
+    /// UI de multi-sélection dédiée, Android n'en a AUCUNE — `getRecomposeCandidates()` prend
+    /// simplement TOUS les calques non verrouillés et visibles (exactement
+    /// `AnimemesRecompose.candidates(from:)`, déjà porté), sans sélection manuelle. Un seul tap
+    /// suffit. **Ajouté le 2026-08-19 (ANIMEMS_PARITY_AUDIT_V1.md F-20, Phase B Lot 9)** —
+    /// `AnimemesRecompose.buildComposedLayer(from:)` (logique pure, déjà écrite et jamais appelée)
+    /// fait tout le travail de fusion ; ce correctif n'ajoute que le point d'entrée et
+    /// l'orchestration timeline. Port de `src.setVisible(false)` (masque les calques sources après
+    /// fusion, sinon ils resteraient visibles EN PLUS du résultat fusionné, rendu incohérent) —
+    /// **PAS porté** : `recomposeGroupId`/`btn_view_group`/`btn_group_back` (voir-le-groupe/
+    /// retour), `RecomposeManager` (sauvegarde disque + `btn_recompose_gallery`/"Load compose"),
+    /// `AnimemesRecomposeNameSheet` (nommage) — décision de périmètre déjà documentée dans l'en-tête
+    /// d'`AnimemesRecompose.swift`, reconduite ici, pas un oubli.
+    /// - Returns: `false` si moins de 2 calques candidats ou si la fusion échoue (port de
+    ///   `compose_needs_two_layers`/`compose_failed`, l'appelant SwiftUI affiche l'alerte).
+    @discardableResult
+    func performRecompose() -> Bool {
+        let candidates = AnimemesRecompose.candidates(from: layers)
+        guard candidates.count >= 2, let result = AnimemesRecompose.buildComposedLayer(from: candidates)
+        else { return false }
+        composer.addLayer(result)
+        for src in candidates { src.visible = false }
+        syncTimeline()
+        version += 1
+        return true
+    }
+
     /// Port de `btn_duplicate` (`AnimemesCompound.java:1959-1965` → `AnimationObjectData.
     /// duplicate(data)` COPIE PROFONDE, PAS `duplicate2` — confirmé par lecture directe du site
     /// d'appel, pas supposé depuis le nom de méthode le plus probable) →

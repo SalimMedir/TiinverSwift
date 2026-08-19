@@ -88,6 +88,8 @@ struct AnimemesEditorView: View {
     @State private var showBezierEditor = false
     @State private var bezierPoints = BezierControlPoints.easeInOutDefault
     @State private var templateSavedToast = false
+    /// Port de `compose_needs_two_layers`/`compose_failed` — voir `state.performRecompose()`.
+    @State private var recomposeFailedAlert = false
     @State private var showTimeline = true
     @State private var showRightTools = true
     @State private var selectedSpeedIndex = 0
@@ -237,6 +239,11 @@ struct AnimemesEditorView: View {
         }
         .alert("Modèle enregistré", isPresented: $templateSavedToast) {
             Button("OK", role: .cancel) {}
+        }
+        .alert("Impossible de fusionner", isPresented: $recomposeFailedAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Il faut au moins 2 calques visibles et non verrouillés pour utiliser Compose.")
         }
         .sheet(isPresented: $showLayerEditor) {
             if let snapshot = layerEditorSnapshot, let selectedId = state.selectedId,
@@ -773,9 +780,16 @@ struct AnimemesEditorView: View {
                     // affiché pour la parité visuelle, SANS action (fidèle au comportement réel :
                     // Android lui-même ne fait rien de visible au tap).
                 }
-                bottomButton(icon: "square.on.square", label: "Compose") {}
-                    .opacity(0.4)
-                    .disabled(true)
+                // Port de `btn_recompose` (**ajouté le 2026-08-19, ANIMEMS_PARITY_AUDIT_V1.md
+                // F-20, Phase B Lot 9**) — voir `AnimemesEditorState.performRecompose()` : Android
+                // n'exige aucune sélection manuelle, un seul tap fusionne tous les calques visibles
+                // non verrouillés (≥2 requis).
+                bottomButton(icon: "square.on.square", label: "Compose") {
+                    if !state.performRecompose() { recomposeFailedAlert = true }
+                }
+                // "Load compose" (`btn_recompose_gallery`) reste DIFFÉRÉ — dépend de
+                // `RecomposeManager` (persistance disque dédiée), toujours hors périmètre de ce lot
+                // (voir en-tête d'`AnimemesRecompose.swift`).
                 bottomButton(icon: "square.stack", label: "Load compose") {}
                     .opacity(0.4)
                     .disabled(true)

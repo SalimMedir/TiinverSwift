@@ -44,6 +44,11 @@ struct PublishComposeView: View {
     @State private var errorText: String?
     @State private var showShareSheet = false
     @State private var publishedShareText: String?
+    /// Port de `PublishFragment.java:274-283` (V3-F-058, Phase B P1) — `post.setOnClickListener`
+    /// vérifie `getCurrentCategory()` AVANT de publier ; si vide, lance `CategoryActivity` et
+    /// n'appelle `proceedToPublish` qu'après un choix confirmé (retour avec `categoryId` non vide).
+    @State private var showCategoryPicker = false
+    @State private var resolvedCategory: String?
 
     private static let captionLimit = 80
 
@@ -150,6 +155,22 @@ struct PublishComposeView: View {
                     ActivityShareSheet(items: [publishedShareText])
                 }
             }
+            // Port de `CategoryActivity` (V3-F-058) — sélection FORCÉE avant publication quand le
+            // compte n'a pas encore de catégorie, fidèle à `PublishFragment.categoryLauncher` :
+            // `proceedToPublish` n'est appelé qu'après un `categoryId` non vide (annuler = aucune
+            // publication, comme le commentaire Android "Si l'user est revenu sans choisir → on ne
+            // fait rien").
+            .fullScreenCover(isPresented: $showCategoryPicker) {
+                CategoryPickerView(
+                    currentCategoryId: resolvedCategory,
+                    onSaved: { categoryId in
+                        resolvedCategory = categoryId
+                        showCategoryPicker = false
+                        Task { await publish() }
+                    },
+                    onCancel: { showCategoryPicker = false }
+                )
+            }
         }
     }
 
@@ -182,6 +203,22 @@ struct PublishComposeView: View {
             print("PUBLISH REQUEST: aborted — UserSession.shared.myId is nil")
             return
         }
+
+        // Port de `post.setOnClickListener` (`PublishFragment.java:274-283`, V3-F-058) — vérifie la
+        // catégorie de compte AVANT de publier ; si absente, ouvre le sélecteur et ARRÊTE ici (la
+        // publication reprend depuis `CategoryPickerView.onSaved`, qui rappelle `publish()`).
+        if resolvedCategory == nil {
+            if let profile = try? await ProfileRepository.shared.fetchProfile(userId: actorId, viewerId: actorId),
+                let category = profile.category, !category.isEmpty
+            {
+                resolvedCategory = category
+            } else {
+                showCategoryPicker = true
+                print("PUBLISH REQUEST: aborted — aucune catégorie de compte définie, sélecteur ouvert")
+                return
+            }
+        }
+
         isPublishing = true
         errorText = nil
         defer { isPublishing = false }
@@ -202,7 +239,7 @@ struct PublishComposeView: View {
                 let pixelSize = CGSize(width: image.size.width * image.scale, height: image.size.height * image.scale)
                 try await FeedRepository().publish(
                     actorId: actorId, object: "photos", message: caption, hashtags: hashtags,
-                    fileData: jpegData, width: Int(pixelSize.width), height: Int(pixelSize.height)
+                    fileData: jpegData, category: resolvedCategory, width: Int(pixelSize.width), height: Int(pixelSize.height)
                 )
             case .video(let url):
                 let videoData = try Data(contentsOf: url)
@@ -230,7 +267,8 @@ struct PublishComposeView: View {
                 }
                 try await FeedRepository().publish(
                     actorId: actorId, object: "videos", message: caption, hashtags: hashtags,
-                    fileData: videoData, width: videoWidth, height: videoHeight, videoDurationMs: videoDurationMs
+                    fileData: videoData, category: resolvedCategory, width: videoWidth, height: videoHeight,
+                    videoDurationMs: videoDurationMs
                 )
             }
             print("PUBLISH RESPONSE: success")

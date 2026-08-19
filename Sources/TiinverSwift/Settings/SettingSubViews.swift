@@ -6,9 +6,31 @@ struct SettingAccountView: View {
     @State private var showLogoutConfirm = false
     @State private var showDeleteConfirm = false
     @State private var isBusy = false
+    /// Port de `CategoryActivity` (V3-F-058, Phase B P1) — point d'entrée d'édition LIBRE, en plus
+    /// du blocage forcé au moment de publier (`PublishComposeView.swift`). Aucun équivalent Android
+    /// direct pour "où se trouve ce bouton dans les réglages" n'a été identifié (layout XML des
+    /// réglages non fourni) — placé ici, dans "Compte", par analogie avec les autres champs de
+    /// profil éditables (nom/description via `updategroup`/`user`, même convention `column`/`value`).
+    @State private var showCategoryPicker = false
+    @State private var currentCategoryId: String?
 
     var body: some View {
         List {
+            Section {
+                // `CategoryPickerView` porte déjà son propre `NavigationStack`+barre d'outils
+                // (Annuler/Enregistrer) — présenté en feuille plutôt qu'en `NavigationLink` pour
+                // éviter d'imbriquer 2 `NavigationStack` (double barre de navigation).
+                Button {
+                    showCategoryPicker = true
+                } label: {
+                    HStack {
+                        Text("Catégorie du compte").foregroundStyle(.primary)
+                        Spacer()
+                        Text(CategoryCatalog.label(forId: currentCategoryId) ?? "Non définie")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
             Section {
                 Button("Se déconnecter") { showLogoutConfirm = true } // pref_logout
             }
@@ -18,12 +40,25 @@ struct SettingAccountView: View {
         }
         .navigationTitle("Compte")
         .disabled(isBusy)
+        .task { await loadCategory() }
         .confirmationDialog("Se déconnecter ?", isPresented: $showLogoutConfirm, titleVisibility: .visible) { // R.string.logout_message_confirm
             Button("Se déconnecter", role: .destructive) { Task { await logout() } }
         }
         .confirmationDialog("Supprimer définitivement le compte ?", isPresented: $showDeleteConfirm, titleVisibility: .visible) { // R.string.deleteaccount_message_confirme
             Button("Supprimer", role: .destructive) { Task { await deleteAccount() } }
         }
+        .sheet(isPresented: $showCategoryPicker) {
+            CategoryPickerView(
+                currentCategoryId: currentCategoryId,
+                onSaved: { currentCategoryId = $0; showCategoryPicker = false },
+                onCancel: { showCategoryPicker = false }
+            )
+        }
+    }
+
+    private func loadCategory() async {
+        guard let userId = UserSession.shared.myId else { return }
+        currentCategoryId = try? await ProfileRepository.shared.fetchProfile(userId: userId, viewerId: userId).category
     }
 
     private func logout() async {

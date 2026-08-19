@@ -137,13 +137,12 @@ final class FeedRepository {
     /// iOS, contrairement à Android — gap documenté, pas silencieusement fermé.
     func publish(
         actorId: String, object: String, message: String, hashtags: [String], fileData: Data,
-        width: Int? = nil, height: Int? = nil, videoDurationMs: Int? = nil
+        category: String? = nil, width: Int? = nil, height: Int? = nil, videoDurationMs: Int? = nil
     ) async throws {
-        // Port de `getCurrentCategory()` (`ContentResolver.query(ACCOUNT_URI, "category")`) — lu ici
-        // via un rafraîchissement réseau du profil courant plutôt qu'un cache Core Data dédié (pas
-        // encore câblé côté session), best-effort : une catégorie manquante n'empêche PAS la
-        // publication (voir portée ci-dessus).
-        let category = try? await ProfileRepository.shared.fetchProfile(userId: actorId, viewerId: actorId).category
+        // `category` : **corrigé le 2026-08-19 (V3-F-058 PROFILE-03)** — désormais transmis par
+        // l'appelant (`PublishComposeView`, qui gère le blocage/sélection forcée, port de
+        // `PublishFragment.java:274-283`) plutôt que refetché ici en interne (évitait un double
+        // appel réseau redondant avec la vérification de blocage faite en amont).
         // Port de `Cryptography.generateUniqueBase64ID(myId)` — UNE SEULE valeur générée ici,
         // réutilisée comme nom de fichier BunnyCDN ET comme paramètre `token` de `activity/add`,
         // exactement comme Android réutilise le même `data.getToken()` aux deux endroits.

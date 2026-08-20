@@ -581,3 +581,21 @@ sinon) — ils étaient déjà écrits correctement mais inatteignables tant que
 appel réel n'a été passé pour confirmer qu'un flux audio bidirectionnel s'établit effectivement (le
 correctif répare un point de routage logique confirmé par lecture de code, pas observé à
 l'exécution). Test réel nécessaire en priorité : appel sortant ET entrant entre 2 comptes réels.
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Lot 2 : V3-F-131 (Dark mode sans effet)
+
+**Commit** : `11f118a` — CI **succès** (vérifié).
+
+**Cause exacte** : vérifiée contre `ThemeUtils.java` avant tout code — Android n'a que 2 états
+(`MODE_NIGHT_YES`/`MODE_NIGHT_NO`, pas de "Système"), appliqués par `BaseActivity.applyTheme()`
+avant `super.onCreate()` sur CHAQUE écran. `SettingAppearanceView` écrivait déjà
+`@AppStorage("theme")` mais rien ne le lisait nulle part (confirmé par grep, seule occurrence hors
+sa propre déclaration).
+
+**Fichiers modifiés** : `App/TiinverApp.swift` (`.preferredColorScheme` appliqué à la racine du
+`WindowGroup`, cascade vers toute la hiérarchie y compris `.sheet`/`.fullScreenCover`).
+
+**Résultat CI** : succès.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. Test visuel réel requis (basculer le
+Picker et confirmer que l'app change réellement d'apparence sur device/simulateur).

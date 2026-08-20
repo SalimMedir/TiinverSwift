@@ -1000,7 +1000,7 @@ ANDROID SOURCE OF TRUTH : Utils/ThemeUtils.java:31-38 (`AppCompatDelegate.setDef
 IOS FILES : Settings/SettingSubViews.swift:178-191 (SettingAppearanceView), App/TiinverApp.swift (aucun `.preferredColorScheme`)
 LOGIC PARITY : `@AppStorage("theme")` écrit dans UserDefaults mais grep exhaustif confirme AUCUNE vue ne le lit pour appliquer `.preferredColorScheme` — seule occurrence = la déclaration elle-même.
 RUNTIME CHAIN : USER ACTION (changer le Picker) → STATE écrit → RESULT : jamais consommé → RENDU : rien ne change.
-STATUT : FUNCTIONALLY_FAILED
+STATUT : **BUILD_VALIDATED** (corrigé `11f118a`, Phase B, CI verte — test visuel réel requis)
 PREUVE : `grep -rn "@AppStorage(\"theme\")|\"theme\"" Sources` → 1 seul résultat ; `TiinverApp.swift` (12 lignes) sans `preferredColorScheme`.
 CAUSE : Picker de thème porté comme simple state UI sans câbler l'application réelle du colorScheme.
 RISQUE : Régression flagrante et facilement testable — le mode sombre fonctionne réellement sur Android, pas du tout sur iOS.

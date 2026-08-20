@@ -1045,7 +1045,7 @@ FEATURE : Aucun repli utilisateur (alerte + redirection Réglages) en cas de ref
 ANDROID SOURCE OF TRUTH : editor/camera/CameraXFragment.java:534-550,596-619 (dialogue `ErrorDialog` visible + rationale)
 IOS FILES : Camera/CameraCaptureController.swift:19,58, Camera/CameraView.swift, Camera/CameraRecorder.swift
 RUNTIME CHAIN : USER ACTION (refuse permission) → `permissionDenied` émis → RÉSULTAT : grep exhaustif (`.alert`, `UIAlertController`, `openSettingsURLString`) = ZÉRO occurrence liée dans tout le module Camera, ET `openSettingsURLString` = ZÉRO occurrence sur TOUT le projet.
-STATUT : FUNCTIONALLY_FAILED
+STATUT : **BUILD_VALIDATED** (corrigé `83e9dee`, Phase B, CI verte — test réel requis : refuser la permission, ouvrir Réglages, accorder, revenir)
 PREUVE : `CameraCaptureController.swift:19,58` (erreur définie et émise, jamais consommée avec UI) ; `grep -rln "openSettingsURLString" Sources` → 0 résultat.
 CAUSE : Le chemin d'erreur existe au niveau modèle mais aucune vue n'y souscrit ; aucune primitive de redirection Réglages n'a jamais été implémentée.
 RISQUE : Un utilisateur qui refuse la permission caméra/micro se retrouve devant un écran silencieusement cassé, sans explication ni chemin de récupération — pire que le comportement Android.

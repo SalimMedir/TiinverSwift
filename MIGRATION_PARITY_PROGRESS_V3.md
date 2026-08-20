@@ -599,3 +599,29 @@ sa propre déclaration).
 
 **Statut honnête après correction** : `BUILD_VALIDATED`. Test visuel réel requis (basculer le
 Picker et confirmer que l'app change réellement d'apparence sur device/simulateur).
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Lot 3 : V3-F-134 (Aucun repli permission refusée)
+
+**Commit** : `83e9dee` — CI **succès** (vérifié).
+
+**Cause exacte** : `CameraRecorder.cameraCaptureController(_:didFailWithError:)` (la méthode qui
+reçoit réellement `CameraCaptureError.permissionDenied`/`.deviceUnavailable`) transmettait
+l'erreur à un `delegate` `weak` jamais implémenté par `CameraView` (qui pilote via `.onChange`/
+`@Published`) SANS jamais alimenter `@Published lastError` — contrairement à sa consœur
+`CameraRecordingWriterDelegate.cameraRecordingWriter(_:didFailWithError:)` qui le fait déjà.
+`openSettingsURLString` confirmé absent de tout le projet avant ce correctif.
+
+**Fichiers modifiés** : `Camera/CameraRecorder.swift` (`lastError = error` ajouté au bon endroit +
+nouvelle `acknowledgeError()`), `Camera/CameraView.swift` (`.alert` avec bouton "Ouvrir Réglages"
+conditionnel + relance automatique de la session au retour au premier plan via `scenePhase`).
+
+**Flux frère vérifié** : `FeedView.requestCameraPermissionThenPresent()` (FAB caméra du Feed) était
+DÉJÀ correct (redirige vers Réglages sur refus) — pas de régression à corriger là, seul le chemin
+interne de `CameraCaptureController` (démarrage réel de la session, atteint quelle que soit
+l'origine) était cassé.
+
+**Résultat CI** : succès.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. Test réel nécessaire : refuser la
+permission caméra/micro, confirmer l'alerte + le bouton Réglages, accorder la permission, revenir
+dans l'app et confirmer que la session caméra redémarre automatiquement.

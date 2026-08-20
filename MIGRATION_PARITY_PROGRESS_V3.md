@@ -551,3 +551,33 @@ par statut, et les 5 nouveaux P0 identifiés. Aucune correction de code effectu�
 feu vert de correction n'est pas donné.
 
 **En attente du feu vert explicite avant toute correction sur les nouveaux findings.**
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Lot 1 : V3-F-110 (WebRTC — isOnCall jamais true)
+
+**Commit** : `2a779f6` — CI run 2a779f6, **succès** (vérifié avant de passer au finding suivant).
+
+**Cause exacte** : vérifiée personnellement contre `CallService.java` avant tout code (grep
+`isOnCall` sur le fichier entier) — Android met `isOnCall = true` inconditionnellement dans
+`onCreate()` (ligne 115) ET `onStartCommand()` (ligne 561), et `= false` inconditionnellement dans
+`onDestroy()` (ligne 641, seul point de sortie unifié du service, quelle que soit la façon dont
+l'appel se termine). `ChatRepository.isOnCall` (le port explicite et documenté comme tel de ce
+flag) n'était mis à `true` NULLE PART dans tout le projet iOS — confirmé par grep avant correctif.
+`handleUnifiedWebrtcMessage` route 100% des `webrtcMessage` entrants (offre/réponse/ICE) vers
+Shareboard/PBS au lieu de l'appel réel tant que ce flag reste figé à `false`.
+
+**Fichiers modifiés** : `Calls/CallCoordinator.swift` (3 sites : `ChatRepository.isOnCall = true`
+dans `beginOutgoingCall`/`handleIncomingCall` — les deux seuls points d'entrée d'appel, miroir
+d'`onCreate`/`onStartCommand` — et `= false` dans `teardown()`, déjà le point de sortie UNIFIÉ
+existant, miroir d'`onDestroy`).
+
+**Flux frères vérifiés** (`ChatRepository.swift:237,353`) : les deux branchent déjà correctement
+sur `isOnCall` (guard "déjà en appel" avant de démarrer un nouvel appel entrant, signal "occupé"
+sinon) — ils étaient déjà écrits correctement mais inatteignables tant que `isOnCall` restait figé
+à `false`. Aucun correctif séparé nécessaire, autocorrection une fois l'état racine réparé.
+
+**Résultat CI** : succès (build + compilation confirmés).
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. **PAS** `COMPLETE_PARITY_VALIDATED` — aucun
+appel réel n'a été passé pour confirmer qu'un flux audio bidirectionnel s'établit effectivement (le
+correctif répare un point de routage logique confirmé par lecture de code, pas observé à
+l'exécution). Test réel nécessaire en priorité : appel sortant ET entrant entre 2 comptes réels.

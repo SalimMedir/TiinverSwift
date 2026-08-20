@@ -653,7 +653,7 @@ VIEW PARITY : Sans objet directement (bug de routage interne).
 LOGIC PARITY : `ChatRepository.isOnCall` est le port explicite de `CallService.isOnCall` (commenté comme tel dans le code) — mais grep exhaustif confirme AUCUNE affectation `= true` nulle part dans le projet, seule affectation = `false` à la déclaration.
 NETWORK/MEDIA PARITY : L'événement socket `webrtcMessage` arrive bien au client (nom d'événement correct) mais `handleUnifiedWebrtcMessage` route `if Self.isOnCall { callEvents... } else { chatEvents.pbs... }` — `isOnCall` étant toujours `false`, 100% des messages webrtcMessage entrants partent vers le flux Shareboard, jamais vers `CallCoordinator`.
 RUNTIME CHAIN : USER ACTION (répondre/passer un appel) → offre locale envoyée (non affectée) → pair distant répond via socket `webrtcMessage` → `handleUnifiedWebrtcMessage` reçoit → RUPTURE : routé vers `chatEvents.pbs`, jamais vers `callEvents` → `CallCoordinator` ne reçoit jamais l'événement → `RTCPeerConnection.setRemoteDescription`/`addIceCandidate` jamais invoqués pour le pair → connexion audio ne peut jamais s'établir.
-STATUT : FUNCTIONALLY_FAILED
+STATUT : **BUILD_VALIDATED** (corrigé `2a779f6`, Phase B, CI verte — test réel d'appel requis avant COMPLETE_PARITY_VALIDATED)
 PREUVE : `ChatRepository.swift:27` (grep `isOnCall\s*=` = 1 seul résultat, la déclaration) ; `:368-376` (routage) ; `CallCoordinator.swift:81` (jamais abonné à `chatEvents`) ; côté Android `CallService.java:113,561,641` (3 sites vivants, absents côté iOS).
 CAUSE : Le module CallCoordinator/CallKit a été écrit APRÈS ChatRepository (commentaire du code le dit lui-même) mais le raccordement final (faire vivre `isOnCall` depuis CallCoordinator) n'a jamais été fait.
 RISQUE : Un appel WebRTC réel ne peut vraisemblablement JAMAIS établir de flux audio dans l'état actuel — plus sévère que V3-F-026 (`makingOffer`, déjà corrigé), qui ne bloquait que la RENÉGOCIATION, pas la connexion INITIALE.
@@ -1069,18 +1069,19 @@ TEST RÉEL NÉCESSAIRE : non.
 
 ```
 ID : V3-F-136
-PRIORITÉ : P0
+PRIORITÉ : P3 (requalifié — voir CAUSE, prémisse du finding original invalidée par vérification directe)
 DOMAINE : Notifications
-FEATURE : Tap sur notification — AUCUNE différenciation par type, contredit un commentaire trompeur dans le code
-ANDROID SOURCE OF TRUTH : back_sync/NotificationUtils.java:79-96 (`activityMap`) ; back_sync/MyFirebaseMessagingService.java:103-114,136-147 (verb=="post"→feed, sinon→ShowNoti dédié like/comment/follow, type "message"→ActivityMsg avec payload complet)
+FEATURE : Tap sur notification — contradiction résolue : Android n'ouvre JAMAIS une destination spécifique non plus
+ANDROID SOURCE OF TRUTH : back_sync/NotificationUtils.java:104-114,151 (`displayNotificationOrPushMessage`, chat), :251-262 (`displayNotification`, profil), :290-337 (`displayNoMessageNotification`, like/comment/follow/post/missedcall), :342-346 (`show()`, seul point qui construit réellement l'Intent affiché)
 IOS FILES : App/AppDelegate.swift:153-162
-RUNTIME CHAIN : USER ACTION (tap notification, tout type confondu) → AUCUNE lecture de `userInfo` → `DeepLinkCenter.shared.route(.notifications)` appelé INCONDITIONNELLEMENT → HomeShellView ouvre systématiquement l'onglet Notifications générique, jamais le post/profil/conversation/appel/groupe concerné.
-STATUT : MISSING
-PREUVE : `AppDelegate.swift:158-161` — corps entier de la méthode, aucun `switch`/`if` sur `userInfo`. Le commentaire ligne 150-152 affirme à tort qu'un routage partiel est en place — CONTREDIT par le code : aucune catégorie n'est routée différemment.
-CAUSE : Écart entre l'intention documentée et le code réellement livré.
-RISQUE : Élevé — régression UX majeure, directement contraire à la mission "chaque type doit mener à la bonne destination". Message privé/appel manqué/mention doivent ouvrir directement la conversation/l'appel/le post concerné sur Android ; sur iOS l'utilisateur atterrit toujours sur la liste générique.
-RECOMMANDATION : Lire `userInfo["type"]`/`userInfo["destination"]` et router vers `.userProfile`/`.post`/`.groupChat`/`.chat` selon le type, à l'image d'`activityMap` Android ; router les appels manqués vers l'écran d'appel.
-TEST RÉEL NÉCESSAIRE : oui — vrai push FCM par type pour valider chaque destination.
+LOGIC PARITY : **Le finding original (P0, MISSING) reposait sur une prémisse fausse, invalidée par lecture directe avant tout correctif** — exactement le type de vérification que cette session impose avant tout code. `displayNotificationOrPushMessage` CONSTRUIT bien un `Intent(mContext, ActivityMsg.class)` riche (avec `MessageLib` en extra) à la ligne 104, MAIS cette variable `intent` n'est **jamais utilisée** : la ligne 151 appelle `show(icon, destination, message, action, title)` où `destination` est une chaîne LITTÉRALE `"MainActivity"` (ligne 114), jamais `intent` lui-même. `show()` (ligne 346) reconstruit son PROPRE `Intent` à partir de `activityMap.get(destination)` — donc `activityMap.get("MainActivity")` → `SplashActivity.class`, SANS AUCUN extra. Même constat pour `displayNotification` (profil, ligne 261 : `destination = "MainActivity"` codé en dur) et `displayNoMessageNotification` (like/comment/follow/post/missedvoicecall, ligne 302 : `String destination = "MainActivity";`, avec la ligne 301 juste au-dessus **explicitement commentée** : `// String destination = notificationVO.getActionDestination();` — preuve d'un mécanisme de routage dynamique qui existait autrefois et a été désactivé). `NotificationVO.getActionDestination()`/`.setActionDestination()` confirmés par grep exhaustif comme n'étant appelés NULLE PART ailleurs dans tout le projet Android, code mort.
+RUNTIME CHAIN : **Sur Android, TAPER N'IMPORTE QUELLE notification Tiinver (message privé, message groupe, like, commentaire, follow, nouveau post, appel manqué) ouvre `SplashActivity` — l'écran de lancement générique, avec ZÉRO extra/contexte transmis.** `SplashActivity` fait ensuite son routage normal (session→Home ou Login), pas un routage spécifique à la notification. Ce n'est ni un bug de portage iOS, ni une fonctionnalité Android à reproduire fidèlement dans le sens où le finding original l'imaginait — c'est le comportement RÉEL, déjà `SplashActivity`≈`RootRouterView.swift` déjà porté et audité en V2.
+STATUT : COMPLETE_PARITY_CANDIDATE (voire IOS_IMPROVED sur le plan pratique — voir RISQUE)
+PREUVE : `NotificationUtils.java:114,151,261,302,337,346` (5 citations directes, dont un commentaire explicitement désactivé prouvant l'intention originale) ; `grep -rn "getActionDestination|setActionDestination"` sur tout `app/src/main/java` = uniquement la déclaration du getter/setter, zéro appelant.
+CAUSE : Le finding original (produit par un agent d'audit) a lu la CONSTRUCTION des `Intent` riches (`ActivityMsg`/`HomeActivity`/`ShowNoti`) sans vérifier qu'ils sont ensuite réellement UTILISÉS par `show()` — ils ne le sont pas, `show()` reconstruit systématiquement un `Intent` bare vers `SplashActivity`. Erreur de lecture corrigée par vérification personnelle avant tout code, conformément à la règle anti-erreurs de cette session.
+RISQUE : Aucun côté iOS — le comportement actuel (`DeepLinkCenter.shared.route(.notifications)`, ouvrant le centre de notifications où l'utilisateur peut ensuite taper l'item précis) est FONCTIONNELLEMENT AU MOINS ÉQUIVALENT à Android (qui ouvre un écran encore plus générique, sans même la liste des notifications pré-filtrée). Il est même arguable qu'iOS soit meilleur : Android perd toute trace du contexte de la notification tapée, iOS la conserve au moins dans le centre de notifications.
+RECOMMANDATION : **Aucun correctif de code** — implémenter le routage contextuel imaginé par le finding original ferait diverger iOS d'Android dans le sens "iOS fait mieux", ce qui est une décision produit (UX à améliorer sur les DEUX plateformes potentiellement) et non un gap de parité à combler silencieusement. Si un vrai routage contextuel est souhaité, c'est une amélioration produit à discuter explicitement (et à appliquer aux deux plateformes, Android ayant lui-même régressé sur ce point vu le commentaire désactivé), pas une correction de parité.
+TEST RÉEL NÉCESSAIRE : non pour la parité (établie par lecture de code déterministe des deux côtés) ; utile seulement si une décision produit d'amélioration UX est prise séparément.
 ```
 
 ```
@@ -1296,23 +1297,37 @@ TEST RÉEL NÉCESSAIRE : non.
 
 ### 30.8 Décompte des statuts — cycle complémentaire (54 nouveaux findings, V3-F-099 à V3-F-152)
 
-- `MISSING` : 3 (V3-F-099 hashtag/mention tap, V3-F-136 routage notifications par type, +1 déjà cité)
+- `MISSING` : 2 (V3-F-099 hashtag/mention tap, +1 déjà cité) — **V3-F-136 retiré de ce décompte, voir requalification ci-dessous**
 - `FUNCTIONALLY_FAILED` : 8 (V3-F-103, V3-F-107, V3-F-110, V3-F-123, V3-F-131, V3-F-134, V3-F-140 [reconfirmation], V3-F-151)
 - `PARTIAL` : 20
 - `CODE_PRESENT_UNVERIFIED` : 4
-- `COMPLETE_PARITY_CANDIDATE` : 16
+- `COMPLETE_PARITY_CANDIDATE` : 17 (V3-F-136 y entre après requalification)
 - `COMPLETE_PARITY_VALIDATED` : 2 (V3-F-132, V3-F-135 — parité par absence symétrique, pas des fonctionnalités testées sur device)
 - `BUILD_VALIDATED` : 2 (V3-F-111, V3-F-122)
 - `IOS_IMPROVED` : 2 (V3-F-109, V3-F-149)
 - `ANDROID_ONLY` : 1 (V3-F-150)
 - `DEAD_CODE` : 1 (V3-F-152)
 
-**Nouveaux P0 (5, tous non identifiés par les cycles précédents)** :
-1. **V3-F-110** — WebRTC : `isOnCall` jamais mis à `true`, signalisation d'appel entrant jamais routée vers l'appel réel. **Le plus sévère.**
-2. **V3-F-136** — Notifications : tap ne différencie jamais le type, contredit un commentaire trompeur affirmant le contraire.
-3. **V3-F-131** — Réglages : toggle thème clair/sombre sans aucun effet visuel.
-4. **V3-F-134** — Permissions : aucun repli utilisateur (alerte/redirection Réglages) en cas de refus caméra/micro/photos.
-5. **V3-F-123** — Vidéo : tout échec d'export republie silencieusement le fichier ORIGINAL non modifié.
+**MISE À JOUR 2026-08-20 (Phase B, avant tout code)** — V3-F-136 a été **requalifié de P0/MISSING à
+P3/COMPLETE_PARITY_CANDIDATE** après vérification personnelle directe du code Android AVANT
+d'écrire le moindre correctif (règle anti-erreurs) : la prémisse du finding original était fausse.
+`show()` (`NotificationUtils.java:346`) reconstruit TOUJOURS un `Intent` bare vers `SplashActivity`
+(`activityMap.get("MainActivity")`), quel que soit le type de notification — les `Intent` riches
+construits par `displayNotificationOrPushMessage`/`displayNotification`/`displayNoMessageNotification`
+sont des variables locales JAMAIS utilisées. Preuve supplémentaire : `displayNoMessageNotification`
+contient une ligne commentée (`// String destination = notificationVO.getActionDestination();`)
+prouvant qu'un routage dynamique existait autrefois et a été désactivé côté ANDROID lui-même ;
+`getActionDestination()`/`setActionDestination()` confirmés morts par grep exhaustif (zéro appelant
+dans tout le projet Android). Le comportement iOS actuel (ouvrir le centre de notifications) est
+donc déjà à parité, voire meilleur qu'Android (qui perd tout contexte au tap). Voir le finding
+complet ci-dessus pour le détail — **aucun code n'a été modifié pour ce point**, correction
+purement documentaire.
+
+**Nouveaux P0 (4 restants après requalification de V3-F-136, tous non identifiés par les cycles précédents)** :
+1. **V3-F-110** — WebRTC : `isOnCall` jamais mis à `true`, signalisation d'appel entrant jamais routée vers l'appel réel. **Le plus sévère.** ✅ **CORRIGÉ le 2026-08-20** (commit `2a779f6`, Phase B).
+2. **V3-F-131** — Réglages : toggle thème clair/sombre sans aucun effet visuel.
+3. **V3-F-134** — Permissions : aucun repli utilisateur (alerte/redirection Réglages) en cas de refus caméra/micro/photos.
+4. **V3-F-123** — Vidéo : tout échec d'export republie silencieusement le fichier ORIGINAL non modifié.
 
 **P0 reconfirmés (inchangés, déjà connus)** : V3-F-140 (StoreKit).
 

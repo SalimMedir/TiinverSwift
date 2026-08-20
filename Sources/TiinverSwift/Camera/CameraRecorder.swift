@@ -97,6 +97,12 @@ final class CameraRecorder: NSObject, ObservableObject {
         currentFilter = filterType.makeFilter()
     }
 
+    /// Acquitte l'alerte d'erreur affichée par `CameraView` (voir `.alert` — V3-F-134, Phase B P0)
+    /// — même motif que `CallCoordinator.acknowledgeMicPermissionDenied()`.
+    func acknowledgeError() {
+        lastError = nil
+    }
+
     /// Port de `GPUCameraRecorder.start(filePath)`.
     func startRecording(to url: URL) {
         guard !isRecording else { return }
@@ -179,9 +185,19 @@ extension CameraRecorder: CameraCaptureControllerDelegate {
         recordingWriter.appendAudio(sampleBuffer: sampleBuffer)
     }
 
+    /// **Corrigé le 2026-08-20 (MIGRATION_PARITY_AUDIT_V3.md V3-F-134, Phase B P0)** — cette méthode
+    /// (source réelle de `CameraCaptureError.permissionDenied`/`.deviceUnavailable`, voir
+    /// `CameraCaptureController.swift`) transmettait l'erreur au `delegate` `weak` — jamais
+    /// implémenté par `CameraView` (qui pilote via `.onChange`/`@Published`, voir commentaire de
+    /// tête de `CameraView.swift`) — SANS jamais alimenter `lastError`, contrairement à sa
+    /// consœur `CameraRecordingWriterDelegate.cameraRecordingWriter(_:didFailWithError:)`
+    /// ci-dessous, qui le fait déjà. Résultat confirmé par grep exhaustif avant ce correctif :
+    /// AUCUNE vue de tout le projet n'affichait jamais d'alerte/de redirection Réglages en cas de
+    /// refus de permission caméra/micro — l'écran restait silencieusement noir.
     func cameraCaptureController(_ controller: CameraCaptureController, didFailWithError error: Error) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            self.lastError = error
             self.delegate?.cameraRecorder(self, didFailWithError: error)
         }
     }

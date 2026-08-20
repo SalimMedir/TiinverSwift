@@ -7,6 +7,14 @@ import SwiftUI
 /// no-op assumé tant que le module 8 (Moteur Animems) n'existe pas — voir `bottomBar` plus bas.
 struct CameraView: View {
     @StateObject private var recorder = CameraRecorder()
+    /// Port de `BaseCameraFragment.onRequestPermissionsResult`/`ErrorDialog` (V3-F-134, Phase B P0)
+    /// — Android affiche au moins un dialogue explicite au refus de la permission caméra ; iOS
+    /// n'affichait RIEN (écran silencieusement noir, `lastError` jamais alimenté par ce chemin
+    /// avant ce correctif, voir `CameraRecorder.swift`). Relance automatique de la session au
+    /// retour au premier plan (ex. après avoir accordé la permission depuis Réglages), fidèle à la
+    /// recommandation de l'audit — Android n'a pas d'équivalent direct (une permission accordée
+    /// dans les Réglages système Android relance l'Activity elle-même).
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var filterIndex = 0
     @State private var isRecording = false
@@ -90,6 +98,48 @@ struct CameraView: View {
                 onCancel: { showGalleryPicker = false }
             )
         }
+        // Port de `BaseCameraFragment.onRequestPermissionsResult`/`ErrorDialog` — **ajouté le
+        // 2026-08-20, V3-F-134, Phase B P0**. `recorder.lastError` (déjà `@Published`, jamais
+        // alimenté par ce chemin avant le correctif de `CameraRecorder.swift`) pilote une alerte
+        // avec redirection Réglages pour un refus de permission — Android affiche au moins un
+        // dialogue, iOS n'affichait RIEN avant ce correctif (écran silencieusement noir).
+        .alert(
+            isPermissionDeniedError ? "Permission requise" : "Caméra indisponible",
+            isPresented: Binding(
+                get: { recorder.lastError != nil },
+                set: { if !$0 { recorder.acknowledgeError() } }
+            )
+        ) {
+            if isPermissionDeniedError {
+                Button("Ouvrir Réglages") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                    recorder.acknowledgeError()
+                }
+            }
+            Button("OK", role: .cancel) { recorder.acknowledgeError() }
+        } message: {
+            Text(
+                isPermissionDeniedError
+                    ? "Autorise l'accès à la caméra et au micro dans Réglages pour publier une photo ou vidéo."
+                    : "La caméra n'a pas pu démarrer sur cet appareil."
+            )
+        }
+        // Relance automatique au retour au premier plan (ex. après avoir accordé la permission
+        // depuis Réglages) — Android n'a pas d'équivalent direct (accorder une permission système
+        // relance l'Activity elle-même), reproduit fonctionnellement plutôt que littéralement.
+        .onChange(of: scenePhase) { phase in
+            guard phase == .active, isPermissionDeniedError else { return }
+            recorder.acknowledgeError()
+            recorder.start(lensFacing: lensFacing)
+        }
+    }
+
+    private var isPermissionDeniedError: Bool {
+        guard let error = recorder.lastError as? CameraCaptureError else { return false }
+        if case .permissionDenied = error { return true }
+        return false
     }
 
     // MARK: - Barre du haut : fermer + bascule caméra (port de `R.id.close`/`R.id.switch_camera`)

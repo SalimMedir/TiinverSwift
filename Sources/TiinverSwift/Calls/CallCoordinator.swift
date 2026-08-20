@@ -139,6 +139,16 @@ final class CallCoordinator: ObservableObject {
 
     private func beginOutgoingCall(profile: ChatProfile, chatType: String) {
         guard state == .idle else { return }
+        // Port de `CallService.onCreate()`/`onStartCommand()` (lignes 115/561, tous deux inconditionnels
+        // dès que le service démarre un appel) — **ajouté le 2026-08-20, MIGRATION_PARITY_AUDIT_V3.md
+        // V3-F-110, Phase B P0** : `ChatRepository.isOnCall` n'était JAMAIS mis à `true` nulle part
+        // dans le projet (confirmé par grep exhaustif avant ce correctif), ce qui faisait router TOUTE
+        // la signalisation WebRTC entrante (offre/réponse/ICE, `handleUnifiedWebrtcMessage`) vers le
+        // flux Shareboard/PBS au lieu de l'appel réel — un appel ne pouvait jamais établir de flux
+        // audio. `CallCoordinator` est le seul "service d'appel" côté iOS (voir commentaire de tête de
+        // fichier), donc ce point d'entrée (et `handleIncomingCall` ci-dessous) sont les équivalents
+        // fidèles de `onCreate`/`onStartCommand`.
+        ChatRepository.isOnCall = true
         let uuid = UUID()
         callUUID = uuid
         self.profile = profile
@@ -190,6 +200,12 @@ final class CallCoordinator: ObservableObject {
             onReported?()
             return
         }
+        // Port de `CallService.onCreate()`/`onStartCommand()` — voir le commentaire détaillé dans
+        // `beginOutgoingCall` ci-dessus (MIGRATION_PARITY_AUDIT_V3.md V3-F-110, Phase B P0). Réglé
+        // AVANT `reportIncomingCall` (comme Android le fait dès `onCreate`, avant toute autre étape) —
+        // un message `webrtcMessage` pourrait théoriquement arriver dès que l'appel est engagé, pas
+        // seulement après le report CallKit.
+        ChatRepository.isOnCall = true
         let uuid = UUID()
         callUUID = uuid
         self.profile = profile
@@ -270,6 +286,12 @@ final class CallCoordinator: ObservableObject {
     }
 
     private func teardown() {
+        // Port de `CallService.onDestroy()` (ligne 641, inconditionnel, seul point de sortie du
+        // cycle de vie du "service" d'appel côté Android) — voir V3-F-110 / `beginOutgoingCall`
+        // ci-dessus. `teardown()` est déjà le point de sortie UNIFIÉ de `CallCoordinator` (appelé
+        // depuis `endCallFromRemote`, `performEndCall`, `callKitManagerDidReset`), fidèle à
+        // `onDestroy` qui s'exécute quelle que soit la façon dont l'appel se termine.
+        ChatRepository.isOnCall = false
         webrtc.disconnect()
         callUUID = nil
         profile = nil

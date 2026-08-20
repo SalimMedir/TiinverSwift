@@ -40,6 +40,14 @@ struct MediaTrimView: View {
     @State private var isProcessing = false
     @State private var player: AVPlayer?
     @State private var trimState = VideoTrimState()
+    /// **Ajouté le 2026-08-20 (MIGRATION_PARITY_AUDIT_V3.md V3-F-123, Phase B P0)** — voir `trim()` :
+    /// tout échec réel bloque désormais l'écran avec un message, fidèle à Android
+    /// (`VideoTrimmerView.startTrimWithCrop`, Toast d'erreur, `callback.onVideo()` JAMAIS appelé en
+    /// cas d'échec — `MediaTrim.onError` arrête simplement le trimmer sans avancer à l'écran
+    /// suivant). Avant ce correctif, `onTrimmed(sourceURL)` était appelé sur CHAQUE chemin d'échec,
+    /// publiant silencieusement le fichier ORIGINAL non coupé/non transformé comme si le trim avait
+    /// réussi.
+    @State private var errorText: String?
 
     /// Port de `videotrimmer.setTrimeLimitMax(60000)`.
     private static let maxDurationSeconds: Double = 60
@@ -118,6 +126,14 @@ struct MediaTrimView: View {
             }
         }
         .task { await load() }
+        .alert(
+            "Échec du recadrage",
+            isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })
+        ) {
+            Button("OK", role: .cancel) { errorText = nil }
+        } message: {
+            Text(errorText ?? "")
+        }
     }
 
     private var filmstrip: some View {
@@ -213,14 +229,26 @@ struct MediaTrimView: View {
     /// (Phase B P0-6) au branchement réel `startTrimWithCrop()` (transformation) vs
     /// `startTrimWithCrop2()` (repli rapide) d'Android : si AUCUNE transformation géométrique
     /// n'est active (`trimState == VideoTrimState()`) ET que la sélection couvre (quasiment) tout
-    /// le fichier, publie l'original tel quel. Si une transformation est active, TOUJOURS ré-encoder
-    /// (même si le trim temporel est un no-op) — un `AVAssetExportSession` ne peut pas combiner
+    /// le fichier, publie l'original tel quel — un no-op légitime, PAS un échec (fidèle à
+    /// `noTrim && noTransform` → `callback.onVideo(null, false)`, qui republie aussi l'original tel
+    /// quel dans ce cas précis). Si une transformation est active, TOUJOURS ré-encoder (même si le
+    /// trim temporel est un no-op) — un `AVAssetExportSession` ne peut pas combiner
     /// `.presetPassthrough` avec un `videoComposition`, la transformation exige un ré-encodage
     /// complet côté Android aussi (`VideoTransformer.process`, jamais un simple remux dans ce cas).
+    ///
+    /// **Corrigé le 2026-08-20 (MIGRATION_PARITY_AUDIT_V3.md V3-F-123, Phase B P0)** — TOUS les
+    /// chemins d'ÉCHEC RÉEL (pas les 2 cas de no-op légitime ci-dessus) appelaient auparavant
+    /// `onTrimmed(sourceURL)`, republiant SILENCIEUSEMENT le fichier original NON coupé/NON
+    /// transformé comme si l'export avait réussi — à l'inverse exact du comportement Android
+    /// (`VideoTrimmerView.startTrimWithCrop` : Toast d'erreur explicite, `callback.onVideo()`
+    /// **JAMAIS appelé** en cas d'échec, l'utilisateur reste bloqué sur l'écran de trim). Chaque
+    /// échec RÉEL affiche maintenant `errorText` (`.alert`) et RETOURNE SANS appeler `onTrimmed` —
+    /// l'utilisateur reste sur cet écran (peut réessayer via "Suivant" ou annuler), fidèle à
+    /// Android.
     private func trim() async {
         let needsTransform = trimState != VideoTrimState()
         guard duration > 0 else {
-            onTrimmed(sourceURL)
+            errorText = "Impossible de lire la durée de la vidéo — réessaie ou annule."
             return
         }
         guard needsTransform || startFraction > 0.001 || endFraction < 0.999 else {
@@ -241,7 +269,7 @@ struct MediaTrimView: View {
             // Chemin rapide (port de `startTrimWithCrop2()`) — copie des échantillons sans
             // réencodage, aucune transformation géométrique à appliquer.
             guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
-                onTrimmed(sourceURL)
+                errorText = "Impossible de préparer l'export — réessaie ou annule."
                 return
             }
             exportSession.outputURL = outputURL
@@ -250,25 +278,30 @@ struct MediaTrimView: View {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 exportSession.exportAsynchronously { continuation.resume() }
             }
-            onTrimmed(exportSession.status == .completed ? outputURL : sourceURL)
+            guard exportSession.status == .completed else {
+                print("MEDIA TRIM: export rapide a échoué — \(String(describing: exportSession.error))")
+                errorText = "Le recadrage a échoué — réessaie ou annule."
+                return
+            }
+            onTrimmed(outputURL)
             return
         }
 
         // Chemin transformation réelle (port de `startTrimWithCrop()`/`VideoTransformer.process`) —
         // recadrage/rotation/miroir appliqués via `AVMutableVideoComposition`, PAS un simple remux.
         guard let videoTrack = try? await asset.loadTracks(withMediaType: .video).first else {
-            onTrimmed(sourceURL)
+            errorText = "Impossible de lire la piste vidéo — réessaie ou annule."
             return
         }
         guard let (layerTransform, renderSize) = await Self.composeTransform(track: videoTrack, state: trimState) else {
-            onTrimmed(sourceURL)
+            errorText = "Impossible d'appliquer la transformation — réessaie ou annule."
             return
         }
 
         let composition = AVMutableComposition()
         guard let compTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
         else {
-            onTrimmed(sourceURL)
+            errorText = "Impossible de préparer l'export — réessaie ou annule."
             return
         }
         try? compTrack.insertTimeRange(timeRange, of: videoTrack, at: .zero)
@@ -291,7 +324,7 @@ struct MediaTrimView: View {
 
         guard let exportSession = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality)
         else {
-            onTrimmed(sourceURL)
+            errorText = "Impossible de préparer l'export — réessaie ou annule."
             return
         }
         exportSession.outputURL = outputURL
@@ -300,12 +333,12 @@ struct MediaTrimView: View {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             exportSession.exportAsynchronously { continuation.resume() }
         }
-        if exportSession.status == .completed {
-            onTrimmed(outputURL)
-        } else {
+        guard exportSession.status == .completed else {
             print("MEDIA TRIM: export avec transformation a échoué — \(String(describing: exportSession.error))")
-            onTrimmed(sourceURL)
+            errorText = "Le recadrage a échoué — réessaie ou annule."
+            return
         }
+        onTrimmed(outputURL)
     }
 
     /// Calcule la transformation combinée (orientation native du track + rotation utilisateur +

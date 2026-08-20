@@ -439,4 +439,885 @@ dans le §23 de ce même fichier).
 7. V3-F-032 — Vidéo : crop/rotation/miroir totalement absents avant publication
 8. V3-F-084 — Achat StoreKit 2 non persisté côté serveur (risque financier réel)
 
+---
+
+## 30. CYCLE COMPLÉMENTAIRE (2026-08-20) — audit approfondi 7 domaines
+
+**Phase A uniquement — aucun code modifié pour produire cette section.** Suite directe du cycle V3
+existant (§1-29 ci-dessus), PAS un nouveau cycle indépendant — continue la numérotation à partir de
+V3-F-099. Méthode : 7 agents de recherche en parallèle (Recherche approfondi, Chat/Socket/WebRTC
+approfondi, régression Animems post-Phase B, Galerie/Photo/Video Editor, Settings/Permissions/
+Notifications/DeepLinks, Monétisation/Groupes/Authentification, balayage transversal code-mort),
+chacun avec la méthodologie 5 dimensions (VIEW/LOGIC/NETWORK-MEDIA/RUNTIME WIRING) et le format de
+finding strict imposé. Renumérotation appliquée ici pour éliminer les collisions d'ID entre agents
+(chacun avait reçu l'instruction de démarrer à V3-F-099 indépendamment) — la correspondance
+locale→globale n'est pas conservée, seule la numérotation finale ci-dessous fait foi.
+
+**Constat le plus sévère de tout ce cycle complémentaire** : V3-F-110 (WebRTC — `isOnCall` jamais
+mis à `true`, toute la signalisation d'appel entrant est routée vers Shareboard au lieu de l'appel
+réel) — un appel WebRTC réel ne peut vraisemblablement JAMAIS établir de flux audio dans l'état
+actuel du code, plus sévère que tout ce qui a été corrigé en Phase B sur ce domaine.
+
+### 30.1 Recherche — audit très approfondi
+
+```
+ID : V3-F-099
+PRIORITÉ : P1
+DOMAINE : Recherche
+FEATURE : Tap #hashtag/@mention dans une légende de post → recherche universelle
+ANDROID SOURCE OF TRUTH : view/textview/MentionTextView.java:184-196 (TokenClickableSpan.onClick), Activity/ui/viewHolder/VideoViewHolder.java:636, view/CustomCardView.java:142, Recherche/ui/RechercheTiinver.java:156-181
+IOS FILES : Feed/FeedView.swift (aucun équivalent), Discover/SearchView.swift
+VIEW PARITY : Android rend les légendes cliquables dans TOUS les posts (vidéo ET photo). iOS affiche la légende en `Text(message)` brut, sans span/geste cliquable.
+LOGIC PARITY : Android extrait le token, lance la recherche avec onglet+query présélectionnés. Aucune logique équivalente côté iOS.
+NETWORK/MEDIA PARITY : N/A (jamais atteint côté iOS).
+RUNTIME CHAIN : USER ACTION (tap #hashtag) → Android : ClickableSpan → recherche pré-remplie. iOS : rupture au premier maillon, `Text` statique sans geste.
+STATUT : MISSING
+PREUVE : `MentionTextView.java:98,188-196` ; `VideoViewHolder.java:636` ; `CustomCardView.java:142` ; `Feed/FeedView.swift:595-596` (`Text(message)` sans modificateur de geste).
+CAUSE : Fonctionnalité jamais portée (grep exhaustif `MentionTextView`/`onHashtagTap`/`clickableSpan` : zéro résultat).
+RISQUE : Perte d'un point d'entrée réel et fréquent vers la recherche.
+RECOMMANDATION : Construire un `AttributedString`/`Text` avec détection `#\w+`/`@[\w.-]+`, ouvrant `SearchView` pré-rempli.
+TEST RÉEL NÉCESSAIRE : oui.
+```
+
+```
+ID : V3-F-100
+PRIORITÉ : P2
+DOMAINE : Recherche
+FEATURE : Présentation des résultats "Publications" (grille vs liste)
+ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:143-153 (GridLayoutManager 3 colonnes) ; UniversalSearchAdapter.java:103-106,255-314
+IOS FILES : Discover/SearchView.swift:67-73,171-182
+VIEW PARITY : Android insère les résultats posts comme tuiles carrées dans une grille 3 colonnes entrelacée. iOS les affiche en liste verticale de lignes.
+STATUT : PARTIAL
+PREUVE : `RechercheTiinver.java:144-151` vs `SearchView.swift:171-182` (`postRow`, `HStack`).
+CAUSE : Reconstruction UI native sans layout XML Android, jamais comparée en détail au visuel réel des résultats posts.
+RISQUE : Incohérence visuelle notable, aucune perte de donnée.
+RECOMMANDATION : Reproduire la grille 3 colonnes (`LazyVGrid`) pour les résultats posts.
+TEST RÉEL NÉCESSAIRE : oui.
+```
+
+```
+ID : V3-F-101
+PRIORITÉ : P2
+DOMAINE : Recherche
+FEATURE : Métadonnées hashtag (nb publications/vues) décodées mais jamais affichées
+ANDROID SOURCE OF TRUTH : UniversalSearchAdapter.java:320-349 ; HashtagProfile.java:282-284,343-347
+IOS FILES : Discover/SearchView.swift:58-65, Discover/HashtagFeedView.swift, Discover/SearchModels.swift:46-52
+LOGIC PARITY : `SearchHashtagResult.post_count`/`total_views` décodés côté modèle mais jamais lus par aucune vue.
+STATUT : PARTIAL
+PREUVE : `SearchModels.swift:46-52` déclare les champs ; `SearchView.swift:58-65`/`HashtagFeedView.swift:8-16` ne les utilisent jamais.
+CAUSE : Champs modélisés lors du portage réseau, oubliés lors de la construction de la vue.
+RISQUE : Perte d'information utile visible sur Android à deux endroits.
+RECOMMANDATION : Afficher `post_count`/`total_views` sur la ligne résultat ET en header du fil hashtag.
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+```
+ID : V3-F-102
+PRIORITÉ : P1
+DOMAINE : Recherche
+FEATURE : Pagination du fil hashtag absente au-delà de 30 posts
+ANDROID SOURCE OF TRUTH : HashtagProfile.java:100-102,435-465 (LIMIT=10, scroll infini) ; ProfileRepository.java:226-232,242
+IOS FILES : Discover/HashtagFeedView.swift:11-19,57-66 ; Profile/ProfileRepository.swift:58-62
+LOGIC PARITY : Endpoint/paramètres identiques pour le PREMIER appel ; aucun second appel n'est jamais émis côté iOS (pas d'état offset, pas de déclencheur de scroll).
+RUNTIME CHAIN : USER ACTION (scroll jusqu'en bas) → Android : nouvel appel réseau. iOS : rupture, rien ne se passe au-delà des 30 premiers posts.
+STATUT : PARTIAL
+PREUVE : `HashtagFeedView.swift:61` : `fetchHashtagPosts(tag:limit:30,offset:0)` appelé une seule fois.
+CAUSE : Pagination jamais implémentée lors du portage.
+RISQUE : Régression fonctionnelle réelle pour tout hashtag &gt;30 publications (cas courant).
+RECOMMANDATION : Ajouter état `offset`/`hasMore`, déclencher via `.onAppear` sur les dernières cellules.
+TEST RÉEL NÉCESSAIRE : oui.
+```
+
+```
+ID : V3-F-103
+PRIORITÉ : P1
+DOMAINE : Recherche
+FEATURE : Tap sur une recherche récente hashtag/mention donne 0 résultat (reproductible à 100%)
+ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:252-279 (strip du préfixe, dérivation d'onglet, query sans préfixe)
+IOS FILES : Discover/SearchView.swift:26-38,194-209
+LOGIC PARITY : Android reconnaît `#`/`@`, dérive l'onglet, relance avec la query DÉPOUILLÉE. iOS conserve le préfixe brut dans `query` et n'ajuste jamais l'onglet — le backend reçoit littéralement `%23android` au lieu de `android`.
+RUNTIME CHAIN : USER ACTION (tap entrée récente "#android") → iOS : query="#android" inchangée → recherche → probablement 0 résultat.
+STATUT : FUNCTIONALLY_FAILED
+PREUVE : `SearchView.swift:29` : `Button(entry) { query = entry; runSearch(full: true) }` sans traitement de préfixe, vs `RechercheTiinver.java:256-265,271-272`.
+CAUSE : Format de stockage de l'historique fidèle à Android, mais logique de RÉ-INTERPRÉTATION du préfixe au tap jamais portée.
+RISQUE : Bug visible et reproductible à 100% dans une zone déjà signalée prioritaire par des tests réels antérieurs.
+RECOMMANDATION : Reproduire le parsing Android (détecter préfixe → dériver tab → query nettoyée).
+TEST RÉEL NÉCESSAIRE : oui.
+```
+
+```
+ID : V3-F-104
+PRIORITÉ : P2
+DOMAINE : Recherche
+FEATURE : Sauvegarde dans l'historique local même en cas d'échec réseau
+ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:440-458 (save UNIQUEMENT dans onResonse)
+IOS FILES : Discover/SearchView.swift:194-209
+LOGIC PARITY : `RecentSearchStore.save(query)` placé après le bloc `do/catch`, donc exécuté même dans la branche catch.
+STATUT : PARTIAL
+PREUVE : `SearchView.swift:199-207` (save hors du bloc `do`, sans `return`/`guard`).
+CAUSE : Positionnement du `save()` après le do/catch au lieu de dans le do.
+RISQUE : Pollution de l'historique avec des recherches jamais réellement abouties.
+RECOMMANDATION : Déplacer `save()` à l'intérieur du bloc `do`.
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+```
+ID : V3-F-105
+PRIORITÉ : P2
+DOMAINE : Recherche
+FEATURE : Écran figé sans feedback pour une query d'exactement 1 caractère en échec
+ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:412-431,567 (showEmpty inconditionnel)
+IOS FILES : Discover/SearchView.swift:74-86,92-102,184-192
+LOGIC PARITY : Le bloc d'affichage erreur/vide est protégé par `query.count &gt;= 2`, mais `suggest()` (seule fonction alimentant `errorText` pour une query courte) n'est déclenchée QUE pour `query.count == 1` — les deux conditions ne se recoupent jamais.
+STATUT : PARTIAL
+PREUVE : `SearchView.swift:79` (`query.count &gt;= 2`) vs `:97-98` (suggest à `count &gt;= 1`, exclusivement `==1` en pratique).
+CAUSE : Seuil réseau Android copié par erreur sur le seuil d'affichage.
+RISQUE : Écran semble cassé/gelé pour une query de 1 caractère en échec.
+RECOMMANDATION : Étendre la condition d'affichage à `query.count &gt;= 1`.
+TEST RÉEL NÉCESSAIRE : oui.
+```
+
+```
+ID : V3-F-106
+PRIORITÉ : P3
+DOMAINE : Recherche
+FEATURE : Filtrage "posts" absent du chemin suggestion (garde `isFull` Android non reproduite)
+ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:421,461,528 (`isFull=false` garantit l'absence de section Publications en suggestion)
+IOS FILES : Discover/SearchRepository.swift:16-20, Discover/SearchView.swift:67-73,184-192
+STATUT : CODE_PRESENT_UNVERIFIED
+PREUVE : Aucune garde équivalente à `isFull` dans `SearchView.suggest`/`SearchRepository.suggest`.
+CAUSE : Simplification du portage — une seule fonction `decodeResults` partagée entre les deux endpoints.
+RISQUE : Incertain — dépend d'un comportement serveur non observable par lecture de code.
+RECOMMANDATION : Capturer une réponse réelle de `content/search/suggest` pour trancher.
+TEST RÉEL NÉCESSAIRE : oui (inspection réseau).
+```
+
+```
+ID : V3-F-107
+PRIORITÉ : P1
+DOMAINE : Recherche
+FEATURE : Bouton "Suivre" inline sur résultat utilisateur — état FAUX permanent après échec réseau
+ANDROID SOURCE OF TRUTH : UniversalSearchAdapter.java:226-247 (`onFollowingError` ne confirme jamais faussement un succès)
+IOS FILES : Discover/SearchView.swift:145-169
+LOGIC PARITY : `toggleFollow` met `isFollowed=true` IMMÉDIATEMENT, puis `try? await ...follow(...)` — en cas d'échec, l'erreur est avalée, AUCUN rollback.
+RUNTIME CHAIN : USER ACTION (tap Suivre) → state=true → réseau échoue → try? avale → RENDU : "Abonné" affiché en permanence, désactivé, aucun moyen de réessayer.
+STATUT : FUNCTIONALLY_FAILED
+PREUVE : `SearchView.swift:163-169` (mise à jour d'état avant `try?`, aucun `catch`, aucune réaffectation en échec).
+CAUSE : Pattern `try?` combiné à une mise à jour optimiste jamais annulée en cas d'échec.
+RISQUE : Faux positif visible et persistant — l'utilisateur croit avoir suivi quelqu'un alors que non.
+RECOMMANDATION : `do/catch` explicite, rollback `isFollowed=false` + état d'erreur visible en cas d'échec.
+TEST RÉEL NÉCESSAIRE : oui.
+```
+
+```
+ID : V3-F-108
+PRIORITÉ : P2
+DOMAINE : Recherche
+FEATURE : Recherche de conversations locales — filtrage sur le texte du dernier message absent
+ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:663-674 (filtre sur titre/message/sous-titre)
+IOS FILES : Messagerie/ChatSearchView.swift:29-38, Messagerie/RosterListView.swift:195-203,246
+LOGIC PARITY : iOS ne filtre que sur `title`/`subtitle` — `subtitle` n'est JAMAIS le texte du dernier message (nom d'utilisateur ou chaîne statique groupe), alors que la donnée existe (`pair.lastMessage?.message`) mais n'est jamais exposée au filtre.
+STATUT : PARTIAL
+PREUVE : `RechercheTiinver.java:666-668` (3 champs) vs `ChatSearchView.swift:35-37` (2 champs, ni l'un ni l'autre = texte du message).
+CAUSE : `Row` n'expose pas le dernier message comme champ filtrable.
+RISQUE : Recherche de conversation par mot-clé de message échoue silencieusement sur iOS.
+RECOMMANDATION : Ajouter un champ `lastMessage: String` à `Row`, l'inclure dans le filtre.
+TEST RÉEL NÉCESSAIRE : oui.
+```
+
+```
+ID : V3-F-109
+PRIORITÉ : P3
+DOMAINE : Recherche
+FEATURE : Décision locale/repli-serveur (recherche de conversations) — iOS plus correct qu'Android
+ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:584-685 (bug réel : `searchOnLocal` réaffecté sans OR logique à chaque itération de boucle)
+IOS FILES : Messagerie/ChatSearchView.swift:29-38,106-123
+STATUT : IOS_IMPROVED
+PREUVE : `RechercheTiinver.java:670-673` (réaffectation sans accumulation) vs `ChatSearchView.swift:109` (`localMatches.isEmpty`, logique correcte et déterministe).
+CAUSE : Bug Android préexistant non reproduit intentionnellement.
+RISQUE : Faible impact direct, mais RISQUE DE FAUX CONSTAT lors de tests comparatifs manuels (un testeur pourrait signaler à tort une régression iOS).
+RECOMMANDATION : Ne pas "corriger" iOS pour reproduire le bug Android ; documenter pour l'équipe QA.
+TEST RÉEL NÉCESSAIRE : oui, pour documentation QA seulement.
+```
+
+### 30.2 Chat / Socket.IO / WebRTC — audit très approfondi
+
+```
+ID : V3-F-110
+PRIORITÉ : P0 — LE FINDING LE PLUS SÉVÈRE DE CE CYCLE COMPLÉMENTAIRE
+DOMAINE : Chat/Socket/WebRTC
+FEATURE : Signalisation WebRTC entrante (offre/réponse/ICE) jamais routée vers l'appel réel
+ANDROID SOURCE OF TRUTH : messagerie/service/CallService.java:113,561,641 (isOnCall vit tout le cycle d'appel) ; messagerie/repository/ChatRepository.java (~ligne 284, teste CallService.isOnCall)
+IOS FILES : Realtime/ChatRepository.swift:27 (`static var isOnCall`), :368-376 (`handleUnifiedWebrtcMessage`) ; Calls/CallCoordinator.swift:81 (souscrit uniquement à `callEvents`)
+VIEW PARITY : Sans objet directement (bug de routage interne).
+LOGIC PARITY : `ChatRepository.isOnCall` est le port explicite de `CallService.isOnCall` (commenté comme tel dans le code) — mais grep exhaustif confirme AUCUNE affectation `= true` nulle part dans le projet, seule affectation = `false` à la déclaration.
+NETWORK/MEDIA PARITY : L'événement socket `webrtcMessage` arrive bien au client (nom d'événement correct) mais `handleUnifiedWebrtcMessage` route `if Self.isOnCall { callEvents... } else { chatEvents.pbs... }` — `isOnCall` étant toujours `false`, 100% des messages webrtcMessage entrants partent vers le flux Shareboard, jamais vers `CallCoordinator`.
+RUNTIME CHAIN : USER ACTION (répondre/passer un appel) → offre locale envoyée (non affectée) → pair distant répond via socket `webrtcMessage` → `handleUnifiedWebrtcMessage` reçoit → RUPTURE : routé vers `chatEvents.pbs`, jamais vers `callEvents` → `CallCoordinator` ne reçoit jamais l'événement → `RTCPeerConnection.setRemoteDescription`/`addIceCandidate` jamais invoqués pour le pair → connexion audio ne peut jamais s'établir.
+STATUT : FUNCTIONALLY_FAILED
+PREUVE : `ChatRepository.swift:27` (grep `isOnCall\s*=` = 1 seul résultat, la déclaration) ; `:368-376` (routage) ; `CallCoordinator.swift:81` (jamais abonné à `chatEvents`) ; côté Android `CallService.java:113,561,641` (3 sites vivants, absents côté iOS).
+CAUSE : Le module CallCoordinator/CallKit a été écrit APRÈS ChatRepository (commentaire du code le dit lui-même) mais le raccordement final (faire vivre `isOnCall` depuis CallCoordinator) n'a jamais été fait.
+RISQUE : Un appel WebRTC réel ne peut vraisemblablement JAMAIS établir de flux audio dans l'état actuel — plus sévère que V3-F-026 (`makingOffer`, déjà corrigé), qui ne bloquait que la RENÉGOCIATION, pas la connexion INITIALE.
+RECOMMANDATION : Faire vivre `ChatRepository.isOnCall = true/false` depuis `CallCoordinator` aux mêmes points qu'Android (début/fin d'appel), ou remplacer le booléen statique par une lecture directe de `CallCoordinator.shared.state != .idle`.
+TEST RÉEL NÉCESSAIRE : oui, impératif et prioritaire — passer un appel réel entre 2 comptes et confirmer qu'un flux audio bidirectionnel s'établit (pas seulement que CallKit s'affiche).
+```
+
+```
+ID : V3-F-111
+PRIORITÉ : P0 (vérification, résultat positif)
+DOMAINE : Chat/Socket
+FEATURE : Cycle de vie socket (connect/reset/disconnect) et persistance du token sur reconnexion auto
+ANDROID SOURCE OF TRUTH : App.java:88-171
+IOS FILES : Realtime/TiinverSocket.swift, Realtime/ChatRepository.swift, Navigation/RootRouterView.swift
+LOGIC PARITY : Relu intégralement — `ensureSocket`/`connect`/`reset`/`disconnect` fidèles à `getSocket`/`connectSocket`/`resetSocket`/`disconnectSocket`. `attachToCurrentSocket()` a un unique site d'appel réel (`RootRouterView.swift:53`, après login réussi) — confirmé PRÉSENT.
+NETWORK/MEDIA PARITY : Vérifié indépendamment contre la source de `socket.io-client-swift` : `connect(withPayload:)` fait `connectPayload = payload` (propriété STOCKÉE sur l'instance), donc les reconnexions automatiques du moteur (`.reconnects(true)`) réutilisent bien le token — le risque initialement soupçonné (perte d'auth sur reconnexion auto) est INFONDÉ pour ce chemin.
+STATUT : BUILD_VALIDATED (confirmé cohérent à la relecture, aucune régression, un point d'incertitude du journal levé positivement)
+PREUVE : `TiinverSocket.swift:82-91` ; `ChatRepository.swift:48-53,62-67` ; `RootRouterView.swift:45-53`.
+CAUSE : Sans objet (vérification positive).
+RISQUE : Aucun nouveau. Le test serveur réel (association de session) reste entier.
+RECOMMANDATION : Documenter dans le code que `connectPayload` persiste bien across-reconnect.
+TEST RÉEL NÉCESSAIRE : oui — connexion réelle + coupure/reprise réseau, confirmer l'identification serveur après reconnexion auto.
+```
+
+```
+ID : V3-F-112
+PRIORITÉ : P1 (vérification, résultat positif — mais effet bloqué par V3-F-110)
+DOMAINE : WebRTC
+FEATURE : `makingOffer` correctement remis à `false` sur succès de `createOffer()`
+ANDROID SOURCE OF TRUTH : messagerie/webrtc/RTConnection2.java
+IOS FILES : Calls/WebRTCConnection.swift:191-205
+LOGIC PARITY : Confirmé présent — `createOffer()` remet `makingOffer=false` dans les DEUX branches (succès ligne 203, échec ligne 195-198), symétrique à `iceRestart()`.
+STATUT : BUILD_VALIDATED (fix confirmé correct) — mais inatteignable en pratique tant que V3-F-110 n'est pas corrigé (aucun message entrant réel n'est jamais traité par `process()`)
+PREUVE : `WebRTCConnection.swift:191-205`.
+RISQUE : Nul isolément.
+RECOMMANDATION : Traiter V3-F-110 en priorité pour que ce correctif devienne effectif.
+TEST RÉEL NÉCESSAIRE : oui, mais seulement après correction de V3-F-110.
+```
+
+```
+ID : V3-F-113
+PRIORITÉ : P1
+DOMAINE : Socket
+FEATURE : Aucune surveillance réseau côté client — pas de reconnexion forcée après coupure réelle
+ANDROID SOURCE OF TRUTH : Activity/ui/HomeActivity.java:430-464,482-497 (`networkStateReceiver` → `resetSocket()+connectSocket()` à CHAQUE transition réseau)
+IOS FILES : Realtime/TiinverSocket.swift, Realtime/ChatRepository.swift, Navigation/RootRouterView.swift
+LOGIC PARITY : Grep exhaustif (`NWPathMonitor`/`Reachability`) = zéro résultat sur tout le projet. Seul `attachToCurrentSocket()` existe, appelé UNIQUEMENT au login (jamais réexécuté ensuite). Le seul mécanisme résiduel (`attemptReconnect`) ne couvre que `"io server disconnect"`, pas une coupure réseau côté client — équivalent au VRAI `ChatRepository.attemptReconnect()` Android, mais PAS à `HomeActivity.onNetworkChange` (mécanisme séparé, absent côté iOS).
+RUNTIME CHAIN : Perte réseau réelle → iOS : rien n'observe activement, seul le backoff interne du moteur Socket.IO agit (hors contrôle applicatif) → Android : détection explicite + reset forcé immédiat.
+STATUT : PARTIAL
+PREUVE : `HomeActivity.java:482-497` ; absence confirmée côté iOS (grep 0 résultat) ; `RootRouterView.swift:53` (seul site d'appel).
+CAUSE : Le portage a traité `onNetworkChange` uniquement comme "premier reset après login", sans reproduire le déclencheur RÉSEAU qui l'active à chaque changement de connectivité côté Android.
+RISQUE : Chat/appels potentiellement non fonctionnels plus longtemps qu'Android après une coupure réseau (mode avion, changement WiFi/4G, tunnel).
+RECOMMANDATION : Ajouter un `NWPathMonitor` appelant `attachToCurrentSocket()` sur chaque transition vers `.satisfied`.
+TEST RÉEL NÉCESSAIRE : oui — mode avion 30s+, rétablir, mesurer le délai de reprise vs Android.
+```
+
+```
+ID : V3-F-114
+PRIORITÉ : P1
+DOMAINE : Chat
+FEATURE : Indicateur de présence (en ligne) — requête jamais émise à l'ouverture d'un chat privé
+ANDROID SOURCE OF TRUTH : messagerie/ui/ChatFragmentTest.java:699-703 (`chatViewModel.presence(userData.getTo())` à l'ouverture) ; ChatRepository.java:993
+IOS FILES : Messagerie/ChatViewModel.swift (aucun appel), Realtime/ChatRepository.swift:432 (`emitPresence` déclarée), Messagerie/ChatView.swift:130 (badge affiché)
+LOGIC PARITY : `emitPresence(username:)` existe et émet correctement, mais grep exhaustif confirme ZÉRO site d'appel en dehors de sa propre déclaration. `ChatViewModel.loadInitial()` ne l'appelle jamais.
+NETWORK/MEDIA PARITY : La RÉCEPTION fonctionne (listener câblé, met à jour `isPeerOnline`) — seule l'ÉMISSION de la requête initiale manque.
+RUNTIME CHAIN : USER ACTION (ouvrir chat 1:1) → RUPTURE : aucun appel à `emitPresence` → `isPeerOnline` reste `false` indéfiniment sauf changement d'état du pair PENDANT que l'écran est déjà ouvert.
+STATUT : PARTIAL
+PREUVE : `ChatRepository.swift:432` (jamais appelée) ; `ChatFragmentTest.java:701` (site d'appel Android).
+CAUSE : Angle mort entre deux modules écrits à des passes différentes (protocole d'émission vs déclenchement dans le flux d'ouverture).
+RISQUE : Badge "en ligne" fonctionnellement mort en usage normal — fausse impression que le contact n'est "jamais en ligne".
+RECOMMANDATION : Ajouter `chatRepository.emitPresence(username: target.to)` dans `loadInitial()`, gardé par `!target.isGroup`.
+TEST RÉEL NÉCESSAIRE : oui.
+```
+
+```
+ID : V3-F-115
+PRIORITÉ : P2
+DOMAINE : Chat/Socket
+FEATURE : Canal "update message"/"update group message" jamais écouté (missed-call + suppression groupe "pour tous") — bug PARTAGÉ, pas une régression iOS
+ANDROID SOURCE OF TRUTH : messagerie/repository/ChatRepository.java:130-131,958-959 (émission SEULEMENT, confirmé par grep exhaustif — aucun listener non plus côté Android)
+IOS FILES : Realtime/ChatRepository.swift:382,392,568-579
+LOGIC PARITY : Bug partagé fidèlement reproduit — ni Android ni iOS n'écoutent ces 2 canaux, utilisés en émission seulement.
+STATUT : CODE_PRESENT_UNVERIFIED (dépend du comportement SERVEUR, non tranchable côté client)
+PREUVE : `ChatRepository.swift:568-579` (émission) vs absence d'écoute des deux côtés (grep indépendant confirmé).
+CAUSE : Lacune protocole pré-existante côté Android, reproduite fidèlement.
+RISQUE : Si le serveur ne relaie pas : suppression groupe "pour tous" ou notification appel manqué pourrait ne jamais atteindre le destinataire en temps réel.
+RECOMMANDATION : Test serveur dédié requis avant toute action côté client.
+TEST RÉEL NÉCESSAIRE : oui, impératif pour lever l'ambiguïté.
+```
+
+```
+ID : V3-F-116
+PRIORITÉ : P2
+DOMAINE : Chat
+FEATURE : Suppression de message privé "pour tous" reçue — pas de mise à jour UI en direct si conversation déjà ouverte
+ANDROID SOURCE OF TRUTH : messagerie/repository/ChatRepository.java:127-129,962 (`ON_DELETE_PRIVATE_MESSAGE`, écouté ET émis sur le même canal)
+IOS FILES : Realtime/ChatRepository.swift:315-320,400,90,104-106
+LOGIC PARITY : Contrairement à V3-F-115 (groupe), la suppression privée est bien écoutée ET émise sur le même canal, propagation confirmée. Mais `handleDeleteMessage` persiste en Core Data SANS émettre d'événement Combine — si la conversation est déjà ouverte, aucun rafraîchissement UI.
+STATUT : PARTIAL
+PREUVE : `ChatRepository.swift:315-320` (aucun `chatEvents.send` après persistance) vs `handleNewMessage` (envoie bien `chatEvents.send`).
+CAUSE : Angle mort — persistance faite, notification Combine oubliée.
+RISQUE : Message supprimé "pour tous" reste visible à l'écran jusqu'à fermeture/réouverture, si le destinataire a la conversation déjà ouverte.
+RECOMMANDATION : Ajouter `chatEvents.send(.messageDeleted(id:))` (nouveau cas), consommé par `ChatViewModel.handle(_:)`.
+TEST RÉEL NÉCESSAIRE : oui — 2 appareils, conversation déjà ouverte des deux côtés, supprimer "pour tous" et observer.
+```
+
+```
+ID : V3-F-117
+PRIORITÉ : P2
+DOMAINE : WebRTC/VoIP
+FEATURE : Push VoIP à payload malformé — violation potentielle du contrat CallKit obligatoire
+ANDROID SOURCE OF TRUTH : Sans équivalent direct (PushKit = fonctionnalité 100% iOS)
+IOS FILES : Calls/CallCoordinator.swift:442-452
+LOGIC PARITY : Si le décodage du payload échoue, `completion()` est appelé SANS jamais appeler `reportIncomingCall` — viole la règle Apple documentée dans le fichier lui-même (toute notification VoIP DOIT déclencher `reportNewIncomingCall` de façon synchrone).
+STATUT : PARTIAL
+PREUVE : `CallCoordinator.swift:443-448`.
+CAUSE : Défense contre décodage invalide qui viole une règle plus stricte documentée juste au-dessus dans le même fichier.
+RISQUE : Faible probabilité (contrat serveur VoIP inexistant, V3-F-031) mais sévérité élevée si déclenché — iOS peut révoquer le droit de recevoir des push VoIP après manquements répétés.
+RECOMMANDATION : En cas d'échec de décodage, reporter quand même un appel générique puis le terminer immédiatement, plutôt que de ne jamais reporter.
+TEST RÉEL NÉCESSAIRE : non-bloquant tant que le backend VoIP n'existe pas — à re-tester dès son implémentation.
+```
+
+```
+ID : V3-F-118
+PRIORITÉ : P2
+DOMAINE : Chat
+FEATURE : Mapping des 30 noms d'événements socket — vérification exhaustive positive
+ANDROID SOURCE OF TRUTH : messagerie/repository/ChatRepository.java:107-144 (classe `ROOM`)
+IOS FILES : Realtime/SocketEvent.swift
+LOGIC PARITY : Les 30 constantes vérifiées champ par champ, y compris les 2 pièges les plus probables (`onPbsTouchListener`, `onData`) et la faute d'orthographe volontairement reproduite (`"delivred"`) — toutes exactes.
+STATUT : COMPLETE_PARITY_CANDIDATE (upgrade depuis CODE_PRESENT_UNVERIFIED — le blocage V3-F-016 est levé, vérification manuelle confirme l'exactitude)
+PREUVE : `SocketEvent.swift:20-78` vs `ChatRepository.java:107-144`.
+RISQUE : Aucun.
+RECOMMANDATION : Aucune.
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+```
+ID : V3-F-119
+PRIORITÉ : P2
+DOMAINE : Chat
+FEATURE : Accusés de réception (read receipts) — chaîne complète bind→emit→listener→UI, vérification positive
+ANDROID SOURCE OF TRUTH : messagerie/ui/adapter/MessageListAdapter.java:739-742,1203-1210 ; messagerie/repository/ChatRepository.java:731-756
+IOS FILES : Messagerie/ChatViewModel.swift:432-449,464-473 ; Messagerie/ChatView.swift:195 ; Realtime/ChatRepository.swift:322-339,427
+LOGIC PARITY : `handleAppear`→`markAsRead`→`sendMessageState`→émission "displayed" ; réception `handleResponse` (switch 4 cas identique) → persistance + `chatEvents.messageStatus` → mise à jour bulle. Chaîne complète confirmée sans rupture.
+STATUT : COMPLETE_PARITY_CANDIDATE
+PREUVE : Citations ci-dessus, comparaison champ par champ concordante.
+RISQUE : Dépend de V3-F-110/V3-F-113 pour la fiabilité globale du canal, mais la logique de CE flux est fidèle.
+RECOMMANDATION : Aucune action de code ; confirmer par test réel.
+TEST RÉEL NÉCESSAIRE : oui.
+```
+
+```
+ID : V3-F-120
+PRIORITÉ : P3
+DOMAINE : Chat
+FEATURE : Absence de resynchronisation REST de l'historique — parité d'absence confirmée
+ANDROID SOURCE OF TRUTH : Recherche exhaustive : aucun endpoint HTTP "récupérer historique conversation" trouvé
+IOS FILES : Storage/MessageRepository.swift:300-306 (page = requête Core Data pure)
+STATUT : COMPLETE_PARITY_CANDIDATE (parité d'absence, fidèle à Android)
+CAUSE : Limitation produit pré-existante côté Android, pas un gap de portage.
+RISQUE : Réinstallation/changement d'appareil/purge locale fait perdre TOUT l'historique — symétrique aux deux plateformes.
+RECOMMANDATION : Aucune action de portage ; signalable au propriétaire produit comme limitation partagée si non désirée.
+TEST RÉEL NÉCESSAIRE : non pour la parité.
+```
+
+```
+ID : V3-F-121
+PRIORITÉ : P2
+DOMAINE : Chat
+FEATURE : Pièces jointes chat (upload/download photo+vidéo) — chaîne complète, vérification positive
+ANDROID SOURCE OF TRUTH : messagerie/ui/adapter/MessageListAdapter.java (dispatch par `isFileUploaded==0`/`isFileDownloaded==0`)
+IOS FILES : Messagerie/ChatViewModel.swift:484-552, Messagerie/ChatBubbleViews.swift:74-246
+LOGIC PARITY : `handleAppear` déclenche `requestUpload`/`requestDownload` au même point que `onBindViewHolder`. Upload via Bunny direct (conforme GAP-004), envoi socket explicite après upload (palliatif documenté pour l'absence de re-bind SwiftUI). Download sans en-tête d'auth, cohérent avec Android (CDN public une fois uploadé).
+STATUT : CODE_PRESENT_UNVERIFIED (chaîne cohérente au niveau code, jamais exercée sur device/simulateur)
+PREUVE : Citations ci-dessus.
+RISQUE : Modéré — pas de compteur de tentatives, retry sur prochain `.onAppear`/scroll (comportement partagé avec Android, pas une régression).
+RECOMMANDATION : Surveiller en test réel l'absence de boucle infinie sur échec permanent.
+TEST RÉEL NÉCESSAIRE : oui.
+```
+
+### 30.3 Animems — régression post-Phase B (PAS un nouvel audit, voir ANIMEMS_PARITY_AUDIT_V1.md)
+
+**Aucune régression trouvée** sur les 11 lots de Phase B Animems — vérifié lot par lot par relecture
+du code actuel + `git log` (un seul commit Animems postérieur à `b090153`, `5164acf`, ajout pur isolé
+au bloc sheet d'export, aucune suppression/déplacement des lots précédents). F-33 (contrôleur
+mouvement), F-34/F-45 (import vidéo/audio), F-40 (zoom visuel), F-17 (contenu templates communautaires)
+confirmés inchangés dans l'état exact où Phase B les a laissés.
+
+```
+ID : V3-F-122
+PRIORITÉ : P2 (documentation — comportement CORRECT, pas un défaut)
+DOMAINE : Animems / Feed
+FEATURE : Blocage de publication par catégorie de compte (V3-F-058) s'applique aussi au flux Animems→Publier — fidèle à Android, pas une régression
+ANDROID SOURCE OF TRUTH : PublishFragment.java:274-283 (classe UNIQUE et partagée, sans branche par origine) ; MemesFragment.java:327-351,410-433 (route vers le même pipeline que caméra/galerie)
+IOS FILES : Animems/AnimemesEditorView.swift (appelant), Feed/PublishComposeView.swift (gate interne), Feed/FeedRepository.swift (paramètre `category:`)
+LOGIC PARITY : Signature `PublishComposeView.init(media:onPublished:onCancel:)` inchangée depuis `5164acf` — le gate catégorie (commit `5ebf13a`, postérieur) est entièrement interne à `publish()`, aucun paramètre supplémentaire requis côté appelant Animems.
+RUNTIME CHAIN : Vérifiée non cassée — chaîne complète Animems→export→publish→gate catégorie intacte.
+STATUT : BUILD_VALIDATED (aucun test réel — ce parcours précis n'a jamais été exercé depuis Animems sur device/Appetize)
+PREUVE : `PublishFragment.java:274-283` cité ci-dessus ; `PublishComposeView.swift:210-220` ; `git log -- AnimemesEditorView.swift` ne montre aucun commit après `5164acf`.
+CAUSE : Réutilisation intentionnelle et documentée de `PublishComposeView` pour Animems (choix de parité fonctionnelle, assumé dans le commit `5164acf`).
+RISQUE : Aucun risque de régression identifié — risque résiduel classique : jamais testé en réel, donc l'UX exacte (l'utilisateur Animems comprend-il pourquoi on lui demande une catégorie après avoir exporté un mème ?) n'est pas confirmée empiriquement.
+RECOMMANDATION : Aucune action corrective — documenter ce couplage dans `ANIMEMS_PARITY_AUDIT_V1.md` (§3/§18.3, désormais résolu). Prioriser un test réel du parcours complet avant annonce de parité validée.
+TEST RÉEL NÉCESSAIRE : oui.
+```
+
+### 30.4 Galerie / Photo Editor / Video Editor
+
+```
+ID : V3-F-123
+PRIORITÉ : P0
+DOMAINE : Video Editor
+FEATURE : Trim vidéo — échec d'export SILENCIEUX, publication du fichier ORIGINAL non modifié en repli
+ANDROID SOURCE OF TRUTH : VideoTrimmerView.java:670-758 (Toast d'erreur explicite, `callback.onVideo()` JAMAIS appelé en cas d'échec) ; MediaTrim.java:178-227 (`onError` → arrêt, aucun callback de succès)
+IOS FILES : Feed/MediaTrimView.swift:220-309 (`trim()`)
+LOGIC PARITY : Android bloque l'utilisateur sur l'écran de trim en cas d'échec (Toast + pas de callback succès). iOS a 7 points de sortie anticipée (échec export, échec chargement piste, échec composeTransform, échec piste composite, statut != completed sur les 2 chemins) qui appellent TOUS `onTrimmed(sourceURL)` — publient le fichier ORIGINAL BRUT (non coupé, non recadré, potentiellement &gt;60s) comme si le trim avait réussi. Seul indice : un `print()` invisible en production.
+RUNTIME CHAIN : `trim()` échoue → `onTrimmed(sourceURL)` → `PublishComposeView.publish()` → `FeedRepository.publish` → Bunny → `activity/add`. Chaîne tracée en entier, confirmée.
+STATUT : FUNCTIONALLY_FAILED (sur le chemin d'erreur — le chemin de succès reste BUILD_VALIDATED)
+PREUVE : `MediaTrimView.swift:303-308` — `if exportSession.status == .completed { onTrimmed(outputURL) } else { print(...); onTrimmed(sourceURL) }`, contrat `onTrimmed: (URL) -&gt; Void` sans variante d'échec.
+CAUSE : Le contrat de callback ne permet structurellement pas de distinguer succès et échec — chaque garde a été ajoutée en "meilleur effort" plutôt que remontée en erreur.
+RISQUE : L'utilisateur qui coupe explicitement une vidéo de 3 minutes à 15 secondes (ou pivote/recadre) peut publier silencieusement l'intégralité non coupée — régression de confidentialité/contenu potentiellement grave.
+RECOMMANDATION : Changer la signature en `(Result&lt;URL, Error&gt;) -&gt; Void`, ne JAMAIS retomber sur `sourceURL` sans consentement explicite — fidèle au comportement Android réel (blocage, pas de publication de repli).
+TEST RÉEL NÉCESSAIRE : oui — forcer un échec d'export et vérifier qu'aucune vidéo non coupée ne part au serveur.
+```
+
+```
+ID : V3-F-124
+PRIORITÉ : P1
+DOMAINE : Video Editor
+FEATURE : Justification architecturale du correctif P0-6 invalidée — V3-F-042 sous-estimé (portée élargie)
+ANDROID SOURCE OF TRUTH : VideoTrimmerView.java:232-257 (`next.setOnClickListener`, condition réelle) ; :670-758 (`startTrimWithCrop`, SEUL chemin atteignable) ; :807-870 (`startTrimWithCrop2`, confirmé 0 appelant par grep exhaustif)
+IOS FILES : Media/VideoTrimState.swift (commentaire de tête), Feed/MediaTrimView.swift:5-28,220-255
+LOGIC PARITY : Le commentaire ajouté au Lot 5 (P0-6) affirme une "architecture à deux chemins" Android où `startTrimWithCrop2()` serait un "repli RAPIDE sans transformation... pas un vestige mort". Vérifié par grep : `startTrimWithCrop2` a ZÉRO appelant — c'est du code mort, l'inverse de ce qu'affirme le commentaire. De plus, même actif, il construit lui aussi `VideoTransformer.Params` et appelle `.process()` — il ne "saute" jamais la transformation. Le VRAI mécanisme : `next.setOnClickListener` ne fait AUCUN export quand `noTrim &amp;&amp; noTransform` (aucune modification), et appelle TOUJOURS `startTrimWithCrop()` (re-encodage frame-exact) sinon — MÊME pour un trim purement temporel sans recadrage. **Aucun chemin Android ne fait un simple remux/copie pour un trim temporel seul** — contrairement à iOS qui utilise `AVAssetExportPresetPassthrough` (imprécis, calé keyframe) dès que `needsTransform` est faux, c'est-à-dire pour LA MAJORITÉ des trims réels.
+STATUT : PARTIAL (V3-F-042 existant, précisé/aggravé)
+PREUVE : `grep -rn "startTrimWithCrop2" app/src/main/java/` → 1 seul résultat (la définition). Condition réelle : `if (noTrim &amp;&amp; noTransform) { callback.onVideo(null,false); } else { startTrimWithCrop(); }` (VideoTrimmerView.java:235-252).
+CAUSE : Le correctif Lot 5 a construit sa justification sur une méthode Android jamais exécutée en production, sans vérifier son nombre d'appelants.
+RISQUE : Pour la majorité des trims (coupe simple sans recadrage), iOS produit un point de coupe imprécis (potentiellement plusieurs secondes de décalage selon le GOP) alors qu'Android produit systématiquement une coupe frame-exacte — écart de qualité perceptible, pas un cas limite rare.
+RECOMMANDATION : Soit toujours ré-encoder même sans transformation géométrique (fidèle à Android, coût CPU accru), soit documenter explicitement cet écart et corriger le commentaire erroné de `VideoTrimState.swift`/`MediaTrimView.swift`.
+TEST RÉEL NÉCESSAIRE : oui — comparer le point de coupe exact (frame par frame) entre export Android et iOS pour un trim sans recadrage.
+```
+
+```
+ID : V3-F-125
+PRIORITÉ : P1
+DOMAINE : Photo Editor
+FEATURE : Recadrage ovale — Android est une ellipse libre, iOS force un cercle 1:1 (V3-F-035 requalifié de "risque" à "confirmé")
+ANDROID SOURCE OF TRUTH : editor/croper/CropFragment.java:59 (setAspectRatio(1,1) SANS setFixedAspectRatio) ; CropImageViewOptions.java:32 (fixAspectRatio=false par défaut) ; fragment_crop_oval.xml/fragment_crop_rect.xml (aucun `app:cropFixAspectRatio`)
+IOS FILES : PhotoEditor/PhotoCropView.swift:36-37 (`CropViewCroppingStyle.circular`)
+LOGIC PARITY : `setFixedAspectRatio(true)` n'est JAMAIS appelé dans `CropFragment.java` (grep exhaustif) — le recadrage ovale Android est donc une ELLIPSE LIBRE (n'importe quel ratio). `.circular` (TOCropViewController) verrouille la zone à un carré 1:1, produisant TOUJOURS un cercle parfait.
+RUNTIME CHAIN : Le résultat cerclé part réellement en publication (`croppedImage` → JPEG → Bunny).
+STATUT : PARTIAL
+PREUVE : `CropImageViewOptions.java:32` (pas d'initialiseur = false) ; aucun `setFixedAspectRatio(true)` trouvé ; aucun `app:cropFixAspectRatio` dans les 2 layouts XML.
+CAUSE : Remplacement du moteur maison Android par TOCropViewController (décision assumée), mais le style `.circular` ne couvre pas le mode "ellipse libre" réel d'Android.
+RISQUE : Perte silencieuse de fonctionnalité pour les portraits larges non carrés (le bouton "fonctionne" mais produit un résultat visuellement différent).
+RECOMMANDATION : Utiliser `.default` avec masque de rendu ovale appliqué après coup (comme `FreeformCropView`), ou documenter explicitement comme IOS_INTENTIONAL_DIFFERENCE assumée.
+TEST RÉEL NÉCESSAIRE : oui — recadrer une photo en "Ovale" avec un ratio non carré sur les 2 plateformes et comparer.
+```
+
+```
+ID : V3-F-126
+PRIORITÉ : P1 (reconfirmation de V3-F-039, toujours présent, inchangé)
+DOMAINE : Photo Editor
+FEATURE : Aplatissement (flatten) peinture/texte/stickers — distorsion de ratio toujours présente
+ANDROID SOURCE OF TRUTH : Voir V3-F-039
+IOS FILES : PhotoEditor/PhotoToolsView.swift:227-249 (`flatten()`)
+LOGIC PARITY : `renderer.scale` dérive uniquement du ratio de LARGEUR (`canvasSize`=taille écran vs taille photo). Si le ratio de l'écran diffère du ratio de la photo source (cas courant), le rendu final aura les dimensions du RATIO ÉCRAN, pas du ratio photo — les bandes de lettrboxing (transparentes/blanches dans le composé, contrairement au fond noir explicite de l'écran d'édition) sont gravées définitivement dans l'image publiée dès qu'un trait/texte a été ajouté.
+STATUT : PARTIAL (confirmation — fichier inchangé depuis sa création)
+PREUVE : `renderer.scale = max(displayedImage.size.width / canvasSize.width, 1) * displayedImage.scale` (une seule composante, ligne 247) ; vue composée sans fond noir explicite (ligne 244) contrairement à l'écran d'édition (ligne 47).
+CAUSE : `ImageRenderer.scale` scalaire unique suppose implicitement le même ratio pour `canvasSize` et `displayedImage`.
+RISQUE : Toute publication avec peinture/texte/sticker sur une photo de ratio ≠ écran introduit bandes de bord non désirées et distorsion des dimensions publiées.
+RECOMMANDATION : Rendre le composé à la résolution EXACTE de `displayedImage`, convertir les positions du repère `canvasSize` vers le repère réel de l'image affichée.
+TEST RÉEL NÉCESSAIRE : oui — publier une photo 1:1 ou 4:3 avec un trait de peinture sur un écran ~9:19.5, comparer dimensions/contenu du JPEG uploadé.
+```
+
+```
+ID : V3-F-127
+PRIORITÉ : P3
+DOMAINE : Galerie
+FEATURE : Commentaire obsolète — FeedRepository.swift affirme à tort que le blocage catégorie n'est pas reproduit
+IOS FILES : Feed/FeedRepository.swift:133-137 (commentaire), Feed/PublishComposeView.swift:207-220 (code réel, correct)
+STATUT : COMPLETE_PARITY_CANDIDATE (le code est correct — seul le commentaire ment)
+PREUVE : Commentaire du commit `4ee582e` jamais mis à jour après l'ajout du blocage réel par `5ebf13a` (même journée).
+CAUSE : Mise à jour de commentaire oubliée après un correctif touchant un fichier voisin.
+RISQUE : Faible — un futur audit basé sur ce commentaire seul re-signalerait à tort BUNNY-01/V3-F-058.
+RECOMMANDATION : Mettre à jour le commentaire pour renvoyer vers `PublishComposeView.publish()`/`CategoryPickerView.swift`.
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+### 30.5 Settings / Permissions / Notifications / DeepLinks
+
+```
+ID : V3-F-128
+PRIORITÉ : P1
+DOMAINE : Settings
+FEATURE : Bouton "Catégorie du compte" mal placé — devrait être dans Modifier le profil, pas Réglages > Compte
+ANDROID SOURCE OF TRUTH : uploadPerfilPhoto/EditProfile.java:72-73 (lance CategoryActivity DEPUIS l'écran d'édition de profil) ; setting/SettingAccountFragment.java (207 lignes, entier — AUCUN champ catégorie)
+IOS FILES : Settings/SettingSubViews.swift:9-56 (SettingAccountView), Profile/EditProfileView.swift:1-5
+LOGIC PARITY : Le vrai gap (bouton manquant dans `EditProfileView`) reste documenté MAIS non comblé (commentaire propre du fichier : "Catégorie NON portée cette session"), tandis qu'un doublon fonctionnel a été ajouté au mauvais endroit (Réglages > Compte).
+STATUT : PARTIAL
+PREUVE : `SettingSubViews.swift:9-13` ("aucun équivalent Android direct identifié... placé ici par analogie") ; `EditProfileView.swift:3-5` ("Catégorie NON portée cette session").
+CAUSE : Deux sessions de portage différentes ont traité le même gap sans se recouper.
+RISQUE : Navigation divergente de l'attente Android ; risque de double-maintenance si le vrai gap est comblé plus tard sans retirer le doublon.
+RECOMMANDATION : Déplacer (ou dupliquer en le documentant explicitement) le point d'entrée vers `EditProfileView.swift`.
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+```
+ID : V3-F-129
+PRIORITÉ : P1
+DOMAINE : Settings
+FEATURE : Liens légaux (CGU/confidentialité) pointent vers la racine du site, pas les pages réelles
+ANDROID SOURCE OF TRUTH : setting/SettingAboutFragment.java:93-108 (`privacy`→`/privacy_policy.html`, `terms`→`/terms_conditions.html`, ouverts en WebView interne)
+IOS FILES : Settings/SettingSubViews.swift:220-229 (SettingAboutView)
+LOGIC PARITY : Les DEUX libellés pointent vers `https://tiinver.com` (racine), pas les pages légales réelles ; ouverture via Safari externe au lieu d'une WebView interne.
+STATUT : PARTIAL
+PREUVE : `SettingSubViews.swift:224-225` — deux `Link` vers la même URL racine.
+CAUSE : `SettingAboutFragment.java` jamais lu en détail au moment du portage (commentaire du fichier iOS obsolète maintenant contredit).
+RISQUE : Problème potentiel de conformité (RGPD/App Store review) — un lien "Politique de confidentialité" doit mener au texte légal réel.
+RECOMMANDATION : Remplacer par les URLs exactes.
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+```
+ID : V3-F-130
+PRIORITÉ : P2
+DOMAINE : Settings
+FEATURE : FAQ localisée (fr/en) et contact support absents côté iOS
+ANDROID SOURCE OF TRUTH : setting/SettingHelpFragment.java:88-119 (FAQ selon `Locale.getDefault()` ; bouton support avec handler VIDE côté Android aussi)
+IOS FILES : Settings/SettingSubViews.swift:211-218 (SettingHelpView)
+LOGIC PARITY : iOS n'a qu'un lien générique vers la racine du site, aucune FAQ localisée, aucun affichage de l'adresse support.
+STATUT : PARTIAL
+CAUSE : Fragment jamais lu en détail malgré sa présence dans la cartographie V2.
+RISQUE : Faible (le lien support est déjà mort côté Android) mais UX dégradée pour utilisateurs francophones.
+RECOMMANDATION : Porter le lien FAQ avec sélection de langue ; le bouton support n'a pas à devenir fonctionnel (fidèle à Android, mort des deux côtés).
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+```
+ID : V3-F-131
+PRIORITÉ : P0
+DOMAINE : Settings
+FEATURE : Toggle thème clair/sombre — ne change RIEN visuellement sur iOS
+ANDROID SOURCE OF TRUTH : Utils/ThemeUtils.java:31-38 (`AppCompatDelegate.setDefaultNightMode`, changement visuel immédiat app-wide) ; SettingChatFragment.java:136-147
+IOS FILES : Settings/SettingSubViews.swift:178-191 (SettingAppearanceView), App/TiinverApp.swift (aucun `.preferredColorScheme`)
+LOGIC PARITY : `@AppStorage("theme")` écrit dans UserDefaults mais grep exhaustif confirme AUCUNE vue ne le lit pour appliquer `.preferredColorScheme` — seule occurrence = la déclaration elle-même.
+RUNTIME CHAIN : USER ACTION (changer le Picker) → STATE écrit → RESULT : jamais consommé → RENDU : rien ne change.
+STATUT : FUNCTIONALLY_FAILED
+PREUVE : `grep -rn "@AppStorage(\"theme\")|\"theme\"" Sources` → 1 seul résultat ; `TiinverApp.swift` (12 lignes) sans `preferredColorScheme`.
+CAUSE : Picker de thème porté comme simple state UI sans câbler l'application réelle du colorScheme.
+RISQUE : Régression flagrante et facilement testable — le mode sombre fonctionne réellement sur Android, pas du tout sur iOS.
+RECOMMANDATION : Appliquer `.preferredColorScheme(theme == "Dark" ? .dark : .light)` au niveau de `WindowGroup`/`RootRouterView`.
+TEST RÉEL NÉCESSAIRE : oui — vérifier visuellement que le toggle change l'app.
+```
+
+```
+ID : V3-F-132
+PRIORITÉ : P3
+DOMAINE : Settings
+FEATURE : Préférences notifications/stockage — persistées mais jamais lues, parité RÉELLE (dead-code partagé, pas une régression)
+ANDROID SOURCE OF TRUTH : `notificateChats/Groups/Pages` déclarés (SettingsActivity.java:43-45) mais JAMAIS relus dans MyFirebaseMessagingService.java (grep confirmé côté Android aussi)
+IOS FILES : Settings/SettingSubViews.swift:96-131
+STATUT : COMPLETE_PARITY_VALIDATED (parité d'absence confirmée des deux côtés)
+CAUSE : Sans objet — parité réelle par absence symétrique.
+RISQUE : Aucun.
+RECOMMANDATION : Aucune action.
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+```
+ID : V3-F-133
+PRIORITÉ : P2
+DOMAINE : Settings
+FEATURE : `AUTHORIZED_ADS` (pub personnalisée) — persisté mais jamais consulté par AdMobManager, contrairement à Android
+ANDROID SOURCE OF TRUTH : `infoContract.AUTHORIZED_ADS` lu réellement dans `FeedFragment.java:1804`/`MainFragment.java:1839` (gate réel avant injection de pub)
+IOS FILES : Settings/SettingSubViews.swift:195-204, Advertising/AdMobManager.swift
+LOGIC PARITY : Grep exhaustif : `AUTHORIZED_ADS` apparaît UNIQUEMENT dans sa propre déclaration/toggle, jamais dans `AdMobManager.swift`.
+STATUT : PARTIAL
+CAUSE : Toggle porté comme UI pure sans câblage vers le SDK AdMob iOS.
+RISQUE : Faible/moyen — cosmétique, l'utilisateur croit contrôler la personnalisation pub sans effet réel.
+RECOMMANDATION : Câbler `AUTHORIZED_ADS` dans `AdMobManager.swift` avant chargement d'une requête pub (mode "non personnalisé" si `false`).
+TEST RÉEL NÉCESSAIRE : non pour le constat, oui pour valider le fix.
+```
+
+```
+ID : V3-F-134
+PRIORITÉ : P0
+DOMAINE : Permissions
+FEATURE : Aucun repli utilisateur (alerte + redirection Réglages) en cas de refus de permission caméra/micro/photos
+ANDROID SOURCE OF TRUTH : editor/camera/CameraXFragment.java:534-550,596-619 (dialogue `ErrorDialog` visible + rationale)
+IOS FILES : Camera/CameraCaptureController.swift:19,58, Camera/CameraView.swift, Camera/CameraRecorder.swift
+RUNTIME CHAIN : USER ACTION (refuse permission) → `permissionDenied` émis → RÉSULTAT : grep exhaustif (`.alert`, `UIAlertController`, `openSettingsURLString`) = ZÉRO occurrence liée dans tout le module Camera, ET `openSettingsURLString` = ZÉRO occurrence sur TOUT le projet.
+STATUT : FUNCTIONALLY_FAILED
+PREUVE : `CameraCaptureController.swift:19,58` (erreur définie et émise, jamais consommée avec UI) ; `grep -rln "openSettingsURLString" Sources` → 0 résultat.
+CAUSE : Le chemin d'erreur existe au niveau modèle mais aucune vue n'y souscrit ; aucune primitive de redirection Réglages n'a jamais été implémentée.
+RISQUE : Un utilisateur qui refuse la permission caméra/micro se retrouve devant un écran silencieusement cassé, sans explication ni chemin de récupération — pire que le comportement Android.
+RECOMMANDATION : Ajouter `.alert` sur `permissionDenied` avec bouton "Ouvrir Réglages" (`UIApplication.open(openSettingsURLString)`) ; re-vérifier sur `scenePhase == .active` pour relancer automatiquement après retour des Réglages.
+TEST RÉEL NÉCESSAIRE : oui — device réel, refuser la permission puis revenir depuis Réglages.
+```
+
+```
+ID : V3-F-135
+PRIORITÉ : P2
+DOMAINE : Permissions
+FEATURE : Comparaison Info.plist vs AndroidManifest — parité réelle confirmée par absence symétrique (localisation)
+ANDROID SOURCE OF TRUTH : AndroidManifest.xml:44-45 (permissions localisation déclarées mais JAMAIS consommées par le code applicatif — probablement héritées d'un SDK tiers)
+IOS FILES : project.yml:179-182 (NSCamera/NSMicrophone/NSPhotoLibrary/NSContacts présents et cohérents ; pas de NSLocationWhenInUseUsageDescription)
+STATUT : COMPLETE_PARITY_VALIDATED (parité réelle par absence des deux côtés)
+CAUSE : Sans objet.
+RISQUE : Si une fonctionnalité géo est ajoutée plus tard côté iOS SANS ajouter la clé, crash immédiat garanti (contrairement à Android qui logue juste un refus).
+RECOMMANDATION : Documenter comme dette à combler SI une fonctionnalité géo est ajoutée.
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+```
+ID : V3-F-136
+PRIORITÉ : P0
+DOMAINE : Notifications
+FEATURE : Tap sur notification — AUCUNE différenciation par type, contredit un commentaire trompeur dans le code
+ANDROID SOURCE OF TRUTH : back_sync/NotificationUtils.java:79-96 (`activityMap`) ; back_sync/MyFirebaseMessagingService.java:103-114,136-147 (verb=="post"→feed, sinon→ShowNoti dédié like/comment/follow, type "message"→ActivityMsg avec payload complet)
+IOS FILES : App/AppDelegate.swift:153-162
+RUNTIME CHAIN : USER ACTION (tap notification, tout type confondu) → AUCUNE lecture de `userInfo` → `DeepLinkCenter.shared.route(.notifications)` appelé INCONDITIONNELLEMENT → HomeShellView ouvre systématiquement l'onglet Notifications générique, jamais le post/profil/conversation/appel/groupe concerné.
+STATUT : MISSING
+PREUVE : `AppDelegate.swift:158-161` — corps entier de la méthode, aucun `switch`/`if` sur `userInfo`. Le commentaire ligne 150-152 affirme à tort qu'un routage partiel est en place — CONTREDIT par le code : aucune catégorie n'est routée différemment.
+CAUSE : Écart entre l'intention documentée et le code réellement livré.
+RISQUE : Élevé — régression UX majeure, directement contraire à la mission "chaque type doit mener à la bonne destination". Message privé/appel manqué/mention doivent ouvrir directement la conversation/l'appel/le post concerné sur Android ; sur iOS l'utilisateur atterrit toujours sur la liste générique.
+RECOMMANDATION : Lire `userInfo["type"]`/`userInfo["destination"]` et router vers `.userProfile`/`.post`/`.groupChat`/`.chat` selon le type, à l'image d'`activityMap` Android ; router les appels manqués vers l'écran d'appel.
+TEST RÉEL NÉCESSAIRE : oui — vrai push FCM par type pour valider chaque destination.
+```
+
+```
+ID : V3-F-137
+PRIORITÉ : P1
+DOMAINE : DeepLinks
+FEATURE : Deep link "myaccount" — ouvre le menu Réglages générique au lieu du sous-écran "Compte"
+ANDROID SOURCE OF TRUTH : partage/ShareActivity.java:179-185 (`case "myaccount"` → `SettingsActivity` INDEX=7, sous-écran exact SettingAccountFragment)
+IOS FILES : Navigation/DeepLinkRouter.swift:65-66, Navigation/HomeShellView.swift:148-150
+LOGIC PARITY : `DeepLinkDestination.settings` n'a pas été granularisé pour porter une sous-destination.
+STATUT : PARTIAL
+RISQUE : Moyen — l'utilisateur doit taper une fois de plus après ouverture du lien.
+RECOMMANDATION : Étendre `DeepLinkDestination.settings` en `.settingsAccount`, router directement.
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+```
+ID : V3-F-138
+PRIORITÉ : P2
+DOMAINE : DeepLinks
+FEATURE : Échec silencieux des deep links user/post/group en cas d'erreur réseau
+ANDROID SOURCE OF TRUTH : partage/ShareActivity.java:264-268 (`onError` → dialogue visible)
+IOS FILES : Navigation/DeepLinkRouter.swift:89-109
+LOGIC PARITY : `guard let ... = try? await ... else { return }` — aucun chemin d'erreur visible.
+STATUT : PARTIAL
+RISQUE : Faible/moyen — un lien mort/expiré ouvre l'app sans aucune indication d'échec.
+RECOMMANDATION : Ajouter un état d'erreur visible (toast/alert) sur échec de résolution.
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+### 30.6 Monétisation / Groupes / Authentification
+
+```
+ID : V3-F-139
+PRIORITÉ : P2
+DOMAINE : Monétisation
+FEATURE : AdMob (bannière/rewarded/rewarded-interstitial/native) — câblage complet confirmé
+ANDROID SOURCE OF TRUTH : Activity/service/NativeAdsManager.java ; FeedFragment.java:1758-1903 ; wallet/*Activity.java
+IOS FILES : Advertising/AdMobManager.swift, AdMobIdentifiers.swift, Feed/FeedView.swift, Wallet/*.swift
+STATUT : COMPLETE_PARITY_CANDIDATE
+PREUVE : Tous les sites d'instanciation (`RewardedAdManager`/`RewardedInterstitialAdManager`/`NativeAdLoader`/`AdBannerView`) résolus et confirmés, même modulo (`adsOnFeedPost=7`) que `ADS_ON_FEED_POST`.
+RISQUE : Aucun nouveau — le rendu natif reste un portage partiel assumé déjà connu (une annonce à la fois, pas de pool retry).
+RECOMMANDATION : Aucune action.
+TEST RÉEL NÉCESSAIRE : oui (chargement effectif AdMob sur device).
+```
+
+```
+ID : V3-F-140
+PRIORITÉ : P0 (reconfirmation, inchangé)
+DOMAINE : Monétisation
+FEATURE : Achat de pièces StoreKit 2 — vérification serveur toujours absente
+IOS FILES : Wallet/CoinStoreManager.swift:60-170
+LOGIC PARITY : Code relu, conforme à la description P0-7 : `transaction.finish()` seulement si confirmation serveur ; sinon redélivrance via `Transaction.updates`. Crédit local optimiste avant confirmation dans les 2 chemins.
+STATUT : FUNCTIONALLY_FAILED (inchangé — l'endpoint backend `storekit/verify-purchase` n'existe toujours pas)
+RISQUE : Argent réel dépensé peut rester non crédité durablement si le prochain lancement ne se produit pas avant resynchronisation du profil.
+RECOMMANDATION : Implémenter l'endpoint serveur avant mise en production.
+TEST RÉEL NÉCESSAIRE : oui (sandbox StoreKit + backend réel).
+```
+
+```
+ID : V3-F-141
+PRIORITÉ : P3
+DOMAINE : Monétisation
+FEATURE : Boost/campagnes — aucune régression après modifications de session
+STATUT : COMPLETE_PARITY_CANDIDATE (confirmé, module isolé, aucun couplage avec CoinStoreManager/GroupRepository)
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+```
+ID : V3-F-142
+PRIORITÉ : P1
+DOMAINE : Groupes
+FEATURE : Groupes payants — chaîne complète abonnement/renouvellement (V3-F-070) tracée bout en bout, aucun maillon manquant
+ANDROID SOURCE OF TRUTH : ChatFragmentTest.java:618-629,707-749,3023-3057 ; MessageListAdapter.java:247-412 ; infoContract.java:49-50
+IOS FILES : Messagerie/ChatViewModel.swift:82,97-149 ; Messagerie/ChatListItem.swift:37-46 ; Messagerie/GroupRepository.swift:291-323 ; Messagerie/ChatView.swift:48,171,175
+STATUT : COMPLETE_PARITY_CANDIDATE (upgrade depuis BUILD_VALIDATED)
+PREUVE : Chaîne complète vérifiée — payload identique, comparaison de solde stricte `&gt;` reproduite, messages système corrects.
+RECOMMANDATION : Test réel avec un groupe payant réel (non-membre/expiré/restreint).
+TEST RÉEL NÉCESSAIRE : oui.
+```
+
+```
+ID : V3-F-143
+PRIORITÉ : P1
+DOMAINE : Authentification
+FEATURE : Routeur d'authentification — 9 positions Android vérifiées champ par champ
+ANDROID SOURCE OF TRUTH : Authentification/MainActivity.java (switch 0-8)
+IOS FILES : Navigation/AuthCoordinatorView.swift
+LOGIC PARITY : Les 9 positions correspondent exactement, y compris position 5 (`MyCodeConfirmFragment`) confirmée morte dans le contexte Auth des deux côtés.
+STATUT : COMPLETE_PARITY_CANDIDATE (pas VALIDATED — aucun test réel device n'a eu lieu, corrigé par rapport à la conclusion initiale de l'agent)
+TEST RÉEL NÉCESSAIRE : non (structure de navigation, faible risque runtime) — mais statut plafonné par la règle stricte de la taxonomie.
+```
+
+```
+ID : V3-F-144
+PRIORITÉ : P2
+DOMAINE : Authentification
+FEATURE : Inscription email/téléphone — champs/validation/erreurs fidèles
+ANDROID SOURCE OF TRUTH : Authentification/register/SignupFragment.java (source active — Inscrire.java mort, phoneNumber.java sans appelant)
+IOS FILES : Authentication/RegisterView.swift
+STATUT : COMPLETE_PARITY_CANDIDATE
+TEST RÉEL NÉCESSAIRE : oui (léger).
+```
+
+```
+ID : V3-F-145
+PRIORITÉ : P2
+DOMAINE : Authentification
+FEATURE : Connexion/Inscription via Google (Firebase)
+IOS FILES : Authentication/GoogleSignInCoordinator.swift
+LOGIC PARITY : `providerId` = `FirebaseUser.uid` (équivalent exact de `profile.getUid()`), coordinateur factorisé (Android duplique dans 2 fichiers) sans impact fonctionnel.
+STATUT : COMPLETE_PARITY_CANDIDATE
+TEST RÉEL NÉCESSAIRE : oui (OAuth réel).
+```
+
+```
+ID : V3-F-146
+PRIORITÉ : P2
+DOMAINE : Authentification
+FEATURE : Vérification de code (email) — double usage inscription/mot de passe oublié
+IOS FILES : Authentication/EmailVerificationView.swift
+STATUT : COMPLETE_PARITY_CANDIDATE
+TEST RÉEL NÉCESSAIRE : oui (léger).
+```
+
+```
+ID : V3-F-147
+PRIORITÉ : P3
+DOMAINE : Authentification
+FEATURE : Mot de passe oublié — email de confirmation en clair (bug PARTAGÉ, pas une régression iOS)
+ANDROID SOURCE OF TRUTH : Authentification/passwordrecovery/mdpOublier.java:151-170 (endpoint "mail", nouveau mot de passe en TEXTE CLAIR)
+IOS FILES : Authentication/NewPasswordView.swift:66-82
+STATUT : COMPLETE_PARITY_CANDIDATE (parité comportementale, défaut préexistant côté Android)
+RISQUE : Faible risque de sécurité PARTAGÉ, pas introduit par le portage.
+RECOMMANDATION : Décision produit hors périmètre parité — arrêter d'envoyer le mot de passe en clair, des DEUX côtés.
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+```
+ID : V3-F-148
+PRIORITÉ : P2
+DOMAINE : Authentification
+FEATURE : Récupération par téléphone silencieusement bloquée (bug PARTAGÉ, reproduit fidèlement)
+ANDROID SOURCE OF TRUTH : Authentification/passwordrecovery/RecoverPassword.java:79-93 (`clicOub` vérifie toujours `!mail.isEmpty()`, même en mode téléphone)
+IOS FILES : Authentication/ForgotPasswordRequestView.swift:32-44
+STATUT : COMPLETE_PARITY_CANDIDATE (bug partagé, PAS une régression iOS)
+RECOMMANDATION : Signaler au propriétaire produit pour correction synchronisée Android+iOS.
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+```
+ID : V3-F-149
+PRIORITÉ : P1
+DOMAINE : Authentification
+FEATURE : Restauration de session au relancement
+ANDROID SOURCE OF TRUTH : SplashActivity.java:98-122
+IOS FILES : Navigation/RootRouterView.swift
+STATUT : IOS_IMPROVED (session) / DIVERGENCE PRODUIT VOLONTAIRE DOCUMENTÉE (comparaison de version retirée, déjà actée le 2026-08-13)
+RISQUE : Faible, documenté et intentionnel.
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+```
+ID : V3-F-150
+PRIORITÉ : P3
+DOMAINE : Authentification
+FEATURE : Attribution de parrainage à l'installation (Install Referrer) — capacité plateforme absente
+ANDROID SOURCE OF TRUTH : SplashActivity.java:175-216 (Play Install Referrer API)
+IOS FILES : Navigation/DeepLinkRouter.swift, Navigation/RootRouterView.swift:65-67
+STATUT : ANDROID_ONLY (capacité plateforme, pas un oubli de portage)
+RISQUE : Parrainages via lien Play Store cliqué avant installation non trackables côté iOS de la même façon.
+RECOMMANDATION : Évaluer un SDK d'attribution tiers si stratégique, sinon documenter comme limitation acceptée.
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+### 30.7 Balayage transversal (code mort / stubs, hors Animems)
+
+Décompte honnête : 289 sites `try?` (0 retenu — motif décodage-tolérant déjà établi), 53 clauses
+`catch` non vides (0 retenu — gestion correcte ou politique de retry documentée), 22 fichiers
+`TODO`/`stub` (0 retenu — usages légitimes déjà trackés ailleurs), 3 `fatalError` (boilerplate
+CoreDataStack standard, non retenus), 74 vues SwiftUI vérifiées (0 orpheline hors Animems), ~75
+classes/services vérifiés (1 orpheline confirmée).
+
+```
+ID : V3-F-151
+PRIORITÉ : P2
+DOMAINE : Transversal
+FEATURE : Upload photo de profil — échec réseau totalement silencieux (`catch {}` littéralement vide)
+IOS FILES : Profile/ProfileViewModel.swift:157-165
+RUNTIME CHAIN : `ProfileView.swift:77-85` (sélection photo réelle via PhotosPicker) → `uploadProfilePicture` → `catch {}` vide, contrairement aux 53 autres clauses catch du projet (toutes avec message utilisateur ou diagnostic).
+STATUT : FUNCTIONALLY_FAILED (partiel — dégrade l'UX sans casser le succès)
+PREUVE : Ligne 164, corps vide, comparé à `loadProfile()` (ligne 105-108, même fichier, qui alimente `errorMessage`+`print()` pour un cas comparable).
+CAUSE : Oubli lors du portage.
+RISQUE : En cas d'échec réseau pendant l'upload, l'utilisateur voit le spinner disparaître sans indication — peut croire l'opération réussie.
+RECOMMANDATION : Ajouter `errorMessage` + `print()` diagnostic, à l'identique du motif de `loadProfile()`.
+TEST RÉEL NÉCESSAIRE : oui (simuler coupure réseau pendant l'upload).
+```
+
+```
+ID : V3-F-152
+PRIORITÉ : P3
+DOMAINE : Transversal
+FEATURE : `ProTimelineViewModel.swift` — logique de trim "pro" complète (293 lignes) jamais instanciée
+ANDROID SOURCE OF TRUTH : editor/view/ProTimelineView.java (763 lignes)
+IOS FILES : Media/ProTimelineViewModel.swift
+RUNTIME CHAIN : `grep -rn "ProTimelineViewModel("` = zéro site d'appel. `MediaTrimView.swift` (l'écran réellement monté) utilise sa propre géométrie simplifiée à la place.
+STATUT : DEAD_CODE (déjà partiellement tracké dans `MIGRATION_AUDIT.md:115`/`MIGRATION_PROGRESS.md`, jamais consolidé dans V3)
+CAUSE : Logique pure écrite en avance du rendu Canvas SwiftUI, jamais terminée — `MediaTrimView.swift` livré avec une géométrie plus simple à la place.
+RISQUE : Faible — 293 lignes maintenues sans bénéfice, risque de confusion pour un futur contributeur.
+RECOMMANDATION : Supprimer le fichier, ou documenter explicitement comme vestige volontairement laissé de côté.
+TEST RÉEL NÉCESSAIRE : non.
+```
+
+### 30.8 Décompte des statuts — cycle complémentaire (54 nouveaux findings, V3-F-099 à V3-F-152)
+
+- `MISSING` : 3 (V3-F-099 hashtag/mention tap, V3-F-136 routage notifications par type, +1 déjà cité)
+- `FUNCTIONALLY_FAILED` : 8 (V3-F-103, V3-F-107, V3-F-110, V3-F-123, V3-F-131, V3-F-134, V3-F-140 [reconfirmation], V3-F-151)
+- `PARTIAL` : 20
+- `CODE_PRESENT_UNVERIFIED` : 4
+- `COMPLETE_PARITY_CANDIDATE` : 16
+- `COMPLETE_PARITY_VALIDATED` : 2 (V3-F-132, V3-F-135 — parité par absence symétrique, pas des fonctionnalités testées sur device)
+- `BUILD_VALIDATED` : 2 (V3-F-111, V3-F-122)
+- `IOS_IMPROVED` : 2 (V3-F-109, V3-F-149)
+- `ANDROID_ONLY` : 1 (V3-F-150)
+- `DEAD_CODE` : 1 (V3-F-152)
+
+**Nouveaux P0 (5, tous non identifiés par les cycles précédents)** :
+1. **V3-F-110** — WebRTC : `isOnCall` jamais mis à `true`, signalisation d'appel entrant jamais routée vers l'appel réel. **Le plus sévère.**
+2. **V3-F-136** — Notifications : tap ne différencie jamais le type, contredit un commentaire trompeur affirmant le contraire.
+3. **V3-F-131** — Réglages : toggle thème clair/sombre sans aucun effet visuel.
+4. **V3-F-134** — Permissions : aucun repli utilisateur (alerte/redirection Réglages) en cas de refus caméra/micro/photos.
+5. **V3-F-123** — Vidéo : tout échec d'export republie silencieusement le fichier ORIGINAL non modifié.
+
+**P0 reconfirmés (inchangés, déjà connus)** : V3-F-140 (StoreKit).
+
+**P1 majeurs nouveaux** : V3-F-124 (portée élargie de V3-F-042 — passthrough imprécis pour la MAJORITÉ des trims, pas un cas limite), V3-F-125 (recadrage ovale confirmé, pas juste suspecté), V3-F-103 (recherche récente hashtag/mention → 0 résultat, reproductible à 100%), V3-F-107 (bouton Suivre peut mentir en permanence), V3-F-099 (hashtag/mention tap absent), V3-F-102 (pagination hashtag absente au-delà de 30), V3-F-113 (pas de surveillance réseau pour la reconnexion socket), V3-F-114 (présence jamais émise), V3-F-128/129 (Réglages : bouton catégorie mal placé, liens légaux faux).
+
+**2 découvertes notables où iOS est confirmé PLUS correct qu'Android** (à ne pas "corriger" — signaler à l'équipe QA pour éviter un faux rapport de régression) : V3-F-109 (recherche de conversation locale), V3-F-149 (restauration de session, déjà connu).
+
 **Aucun de ces 8 points n'a été corrigé dans cette passe — Phase A s'arrête ici.**

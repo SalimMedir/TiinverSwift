@@ -536,3 +536,18 @@ serveur de la valeur choisie.
 dernier, plus "partielle").
 
 ---
+
+## 2026-08-20 — Cycle complémentaire d'audit (Phase A uniquement, aucun code modifié)
+
+Sur demande explicite de reprise du cycle V3 existant (pas un nouveau cycle indépendant) : lecture
+obligatoire de `MIGRATION_PARITY_AUDIT_V2.md`/`MIGRATION_PARITY_PROGRESS_V2.md`/
+`ANIMEMS_PARITY_AUDIT_V1.md`/`ANIMEMS_PARITY_PROGRESS_V1.md`/`CLAUDE_CONTINUATION.md`, puis 7 agents
+en parallèle (Recherche approfondi, Chat/Socket/WebRTC approfondi, régression Animems post-Phase B,
+Galerie/Photo/Video Editor, Settings/Permissions/Notifications/DeepLinks, Monétisation/Groupes/
+Authentification, balayage transversal code-mort). 54 nouveaux findings (V3-F-099 à V3-F-152)
+ajoutés à `MIGRATION_PARITY_AUDIT_V3.md` §30 — voir ce fichier pour le détail complet, le décompte
+par statut, et les 5 nouveaux P0 identifiés. Aucune correction de code effectuée dans cette passe
+(Phase A, audit uniquement) — ce journal (Phase B) n'a donc rien d'autre à consigner ici tant que le
+feu vert de correction n'est pas donné.
+
+**En attente du feu vert explicite avant toute correction sur les nouveaux findings.**

@@ -789,7 +789,7 @@ préfixe `#` → onglet `.hashtags` + query dépouillée, `@` → `.users` + que
 
 ## 2026-08-20 — Phase B (cycle complémentaire) — Lot 8 : V3-F-107 (bouton Suivre — faux positif permanent après échec réseau)
 
-**Commit** : voir commit de ce lot (code + doc) — CI en cours de dispatch.
+**Commit** : `c08ce4c` — CI **succès** (confirmé).
 
 **Cause exacte** : `SearchView.toggleFollow` posait `isFollowed=true` de façon optimiste puis
 `try? await ...follow(...)` avalait toute erreur réseau SANS jamais annuler cette mise à jour —
@@ -819,15 +819,14 @@ ne jamais laisser un état faux ou bloqué à l'utilisateur.
 `Feed/FeedViewModel.swift`, `Feed/SuggestionsCarouselView.swift`,
 `Notifications/NotificationsListView.swift`.
 
-**Résultat CI** : en attente.
+**Résultat CI** : succès.
 
-**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI, puis
-`BUILD_VALIDATED` (test réel requis : couper le réseau pendant un tap "Suivre" sur les 4 écrans,
+**Statut honnête après correction** : `BUILD_VALIDATED` (test réel requis : couper le réseau pendant un tap "Suivre" sur les 4 écrans,
 confirmer le rollback visuel et la possibilité de réessayer).
 
 ## 2026-08-20 — Phase B (cycle complémentaire) — Lot 9 : V3-F-099 (tap #hashtag/@mention dans une légende absent)
 
-**Commit** : voir commit de ce lot (code + doc) — CI en cours de dispatch.
+**Commit** : `349b606` — CI **succès** (confirmé).
 
 **Cause exacte** : Android rend les légendes de post cliquables via `MentionTextView`
 (`ClickableSpan` par hashtag/mention détecté par regex, `TokenClickableSpan.onClick` → ouvre
@@ -858,9 +857,9 @@ correctif se propage automatiquement à tous sans modification supplémentaire, 
 `setSpannableText` dans tout le projet (grep exhaustif), tous les 2 dans cette même fiche plein
 écran.
 
-**Résultat CI** : en attente.
+**Résultat CI** : succès.
 
-**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` — l'API `AttributedString.link` +
+**Statut honnête après correction** : `BUILD_VALIDATED`. L'API `AttributedString.link` +
 `.environment(\.openURL)` n'a jamais été exercée sur device/simulateur dans cette session (conforme
 à la consigne de ne pas déclencher de test Appetize). Test réel nécessaire : taper un hashtag et
 une mention dans une légende de post (fil, recherche, hashtag, notifications, profil, lien profond)

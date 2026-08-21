@@ -471,7 +471,7 @@ VIEW PARITY : Android rend les légendes cliquables dans TOUS les posts (vidéo 
 LOGIC PARITY : Android extrait le token, lance la recherche avec onglet+query présélectionnés. Aucune logique équivalente côté iOS.
 NETWORK/MEDIA PARITY : N/A (jamais atteint côté iOS).
 RUNTIME CHAIN : USER ACTION (tap #hashtag) → Android : ClickableSpan → recherche pré-remplie. iOS : rupture au premier maillon, `Text` statique sans geste.
-STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte ; jamais exercé sur device/simulateur, cf. `HashtagMentionText.swift`)
+STATUT : **BUILD_VALIDATED** (corrigé `349b606`, Phase B, CI confirmée verte — mais `AttributedString.link`/`.environment(\.openURL)` jamais exercé sur device/simulateur, test réel indispensable avant COMPLETE_PARITY_VALIDATED, cf. `HashtagMentionText.swift`)
 PREUVE : `MentionTextView.java:98,188-196` ; `VideoViewHolder.java:636` ; `CustomCardView.java:142` ; `Feed/FeedView.swift:595-596` (`Text(message)` sans modificateur de geste). (Avant correctif.)
 CAUSE : Fonctionnalité jamais portée (grep exhaustif `MentionTextView`/`onHashtagTap`/`clickableSpan` : zéro résultat).
 RISQUE : Perte d'un point d'entrée réel et fréquent vers la recherche.
@@ -1333,7 +1333,7 @@ Les 4 corrections sont `BUILD_VALIDATED` (CI verte, comportement code re-tracé 
 
 **P0 reconfirmés (inchangés, déjà connus, bloqués backend)** : V3-F-140/V3-F-084 (StoreKit) — aucune correction client possible sans le endpoint backend `storekit/verify-purchase` (voir doc en tête de `CoinStoreManager.swift`, déjà écrite lors du travail P0-7 antérieur à cette session Phase B). Reste `FUNCTIONALLY_FAILED` pour la vraie parité tant que ce endpoint n'existe pas côté serveur — **BLOCKED BY BACKEND**.
 
-**P1 majeurs nouveaux** : V3-F-124 ✅ **CORRIGÉ** (`cd316df`, CI verte confirmée — `BUILD_VALIDATED`), V3-F-125 ✅ **CORRIGÉ** (`5eb3358`, CI verte confirmée sur `e869825` — `BUILD_VALIDATED`), V3-F-103 ✅ **CORRIGÉ** (`c9dd8b1`, CI verte confirmée — `BUILD_VALIDATED`), V3-F-107 ✅ **CORRIGÉ** (Phase B — CI en attente de confirmation), V3-F-099 ✅ **CORRIGÉ** (Phase B — CI en attente de confirmation, jamais exercé sur device), V3-F-102 (pagination hashtag absente au-delà de 30), V3-F-113 (pas de surveillance réseau pour la reconnexion socket), V3-F-114 (présence jamais émise), V3-F-128/129 (Réglages : bouton catégorie mal placé, liens légaux faux).
+**P1 majeurs nouveaux — TOUS CORRIGÉS le 2026-08-20 (Phase B), CI verte confirmée sur chacun, tous `BUILD_VALIDATED`** : V3-F-124 (`cd316df`), V3-F-125 (`5eb3358`/`e869825`), V3-F-103 (`c9dd8b1`), V3-F-107 (`c08ce4c`), V3-F-099 (`349b606` — mais `AttributedString.link`/`openURL` jamais exercé sur device, test réel prioritaire). Restants dans le backlog P1 : V3-F-102 (pagination hashtag absente au-delà de 30), V3-F-113 (pas de surveillance réseau pour la reconnexion socket), V3-F-114 (présence jamais émise), V3-F-128/129 (Réglages : bouton catégorie mal placé, liens légaux faux).
 
 **2 découvertes notables où iOS est confirmé PLUS correct qu'Android** (à ne pas "corriger" — signaler à l'équipe QA pour éviter un faux rapport de régression) : V3-F-109 (recherche de conversation locale), V3-F-149 (restauration de session, déjà connu).
 

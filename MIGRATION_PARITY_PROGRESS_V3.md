@@ -1114,9 +1114,14 @@ de recadrage en cours dans les deux cas, fidèle, pas "amélioré" silencieuseme
 - `Sources/TiinverSwift/PhotoEditor/PhotoCropView.swift` — `Shape` conforme à `Equatable` (requis
   pour surligner/désactiver le bouton de la forme active).
 
-**Commit** : *(à renseigner après commit/push de ce tour)*.
+**Commit** : `0422fda`, poussé sur `origin/main`.
 
-**Résultat CI** : *(à renseigner — build GitHub Actions à déclencher juste après ce commit)*.
+**Résultat CI** : **NON DÉCLENCHÉ par cette session** — le workflow `.github/workflows/ios-build.yml`
+n'a QUE `workflow_dispatch` comme déclencheur (aucun trigger automatique sur `push`), et cette
+session n'a pas accès à `gh` CLI ; consigne explicite de l'utilisateur ce tour de ne chercher/
+utiliser aucun token — donc pas de contournement par API REST comme les tours précédents l'ont fait.
+**Déclenchement manuel requis par l'utilisateur** (bouton "Run workflow" sur GitHub Actions, ou
+Codemagic) avant de pouvoir confirmer BUILD_VALIDATED.
 
 **Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI, PUIS
 `BUILD_VALIDATED` seulement (pas `COMPLETE_PARITY_VALIDATED`) même après CI verte — test réel requis

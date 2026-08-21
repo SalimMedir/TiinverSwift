@@ -80,6 +80,19 @@ final class ChatViewModel: ObservableObject {
         items = built
         await markConversationRead()
         await checkGroupSubscription()
+        emitPresenceIfPrivateChat()
+    }
+
+    /// Port de `if (userData.getType().equals(ChatType.CHAT)) { chatViewModel.presence(userData.
+    /// getTo()); ... }` (`ChatFragmentTest.java:700-704`) — **ajouté le 2026-08-20
+    /// (MIGRATION_PARITY_AUDIT_V3.md V3-F-114, Phase B P1)**. `emitPresence(username:)` existait
+    /// déjà et émet correctement (`ChatRepository.swift:432`), mais grep exhaustif confirmait ZÉRO
+    /// site d'appel en dehors de sa propre déclaration — la RÉCEPTION fonctionne (listener câblé,
+    /// met à jour `isPeerOnline`), seule l'ÉMISSION de la requête initiale manquait. Gardé par
+    /// `!target.isGroup`, fidèle à `ChatType.CHAT` (jamais émis pour un groupe côté Android).
+    private func emitPresenceIfPrivateChat() {
+        guard !target.isGroup else { return }
+        chatRepository.emitPresence(username: target.to)
     }
 
     // MARK: - Groupes payants (port du bloc `if (userData.getType().equals(GROUP)){...}` de

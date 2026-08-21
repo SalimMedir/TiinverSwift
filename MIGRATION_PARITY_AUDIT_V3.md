@@ -720,11 +720,11 @@ IOS FILES : Messagerie/ChatViewModel.swift (aucun appel), Realtime/ChatRepositor
 LOGIC PARITY : `emitPresence(username:)` existe et émet correctement, mais grep exhaustif confirme ZÉRO site d'appel en dehors de sa propre déclaration. `ChatViewModel.loadInitial()` ne l'appelle jamais.
 NETWORK/MEDIA PARITY : La RÉCEPTION fonctionne (listener câblé, met à jour `isPeerOnline`) — seule l'ÉMISSION de la requête initiale manque.
 RUNTIME CHAIN : USER ACTION (ouvrir chat 1:1) → RUPTURE : aucun appel à `emitPresence` → `isPeerOnline` reste `false` indéfiniment sauf changement d'état du pair PENDANT que l'écran est déjà ouvert.
-STATUT : PARTIAL
-PREUVE : `ChatRepository.swift:432` (jamais appelée) ; `ChatFragmentTest.java:701` (site d'appel Android).
+STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte)
+PREUVE : `ChatRepository.swift:432` (jamais appelée) ; `ChatFragmentTest.java:701` (site d'appel Android). (Avant correctif.)
 CAUSE : Angle mort entre deux modules écrits à des passes différentes (protocole d'émission vs déclenchement dans le flux d'ouverture).
 RISQUE : Badge "en ligne" fonctionnellement mort en usage normal — fausse impression que le contact n'est "jamais en ligne".
-RECOMMANDATION : Ajouter `chatRepository.emitPresence(username: target.to)` dans `loadInitial()`, gardé par `!target.isGroup`.
+RECOMMANDATION : Ajouter `chatRepository.emitPresence(username: target.to)` dans `loadInitial()`, gardé par `!target.isGroup`. **Appliqué le 2026-08-20** exactement comme recommandé (`ChatViewModel.swift`, nouvelle `emitPresenceIfPrivateChat()` appelée en fin de `loadInitial()`). `loadInitial()` a un seul site d'appel dans tout le projet (`ChatView.swift:64`, `.task`) — aucun flux frère à corriger.
 TEST RÉEL NÉCESSAIRE : oui.
 ```
 

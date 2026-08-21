@@ -702,7 +702,7 @@ ANDROID SOURCE OF TRUTH : Activity/ui/HomeActivity.java:430-464,482-497 (`networ
 IOS FILES : Realtime/TiinverSocket.swift, Realtime/ChatRepository.swift, Navigation/RootRouterView.swift
 LOGIC PARITY : Grep exhaustif (`NWPathMonitor`/`Reachability`) = zéro résultat sur tout le projet. Seul `attachToCurrentSocket()` existe, appelé UNIQUEMENT au login (jamais réexécuté ensuite). Le seul mécanisme résiduel (`attemptReconnect`) ne couvre que `"io server disconnect"`, pas une coupure réseau côté client — équivalent au VRAI `ChatRepository.attemptReconnect()` Android, mais PAS à `HomeActivity.onNetworkChange` (mécanisme séparé, absent côté iOS).
 RUNTIME CHAIN : Perte réseau réelle → iOS : rien n'observe activement, seul le backoff interne du moteur Socket.IO agit (hors contrôle applicatif) → Android : détection explicite + reset forcé immédiat.
-STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte)
+STATUT : **BUILD_VALIDATED** (corrigé `ab510b3`, Phase B, CI confirmée verte — test réel requis avant COMPLETE_PARITY_VALIDATED)
 PREUVE : `HomeActivity.java:482-497` ; absence confirmée côté iOS (grep 0 résultat) ; `RootRouterView.swift:53` (seul site d'appel). (Avant correctif.)
 CAUSE : Le portage a traité `onNetworkChange` uniquement comme "premier reset après login", sans reproduire le déclencheur RÉSEAU qui l'active à chaque changement de connectivité côté Android.
 RISQUE : Chat/appels potentiellement non fonctionnels plus longtemps qu'Android après une coupure réseau (mode avion, changement WiFi/4G, tunnel).

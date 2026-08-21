@@ -720,7 +720,7 @@ IOS FILES : Messagerie/ChatViewModel.swift (aucun appel), Realtime/ChatRepositor
 LOGIC PARITY : `emitPresence(username:)` existe et émet correctement, mais grep exhaustif confirme ZÉRO site d'appel en dehors de sa propre déclaration. `ChatViewModel.loadInitial()` ne l'appelle jamais.
 NETWORK/MEDIA PARITY : La RÉCEPTION fonctionne (listener câblé, met à jour `isPeerOnline`) — seule l'ÉMISSION de la requête initiale manque.
 RUNTIME CHAIN : USER ACTION (ouvrir chat 1:1) → RUPTURE : aucun appel à `emitPresence` → `isPeerOnline` reste `false` indéfiniment sauf changement d'état du pair PENDANT que l'écran est déjà ouvert.
-STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI initialement ROUGE : `98b8c7d` échec réel de compilation, `target.to` est `String?` pas `String`, `emitPresence(username:)` exige un non-optionnel — corrigé par un `guard let` dans le même lot, jamais masqué)
+STATUT : **BUILD_VALIDATED** (corrigé `94bd731`, confirmé CI verte `066fa04` — CI initialement ROUGE sur `98b8c7d`, échec réel de compilation : `target.to` est `String?` pas `String`, `emitPresence(username:)` exige un non-optionnel — corrigé par un `guard let`, jamais masqué, puis re-confirmé vert. Test réel requis avant COMPLETE_PARITY_VALIDATED)
 PREUVE : `ChatRepository.swift:432` (jamais appelée) ; `ChatFragmentTest.java:701` (site d'appel Android). (Avant correctif.)
 CAUSE : Angle mort entre deux modules écrits à des passes différentes (protocole d'émission vs déclenchement dans le flux d'ouverture).
 RISQUE : Badge "en ligne" fonctionnellement mort en usage normal — fausse impression que le contact n'est "jamais en ligne".
@@ -920,7 +920,7 @@ FEATURE : Aplatissement (flatten) peinture/texte/stickers — distorsion de rati
 ANDROID SOURCE OF TRUTH : Voir V3-F-039
 IOS FILES : PhotoEditor/PhotoToolsView.swift:227-249 (`flatten()`)
 LOGIC PARITY : `renderer.scale` dérive uniquement du ratio de LARGEUR (`canvasSize`=taille écran vs taille photo). Si le ratio de l'écran diffère du ratio de la photo source (cas courant), le rendu final aura les dimensions du RATIO ÉCRAN, pas du ratio photo — les bandes de lettrboxing (transparentes/blanches dans le composé, contrairement au fond noir explicite de l'écran d'édition) sont gravées définitivement dans l'image publiée dès qu'un trait/texte a été ajouté.
-STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte)
+STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé `56f62f7`, Phase B — CI pas encore confirmée verte)
 PREUVE : `renderer.scale = max(displayedImage.size.width / canvasSize.width, 1) * displayedImage.scale` (une seule composante, ligne 247) ; vue composée sans fond noir explicite (ligne 244) contrairement à l'écran d'édition (ligne 47). (Avant correctif.)
 CAUSE : `ImageRenderer.scale` scalaire unique suppose implicitement le même ratio pour `canvasSize` et `displayedImage`.
 RISQUE : Toute publication avec peinture/texte/sticker sur une photo de ratio ≠ écran introduit bandes de bord non désirées et distorsion des dimensions publiées.
@@ -952,7 +952,7 @@ FEATURE : Bouton "Catégorie du compte" mal placé — devrait être dans Modifi
 ANDROID SOURCE OF TRUTH : uploadPerfilPhoto/EditProfile.java:72-73 (lance CategoryActivity DEPUIS l'écran d'édition de profil) ; setting/SettingAccountFragment.java (207 lignes, entier — AUCUN champ catégorie)
 IOS FILES : Settings/SettingSubViews.swift:9-56 (SettingAccountView), Profile/EditProfileView.swift:1-5
 LOGIC PARITY : Le vrai gap (bouton manquant dans `EditProfileView`) reste documenté MAIS non comblé (commentaire propre du fichier : "Catégorie NON portée cette session"), tandis qu'un doublon fonctionnel a été ajouté au mauvais endroit (Réglages > Compte).
-STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte)
+STATUT : **BUILD_VALIDATED** (corrigé `9de8647`, confirmé CI verte `066fa04` — test réel requis avant COMPLETE_PARITY_VALIDATED)
 PREUVE : `SettingSubViews.swift:9-13` ("aucun équivalent Android direct identifié... placé ici par analogie") ; `EditProfileView.swift:3-5` ("Catégorie NON portée cette session"). (Avant correctif.)
 CAUSE : Deux sessions de portage différentes ont traité le même gap sans se recouper.
 RISQUE : Navigation divergente de l'attente Android ; risque de double-maintenance si le vrai gap est comblé plus tard sans retirer le doublon.
@@ -968,7 +968,7 @@ FEATURE : Liens légaux (CGU/confidentialité) pointent vers la racine du site, 
 ANDROID SOURCE OF TRUTH : setting/SettingAboutFragment.java:93-108 (`privacy`→`/privacy_policy.html`, `terms`→`/terms_conditions.html`, ouverts en WebView interne)
 IOS FILES : Settings/SettingSubViews.swift:220-229 (SettingAboutView)
 LOGIC PARITY : Les DEUX libellés pointent vers `https://tiinver.com` (racine), pas les pages légales réelles ; ouverture via Safari externe au lieu d'une WebView interne.
-STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte)
+STATUT : **BUILD_VALIDATED** (corrigé `9de8647`, confirmé CI verte `066fa04` — test réel requis avant COMPLETE_PARITY_VALIDATED)
 PREUVE : `SettingSubViews.swift:224-225` — deux `Link` vers la même URL racine. (Avant correctif.)
 CAUSE : `SettingAboutFragment.java` jamais lu en détail au moment du portage (commentaire du fichier iOS obsolète maintenant contredit).
 RISQUE : Problème potentiel de conformité (RGPD/App Store review) — un lien "Politique de confidentialité" doit mener au texte légal réel.
@@ -1092,7 +1092,7 @@ FEATURE : Deep link "myaccount" — ouvre le menu Réglages générique au lieu 
 ANDROID SOURCE OF TRUTH : partage/ShareActivity.java:179-185 (`case "myaccount"` → `SettingsActivity` INDEX=7, sous-écran exact SettingAccountFragment)
 IOS FILES : Navigation/DeepLinkRouter.swift:65-66, Navigation/HomeShellView.swift:148-150
 LOGIC PARITY : `DeepLinkDestination.settings` n'a pas été granularisé pour porter une sous-destination.
-STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte)
+STATUT : **BUILD_VALIDATED** (corrigé `94bd731`, confirmé CI verte `066fa04` — test réel non nécessaire, structure de navigation à faible risque)
 RISQUE : Moyen — l'utilisateur doit taper une fois de plus après ouverture du lien.
 RECOMMANDATION : Étendre `DeepLinkDestination.settings` en `.settingsAccount`, router directement. **Appliqué le 2026-08-20** exactement comme recommandé : `DeepLinkDestination.settings` renommé `.settingsAccount` (aucun autre producteur que `myaccount`, grep exhaustif) ; `SettingsView` accepte `startAtAccount: Bool` et pousse directement vers `SettingAccountView` via `.navigationDestination(isPresented:)` à l'apparition, sans perdre le retour vers la liste complète des réglages.
 TEST RÉEL NÉCESSAIRE : non.

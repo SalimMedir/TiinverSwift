@@ -764,3 +764,104 @@ directe de l'API GitHub Actions avant de continuer, corrigé en `CODE_PRESENT_UN
 `e869825`), puis re-confirmé `BUILD_VALIDATED` uniquement après réception des deux notifications de
 run `completed`/`conclusion=success` réelles. Rappel appliqué à la lettre pour la suite : ne jamais
 écrire "CI verte" avant d'avoir reçu la confirmation effective du run.
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Lot 7 : V3-F-103 (recherche récente hashtag/mention → 0 résultat)
+
+**Commit** : `c9dd8b1` — CI **succès** (confirmé indépendamment).
+
+**Cause exacte** : `RecentSearchAdapter.setOnItemClickListener`
+(`RechercheTiinver.java:252-279,324-328`) détecte le préfixe `#`/`@` d'une entrée récente, dérive
+l'onglet (`hashtags`/`users`), et relance la recherche avec la query DÉPOUILLÉE du préfixe.
+`SearchView.swift` (avant correctif) faisait `query = entry; runSearch(full: true)` sans aucun
+traitement — le backend recevait littéralement la query préfixée
+(`content/search?q=%23android...`), donnant 0 résultat de façon reproductible à 100 %.
+
+**Fichiers modifiés** : `Discover/SearchView.swift` — nouvelle méthode `selectRecent(_:)` :
+préfixe `#` → onglet `.hashtags` + query dépouillée, `@` → `.users` + query dépouillée, sinon
+`.all` + query telle quelle.
+
+**Flux frère vérifié** : `RecentSearchStore` n'a qu'un seul consommateur UI dans tout le projet
+(`SearchView.swift`) — aucun autre écran de recherche à corriger.
+
+**Résultat CI** : succès.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`.
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Lot 8 : V3-F-107 (bouton Suivre — faux positif permanent après échec réseau)
+
+**Commit** : voir commit de ce lot (code + doc) — CI en cours de dispatch.
+
+**Cause exacte** : `SearchView.toggleFollow` posait `isFollowed=true` de façon optimiste puis
+`try? await ...follow(...)` avalait toute erreur réseau SANS jamais annuler cette mise à jour —
+l'utilisateur voyait "Abonné" affiché en permanence, bouton désactivé, aucun moyen de réessayer. En
+vérifiant TOUS les appelants de `ProfileRepository.follow` (étape obligatoire de la méthode), le
+MÊME pattern exact (mise à jour optimiste + `try?` sans rollback) a été trouvé dans 3 AUTRES
+fichiers, corrigés dans le même lot :
+- `Profile/ProfileViewModel.follow()` (bouton "Suivre" principal du profil) ;
+- `Feed/FeedViewModel.followFromDetail()` (bouton follow du visualiseur plein écran) ;
+- `Feed/SuggestionsCarouselView.follow()` (carrousel de suggestions) ;
+- `Notifications/NotificationsListView` (bouton "Suivre en Retour").
+
+Un 5e appelant (`FeedViewModel.unfollow()`) a été vérifié et laissé INCHANGÉ : il ne pose aucune
+mise à jour optimiste avant l'appel réseau, donc n'exhibe pas ce bug précis — hors périmètre de ce
+finding, pas une omission.
+
+**Comportement Android réel vérifié pour chaque site** (pas une supposition) :
+`UniversalSearchAdapter.java:236-239` et `AdapterSuggestContact.java:150-153` (bouton inline de
+recherche/carrousel de suggestions) : `onFollowingError` masque juste le spinner, ne réinitialise
+JAMAIS le libellé — un bug latent différent côté Android (reste bloqué sur "pending" en cas
+d'échec, jamais un faux "Abonné" permanent). `UserProfile.java:507-508` (bouton principal du
+profil) : `onFollowingError() { labelSeguir.setText(R.string.seguir) }` — LE vrai rollback complet.
+Le rollback complet (plutôt que le blocage "pending") a été reproduit partout par cohérence, pour
+ne jamais laisser un état faux ou bloqué à l'utilisateur.
+
+**Fichiers modifiés** : `Discover/SearchView.swift`, `Profile/ProfileViewModel.swift`,
+`Feed/FeedViewModel.swift`, `Feed/SuggestionsCarouselView.swift`,
+`Notifications/NotificationsListView.swift`.
+
+**Résultat CI** : en attente.
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI, puis
+`BUILD_VALIDATED` (test réel requis : couper le réseau pendant un tap "Suivre" sur les 4 écrans,
+confirmer le rollback visuel et la possibilité de réessayer).
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Lot 9 : V3-F-099 (tap #hashtag/@mention dans une légende absent)
+
+**Commit** : voir commit de ce lot (code + doc) — CI en cours de dispatch.
+
+**Cause exacte** : Android rend les légendes de post cliquables via `MentionTextView`
+(`ClickableSpan` par hashtag/mention détecté par regex, `TokenClickableSpan.onClick` → ouvre
+`RechercheTiinver` avec `autoQuery`/`autoTab` pré-remplis). Fonctionnalité jamais portée côté iOS
+(`Text(message)` brut, confirmé par grep exhaustif `MentionTextView`/`onHashtagTap`/`clickableSpan`
+avant ce correctif : zéro résultat).
+
+**Fichiers modifiés** :
+- **Nouveau** `Discover/HashtagMentionText.swift` — vue réutilisable détectant `#hashtags`/
+  `@mentions` (regex fidèles à `HASHTAG_PATTERN`/`MENTION_PATTERN`, `MentionTextView.java:52-60`,
+  y compris le support accents/latin étendu), rendues cliquables via `AttributedString.link` +
+  `.environment(\.openURL)` (schéma personnalisé `tiinver-token://<tab>?q=<query>` — SwiftUI n'a
+  pas d'équivalent direct à `ClickableSpan` pour un tap par sous-plage de texte).
+- `Discover/SearchView.swift` — nouvel `init(initialQuery:initialTab:)` + `.task` de lancement
+  immédiat (port d'`autoQuery`/`autoTab`, `RechercheTiinver.java:156-181` — la query transmise est
+  TOUJOURS dépouillée du préfixe, fidèle à `displayQuery = autoQuery` ligne 168, le préfixage étant
+  du code mort commenté côté Android).
+- `Feed/FeedView.swift` — `FeedDetailCell` : `Text(message)` remplacé par `HashtagMentionText` ;
+  `FeedDetailPagerView` : nouvel état `searchToken` + `.fullScreenCover` présentant `SearchView`
+  pré-rempli, empilé par-dessus le pager (même motif que `openProfileUserId`), jamais en fermant le
+  pager d'abord — fidèle à `ctx.startActivity(intent)`.
+
+**Flux frère vérifié** : `FeedDetailCell` a UN SEUL appelant (`FeedDetailPagerView`), qui est
+lui-même le viewer plein écran PARTAGÉ par les 6 points d'entrée réels de l'app (fil principal,
+recherche, écran hashtag, notifications, profil, liens profonds — tous vérifiés par grep) — le
+correctif se propage automatiquement à tous sans modification supplémentaire, fidèle à Android où
+`VideoViewHolder.java:636`/`CustomCardView.java:142` sont les 2 SEULS appelants de
+`setSpannableText` dans tout le projet (grep exhaustif), tous les 2 dans cette même fiche plein
+écran.
+
+**Résultat CI** : en attente.
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` — l'API `AttributedString.link` +
+`.environment(\.openURL)` n'a jamais été exercée sur device/simulateur dans cette session (conforme
+à la consigne de ne pas déclencher de test Appetize). Test réel nécessaire : taper un hashtag et
+une mention dans une légende de post (fil, recherche, hashtag, notifications, profil, lien profond)
+et confirmer l'ouverture de la recherche pré-remplie sur le bon onglet.

@@ -435,6 +435,13 @@ struct FeedDetailPagerView: View {
     /// nouvel écran empilé par-dessus le fullscreen, jamais en le fermant d'abord.
     @State private var openProfileUserId: String?
 
+    /// Port de `TokenClickableSpan.onClick` → `Intent(ctx, RechercheTiinver.class)`
+    /// (`MentionTextView.java:184-196`) — **ajouté le 2026-08-20 (MIGRATION_PARITY_AUDIT_V3.md
+    /// V3-F-099, Phase B P1)**. Présenté par-dessus ce pager (même empilement que
+    /// `openProfileUserId` juste au-dessus), jamais en le fermant d'abord — fidèle à
+    /// `ctx.startActivity(intent)` (nouvel écran Android empilé, pas un remplacement).
+    @State private var searchToken: (query: String, tab: SearchTab)?
+
     /// Port ponctuel : quand ce pager est ouvert directement sur UN post isolé (résolution d'un lien
     /// profond `/post/{token}`, `DeepLinkRouter.swift`) plutôt que sur le fil complet, un
     /// `FeedViewModel` jetable suffit — les actions (like/commentaire/partage) restent
@@ -475,7 +482,8 @@ struct FeedDetailPagerView: View {
                                     onShare: { Task { await viewModel.toggleShare(post) } },
                                     onMore: { onMore(post) },
                                     onOpenProfile: { if let actor = post.actor { openProfileUserId = actor } },
-                                    onFollow: { Task { await viewModel.followFromDetail(post) } }
+                                    onFollow: { Task { await viewModel.followFromDetail(post) } },
+                                    onOpenSearch: { query, tab in searchToken = (query, tab) }
                                 )
                             }
                         }
@@ -520,6 +528,18 @@ struct FeedDetailPagerView: View {
                 }
             }
         }
+        .fullScreenCover(isPresented: Binding(get: { searchToken != nil }, set: { if !$0 { searchToken = nil } })) {
+            if let searchToken {
+                NavigationStack {
+                    SearchView(initialQuery: searchToken.query, initialTab: searchToken.tab)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("Fermer") { self.searchToken = nil }
+                            }
+                        }
+                }
+            }
+        }
     }
 
     /// Port de `ViewPagerAdapter.isAdPosition` (`position > 0 && position < list.size() && position
@@ -559,6 +579,9 @@ private struct FeedDetailCell: View {
     /// `CustomCardView.setData`: `mediaObject.getCurrentUserId().equals(mediaObject.getActor())`
     /// → masqué).
     var onFollow: () -> Void = {}
+    /// Port de `TokenClickableSpan.onClick` — `query` = texte SANS préfixe, `tab` = `.hashtags`/
+    /// `.users` (**ajouté le 2026-08-20, MIGRATION_PARITY_AUDIT_V3.md V3-F-099, Phase B P1**).
+    var onOpenSearch: (_ query: String, _ tab: SearchTab) -> Void = { _, _ in }
 
     var body: some View {
         ZStack {
@@ -593,9 +616,13 @@ private struct FeedDetailCell: View {
                     // visuel exact (2026-08-17).
                     VStack(alignment: .leading, spacing: 8) {
                         if let message = post.message, !message.isEmpty {
-                            Text(message)
-                                .font(.subheadline)
-                                .foregroundStyle(.white)
+                            // Port de `message.setSpannableText(mediaObject.getMessage())`
+                            // (`CustomCardView.java:142`/`VideoViewHolder.java:636`) — **corrigé le
+                            // 2026-08-20 (V3-F-099, Phase B P1)** : `Text(message)` brut remplacé
+                            // par `HashtagMentionText`, seul endroit Android où la légende est
+                            // cliquable (confirmé par grep exhaustif : ces 2 fichiers sont les 2
+                            // SEULS appelants de `setSpannableText` dans tout le projet Android).
+                            HashtagMentionText(text: message, onToken: onOpenSearch)
                                 .lineLimit(2)
                         }
 

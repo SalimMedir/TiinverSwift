@@ -4,14 +4,32 @@ import SwiftUI
 /// onglets + suggestions + historique local. UI reconstruite (mise en page XML non fournie), la
 /// logique réseau/debounce/onglets est fidèle.
 struct SearchView: View {
-    @State private var query = ""
-    @State private var tab: SearchTab = .all
+    @State private var query: String
+    @State private var tab: SearchTab
     @State private var results = SearchResults()
     @State private var recent = RecentSearchStore.all()
     @State private var isLoading = false
     @State private var errorText: String?
     @State private var searchTask: Task<Void, Never>?
     @State private var detailPost: FeedActivity?
+    /// Port de `autoQuery`/`autoTab` (`RechercheTiinver.java:156-181`) — `true` uniquement au
+    /// premier lancement avec une query pré-remplie (tap #hashtag/@mention, `V3-F-099`) ; lance la
+    /// recherche IMMÉDIATEMENT sans passer par le debounce (`showRecentPanel(false)` +
+    /// `searchFull(autoQuery, currentTab)` direct côté Android — pas d'attente de frappe puisqu'il
+    /// n'y a pas eu de frappe).
+    @State private var shouldAutoSearch: Bool
+
+    /// Port d'`Intent(ctx, RechercheTiinver.class)` avec `autoQuery`/`autoTab`
+    /// (`TokenClickableSpan.onClick`, `MentionTextView.java:184-196`) — **ajouté le 2026-08-20
+    /// (MIGRATION_PARITY_AUDIT_V3.md V3-F-099, Phase B P1)**. `initialQuery` est TOUJOURS la query
+    /// DÉPOUILLÉE du préfixe (`searchQuery`, jamais `displayToken`), fidèle à
+    /// `RechercheTiinver.java:168` (`displayQuery = autoQuery` — le préfixage du champ affiché a
+    /// été explicitement désactivé côté Android, code mort commenté aux lignes 163-167).
+    init(initialQuery: String? = nil, initialTab: SearchTab = .all) {
+        _query = State(initialValue: initialQuery ?? "")
+        _tab = State(initialValue: initialTab)
+        _shouldAutoSearch = State(initialValue: initialQuery.map { !$0.isEmpty } ?? false)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -103,6 +121,11 @@ struct SearchView: View {
         }
         .fullScreenCover(item: $detailPost) { post in
             FeedDetailPagerView(posts: [post], startIndex: 0, onClose: { detailPost = nil })
+        }
+        .task {
+            guard shouldAutoSearch else { return }
+            shouldAutoSearch = false
+            runSearch(full: true)
         }
     }
 

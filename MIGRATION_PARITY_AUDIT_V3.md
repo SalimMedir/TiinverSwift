@@ -471,11 +471,11 @@ VIEW PARITY : Android rend les légendes cliquables dans TOUS les posts (vidéo 
 LOGIC PARITY : Android extrait le token, lance la recherche avec onglet+query présélectionnés. Aucune logique équivalente côté iOS.
 NETWORK/MEDIA PARITY : N/A (jamais atteint côté iOS).
 RUNTIME CHAIN : USER ACTION (tap #hashtag) → Android : ClickableSpan → recherche pré-remplie. iOS : rupture au premier maillon, `Text` statique sans geste.
-STATUT : MISSING
-PREUVE : `MentionTextView.java:98,188-196` ; `VideoViewHolder.java:636` ; `CustomCardView.java:142` ; `Feed/FeedView.swift:595-596` (`Text(message)` sans modificateur de geste).
+STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte ; jamais exercé sur device/simulateur, cf. `HashtagMentionText.swift`)
+PREUVE : `MentionTextView.java:98,188-196` ; `VideoViewHolder.java:636` ; `CustomCardView.java:142` ; `Feed/FeedView.swift:595-596` (`Text(message)` sans modificateur de geste). (Avant correctif.)
 CAUSE : Fonctionnalité jamais portée (grep exhaustif `MentionTextView`/`onHashtagTap`/`clickableSpan` : zéro résultat).
 RISQUE : Perte d'un point d'entrée réel et fréquent vers la recherche.
-RECOMMANDATION : Construire un `AttributedString`/`Text` avec détection `#\w+`/`@[\w.-]+`, ouvrant `SearchView` pré-rempli.
+RECOMMANDATION : Construire un `AttributedString`/`Text` avec détection `#\w+`/`@[\w.-]+`, ouvrant `SearchView` pré-rempli. **Appliqué le 2026-08-20** : nouveau `HashtagMentionText.swift` (regex fidèles à `HASHTAG_PATTERN`/`MENTION_PATTERN`, `AttributedString.link` + `.environment(\.openURL)` pour le tap par sous-plage) câblé dans `FeedDetailCell` (seul endroit Android où la légende est cliquable, confirmé par grep : `VideoViewHolder.java:636`/`CustomCardView.java:142` sont les 2 SEULS appelants de `setSpannableText`). `SearchView` accepte désormais `initialQuery`/`initialTab` et lance la recherche immédiatement (port d'`autoQuery`/`autoTab`, `RechercheTiinver.java:156-181`). `FeedDetailCell`/`FeedDetailPagerView` étant le viewer plein écran PARTAGÉ par les 6 points d'entrée de l'app (fil principal, recherche, hashtag, notifications, profil, liens profonds), le correctif se propage automatiquement à tous sans modification supplémentaire.
 TEST RÉEL NÉCESSAIRE : oui.
 ```
 
@@ -537,11 +537,11 @@ ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:252-279 (strip du p
 IOS FILES : Discover/SearchView.swift:26-38,194-209
 LOGIC PARITY : Android reconnaît `#`/`@`, dérive l'onglet, relance avec la query DÉPOUILLÉE. iOS conserve le préfixe brut dans `query` et n'ajuste jamais l'onglet — le backend reçoit littéralement `%23android` au lieu de `android`.
 RUNTIME CHAIN : USER ACTION (tap entrée récente "#android") → iOS : query="#android" inchangée → recherche → probablement 0 résultat.
-STATUT : FUNCTIONALLY_FAILED
-PREUVE : `SearchView.swift:29` : `Button(entry) { query = entry; runSearch(full: true) }` sans traitement de préfixe, vs `RechercheTiinver.java:256-265,271-272`.
+STATUT : **BUILD_VALIDATED** (corrigé `c9dd8b1`, Phase B, CI confirmée verte — test réel requis avant COMPLETE_PARITY_VALIDATED)
+PREUVE : `SearchView.swift:29` : `Button(entry) { query = entry; runSearch(full: true) }` sans traitement de préfixe, vs `RechercheTiinver.java:256-265,271-272`. (Avant correctif.)
 CAUSE : Format de stockage de l'historique fidèle à Android, mais logique de RÉ-INTERPRÉTATION du préfixe au tap jamais portée.
 RISQUE : Bug visible et reproductible à 100% dans une zone déjà signalée prioritaire par des tests réels antérieurs.
-RECOMMANDATION : Reproduire le parsing Android (détecter préfixe → dériver tab → query nettoyée).
+RECOMMANDATION : Reproduire le parsing Android (détecter préfixe → dériver tab → query nettoyée). **Appliqué le 2026-08-20** (`SearchView.swift`, `selectRecent(_:)`) : préfixe `#`→onglet Hashtags, `@`→onglet Utilisateurs, sinon Tous ; query réseau toujours dépouillée du préfixe.
 TEST RÉEL NÉCESSAIRE : oui.
 ```
 
@@ -1333,7 +1333,7 @@ Les 4 corrections sont `BUILD_VALIDATED` (CI verte, comportement code re-tracé 
 
 **P0 reconfirmés (inchangés, déjà connus, bloqués backend)** : V3-F-140/V3-F-084 (StoreKit) — aucune correction client possible sans le endpoint backend `storekit/verify-purchase` (voir doc en tête de `CoinStoreManager.swift`, déjà écrite lors du travail P0-7 antérieur à cette session Phase B). Reste `FUNCTIONALLY_FAILED` pour la vraie parité tant que ce endpoint n'existe pas côté serveur — **BLOCKED BY BACKEND**.
 
-**P1 majeurs nouveaux** : V3-F-124 ✅ **CORRIGÉ le 2026-08-20** (commit `cd316df`, Phase B, CI verte confirmée — `BUILD_VALIDATED`), V3-F-125 ✅ **CORRIGÉ le 2026-08-20** (commit `5eb3358`, Phase B, CI verte confirmée sur `e869825` — `BUILD_VALIDATED`), V3-F-103 (recherche récente hashtag/mention → 0 résultat, reproductible à 100%), V3-F-107 (bouton Suivre peut mentir en permanence), V3-F-099 (hashtag/mention tap absent), V3-F-102 (pagination hashtag absente au-delà de 30), V3-F-113 (pas de surveillance réseau pour la reconnexion socket), V3-F-114 (présence jamais émise), V3-F-128/129 (Réglages : bouton catégorie mal placé, liens légaux faux).
+**P1 majeurs nouveaux** : V3-F-124 ✅ **CORRIGÉ** (`cd316df`, CI verte confirmée — `BUILD_VALIDATED`), V3-F-125 ✅ **CORRIGÉ** (`5eb3358`, CI verte confirmée sur `e869825` — `BUILD_VALIDATED`), V3-F-103 ✅ **CORRIGÉ** (`c9dd8b1`, CI verte confirmée — `BUILD_VALIDATED`), V3-F-107 ✅ **CORRIGÉ** (Phase B — CI en attente de confirmation), V3-F-099 ✅ **CORRIGÉ** (Phase B — CI en attente de confirmation, jamais exercé sur device), V3-F-102 (pagination hashtag absente au-delà de 30), V3-F-113 (pas de surveillance réseau pour la reconnexion socket), V3-F-114 (présence jamais émise), V3-F-128/129 (Réglages : bouton catégorie mal placé, liens légaux faux).
 
 **2 découvertes notables où iOS est confirmé PLUS correct qu'Android** (à ne pas "corriger" — signaler à l'équipe QA pour éviter un faux rapport de régression) : V3-F-109 (recherche de conversation locale), V3-F-149 (restauration de session, déjà connu).
 

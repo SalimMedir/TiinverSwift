@@ -217,7 +217,7 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 | V3-F-060 (PROFILE-05) | Follow/unfollow — répartition asymétrique | COMPLETE_PARITY_CANDIDATE | P2 | Fidèle à Android (follow en Profil, unfollow en Feed uniquement) | HIGH |
 | V3-F-061 (PROFILE-06) | Menu bloquer/signaler | COMPLETE_PARITY_CANDIDATE | P1 | Aucun | HIGH |
 | V3-F-062 (PROFILE-07) | Grille → plein écran | COMPLETE_PARITY_CANDIDATE | P1 | Correctif déjà appliqué, tient | HIGH |
-| V3-F-063 (PROFILE-08) | Lien de bio interne non routé | PARTIAL | P2 | Toujours ouvert en Safari, jamais via `DeepLinkRouter` | MEDIUM |
+| V3-F-063 (PROFILE-08) | Lien de bio interne non routé | **CODE_PRESENT_UNVERIFIED** (corrigé `<commit à renseigner>`, session 2026-08-21 — test d'hôte `tiinver.com` avant ouverture, fidèle à `UserProfile.java:458-462`, CI à confirmer) | P2 | Toujours ouvert en Safari, jamais via `DeepLinkRouter` — CORRIGÉ | MEDIUM |
 
 ### Groups (V3-F-064 à 071)
 | ID | Domaine | Statut | Prio | Écart | Confiance |

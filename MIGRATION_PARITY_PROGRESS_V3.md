@@ -1164,3 +1164,37 @@ utilisé, déclenchement manuel requis).
 nécessaire : provoquer une réponse `suggestions/{userId}` contenant un utilisateur avec un champ
 manquant/malformé (ou simplement observer le carrousel de suggestions sur un compte réel), confirmer
 que les autres utilisateurs valides du même lot s'affichent quand même.
+
+### Lot 18 : V3-F-063 (Profile — lien de bio toujours ouvert en externe)
+
+**Finding ID** : V3-F-063 (PROFILE-08)
+
+**Problème réel** : le lien de bio du profil (`viewModel.profile?.link`) s'ouvrait TOUJOURS via
+`Link(...)` SwiftUI, c'est-à-dire toujours en externe (Safari/app par défaut) — même quand le lien
+pointe vers le domaine Tiinver lui-même (ex. un lien de bio vers un autre profil ou une publication),
+auquel cas l'utilisateur quitte l'app au lieu d'être routé en interne.
+
+**Preuve Android** : `uploadPerfilPhoto/UserProfile.java:454-477` (`link_container.
+setOnClickListener`) — teste explicitement `uri.getHost() != null && uri.getHost().contains(
+"tiinver.com")` AVANT de choisir la destination : si vrai, `Intent` vers `ShareActivity` (le
+résolveur de deep link interne, dont `DeepLinkRouter.swift` est déjà le port fidèle côté iOS,
+2026-08-16) ; sinon, `ACTION_VIEW` externe (avec ajout de `https://` si le lien n'a pas de schéma,
+même logique reproduite ici).
+
+**Divergence iOS (avant correctif)** : aucun test d'hôte, toujours externe.
+
+**Correctif** : `Link(...)` remplacé par `Button(link) { Self.openBioLink(link) }` +
+`ProfileView.openBioLink(_:)` (`@MainActor`) — ajoute `https://` si absent (même garde qu'Android),
+puis route via `DeepLinkRouter.handle(url)` (déjà porté) si `url.host` contient `"tiinver.com"`,
+sinon `UIApplication.shared.open(url)` (externe).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Profile/ProfileView.swift`.
+
+**Commit** : *(à renseigner après ce commit)*.
+
+**Résultat CI** : non déclenché par cette session (même contrainte que les lots précédents).
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Test réel
+nécessaire : définir un lien de bio pointant vers `https://tiinver.com/user/<username>` sur un
+compte réel, taper le lien depuis Profile, confirmer un routage interne (pas de sortie vers Safari)
+; confirmer aussi qu'un lien externe (ex. Instagram) continue d'ouvrir Safari normalement.

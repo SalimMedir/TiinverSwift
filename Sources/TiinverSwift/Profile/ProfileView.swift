@@ -123,7 +123,15 @@ struct ProfileView: View {
 
             if let bio = viewModel.profile?.biography, !bio.isEmpty { Text(bio).font(.subheadline).multilineTextAlignment(.center) }
             if let link = viewModel.profile?.link, !link.isEmpty {
-                Link(link, destination: URL(string: link.hasPrefix("http") ? link : "https://\(link)") ?? URL(string: "https://tiinver.com")!)
+                // **Corrigé (V3-F-063)** — `UserProfile.java:454-477` (`link_container.
+                // setOnClickListener`) : Android teste `uri.getHost().contains("tiinver.com")` AVANT
+                // d'ouvrir le lien — un lien vers le propre domaine Tiinver route en INTERNE
+                // (`ShareActivity`, le même résolveur de deep link que `DeepLinkRouter.swift` porte
+                // déjà côté iOS), SEULS les liens externes ouvrent le navigateur système
+                // (`ACTION_VIEW`). `Link(...)` (SwiftUI) ouvrait TOUJOURS en externe, quel que soit
+                // l'hôte — un lien de bio vers un autre profil/post Tiinver quittait l'app au lieu
+                // d'y router directement.
+                Button(link) { Self.openBioLink(link) }
                     .font(.caption)
             }
 
@@ -268,6 +276,23 @@ struct ProfileView: View {
         VStack {
             Text(value).font(.headline)
             Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Port de `UserProfile.java:454-477` (V3-F-063) — voir avertissement au site d'appel. Ajoute
+    /// `https://` si absent (fidèle à Android : `!link.startsWith("http://") &&
+    /// !link.startsWith("https://")`) AVANT de tester l'hôte, sinon `URL(string:)` échouerait sur
+    /// un lien sans schéma et le test d'hôte tomberait toujours en externe.
+    @MainActor
+    private static func openBioLink(_ raw: String) {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        let withScheme = (trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://")) ? trimmed : "https://\(trimmed)"
+        guard let url = URL(string: withScheme) else { return }
+        if let host = url.host, host.contains("tiinver.com") {
+            DeepLinkRouter.handle(url)
+        } else {
+            UIApplication.shared.open(url)
         }
     }
 

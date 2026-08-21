@@ -5,10 +5,15 @@ import SwiftUI
 /// Port de `editor/MediaTrim.java` (délègue le gros du travail à `VideoTrimmerView`, composant tiers
 /// non lu en détail — comportement reconstruit depuis le contrat observable de `MediaTrim.java` :
 /// filmstrip + poignées début/fin, limite `setTrimeLimitMax(60000)` = 60s, callback `onVideo
-/// (videoPath, isTrimmed)` → écran suivant). Recadrage temporel réel via `AVAssetExportSession(.
-/// presetPassthrough)` + `timeRange` quand AUCUNE transformation géométrique n'est demandée (pas de
-/// ré-encodage complet — rapide, fidèle au flux source, même stratégie qu'Android quand
-/// `isTrimmed==false` ne retouche pas le fichier).
+/// (videoPath, isTrimmed)` → écran suivant). Republie le fichier source tel quel UNIQUEMENT quand
+/// AUCUNE modification n'est demandée (ni trim temporel ni transformation) ; dans tous les autres
+/// cas, ré-encode systématiquement via `AVMutableComposition`/`AVMutableVideoComposition` — fidèle
+/// à Android, où `next.setOnClickListener` (`VideoTrimmerView.java:232-257`) appelle TOUJOURS
+/// `startTrimWithCrop()` (re-encodage frame-exact) sauf `noTrim && noTransform`. **Il n'existe
+/// AUCUN chemin `presetPassthrough`** : un précédent correctif en introduisait un pour le cas
+/// "trim temporel seul", mais Android lui-même ne fait jamais de simple remux/copie dans ce cas
+/// (`startTrimWithCrop2()`, qui l'aurait fait, confirmé par grep exhaustif à ZÉRO appelant — code
+/// mort) ; voir `MIGRATION_PARITY_AUDIT_V3.md V3-F-124` pour la correction de cette architecture.
 ///
 /// **Corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-032 GALERIE-01, Phase B P0-6)** —
 /// avant ce correctif, cet écran ne portait QUE le trim temporel : aucun bouton pivot/flip/ratio,
@@ -20,12 +25,12 @@ import SwiftUI
 /// actuel avant d'écrire ce correctif**, car le commentaire de tête de `VideoTrimState.swift`
 /// affirmait à tort que ce pipeline était mort/non branché ; il est réellement importé et appelé
 /// depuis l'écran de trim actif). `VideoTrimState.swift` (état pur, déjà écrit, jamais monté)
-/// pilote maintenant ces 3 contrôles ; `trim()` bascule sur un export RÉELLEMENT ré-encodé
-/// (`AVMutableVideoComposition`, `.presetHighestQuality` — le passthrough ne permet PAS de
-/// transformation géométrique) dès qu'une rotation/un flip/un ratio non-libre est actif, exactement
-/// comme `startTrimWithCrop()` (transformation réelle) vs `startTrimWithCrop2()` (repli rapide sans
-/// transformation, `VideoTrimmerView.java:807-854`) côté Android — même architecture à deux chemins,
-/// pas une simplification de ce portage.
+/// pilote maintenant ces 3 contrôles.
+///
+/// **Corrigé le 2026-08-20 (V3-F-124, Phase B P1)** — voir `trim()` : le chemin
+/// `AVAssetExportPresetPassthrough` (imprécis, calé keyframe) qu'utilisait le correctif précédent
+/// pour "aucune transformation géométrique" a été supprimé ; ce cas est désormais couvert par le
+/// même ré-encodage frame-exact que tous les autres, avec une transformation identité.
 struct MediaTrimView: View {
     let sourceURL: URL
     var onTrimmed: (URL) -> Void
@@ -225,33 +230,41 @@ struct MediaTrimView: View {
         thumbnails = images
     }
 
-    /// Port du branchement `isTrimmed` de `onVideo(videoPath, isTrimmed)`, ÉTENDU le 2026-08-19
-    /// (Phase B P0-6) au branchement réel `startTrimWithCrop()` (transformation) vs
-    /// `startTrimWithCrop2()` (repli rapide) d'Android : si AUCUNE transformation géométrique
-    /// n'est active (`trimState == VideoTrimState()`) ET que la sélection couvre (quasiment) tout
-    /// le fichier, publie l'original tel quel — un no-op légitime, PAS un échec (fidèle à
-    /// `noTrim && noTransform` → `callback.onVideo(null, false)`, qui republie aussi l'original tel
-    /// quel dans ce cas précis). Si une transformation est active, TOUJOURS ré-encoder (même si le
-    /// trim temporel est un no-op) — un `AVAssetExportSession` ne peut pas combiner
-    /// `.presetPassthrough` avec un `videoComposition`, la transformation exige un ré-encodage
-    /// complet côté Android aussi (`VideoTransformer.process`, jamais un simple remux dans ce cas).
+    /// Port du branchement `isTrimmed` de `onVideo(videoPath, isTrimmed)` d'Android
+    /// (`VideoTrimmerView.next.setOnClickListener`, VideoTrimmerView.java:232-257) : `if (noTrim &&
+    /// noTransform) { callback.onVideo(null, false); } else { startTrimWithCrop(); }`. Publie
+    /// l'original tel quel UNIQUEMENT quand AUCUNE modification n'est demandée (ni trim temporel
+    /// ni transformation géométrique) — un no-op légitime, PAS un échec. **Dans TOUS les autres
+    /// cas, y compris un trim purement temporel sans transformation, Android ré-encode
+    /// systématiquement** (`startTrimWithCrop()` est le SEUL chemin atteignable —
+    /// `startTrimWithCrop2()` confirmé par grep exhaustif à ZÉRO appelant, code mort ; voir
+    /// `MIGRATION_PARITY_AUDIT_V3.md V3-F-124`, qui invalide la justification "repli rapide sans
+    /// transformation" de l'ancien commentaire ici).
     ///
-    /// **Corrigé le 2026-08-20 (MIGRATION_PARITY_AUDIT_V3.md V3-F-123, Phase B P0)** — TOUS les
-    /// chemins d'ÉCHEC RÉEL (pas les 2 cas de no-op légitime ci-dessus) appelaient auparavant
-    /// `onTrimmed(sourceURL)`, republiant SILENCIEUSEMENT le fichier original NON coupé/NON
-    /// transformé comme si l'export avait réussi — à l'inverse exact du comportement Android
-    /// (`VideoTrimmerView.startTrimWithCrop` : Toast d'erreur explicite, `callback.onVideo()`
-    /// **JAMAIS appelé** en cas d'échec, l'utilisateur reste bloqué sur l'écran de trim). Chaque
-    /// échec RÉEL affiche maintenant `errorText` (`.alert`) et RETOURNE SANS appeler `onTrimmed` —
-    /// l'utilisateur reste sur cet écran (peut réessayer via "Suivant" ou annuler), fidèle à
-    /// Android.
+    /// **Corrigé le 2026-08-20 (V3-F-124, Phase B P1)** — avant ce correctif, un trim PUREMENT
+    /// temporel (sans rotation/flip/ratio, le cas majoritaire) utilisait
+    /// `AVAssetExportPresetPassthrough` : rapide mais calé sur le keyframe le plus proche, donc
+    /// imprécis (potentiellement plusieurs secondes de décalage selon le GOP). Android ne fait
+    /// JAMAIS ça — aucun chemin Android ne remux/copie pour un trim temporel seul. Le chemin
+    /// passthrough a été supprimé : tout trim non-no-op ré-encode désormais via
+    /// `AVMutableComposition`/`AVMutableVideoComposition` (coupe frame-exacte), fidèle à Android,
+    /// même quand `trimState == VideoTrimState()` (transformation identité, orientation native
+    /// uniquement — voir `composeTransform`).
+    ///
+    /// **Corrigé le 2026-08-20 (V3-F-123, Phase B P0)** — TOUS les chemins d'ÉCHEC RÉEL (pas le cas
+    /// de no-op légitime ci-dessus) appelaient auparavant `onTrimmed(sourceURL)`, republiant
+    /// SILENCIEUSEMENT le fichier original NON coupé/NON transformé comme si l'export avait
+    /// réussi — à l'inverse exact du comportement Android (`VideoTrimmerView.startTrimWithCrop` :
+    /// Toast d'erreur explicite, `callback.onVideo()` **JAMAIS appelé** en cas d'échec, l'utilisateur
+    /// reste bloqué sur l'écran de trim). Chaque échec RÉEL affiche maintenant `errorText`
+    /// (`.alert`) et RETOURNE SANS appeler `onTrimmed` — l'utilisateur reste sur cet écran (peut
+    /// réessayer via "Suivant" ou annuler), fidèle à Android.
     private func trim() async {
-        let needsTransform = trimState != VideoTrimState()
         guard duration > 0 else {
             errorText = "Impossible de lire la durée de la vidéo — réessaie ou annule."
             return
         }
-        guard needsTransform || startFraction > 0.001 || endFraction < 0.999 else {
+        guard trimState != VideoTrimState() || startFraction > 0.001 || endFraction < 0.999 else {
             onTrimmed(sourceURL)
             return
         }
@@ -265,30 +278,11 @@ struct MediaTrimView: View {
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString).appendingPathExtension("mp4")
 
-        guard needsTransform else {
-            // Chemin rapide (port de `startTrimWithCrop2()`) — copie des échantillons sans
-            // réencodage, aucune transformation géométrique à appliquer.
-            guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
-                errorText = "Impossible de préparer l'export — réessaie ou annule."
-                return
-            }
-            exportSession.outputURL = outputURL
-            exportSession.outputFileType = .mp4
-            exportSession.timeRange = timeRange
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                exportSession.exportAsynchronously { continuation.resume() }
-            }
-            guard exportSession.status == .completed else {
-                print("MEDIA TRIM: export rapide a échoué — \(String(describing: exportSession.error))")
-                errorText = "Le recadrage a échoué — réessaie ou annule."
-                return
-            }
-            onTrimmed(outputURL)
-            return
-        }
-
-        // Chemin transformation réelle (port de `startTrimWithCrop()`/`VideoTransformer.process`) —
-        // recadrage/rotation/miroir appliqués via `AVMutableVideoComposition`, PAS un simple remux.
+        // Ré-encodage systématique (port de `startTrimWithCrop()`/`VideoTransformer.process`) —
+        // frame-exact, que la modification soit un trim temporel seul, une transformation
+        // géométrique seule, ou les deux. `composeTransform` avec `trimState ==
+        // VideoTrimState()` renvoie une transformation identité (orientation native uniquement),
+        // donc ce chemin unique couvre aussi le cas "trim seul" sans branche séparée.
         guard let videoTrack = try? await asset.loadTracks(withMediaType: .video).first else {
             errorText = "Impossible de lire la piste vidéo — réessaie ou annule."
             return
@@ -334,7 +328,7 @@ struct MediaTrimView: View {
             exportSession.exportAsynchronously { continuation.resume() }
         }
         guard exportSession.status == .completed else {
-            print("MEDIA TRIM: export avec transformation a échoué — \(String(describing: exportSession.error))")
+            print("MEDIA TRIM: export a échoué — \(String(describing: exportSession.error))")
             errorText = "Le recadrage a échoué — réessaie ou annule."
             return
         }

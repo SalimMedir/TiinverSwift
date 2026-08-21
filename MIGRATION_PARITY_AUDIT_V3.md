@@ -520,7 +520,7 @@ ANDROID SOURCE OF TRUTH : HashtagProfile.java:100-102,435-465 (LIMIT=10, scroll 
 IOS FILES : Discover/HashtagFeedView.swift:11-19,57-66 ; Profile/ProfileRepository.swift:58-62
 LOGIC PARITY : Endpoint/paramètres identiques pour le PREMIER appel ; aucun second appel n'est jamais émis côté iOS (pas d'état offset, pas de déclencheur de scroll).
 RUNTIME CHAIN : USER ACTION (scroll jusqu'en bas) → Android : nouvel appel réseau. iOS : rupture, rien ne se passe au-delà des 30 premiers posts.
-STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte)
+STATUT : **BUILD_VALIDATED** (corrigé `596105f`, Phase B, CI confirmée verte — test réel requis avant COMPLETE_PARITY_VALIDATED)
 PREUVE : `HashtagFeedView.swift:61` : `fetchHashtagPosts(tag:limit:30,offset:0)` appelé une seule fois. (Avant correctif.)
 CAUSE : Pagination jamais implémentée lors du portage.
 RISQUE : Régression fonctionnelle réelle pour tout hashtag &gt;30 publications (cas courant).
@@ -952,11 +952,11 @@ FEATURE : Bouton "Catégorie du compte" mal placé — devrait être dans Modifi
 ANDROID SOURCE OF TRUTH : uploadPerfilPhoto/EditProfile.java:72-73 (lance CategoryActivity DEPUIS l'écran d'édition de profil) ; setting/SettingAccountFragment.java (207 lignes, entier — AUCUN champ catégorie)
 IOS FILES : Settings/SettingSubViews.swift:9-56 (SettingAccountView), Profile/EditProfileView.swift:1-5
 LOGIC PARITY : Le vrai gap (bouton manquant dans `EditProfileView`) reste documenté MAIS non comblé (commentaire propre du fichier : "Catégorie NON portée cette session"), tandis qu'un doublon fonctionnel a été ajouté au mauvais endroit (Réglages > Compte).
-STATUT : PARTIAL
-PREUVE : `SettingSubViews.swift:9-13` ("aucun équivalent Android direct identifié... placé ici par analogie") ; `EditProfileView.swift:3-5` ("Catégorie NON portée cette session").
+STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte)
+PREUVE : `SettingSubViews.swift:9-13` ("aucun équivalent Android direct identifié... placé ici par analogie") ; `EditProfileView.swift:3-5` ("Catégorie NON portée cette session"). (Avant correctif.)
 CAUSE : Deux sessions de portage différentes ont traité le même gap sans se recouper.
 RISQUE : Navigation divergente de l'attente Android ; risque de double-maintenance si le vrai gap est comblé plus tard sans retirer le doublon.
-RECOMMANDATION : Déplacer (ou dupliquer en le documentant explicitement) le point d'entrée vers `EditProfileView.swift`.
+RECOMMANDATION : Déplacer (ou dupliquer en le documentant explicitement) le point d'entrée vers `EditProfileView.swift`. **Appliqué le 2026-08-20** : déplacé (pas dupliqué) — retiré de `SettingAccountView` (`Settings/SettingSubViews.swift`), ajouté à `EditProfileView.swift` avec le même `CategoryPickerView`/`ProfileRepository.fetchProfile`, fidèle à `categoryView.setOnClickListener` (`EditProfile.java:68-75`).
 TEST RÉEL NÉCESSAIRE : non.
 ```
 
@@ -968,11 +968,11 @@ FEATURE : Liens légaux (CGU/confidentialité) pointent vers la racine du site, 
 ANDROID SOURCE OF TRUTH : setting/SettingAboutFragment.java:93-108 (`privacy`→`/privacy_policy.html`, `terms`→`/terms_conditions.html`, ouverts en WebView interne)
 IOS FILES : Settings/SettingSubViews.swift:220-229 (SettingAboutView)
 LOGIC PARITY : Les DEUX libellés pointent vers `https://tiinver.com` (racine), pas les pages légales réelles ; ouverture via Safari externe au lieu d'une WebView interne.
-STATUT : PARTIAL
-PREUVE : `SettingSubViews.swift:224-225` — deux `Link` vers la même URL racine.
+STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte)
+PREUVE : `SettingSubViews.swift:224-225` — deux `Link` vers la même URL racine. (Avant correctif.)
 CAUSE : `SettingAboutFragment.java` jamais lu en détail au moment du portage (commentaire du fichier iOS obsolète maintenant contredit).
 RISQUE : Problème potentiel de conformité (RGPD/App Store review) — un lien "Politique de confidentialité" doit mener au texte légal réel.
-RECOMMANDATION : Remplacer par les URLs exactes.
+RECOMMANDATION : Remplacer par les URLs exactes. **Appliqué le 2026-08-20** : URLs réelles (`/privacy_policy.html`, `/terms_conditions.html`, confirmées dans `SettingAboutFragment.java:93-108` ET déjà correctes dans `PoliticaDemandView.swift`), ouvertes en `InAppWebView` (port de `MyWebView.java`, réutilisé — promu `internal` — plutôt que dupliqué) au lieu d'un `Link` Safari externe.
 TEST RÉEL NÉCESSAIRE : non.
 ```
 

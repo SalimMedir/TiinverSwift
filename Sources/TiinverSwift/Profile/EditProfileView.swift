@@ -1,13 +1,21 @@
 import SwiftUI
 
-/// Port de `EditProfile.java` (190, entier) — biographie/lien/catégorie. **Catégorie NON portée
-/// cette session** : `CategoryActivity` (écran séparé, sélection dans une taxonomie non lue) — le
-/// champ reste affiché en lecture seule ici, modification différée.
+/// Port de `EditProfile.java` (190, entier) — biographie/lien/catégorie.
 struct EditProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var biography = ""
     @State private var link = ""
     @State private var isSaving = false
+    /// Port de `categoryView.setOnClickListener` → `Intent(ctx, CategoryActivity.class)`
+    /// (`EditProfile.java:68-75`), re-lu au retour sur `onResume` (lignes 86-129). **Corrigé le
+    /// 2026-08-20 (MIGRATION_PARITY_AUDIT_V3.md V3-F-128, Phase B P1)** — avant ce correctif, ce
+    /// point d'entrée manquait ICI (documenté comme différé) alors qu'un doublon fonctionnel avait
+    /// été ajouté au mauvais endroit (`Settings/SettingSubViews.swift`, `SettingAccountView`,
+    /// "Réglages > Compte" — aucun équivalent Android identifié à cet emplacement). DÉPLACÉ ici
+    /// plutôt que dupliqué plus longtemps, pour éviter la double-maintenance signalée par ce
+    /// finding.
+    @State private var showCategoryPicker = false
+    @State private var currentCategoryId: String?
 
     var body: some View {
         NavigationStack {
@@ -22,13 +30,38 @@ struct EditProfileView: View {
                 Section("Lien") { // R.id.linkInput
                     TextField("https://...", text: $link).keyboardType(.URL).autocapitalization(.none)
                 }
+                Section {
+                    Button {
+                        showCategoryPicker = true
+                    } label: {
+                        HStack {
+                            Text("Catégorie du compte").foregroundStyle(.primary)
+                            Spacer()
+                            Text(CategoryCatalog.label(forId: currentCategoryId) ?? "Non définie")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
             .navigationTitle("Modifier le profil")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Annuler") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) { Button("Enregistrer") { Task { await save() } }.disabled(isSaving) } // R.id.guardarProfile
             }
+            .task { await loadCategory() }
+            .sheet(isPresented: $showCategoryPicker) {
+                CategoryPickerView(
+                    currentCategoryId: currentCategoryId,
+                    onSaved: { currentCategoryId = $0; showCategoryPicker = false },
+                    onCancel: { showCategoryPicker = false }
+                )
+            }
         }
+    }
+
+    private func loadCategory() async {
+        guard let userId = UserSession.shared.myId else { return }
+        currentCategoryId = try? await ProfileRepository.shared.fetchProfile(userId: userId, viewerId: userId).category
     }
 
     /// Port de `EditProfile.UpdateProfileData` — un champ n'est envoyé QUE s'il n'est pas vide

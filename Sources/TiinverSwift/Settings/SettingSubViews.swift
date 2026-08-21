@@ -6,31 +6,9 @@ struct SettingAccountView: View {
     @State private var showLogoutConfirm = false
     @State private var showDeleteConfirm = false
     @State private var isBusy = false
-    /// Port de `CategoryActivity` (V3-F-058, Phase B P1) — point d'entrée d'édition LIBRE, en plus
-    /// du blocage forcé au moment de publier (`PublishComposeView.swift`). Aucun équivalent Android
-    /// direct pour "où se trouve ce bouton dans les réglages" n'a été identifié (layout XML des
-    /// réglages non fourni) — placé ici, dans "Compte", par analogie avec les autres champs de
-    /// profil éditables (nom/description via `updategroup`/`user`, même convention `column`/`value`).
-    @State private var showCategoryPicker = false
-    @State private var currentCategoryId: String?
 
     var body: some View {
         List {
-            Section {
-                // `CategoryPickerView` porte déjà son propre `NavigationStack`+barre d'outils
-                // (Annuler/Enregistrer) — présenté en feuille plutôt qu'en `NavigationLink` pour
-                // éviter d'imbriquer 2 `NavigationStack` (double barre de navigation).
-                Button {
-                    showCategoryPicker = true
-                } label: {
-                    HStack {
-                        Text("Catégorie du compte").foregroundStyle(.primary)
-                        Spacer()
-                        Text(CategoryCatalog.label(forId: currentCategoryId) ?? "Non définie")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
             Section {
                 Button("Se déconnecter") { showLogoutConfirm = true } // pref_logout
             }
@@ -40,25 +18,12 @@ struct SettingAccountView: View {
         }
         .navigationTitle("Compte")
         .disabled(isBusy)
-        .task { await loadCategory() }
         .confirmationDialog("Se déconnecter ?", isPresented: $showLogoutConfirm, titleVisibility: .visible) { // R.string.logout_message_confirm
             Button("Se déconnecter", role: .destructive) { Task { await logout() } }
         }
         .confirmationDialog("Supprimer définitivement le compte ?", isPresented: $showDeleteConfirm, titleVisibility: .visible) { // R.string.deleteaccount_message_confirme
             Button("Supprimer", role: .destructive) { Task { await deleteAccount() } }
         }
-        .sheet(isPresented: $showCategoryPicker) {
-            CategoryPickerView(
-                currentCategoryId: currentCategoryId,
-                onSaved: { currentCategoryId = $0; showCategoryPicker = false },
-                onCancel: { showCategoryPicker = false }
-            )
-        }
-    }
-
-    private func loadCategory() async {
-        guard let userId = UserSession.shared.myId else { return }
-        currentCategoryId = try? await ProfileRepository.shared.fetchProfile(userId: userId, viewerId: userId).category
     }
 
     private func logout() async {
@@ -203,10 +168,13 @@ struct SettingAdvertisementView: View {
     }
 }
 
-// MARK: - Aide / À propos (PAS lus en détail cette session — écrans informatifs statiques standards,
-// aucune logique métier attendue au vu du nom/de la taille des fragments correspondants ; contenu
-// réel — FAQ/liens légaux — à compléter une fois `SettingHelpFragment.java`/`SettingAboutFragment.
-// java` lus, non fait ici faute de temps)
+// MARK: - Aide / À propos
+// `SettingHelpFragment.java` toujours pas lu en détail cette session (FAQ localisée fr/en, bouton
+// support avec handler VIDE côté Android aussi — voir V3-F-130, P2, non traité ici). En revanche
+// `SettingAboutFragment.java` (V3-F-129, Phase B P1) A ÉTÉ lu en détail le 2026-08-20 : le
+// commentaire précédent ("PAS lus en détail... aucune logique métier attendue") était devenu
+// obsolète/contredit — ce fragment contient bien 2 URLs légales réelles, pas juste des libellés
+// statiques.
 
 struct SettingHelpView: View {
     var body: some View {
@@ -218,12 +186,27 @@ struct SettingHelpView: View {
 }
 
 struct SettingAboutView: View {
+    /// **Corrigé le 2026-08-20 (MIGRATION_PARITY_AUDIT_V3.md V3-F-129, Phase B P1)** — avant ce
+    /// correctif, les 2 `Link` pointaient vers la racine du site (`https://tiinver.com`), pas les
+    /// pages légales réelles (problème de conformité RGPD/App Store review potentiel). Les vraies
+    /// URLs (`ClickSpan.clickify`, `SettingAboutFragment.java:93-108`) sont confirmées par
+    /// `PoliticaDemandView.swift` (onboarding, MÊMES 2 URLs déjà correctes là-bas). Ouvertes en
+    /// `InAppWebView` (port de `MyWebView.java`, réutilisé depuis `PoliticaDemandView.swift`,
+    /// rendu `internal` pour l'occasion) plutôt qu'en `Link` Safari externe, fidèle à
+    /// `Intent(getActivity(), MyWebView.class)`.
+    @State private var webViewURL: URL?
+
     var body: some View {
         List {
             LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")
-            Link("Conditions d'utilisation", destination: URL(string: "https://tiinver.com")!)
-            Link("Politique de confidentialité", destination: URL(string: "https://tiinver.com")!)
+            Button("Conditions d'utilisation") { webViewURL = URL(string: "https://tiinver.com/terms_conditions.html") }
+            Button("Politique de confidentialité") { webViewURL = URL(string: "https://tiinver.com/privacy_policy.html") }
         }
         .navigationTitle("À propos")
+        .sheet(isPresented: Binding(get: { webViewURL != nil }, set: { if !$0 { webViewURL = nil } })) {
+            if let webViewURL {
+                InAppWebView(url: webViewURL)
+            }
+        }
     }
 }

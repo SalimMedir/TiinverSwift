@@ -48,8 +48,10 @@ struct PoliticaDemandView: View {
 
 /// Port de `MyWebView.java` (Activity plein écran hébergeant une `WebView`) — reproduit ici
 /// comme une feuille modale plutôt qu'un écran séparé, `MyWebView.java` lui-même pas lu en
-/// détail (usage trivial : charger une URL statique).
-private struct InAppWebView: UIViewRepresentable {
+/// détail (usage trivial : charger une URL statique). Rendu `internal` le 2026-08-20
+/// (MIGRATION_PARITY_AUDIT_V3.md V3-F-129, Phase B P1) pour être réutilisé par
+/// `Settings/SettingSubViews.swift` (`SettingAboutView`) plutôt que de dupliquer ce wrapper trivial.
+struct InAppWebView: UIViewRepresentable {
     let url: URL
 
     func makeUIView(context: Context) -> WKWebView { WKWebView() }

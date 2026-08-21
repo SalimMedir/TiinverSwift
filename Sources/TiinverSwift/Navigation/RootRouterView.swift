@@ -26,6 +26,7 @@ struct RootRouterView: View {
     @State private var authenticatedUser: User?
     @State private var forceUpdateRequired = false
     @State private var configChecked = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -76,6 +77,34 @@ struct RootRouterView: View {
         // `.userDidLogout` juste après `UserSession.shared.clear()` — voir `UserSession.swift`.
         .onReceive(NotificationCenter.default.publisher(for: .userDidLogout)) { _ in
             authenticatedUser = nil
+        }
+        // Port de `registerReceiver(networkStateReceiver, ...)`/`unregisterReceiver(...)`
+        // (`HomeActivity.java:onStart`/`onStop`, lignes 209-222,247-254) — **ajouté le 2026-08-20
+        // (MIGRATION_PARITY_AUDIT_V3.md V3-F-113, Phase B P1)**. Actif UNIQUEMENT premier plan
+        // (`.active`), fidèle au cycle `onStart`/`onStop` d'Android (pas `onResume`/`onPause`, qui
+        // n'englobe pas les changements multi-fenêtres — `.active` de SwiftUI est l'équivalent
+        // direct). N'appelle `attachToCurrentSocket()` que si une session existe déjà
+        // (`authenticatedUser`/session locale) : avant login, il n'y a pas de socket authentifié à
+        // reconnecter — `AuthCoordinatorView`/`RootRouterView.swift:53` gère déjà ce cas au moment
+        // du login.
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                startNetworkMonitor()
+            } else if phase == .background {
+                NetworkMonitor.shared.stop()
+            }
+        }
+        // `.onChange(of: scenePhase)` ne se déclenche PAS pour la valeur initiale (au lancement,
+        // la scène est déjà `.active` avant le premier rendu) — port explicite du PREMIER
+        // `onStart()` d'Android, qui enregistre le receiver dès le lancement de l'Activity.
+        .onAppear { startNetworkMonitor() }
+    }
+
+    private func startNetworkMonitor() {
+        NetworkMonitor.shared.start {
+            if authenticatedUser != nil || UserSession.shared.cachedUser() != nil {
+                ChatRepository.shared.attachToCurrentSocket()
+            }
         }
     }
 

@@ -702,11 +702,11 @@ ANDROID SOURCE OF TRUTH : Activity/ui/HomeActivity.java:430-464,482-497 (`networ
 IOS FILES : Realtime/TiinverSocket.swift, Realtime/ChatRepository.swift, Navigation/RootRouterView.swift
 LOGIC PARITY : Grep exhaustif (`NWPathMonitor`/`Reachability`) = zéro résultat sur tout le projet. Seul `attachToCurrentSocket()` existe, appelé UNIQUEMENT au login (jamais réexécuté ensuite). Le seul mécanisme résiduel (`attemptReconnect`) ne couvre que `"io server disconnect"`, pas une coupure réseau côté client — équivalent au VRAI `ChatRepository.attemptReconnect()` Android, mais PAS à `HomeActivity.onNetworkChange` (mécanisme séparé, absent côté iOS).
 RUNTIME CHAIN : Perte réseau réelle → iOS : rien n'observe activement, seul le backoff interne du moteur Socket.IO agit (hors contrôle applicatif) → Android : détection explicite + reset forcé immédiat.
-STATUT : PARTIAL
-PREUVE : `HomeActivity.java:482-497` ; absence confirmée côté iOS (grep 0 résultat) ; `RootRouterView.swift:53` (seul site d'appel).
+STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte)
+PREUVE : `HomeActivity.java:482-497` ; absence confirmée côté iOS (grep 0 résultat) ; `RootRouterView.swift:53` (seul site d'appel). (Avant correctif.)
 CAUSE : Le portage a traité `onNetworkChange` uniquement comme "premier reset après login", sans reproduire le déclencheur RÉSEAU qui l'active à chaque changement de connectivité côté Android.
 RISQUE : Chat/appels potentiellement non fonctionnels plus longtemps qu'Android après une coupure réseau (mode avion, changement WiFi/4G, tunnel).
-RECOMMANDATION : Ajouter un `NWPathMonitor` appelant `attachToCurrentSocket()` sur chaque transition vers `.satisfied`.
+RECOMMANDATION : Ajouter un `NWPathMonitor` appelant `attachToCurrentSocket()` sur chaque transition vers `.satisfied`. **Appliqué le 2026-08-20** : nouveau `NetworkMonitor.swift` (singleton `NWPathMonitor`, recréé à chaque `start()` — `cancel()` invalide définitivement une instance), démarré/arrêté sur `.active`/`.background` dans `RootRouterView` (port d'`onStart`/`onStop`, pas `onResume`/`onPause`). Déclenche `ChatRepository.attachToCurrentSocket()` UNIQUEMENT sur une transition RÉELLE non-satisfait→satisfait (pas à chaque broadcast comme Android, plus bruyant — différence assumée et documentée dans le fichier, pour éviter des resets redondants sans manquer le scénario réel décrit par ce finding) et uniquement si une session existe déjà.
 TEST RÉEL NÉCESSAIRE : oui — mode avion 30s+, rétablir, mesurer le délai de reprise vs Android.
 ```
 

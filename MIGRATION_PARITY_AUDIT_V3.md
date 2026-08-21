@@ -601,7 +601,7 @@ ANDROID SOURCE OF TRUTH : UniversalSearchAdapter.java:226-247 (`onFollowingError
 IOS FILES : Discover/SearchView.swift:145-169
 LOGIC PARITY : `toggleFollow` met `isFollowed=true` IMMÉDIATEMENT, puis `try? await ...follow(...)` — en cas d'échec, l'erreur est avalée, AUCUN rollback.
 RUNTIME CHAIN : USER ACTION (tap Suivre) → state=true → réseau échoue → try? avale → RENDU : "Abonné" affiché en permanence, désactivé, aucun moyen de réessayer.
-STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte ; passera à `BUILD_VALIDATED` une fois confirmé)
+STATUT : **BUILD_VALIDATED** (corrigé `c08ce4c`, Phase B, CI confirmée verte — test réel requis avant COMPLETE_PARITY_VALIDATED)
 PREUVE : `SearchView.swift:163-169` (mise à jour d'état avant `try?`, aucun `catch`, aucune réaffectation en échec). (Avant correctif.)
 CAUSE : Pattern `try?` combiné à une mise à jour optimiste jamais annulée en cas d'échec.
 RISQUE : Faux positif visible et persistant — l'utilisateur croit avoir suivi quelqu'un alors que non.

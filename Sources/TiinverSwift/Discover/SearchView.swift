@@ -26,7 +26,7 @@ struct SearchView: View {
                 if query.isEmpty {
                     Section("Recherches récentes") { // pas de libellé Android identifié (layout non fourni)
                         ForEach(recent, id: \.self) { entry in
-                            Button(entry) { query = entry; runSearch(full: true) }
+                            Button(entry) { selectRecent(entry) }
                         }
                         .onDelete { indices in
                             for index in indices { RecentSearchStore.remove(recent[index]) }
@@ -189,6 +189,30 @@ struct SearchView: View {
             results = SearchResults()
             errorText = "Erreur de chargement."
         }
+    }
+
+    /// Port de `RecentSearchAdapter.setOnItemClickListener`
+    /// (`RechercheTiinver.java:252-279,324-328`) — **corrigé le 2026-08-20
+    /// (MIGRATION_PARITY_AUDIT_V3.md V3-F-103, Phase B P1)**. Avant ce correctif, un tap sur une
+    /// entrée récente préfixée ("#android"/"@tiinver") gardait le préfixe brut dans `query` et ne
+    /// changeait jamais l'onglet — le backend recevait littéralement la query préfixée
+    /// (`content/search?q=%23android&types=users,posts,hashtags...`) au lieu de la version
+    /// dépouillée avec l'onglet dérivé, donnant 0 résultat de façon reproductible à 100 %.
+    /// Reproduit maintenant le parsing Android : préfixe `#` → onglet Hashtags, `@` → onglet
+    /// Utilisateurs, sinon onglet Tous ; la query envoyée au réseau est TOUJOURS dépouillée du
+    /// préfixe, fidèle à `entry.startsWith("#")`/`"@"` → `query = entry.substring(1)`.
+    private func selectRecent(_ entry: String) {
+        if entry.hasPrefix("#") {
+            tab = .hashtags
+            query = String(entry.dropFirst())
+        } else if entry.hasPrefix("@") {
+            tab = .users
+            query = String(entry.dropFirst())
+        } else {
+            tab = .all
+            query = entry
+        }
+        runSearch(full: true)
     }
 
     private func runSearch(full: Bool) {

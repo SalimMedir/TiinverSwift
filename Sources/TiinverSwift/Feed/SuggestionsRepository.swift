@@ -25,14 +25,38 @@ final class SuggestionsRepository {
         // cause racine confirmée le 2026-08-17 par JSON réel) : aucun JSON réel de CET endpoint
         // précis n'a encore été fourni par l'utilisateur, donc les deux formes sont essayées
         // plutôt que d'en supposer une seule sans preuve.
-        if let nested = try? value.stringEncodedJSON("users"), let data = nested.rawData,
-            let users = try? JSONDecoder().decode([User].self, from: data)
-        {
-            return users
+        if let nested = try? value.stringEncodedJSON("users"), let array = nested.toArray() {
+            return Self.decodeUsers(array)
         }
-        if let data = value["users"]?.rawData, let users = try? JSONDecoder().decode([User].self, from: data) {
-            return users
+        if let array = try? value.jsonArray("users") {
+            return Self.decodeUsers(array)
         }
         return []
+    }
+
+    /// **Corrigé (V3-F-011, décodage per-item)** — `JSONDecoder().decode([User].self, ...)`
+    /// décodait le tableau ENTIER en un bloc : un seul utilisateur suggéré dont un champ ne
+    /// correspond pas exactement à `User` faisait disparaître TOUT le carrousel de suggestions,
+    /// silencieusement (`try?` avalait l'erreur). Même motif déjà appliqué à
+    /// `Realtime/ChatRepository.decodeMessages`/`Feed/FeedRepository.fetchTimeline` (V3-F-090) —
+    /// réutilisé ici pour rester cohérent avec la convention déjà établie dans ce portage.
+    private static func decodeUsers(_ items: [JSONValue]) -> [User] {
+        let decoder = JSONDecoder()
+        let decoded = items.compactMap { item -> User? in
+            guard let data = item.rawData else {
+                print("SUGGESTIONS: item.rawData nil for one user — raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+            do {
+                return try decoder.decode(User.self, from: data)
+            } catch {
+                print("SUGGESTIONS: decode failure for one user — error=\(error) raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+        }
+        if decoded.count != items.count {
+            print("SUGGESTIONS: received=\(items.count) users, only \(decoded.count) decoded successfully — \(items.count - decoded.count) silently dropped, see decode failures above")
+        }
+        return decoded
     }
 }

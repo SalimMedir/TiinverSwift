@@ -1127,3 +1127,40 @@ Codemagic) avant de pouvoir confirmer BUILD_VALIDATED.
 `BUILD_VALIDATED` seulement (pas `COMPLETE_PARITY_VALIDATED`) même après CI verte — test réel requis
 (ouvrir l'écran de recadrage, taper "Ovale" puis "Rectangle" plusieurs fois, confirmer qu'aucune
 forme ne reste bloquée et que le résultat final correspond à la DERNIÈRE forme tapée).
+
+### Lot 17 : V3-F-011 (Feed — décodage tableau entier fragile, suggestions de comptes)
+
+**Finding ID** : V3-F-011 (FEED-03)
+
+**Problème réel** : `SuggestionsRepository.fetchSuggestions` décodait `[User]` en un seul
+`JSONDecoder().decode([User].self, from: data)` — si UN SEUL utilisateur suggéré du tableau avait
+un champ ne correspondant pas exactement au `Codable` de `User`, le décodage de TOUT le tableau
+échouait, avalé par `try?`, et le carrousel entier de suggestions disparaissait silencieusement
+(0 résultat affiché, aucune erreur visible), pour une raison potentiellement liée à un SEUL profil
+malformé plutôt qu'à un problème réel du endpoint.
+
+**Preuve** : motif déjà identifié et corrigé pour deux endpoints frères de ce même portage —
+`Realtime/ChatRepository.decodeMessages` (V3-F-090, tableau de messages socket) et
+`Feed/FeedRepository.fetchTimeline` (audit du 2026-08-16, tableau d'activités Feed) — les deux
+utilisent `compactMap` avec un `do/catch` PAR ITEM plutôt qu'un décodage global. `SuggestionsRepository`
+était la seule des 3 chaînes de décodage de tableau du module Feed à ne pas suivre cette convention
+déjà établie.
+
+**Divergence iOS (avant correctif)** : décodage global, silencieusement fragile.
+
+**Correctif** : nouvelle `SuggestionsRepository.decodeUsers(_:)` — `compactMap` per-item avec
+logs de diagnostic (`SUGGESTIONS: decode failure for one user...`), même format que les 2 endpoints
+frères déjà corrigés, pour rester cohérent avec la convention du projet plutôt que d'inventer un
+nouveau style.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/SuggestionsRepository.swift`.
+
+**Commit** : *(à renseigner après ce commit)*.
+
+**Résultat CI** : non déclenché par cette session (même contrainte que Lot 16 — pas de token
+utilisé, déclenchement manuel requis).
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Test réel
+nécessaire : provoquer une réponse `suggestions/{userId}` contenant un utilisateur avec un champ
+manquant/malformé (ou simplement observer le carrousel de suggestions sur un compte réel), confirmer
+que les autres utilisateurs valides du même lot s'affichent quand même.

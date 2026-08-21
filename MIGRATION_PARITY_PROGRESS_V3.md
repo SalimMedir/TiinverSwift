@@ -977,3 +977,68 @@ dans tout le projet (`HomeShellView.swift`, switch sur `deepLinks.pending`) — 
 mettre à jour.
 
 **Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI (Lot 15).
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Lot 15 : confirmations CI + V3-F-126 (flatten photo — distorsion de ratio)
+
+**V3-F-114/128/129/137 — confirmation CI** : `066fa04` confirmé vert (build complet incluant le
+correctif du bug de compilation `98b8c7d`). Les 4 findings passent honnêtement de
+`CODE_PRESENT_UNVERIFIED` à `BUILD_VALIDATED`.
+
+**Incident de méthode détecté et corrigé pendant cette étape** : un `Edit` avec `replace_all: true`
+destiné à confirmer V3-F-128/V3-F-129 (texte identique aux deux) a également touché V3-F-126
+(texte identique par coïncidence, mais PAS encore confirmé — CI `56f62f7` toujours en cours à ce
+moment) et mal attribué le commit de V3-F-137 (`9de8647` au lieu de `94bd731`, le vrai commit du
+correctif deep-link). Détecté immédiatement après l'édition (jamais poussé tel quel sans
+vérification), corrigé ligne par ligne avant tout commit (`dbb1af2`) : V3-F-126 remis en
+`CODE_PRESENT_UNVERIFIED` réel, V3-F-137 réattribué au bon commit.
+
+**V3-F-126 (reconfirmation de V3-F-039)** : **Commit** `56f62f7` — CI **succès** (confirmé après
+correction de l'incident ci-dessus).
+
+**Cause exacte** : `PhotoToolsView.flatten()` rendait le composé à `canvasSize` (le cadre ÉCRAN)
+au lieu de la résolution de `displayedImage` — dès que le ratio écran différait du ratio de la
+photo source, `.aspectRatio(.fit)` lettrboxait SANS fond noir explicite (contrairement à l'écran
+d'édition), gravant des bandes transparentes/blanches indésirables dans l'image publiée, aux
+dimensions du ratio ÉCRAN plutôt que du ratio PHOTO.
+
+**Fichiers modifiés** : `PhotoEditor/PhotoToolsView.swift` — le composé est désormais rendu
+EXACTEMENT à `displayedImage.size` (aucun lettrboxing) ; positions des traits/textes (capturées en
+repère écran) et leurs tailles (largeur de trait fixe à 8pt, taille de police fixe) converties vers
+le repère réel de l'image via `imageSpacePoint`/`screenToImageScale`, pour préserver la même
+apparence proportionnelle que ce que l'utilisateur voyait à l'écran — sans cette mise à l'échelle,
+un trait de 8pt écran serait devenu un hairline quasi invisible une fois rendu à la résolution
+native d'une photo de plusieurs milliers de pixels.
+
+**Flux frère vérifié** : recherche large d'`ImageRenderer`/`canvasSize` dans tout `Sources/` —
+d'autres occurrences existent UNIQUEMENT dans le sous-système Animems (`Animems/*.swift`), un
+domaine séparé avec son propre audit dédié (`ANIMEMS_PARITY_AUDIT_V1.md`), hors périmètre de ce
+finding précis — non touché ici, pas une omission.
+
+**V3-F-112 (WebRTC, vérification déjà positive)** : note corrigée sans changement de code — la
+réserve "inatteignable tant que V3-F-110 n'est pas corrigé" ne tenait plus depuis le Lot 1 de cette
+même Phase B (`2a779f6`, CI verte confirmée). Mise à jour de l'audit uniquement.
+
+**Statut honnête après correction (V3-F-126)** : `BUILD_VALIDATED`. Test réel nécessaire : publier
+une photo 1:1 ou 4:3 avec un trait de peinture sur un écran ~9:19.5, comparer dimensions/contenu du
+JPEG uploadé entre Android et iOS.
+
+---
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Clôture de la liste P1 explicitement priorisée (§30.8)
+
+Tous les P1 listés dans §30.8 de `MIGRATION_PARITY_AUDIT_V3.md` sont désormais traités :
+V3-F-099, V3-F-102, V3-F-103, V3-F-107, V3-F-112 (positif, sans changement), V3-F-113, V3-F-114,
+V3-F-124, V3-F-125, V3-F-126, V3-F-128, V3-F-129, V3-F-137 — tous `BUILD_VALIDATED` (ou
+reconfirmés positifs), CI verte confirmée sur chaque commit de code, aucun statut avancé sans
+confirmation CI réelle après l'incident du Lot 8/9 (voir rappel méthodologique) et l'incident
+`replace_all` de ce lot.
+
+Aucun de ces correctifs n'est `COMPLETE_PARITY_VALIDATED` — tous restent `BUILD_VALIDATED` en
+attente d'un test réel sur device/simulateur, conformément à la règle stricte de la session
+(COMPILER N'EST PAS ÉQUIVALENT À FONCTIONNER).
+
+**Restants non traités dans ce cycle** : le backlog P1 plus large hors liste §30.8 initiale
+(sections antérieures de l'audit V3, non repassées en revue exhaustive ici) ; V3-F-140/V3-F-084
+(StoreKit) reste `BLOCKED BY BACKEND` (documenté, aucune action client possible) ; le backlog P2/P3
+complet n'a pas été traité par cette Phase B (hors périmètre demandé — priorité P0 puis P1
+explicitement listés).

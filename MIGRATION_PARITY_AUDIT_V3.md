@@ -520,11 +520,11 @@ ANDROID SOURCE OF TRUTH : HashtagProfile.java:100-102,435-465 (LIMIT=10, scroll 
 IOS FILES : Discover/HashtagFeedView.swift:11-19,57-66 ; Profile/ProfileRepository.swift:58-62
 LOGIC PARITY : Endpoint/paramètres identiques pour le PREMIER appel ; aucun second appel n'est jamais émis côté iOS (pas d'état offset, pas de déclencheur de scroll).
 RUNTIME CHAIN : USER ACTION (scroll jusqu'en bas) → Android : nouvel appel réseau. iOS : rupture, rien ne se passe au-delà des 30 premiers posts.
-STATUT : PARTIAL
-PREUVE : `HashtagFeedView.swift:61` : `fetchHashtagPosts(tag:limit:30,offset:0)` appelé une seule fois.
+STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte)
+PREUVE : `HashtagFeedView.swift:61` : `fetchHashtagPosts(tag:limit:30,offset:0)` appelé une seule fois. (Avant correctif.)
 CAUSE : Pagination jamais implémentée lors du portage.
 RISQUE : Régression fonctionnelle réelle pour tout hashtag &gt;30 publications (cas courant).
-RECOMMANDATION : Ajouter état `offset`/`hasMore`, déclencher via `.onAppear` sur les dernières cellules.
+RECOMMANDATION : Ajouter état `offset`/`hasMore`, déclencher via `.onAppear` sur les dernières cellules. **Appliqué le 2026-08-20** (`HashtagFeedView.swift`) : état `offset`/`reachedEnd`/`isLoadingMore` ajouté, `loadMore()` déclenché sur `.onAppear` de la dernière cellule (même motif que `ProfileView`/`loadMorePosts`). Au passage, `limit` corrigé de `30` à `10` : vérification directe d'`HashtagProfile.java:101` (`LIMIT=10`) a montré que la valeur réelle Android ne correspondait PAS à ce qu'affirmait ce finding ("paramètres du premier appel déjà identiques").
 TEST RÉEL NÉCESSAIRE : oui.
 ```
 

@@ -72,13 +72,37 @@ struct PublishComposeView: View {
             }
         case .cropping(let shape):
             if case .photo(let image) = media {
-                PhotoCropView(
-                    image: image,
-                    shape: shape,
-                    onCropped: { croppedImage = $0; stage = .tools },
-                    onCancelled: { stage = .cropModeChoice }
-                )
-                .ignoresSafeArea()
+                // Port de `CropFragment.java:60-77` (V3-F-034, vérifié contre `CameraActivity.
+                // onArticleSelected` cases 3/4, `editor/CameraActivity.java:156-169`) — Android
+                // affiche `btn_rect`/`btn_oval` EN PERMANENCE sur l'écran de recadrage lui-même
+                // (les deux `RelativeLayout` sont rendus `VISIBLE` inconditionnellement dans
+                // `onViewCreated`, quel que soit le mode courant) : changer de forme ne demande
+                // JAMAIS de quitter l'écran de recadrage, juste un tap sur l'autre bouton, qui
+                // recharge un `CropFragment` neuf dans l'autre forme (`openFragment(..., false)`,
+                // `replace` — donc l'état de recadrage en cours est perdu des DEUX côtés, Android
+                // y compris, pas une régression iOS). **Avant ce correctif**, la seule façon de
+                // changer de forme côté iOS était le bouton "Annuler" générique de
+                // `TOCropViewController` (`PhotoCropView.onCancelled`, sémantiquement "abandonner",
+                // pas "changer de forme") qui ramène à `.cropModeChoice` — fonctionnellement
+                // possible mais peu découvrable, contrairement au vrai comportement Android.
+                // Ajout d'une barre d'outils explicite Rectangle/Ovale directement sur l'écran de
+                // recadrage, fidèle à la présence permanente des 2 boutons Android — bascule
+                // directement `stage` vers l'autre forme (équivalent du `replace` Android, sans
+                // repasser par l'écran de choix intermédiaire).
+                // Superposition en BAS (pas en haut) : `TOCropViewController` a sa propre barre de
+                // navigation native Annuler/Terminer en haut de l'écran (confirmée lors du portage
+                // initial du module 9, voir doc de tête de `PhotoCropView.swift`) — un ajout en haut
+                // la recouvrirait.
+                ZStack(alignment: .bottom) {
+                    PhotoCropView(
+                        image: image,
+                        shape: shape,
+                        onCropped: { croppedImage = $0; stage = .tools },
+                        onCancelled: { stage = .cropModeChoice }
+                    )
+                    .ignoresSafeArea()
+                    cropShapeSwitcher(current: shape)
+                }
             }
         case .freeformCropping:
             if case .photo(let image) = media, let cgImage = image.cgImage {
@@ -172,6 +196,35 @@ struct PublishComposeView: View {
                 )
             }
         }
+    }
+
+    /// Port de `btn_rect`/`btn_oval` (`CropFragment.java:60-77`, V3-F-034) — barre de bascule de
+    /// forme TOUJOURS visible sur l'écran de recadrage, fidèle à Android (les 2 boutons y sont
+    /// affichés en permanence, pas seulement à l'écran de choix initial). Le bouton correspondant à
+    /// la forme COURANTE est désactivé/surligné (Android ne désactive pas visuellement son propre
+    /// bouton actif, mais retaper la même forme relance juste un recadrage identique côté Android —
+    /// désactivé ici pour éviter une recharge inutile de `TOCropViewController`, différence
+    /// mineure sans impact fonctionnel).
+    private func cropShapeSwitcher(current: PhotoCropView.Shape) -> some View {
+        HStack(spacing: 24) {
+            cropShapeButton(.rectangle, systemImage: "crop", label: "Rectangle", isActive: current == .rectangle)
+            cropShapeButton(.oval, systemImage: "circle", label: "Ovale", isActive: current == .oval)
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 20)
+        .background(.ultraThinMaterial, in: Capsule())
+        .padding(.bottom, 24)
+    }
+
+    private func cropShapeButton(_ shape: PhotoCropView.Shape, systemImage: String, label: String, isActive: Bool) -> some View {
+        Button {
+            stage = .cropping(shape)
+        } label: {
+            Label(label, systemImage: systemImage)
+                .font(.subheadline.weight(isActive ? .bold : .regular))
+                .foregroundStyle(isActive ? Color.accentColor : .primary)
+        }
+        .disabled(isActive)
     }
 
     @ViewBuilder

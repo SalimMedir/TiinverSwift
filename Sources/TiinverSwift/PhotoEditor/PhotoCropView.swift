@@ -21,7 +21,9 @@ import UIKit
 /// les animations de pression de bouton (`animateButtonPress`)/overlay de progression
 /// (`showProgressOverlay`) — pure présentation SwiftUI standard, aucune logique à porter.
 struct PhotoCropView: UIViewControllerRepresentable {
-    enum Shape {
+    // `Equatable` ajouté (V3-F-034) — requis par `PublishComposeView.cropShapeButton` pour
+    // surligner/désactiver le bouton de la forme courante.
+    enum Shape: Equatable {
         case rectangle
         case oval
     }

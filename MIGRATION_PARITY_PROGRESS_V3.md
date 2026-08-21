@@ -1042,3 +1042,83 @@ attente d'un test réel sur device/simulateur, conformément à la règle strict
 (StoreKit) reste `BLOCKED BY BACKEND` (documenté, aucune action client possible) ; le backlog P2/P3
 complet n'a pas été traité par cette Phase B (hors périmètre demandé — priorité P0 puis P1
 explicitement listés).
+
+---
+
+## 2026-08-21 — Session distincte (protocole de reprise) — Bookkeeping + Lot 16 : V3-F-034 (recadrage — changement de forme figé)
+
+**Contexte** : nouvelle session reprenant le travail après épuisement de crédit de la session
+précédente. Lecture complète de `CLAUDE_CONTINUATION.md`, `MIGRATION_PARITY_AUDIT_V3.md`,
+`MIGRATION_PARITY_PROGRESS_V3.md` avant tout code, conformément au protocole. `MIGRATION_PARITY_
+AUDIT_V4.md`/`PROGRESS_V4.md` confirmés être un cycle indépendant en Phase Audit uniquement (aucun
+code modifié pour les produire, encore non commités) — non touchés par cette session.
+
+### Bookkeeping (aucun code changé) — 4 findings originaux (V3-F-001–098) redondants avec le cycle complémentaire (V3-F-099–152)
+
+Le cycle complémentaire du 2026-08-20 a redécouvert indépendamment plusieurs findings déjà présents
+dans l'audit original SANS recouper les IDs (chaque agent avait reçu l'instruction de redémarrer la
+numérotation à V3-F-099). Conséquence : 4 lignes du tableau §6 original restaient marquées
+`MISSING`/`PARTIAL`/`CODE_PRESENT_UNVERIFIED` alors que le même problème sous-jacent était déjà
+`BUILD_VALIDATED` sous un autre ID. Vérifié un par un (texte de la feature, fichiers Android/iOS
+cités, commit) avant toute mise à jour :
+
+- **V3-F-007** (tap hashtag/mention en légende) = doublon de **V3-F-099**, corrigé `349b606`. Table
+  mise à jour : `MISSING` → `BUILD_VALIDATED`.
+- **V3-F-035** (recadrage ovale forcé en cercle 1:1) = doublon de **V3-F-125**, corrigé `5eb3358`.
+  Table mise à jour : `PARTIAL` → `BUILD_VALIDATED`.
+- **V3-F-042** (trim vidéo imprécis) = doublon de **V3-F-124**, corrigé `cd316df`. Table mise à
+  jour : `PARTIAL` → `BUILD_VALIDATED`.
+- **V3-F-025** (mapping des événements socket) : réserve de blocage ("invérifiable tant que
+  V3-F-016 n'est pas résolu") levée — V3-F-016 est `BUILD_VALIDATED` depuis le Lot 1. Reste
+  `CODE_PRESENT_UNVERIFIED` (pas de régression trouvée, juste pas encore testé en conditions
+  réelles), mais la note de blocage structurel était fausse et corrigée.
+
+**Toujours non recoupés, laissés en l'état** (pas de doublon trouvé, juste des réserves à
+revérifier plus tard si le temps le permet) : V3-F-036 (géométrie de recadrage tierce, à tester),
+V3-F-046 (cohérence publication/Bunny, à tester en intégration croisée), V3-F-078 (Universal Links
+— bloqué par l'absence d'AASA hébergé côté serveur, pas une action client possible).
+
+### Lot 16 : V3-F-034 (Galerie — changement de mode de recadrage figé)
+
+**Finding ID** : V3-F-034 (GALERIE-03)
+
+**Problème réel** : côté iOS, une fois le mode de recadrage choisi (`PublishComposeView.
+CropModeChoiceView` → `.cropping(shape)`), la seule façon d'en changer était le bouton "Annuler"
+générique de `TOCropViewController` (`PhotoCropView.onCancelled`), qui ramène à l'écran de choix
+initial — fonctionnellement possible mais peu découvrable (sémantique "abandonner", pas "changer de
+forme"), contrairement à Android qui affiche les 2 boutons de forme EN PERMANENCE sur l'écran de
+recadrage lui-même.
+
+**Preuve Android** : `editor/croper/CropFragment.java:60-77` (`btn_rect`/`btn_oval`, tous deux
+`setVisibility(View.VISIBLE)` inconditionnellement dans `onViewCreated`, quel que soit le mode
+courant) → `editor/CameraActivity.java:156-169` (`onArticleSelected` cases 3/4 : chaque tap crée un
+`CropFragment` NEUF avec l'autre `DEMO_PRESET` et `replace()` le fragment courant,
+`addToBackStack=false`) — confirmé que l'état de recadrage en cours (position/zoom) est perdu des
+DEUX côtés au changement de mode, Android y compris ; ce n'est PAS une iOS-régression sur ce point
+précis, uniquement sur la découvrabilité du changement de mode lui-même.
+
+**Divergence iOS (avant correctif)** : aucun bouton de bascule visible sur l'écran de recadrage
+iOS — seul un "Annuler" menant à l'écran de choix précédent, un détour supplémentaire et
+sémantiquement trompeur.
+
+**Correctif** : nouvelle barre de bascule Rectangle/Ovale TOUJOURS visible en superposition basse
+sur `PhotoCropView` (évite la barre de navigation native Annuler/Terminer de `TOCropViewController`
+en haut d'écran), fidèle à la présence permanente des 2 boutons Android. Chaque tap bascule
+directement `stage` vers l'autre forme (`stage = .cropping(otherShape)`), rechargeant
+`TOCropViewController` à neuf — équivalent fonctionnel du `replace()` Android (perte de la position
+de recadrage en cours dans les deux cas, fidèle, pas "amélioré" silencieusement).
+
+**Fichiers modifiés** :
+- `Sources/TiinverSwift/Feed/PublishComposeView.swift` — cas `.cropping(let shape)` enveloppé dans
+  un `ZStack(alignment: .bottom)`, nouvelles `cropShapeSwitcher(current:)`/`cropShapeButton(...)`.
+- `Sources/TiinverSwift/PhotoEditor/PhotoCropView.swift` — `Shape` conforme à `Equatable` (requis
+  pour surligner/désactiver le bouton de la forme active).
+
+**Commit** : *(à renseigner après commit/push de ce tour)*.
+
+**Résultat CI** : *(à renseigner — build GitHub Actions à déclencher juste après ce commit)*.
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI, PUIS
+`BUILD_VALIDATED` seulement (pas `COMPLETE_PARITY_VALIDATED`) même après CI verte — test réel requis
+(ouvrir l'écran de recadrage, taper "Ovale" puis "Rectangle" plusieurs fois, confirmer qu'aucune
+forme ne reste bloquée et que le résultat final correspond à la DERNIÈRE forme tapée).

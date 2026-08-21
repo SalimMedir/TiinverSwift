@@ -91,8 +91,8 @@ final class ChatViewModel: ObservableObject {
     /// met à jour `isPeerOnline`), seule l'ÉMISSION de la requête initiale manquait. Gardé par
     /// `!target.isGroup`, fidèle à `ChatType.CHAT` (jamais émis pour un groupe côté Android).
     private func emitPresenceIfPrivateChat() {
-        guard !target.isGroup else { return }
-        chatRepository.emitPresence(username: target.to)
+        guard !target.isGroup, let to = target.to else { return }
+        chatRepository.emitPresence(username: to)
     }
 
     // MARK: - Groupes payants (port du bloc `if (userData.getType().equals(GROUP)){...}` de

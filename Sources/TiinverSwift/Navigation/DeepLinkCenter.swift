@@ -17,7 +17,14 @@ enum DeepLinkDestination: Equatable {
     case userProfile(userId: String)
     case post(FeedActivity)
     case groupChat(RosterModel)
-    case settings
+    /// Port de `case "myaccount": Intent(SettingsActivity) putExtra(INDEX, 7)`
+    /// (`ShareActivity.java:179-185`) — **renommé de `.settings` le 2026-08-20
+    /// (MIGRATION_PARITY_AUDIT_V3.md V3-F-137, Phase B P1)** : ce cas n'a JAMAIS eu d'autre
+    /// producteur que le lien `myaccount` (grep exhaustif), donc jamais eu besoin d'être un
+    /// "réglages génériques" — Android route DIRECTEMENT vers `SettingAccountFragment` (INDEX=7),
+    /// pas vers l'écran racine des réglages. Avant ce correctif, iOS ouvrait `SettingsView` (la
+    /// liste racine), obligeant un tap supplémentaire sur "Compte".
+    case settingsAccount
     case animems
     case referral
 }

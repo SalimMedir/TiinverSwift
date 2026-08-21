@@ -720,7 +720,7 @@ IOS FILES : Messagerie/ChatViewModel.swift (aucun appel), Realtime/ChatRepositor
 LOGIC PARITY : `emitPresence(username:)` existe et émet correctement, mais grep exhaustif confirme ZÉRO site d'appel en dehors de sa propre déclaration. `ChatViewModel.loadInitial()` ne l'appelle jamais.
 NETWORK/MEDIA PARITY : La RÉCEPTION fonctionne (listener câblé, met à jour `isPeerOnline`) — seule l'ÉMISSION de la requête initiale manque.
 RUNTIME CHAIN : USER ACTION (ouvrir chat 1:1) → RUPTURE : aucun appel à `emitPresence` → `isPeerOnline` reste `false` indéfiniment sauf changement d'état du pair PENDANT que l'écran est déjà ouvert.
-STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte)
+STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI initialement ROUGE : `98b8c7d` échec réel de compilation, `target.to` est `String?` pas `String`, `emitPresence(username:)` exige un non-optionnel — corrigé par un `guard let` dans le même lot, jamais masqué)
 PREUVE : `ChatRepository.swift:432` (jamais appelée) ; `ChatFragmentTest.java:701` (site d'appel Android). (Avant correctif.)
 CAUSE : Angle mort entre deux modules écrits à des passes différentes (protocole d'émission vs déclenchement dans le flux d'ouverture).
 RISQUE : Badge "en ligne" fonctionnellement mort en usage normal — fausse impression que le contact n'est "jamais en ligne".
@@ -1092,9 +1092,9 @@ FEATURE : Deep link "myaccount" — ouvre le menu Réglages générique au lieu 
 ANDROID SOURCE OF TRUTH : partage/ShareActivity.java:179-185 (`case "myaccount"` → `SettingsActivity` INDEX=7, sous-écran exact SettingAccountFragment)
 IOS FILES : Navigation/DeepLinkRouter.swift:65-66, Navigation/HomeShellView.swift:148-150
 LOGIC PARITY : `DeepLinkDestination.settings` n'a pas été granularisé pour porter une sous-destination.
-STATUT : PARTIAL
+STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte)
 RISQUE : Moyen — l'utilisateur doit taper une fois de plus après ouverture du lien.
-RECOMMANDATION : Étendre `DeepLinkDestination.settings` en `.settingsAccount`, router directement.
+RECOMMANDATION : Étendre `DeepLinkDestination.settings` en `.settingsAccount`, router directement. **Appliqué le 2026-08-20** exactement comme recommandé : `DeepLinkDestination.settings` renommé `.settingsAccount` (aucun autre producteur que `myaccount`, grep exhaustif) ; `SettingsView` accepte `startAtAccount: Bool` et pousse directement vers `SettingAccountView` via `.navigationDestination(isPresented:)` à l'apparition, sans perdre le retour vers la liste complète des réglages.
 TEST RÉEL NÉCESSAIRE : non.
 ```
 

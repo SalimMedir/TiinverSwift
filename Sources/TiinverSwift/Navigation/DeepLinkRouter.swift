@@ -63,7 +63,7 @@ enum DeepLinkRouter {
             guard segments.count > 1 else { return }
             await routeToGroup(token: segments[1])
         case "myaccount":
-            DeepLinkCenter.shared.route(.settings)
+            DeepLinkCenter.shared.route(.settingsAccount)
         case "animemes":
             DeepLinkCenter.shared.route(.animems)
         case "update":

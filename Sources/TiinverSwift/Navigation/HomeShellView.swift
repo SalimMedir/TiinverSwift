@@ -58,6 +58,11 @@ struct HomeShellView: View {
     @State private var deepLinkPost: FeedActivity?
     @State private var deepLinkRoster: RosterModel?
     @State private var showSettings = false
+    /// Port de `INDEX=7` (`ShareActivity.java:182`) — **ajouté le 2026-08-20
+    /// (MIGRATION_PARITY_AUDIT_V3.md V3-F-137, Phase B P1)** : `showSettings` n'a qu'UN seul
+    /// déclencheur dans tout le projet (ce switch, `.settingsAccount`), donc toujours fraîche au
+    /// moment où le sheet lit sa valeur — pas de risque d'état périmé à réinitialiser.
+    @State private var settingsStartAtAccount = false
     @State private var showAnimems = false
     @State private var showReferral = false
 
@@ -146,7 +151,7 @@ struct HomeShellView: View {
             }
         }
         .sheet(isPresented: $showSettings) {
-            NavigationStack { SettingsView() }
+            NavigationStack { SettingsView(startAtAccount: settingsStartAtAccount) }
         }
         .fullScreenCover(isPresented: $showAnimems) {
             AnimemesEditorView(onClose: { showAnimems = false })
@@ -191,7 +196,9 @@ struct HomeShellView: View {
             case .userProfile(let userId): deepLinkUserId = userId
             case .post(let post): deepLinkPost = post
             case .groupChat(let roster): deepLinkRoster = roster
-            case .settings: showSettings = true
+            case .settingsAccount:
+                settingsStartAtAccount = true
+                showSettings = true
             case .animems: showAnimems = true
             case .referral: showReferral = true
             }

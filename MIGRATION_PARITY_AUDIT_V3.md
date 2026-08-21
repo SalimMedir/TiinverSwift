@@ -680,17 +680,17 @@ TEST RÉEL NÉCESSAIRE : oui — connexion réelle + coupure/reprise réseau, co
 
 ```
 ID : V3-F-112
-PRIORITÉ : P1 (vérification, résultat positif — mais effet bloqué par V3-F-110)
+PRIORITÉ : P1 (vérification, résultat positif)
 DOMAINE : WebRTC
 FEATURE : `makingOffer` correctement remis à `false` sur succès de `createOffer()`
 ANDROID SOURCE OF TRUTH : messagerie/webrtc/RTConnection2.java
 IOS FILES : Calls/WebRTCConnection.swift:191-205
 LOGIC PARITY : Confirmé présent — `createOffer()` remet `makingOffer=false` dans les DEUX branches (succès ligne 203, échec ligne 195-198), symétrique à `iceRestart()`.
-STATUT : BUILD_VALIDATED (fix confirmé correct) — mais inatteignable en pratique tant que V3-F-110 n'est pas corrigé (aucun message entrant réel n'est jamais traité par `process()`)
+STATUT : BUILD_VALIDATED (fix confirmé correct) — **mise à jour 2026-08-20** : la réserve initiale ("inatteignable tant que V3-F-110 n'est pas corrigé") ne tient plus, V3-F-110 est CORRIGÉ (`2a779f6`, CI verte confirmée) depuis le Lot 1 de cette même Phase B. Ce correctif est donc désormais réellement atteignable en usage normal.
 PREUVE : `WebRTCConnection.swift:191-205`.
 RISQUE : Nul isolément.
-RECOMMANDATION : Traiter V3-F-110 en priorité pour que ce correctif devienne effectif.
-TEST RÉEL NÉCESSAIRE : oui, mais seulement après correction de V3-F-110.
+RECOMMANDATION : Aucune action supplémentaire — vérification positive, dépendance résolue.
+TEST RÉEL NÉCESSAIRE : oui — device/simulateur réel, maintenant possible puisque V3-F-110 est corrigé.
 ```
 
 ```
@@ -920,11 +920,11 @@ FEATURE : Aplatissement (flatten) peinture/texte/stickers — distorsion de rati
 ANDROID SOURCE OF TRUTH : Voir V3-F-039
 IOS FILES : PhotoEditor/PhotoToolsView.swift:227-249 (`flatten()`)
 LOGIC PARITY : `renderer.scale` dérive uniquement du ratio de LARGEUR (`canvasSize`=taille écran vs taille photo). Si le ratio de l'écran diffère du ratio de la photo source (cas courant), le rendu final aura les dimensions du RATIO ÉCRAN, pas du ratio photo — les bandes de lettrboxing (transparentes/blanches dans le composé, contrairement au fond noir explicite de l'écran d'édition) sont gravées définitivement dans l'image publiée dès qu'un trait/texte a été ajouté.
-STATUT : PARTIAL (confirmation — fichier inchangé depuis sa création)
-PREUVE : `renderer.scale = max(displayedImage.size.width / canvasSize.width, 1) * displayedImage.scale` (une seule composante, ligne 247) ; vue composée sans fond noir explicite (ligne 244) contrairement à l'écran d'édition (ligne 47).
+STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte)
+PREUVE : `renderer.scale = max(displayedImage.size.width / canvasSize.width, 1) * displayedImage.scale` (une seule composante, ligne 247) ; vue composée sans fond noir explicite (ligne 244) contrairement à l'écran d'édition (ligne 47). (Avant correctif.)
 CAUSE : `ImageRenderer.scale` scalaire unique suppose implicitement le même ratio pour `canvasSize` et `displayedImage`.
 RISQUE : Toute publication avec peinture/texte/sticker sur une photo de ratio ≠ écran introduit bandes de bord non désirées et distorsion des dimensions publiées.
-RECOMMANDATION : Rendre le composé à la résolution EXACTE de `displayedImage`, convertir les positions du repère `canvasSize` vers le repère réel de l'image affichée.
+RECOMMANDATION : Rendre le composé à la résolution EXACTE de `displayedImage`, convertir les positions du repère `canvasSize` vers le repère réel de l'image affichée. **Appliqué le 2026-08-20** exactement comme recommandé : composé rendu à `displayedImage.size` (plus de lettrboxing/`.aspectRatio`), positions des traits/textes converties via `imageSpacePoint` (repère écran→image), largeur de trait ET taille de police également mises à l'échelle (`/ screenToImageScale`) pour préserver la même apparence proportionnelle qu'à l'écran — sans quoi elles seraient devenues des hairlines/texte minuscule à la résolution native de la photo.
 TEST RÉEL NÉCESSAIRE : oui — publier une photo 1:1 ou 4:3 avec un trait de peinture sur un écran ~9:19.5, comparer dimensions/contenu du JPEG uploadé.
 ```
 

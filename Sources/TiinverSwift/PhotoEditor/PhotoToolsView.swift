@@ -212,39 +212,75 @@ struct PhotoToolsView: View {
             }
     }
 
-    private static func draw(_ stroke: DrawnStroke, in context: GraphicsContext) {
+    private static func draw(_ stroke: DrawnStroke, in context: GraphicsContext, lineWidth: CGFloat = 8) {
         guard stroke.points.count > 1 else { return }
         var path = Path()
         path.move(to: stroke.points[0])
         for point in stroke.points.dropFirst() { path.addLine(to: point) }
-        context.stroke(path, with: .color(stroke.color), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
+        context.stroke(path, with: .color(stroke.color), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
     }
 
     /// Aplatit l'image + les traits de peinture + le texte en une seule image bitmap avant
     /// publication (`ImageEditorCompound.saveImageWithPaint`/`saveImageWithText` côté Android — même
     /// principe, résolution finale ajustée à la résolution PIXEL de l'image source plutôt qu'à la
     /// taille d'affichage, via `ImageRenderer.scale`).
+    ///
+    /// **Corrigé le 2026-08-20 (MIGRATION_PARITY_AUDIT_V3.md V3-F-126, reconfirmation de V3-F-039,
+    /// Phase B P1)** — avant ce correctif, le composé était rendu à `canvasSize` (le cadre ÉCRAN,
+    /// `GeometryReader`), pas à la résolution de `displayedImage` : dès que le ratio écran différait
+    /// du ratio de la photo source (cas courant), l'image `.aspectRatio(.fit)` était lettrboxée
+    /// SANS fond noir explicite (contrairement à l'écran d'édition), gravant des bandes
+    /// transparentes/blanches indésirables dans l'image publiée, avec les dimensions finales du
+    /// ratio ÉCRAN plutôt que du ratio PHOTO. Le composé est maintenant rendu EXACTEMENT à
+    /// `displayedImage.size` (aucun `.aspectRatio`/lettrboxing nécessaire, l'image occupe tout le
+    /// cadre) ; les positions des traits/textes (capturées en repère ÉCRAN, `canvasSize`) et leurs
+    /// tailles (largeur de trait, taille de police — fixées en points ÉCRAN) sont converties vers
+    /// le repère réel de l'image via `screenToImageScale`/`imageSpacePoint`, pour que le résultat
+    /// final ait EXACTEMENT la même apparence proportionnelle que ce que l'utilisateur voyait à
+    /// l'écran, fidèle à Android (`ImageEditorCompound` bake le contenu à la résolution pixel de la
+    /// photo, jamais à la résolution d'affichage).
     @MainActor
     private func flatten() -> UIImage {
         guard canvasSize.width > 0, canvasSize.height > 0, !strokes.isEmpty || !texts.isEmpty else {
             return displayedImage
         }
+        let imageSize = displayedImage.size
+        guard imageSize.width > 0, imageSize.height > 0 else { return displayedImage }
+
+        // Port de l'aspect-fit implicite d'`.aspectRatio(contentMode: .fit)` dans l'écran d'édition
+        // — même formule, calculée explicitement ici pour convertir les coordonnées écran → image.
+        let screenToImageScale = min(canvasSize.width / imageSize.width, canvasSize.height / imageSize.height)
+        let fittedSize = CGSize(width: imageSize.width * screenToImageScale, height: imageSize.height * screenToImageScale)
+        let origin = CGPoint(x: (canvasSize.width - fittedSize.width) / 2, y: (canvasSize.height - fittedSize.height) / 2)
+
+        func imageSpacePoint(_ screenPoint: CGPoint) -> CGPoint {
+            CGPoint(x: (screenPoint.x - origin.x) / screenToImageScale, y: (screenPoint.y - origin.y) / screenToImageScale)
+        }
+
+        let transformedStrokes = strokes.map { DrawnStroke(points: $0.points.map(imageSpacePoint), color: $0.color) }
+        let transformedTexts = texts.map { item -> PlacedText in
+            var copy = item
+            copy.position = imageSpacePoint(item.position)
+            return copy
+        }
+        let imageSpaceLineWidth = 8 / screenToImageScale
+
         let composed = ZStack {
-            Image(uiImage: displayedImage).resizable().aspectRatio(contentMode: .fit)
+            Image(uiImage: displayedImage)
             Canvas { context, _ in
-                for stroke in strokes { Self.draw(stroke, in: context) }
+                for stroke in transformedStrokes { Self.draw(stroke, in: context, lineWidth: imageSpaceLineWidth) }
             }
-            ForEach(texts) { item in
+            ForEach(transformedTexts) { item in
                 Text(item.text)
-                    .font(.system(size: item.isSticker ? 64 : 30, weight: item.isSticker ? .regular : .bold))
+                    .font(.system(size: (item.isSticker ? 64 : 30) / screenToImageScale, weight: item.isSticker ? .regular : .bold))
                     .foregroundStyle(item.color)
                     .position(item.position)
             }
         }
-        .frame(width: canvasSize.width, height: canvasSize.height)
+        .frame(width: imageSize.width, height: imageSize.height)
 
         let renderer = ImageRenderer(content: composed)
-        renderer.scale = max(displayedImage.size.width / canvasSize.width, 1) * displayedImage.scale
+        renderer.scale = displayedImage.scale
         return renderer.uiImage ?? displayedImage
     }
 }

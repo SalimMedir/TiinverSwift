@@ -601,11 +601,11 @@ ANDROID SOURCE OF TRUTH : UniversalSearchAdapter.java:226-247 (`onFollowingError
 IOS FILES : Discover/SearchView.swift:145-169
 LOGIC PARITY : `toggleFollow` met `isFollowed=true` IMMÉDIATEMENT, puis `try? await ...follow(...)` — en cas d'échec, l'erreur est avalée, AUCUN rollback.
 RUNTIME CHAIN : USER ACTION (tap Suivre) → state=true → réseau échoue → try? avale → RENDU : "Abonné" affiché en permanence, désactivé, aucun moyen de réessayer.
-STATUT : FUNCTIONALLY_FAILED
-PREUVE : `SearchView.swift:163-169` (mise à jour d'état avant `try?`, aucun `catch`, aucune réaffectation en échec).
+STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé, Phase B — CI pas encore confirmée verte ; passera à `BUILD_VALIDATED` une fois confirmé)
+PREUVE : `SearchView.swift:163-169` (mise à jour d'état avant `try?`, aucun `catch`, aucune réaffectation en échec). (Avant correctif.)
 CAUSE : Pattern `try?` combiné à une mise à jour optimiste jamais annulée en cas d'échec.
 RISQUE : Faux positif visible et persistant — l'utilisateur croit avoir suivi quelqu'un alors que non.
-RECOMMANDATION : `do/catch` explicite, rollback `isFollowed=false` + état d'erreur visible en cas d'échec.
+RECOMMANDATION : `do/catch` explicite, rollback `isFollowed=false` + état d'erreur visible en cas d'échec. **Appliqué le 2026-08-20** : rollback `isFollowed=false` sur échec dans `SearchView.toggleFollow`. En vérifiant TOUS les appelants de `ProfileRepository.follow` (étape obligatoire de la méthode), 3 AUTRES sites exhibant EXACTEMENT le même bug (mise à jour optimiste + `try?` sans rollback) ont été trouvés et corrigés dans le même lot : `ProfileViewModel.follow()` (bouton principal du profil), `FeedViewModel.followFromDetail()` (bouton follow du visualiseur plein écran), `SuggestionsCarouselView.follow()` (carrousel de suggestions), `NotificationsListView` (bouton "Suivre en Retour"). Un 5e site (`FeedViewModel.unfollow()`) a été vérifié et laissé inchangé : il ne pose aucune mise à jour optimiste, donc n'exhibe pas ce bug précis (hors périmètre de ce finding).
 TEST RÉEL NÉCESSAIRE : oui.
 ```
 

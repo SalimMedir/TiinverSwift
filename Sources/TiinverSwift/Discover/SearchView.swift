@@ -160,12 +160,31 @@ struct SearchView: View {
     /// Port de `UniversalSearchAdapter`'s follow click handler — `ProfileRepository.follow` ne
     /// gère QUE le sens "suivre" (pas de bascule "ne plus suivre" depuis cette liste, fidèle à
     /// `ProfileViewModel.follow()` déjà porté — même absence côté profil, voir audit Profile).
+    ///
+    /// **Corrigé le 2026-08-20 (MIGRATION_PARITY_AUDIT_V3.md V3-F-107, Phase B P1)** — avant ce
+    /// correctif, `isFollowed=true` était posé de façon optimiste puis JAMAIS annulé en cas
+    /// d'échec réseau (`try?` avalait l'erreur) : l'utilisateur voyait "Abonné" affiché en
+    /// permanence, bouton désactivé, sans moyen de réessayer — un faux positif persistant, pire
+    /// que le comportement Android réel de ce bouton précis
+    /// (`UniversalSearchAdapter.java:236-239` : `onFollowingError` masque juste le spinner, ne
+    /// confirme jamais faussement un succès, mais reste aussi bloqué sur "pending" — un bug
+    /// latent différent côté Android). Le VRAI rollback attendu existe ailleurs dans le même
+    /// écran Android, sur le bouton "Suivre" principal du profil
+    /// (`UserProfile.java:507-508` : `onFollowingError() { labelSeguir.setText(R.string.seguir) }`)
+    /// — reproduit ici : `isFollowed` repasse à `false` en cas d'échec, réactivant le bouton pour
+    /// un nouvel essai, plutôt que de reproduire le blocage "pending" ou le faux "Abonné" permanent.
     private func toggleFollow(_ user: SearchUserResult) async {
         guard user.isFollowed != true, let myId = UserSession.shared.myId else { return }
         if let index = results.users.firstIndex(where: { $0.id == user.id }) {
             results.users[index].isFollowed = true
         }
-        try? await ProfileRepository.shared.follow(userId: String(user.id), followerId: myId)
+        do {
+            try await ProfileRepository.shared.follow(userId: String(user.id), followerId: myId)
+        } catch {
+            if let index = results.users.firstIndex(where: { $0.id == user.id }) {
+                results.users[index].isFollowed = false
+            }
+        }
     }
 
     private func postRow(_ post: SearchPostResult) -> some View {

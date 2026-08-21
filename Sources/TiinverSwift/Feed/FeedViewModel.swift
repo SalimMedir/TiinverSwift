@@ -172,12 +172,24 @@ final class FeedViewModel: ObservableObject {
     /// même motif unidirectionnel que `ProfileViewModel.follow()`/`SuggestionsCarouselView.follow`
     /// (n'agit QUE si pas déjà suivi, écho optimiste immédiat) : Android masque `followBtn`
     /// entièrement une fois `mediaObject.isFollowed()==true` plutôt que d'en faire un bascule.
+    ///
+    /// **Corrigé le 2026-08-20 (MIGRATION_PARITY_AUDIT_V3.md V3-F-107, Phase B P1 — bug frère,
+    /// même pattern `try?` + optimiste sans rollback que `SearchView.toggleFollow`/
+    /// `ProfileViewModel.follow`, trouvé en vérifiant tous les appelants de
+    /// `ProfileRepository.follow`)** — rollback ajouté, fidèle au vrai comportement Android
+    /// (`UserProfile.java:507-508`).
     func followFromDetail(_ post: FeedActivity) async {
         guard post.isFollowed != true, let index = posts.firstIndex(where: { $0.id == post.id }),
             let myId = UserSession.shared.myId, let actorId = post.actor
         else { return }
         posts[index].isFollowed = true
-        try? await profileRepository.follow(userId: actorId, followerId: myId)
+        do {
+            try await profileRepository.follow(userId: actorId, followerId: myId)
+        } catch {
+            if let index = posts.firstIndex(where: { $0.id == post.id }) {
+                posts[index].isFollowed = false
+            }
+        }
     }
 
     /// Port de la branche `block_content` de `OnclickMoreExpand` → `block(mediaObject)` — mêmes

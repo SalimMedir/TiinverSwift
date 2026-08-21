@@ -133,7 +133,15 @@ private struct NotificationRow: View {
                     Task {
                         guard let myId = UserSession.shared.myId else { return }
                         justFollowedBack = true
-                        try? await ProfileRepository.shared.follow(userId: String(noti.userId), followerId: myId)
+                        // Corrigé le 2026-08-20 (MIGRATION_PARITY_AUDIT_V3.md V3-F-107, Phase B
+                        // P1 — bug frère, même pattern `try?` + optimiste sans rollback, trouvé en
+                        // vérifiant tous les appelants de `ProfileRepository.follow`) : rollback
+                        // ajouté, fidèle au vrai comportement Android (`UserProfile.java:507-508`).
+                        do {
+                            try await ProfileRepository.shared.follow(userId: String(noti.userId), followerId: myId)
+                        } catch {
+                            justFollowedBack = false
+                        }
                     }
                 } label: {
                     Text(justFollowedBack ? "Suivi" : "Suivre en Retour")

@@ -143,10 +143,23 @@ final class ProfileViewModel: ObservableObject {
 
     /// Port de `butSeguir.setOnClickListener` (`UserProfile.java`) — écho optimiste immédiat
     /// (`labelSeguir.setText(R.string.pending)`), fidèle à l'original.
+    ///
+    /// **Corrigé le 2026-08-20 (MIGRATION_PARITY_AUDIT_V3.md V3-F-107, Phase B P1 — bug frère
+    /// découvert en vérifiant les sites d'appel du même pattern `try?` + mise à jour optimiste
+    /// dans `SearchView.toggleFollow`)** — `try?` avalait l'erreur réseau sans jamais réinitialiser
+    /// `isFollowing`, contrairement à l'Android RÉEL de CE bouton précis
+    /// (`UserProfile.java:507-508` : `onFollowingError() { labelSeguir.setText(R.string.seguir) }`),
+    /// qui remet explicitement le libellé à "Suivre" (et réactive le bouton, `.disabled(isFollowing)`
+    /// dans `ProfileView.swift`) en cas d'échec. Avant ce correctif, un échec réseau laissait le
+    /// bouton bloqué sur "Abonné"/désactivé en permanence, sans moyen de réessayer.
     func follow() async {
         guard let myId = UserSession.shared.myId else { return }
         isFollowing = true
-        try? await repository.follow(userId: userId, followerId: myId)
+        do {
+            try await repository.follow(userId: userId, followerId: myId)
+        } catch {
+            isFollowing = false
+        }
     }
 
     /// Port de `AddPerfilFoto` (flux d'envoi de la photo de profil, section reprise dans

@@ -864,3 +864,116 @@ correctif se propage automatiquement à tous sans modification supplémentaire, 
 à la consigne de ne pas déclencher de test Appetize). Test réel nécessaire : taper un hashtag et
 une mention dans une légende de post (fil, recherche, hashtag, notifications, profil, lien profond)
 et confirmer l'ouverture de la recherche pré-remplie sur le bon onglet.
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Lot 10 : V3-F-102 (pagination hashtag absente au-delà de 30)
+
+**Commit** : `596105f` — CI **succès** (confirmé).
+
+**Cause exacte** : `HashtagFeedView.load()` n'appelait `fetchHashtagPosts` qu'UNE seule fois
+(`.task`), sans état `offset`/déclencheur de scroll — aucun second appel réseau n'était jamais
+émis. Au passage, `limit:30` était incorrect : `HashtagProfile.java:101` confirme `LIMIT=10` côté
+Android — l'affirmation initiale du finding ("paramètres du premier appel déjà identiques") était
+inexacte, corrigée après vérification directe du source Android.
+
+**Fichiers modifiés** : `Discover/HashtagFeedView.swift` — état `offset`/`reachedEnd`/
+`isLoadingMore` ajouté, `loadMore()` déclenché sur `.onAppear` de la dernière cellule (même motif
+que `ProfileView`/`loadMorePosts`), `pageLimit` corrigé à `10`.
+
+**Flux frère vérifié** : `fetchHashtagPosts` a un seul appelant dans tout le projet.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`.
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Lot 11 : V3-F-113 (aucune surveillance réseau pour la reconnexion socket)
+
+**Commit** : `ab510b3` — CI **succès** (confirmé).
+
+**Cause exacte** : grep exhaustif (`NWPathMonitor`/`Reachability`) confirmait zéro résultat sur
+tout le projet — seul `attachToCurrentSocket()` existait, appelé UNIQUEMENT au login. Android
+détecte explicitement chaque transition réseau vers `CONNECTED`
+(`HomeActivity.onNetworkChange`, ligne 484) et force `resetSocket()+connectSocket()`.
+
+**Fichiers modifiés** : nouveau `Realtime/NetworkMonitor.swift` (singleton `NWPathMonitor`, recréé
+à chaque `start()` — `cancel()` invalide définitivement une instance Apple, donc pas réutilisable
+pour un cycle start/stop répété) ; `Navigation/RootRouterView.swift` — démarré/arrêté sur
+`.active`/`.background` (port d'`onStart`/`onStop`, HomeActivity.java:209-222,247-254).
+
+**Différence assumée documentée** : déclenchement UNIQUEMENT sur une transition RÉELLE
+non-satisfait→satisfait (pas à chaque broadcast comme Android, plus bruyant) — pour éviter des
+resets de socket redondants sans manquer le scénario réel décrit par ce finding.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. Test réel nécessaire : mode avion 30s+,
+rétablir, mesurer le délai de reprise.
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Lot 12 : V3-F-114 (présence "en ligne" jamais émise) — CI ROUGE puis corrigée
+
+**Commit initial** : `98b8c7d` — **CI ÉCHEC RÉEL** (`erreur de compilation Swift confirmée, pas un
+faux positif`). **Commit correctif** : `94bd731` — CI en cours de re-vérification.
+
+**Cause exacte du bug de parité** : `emitPresence(username:)` existait déjà et émet correctement
+(`ChatRepository.swift:432`), mais grep exhaustif confirmait ZÉRO site d'appel en dehors de sa
+propre déclaration. `ChatViewModel.loadInitial()` ne l'appelait jamais — fidèle à
+`chatViewModel.presence(userData.getTo())` appelé à l'ouverture d'un chat 1:1
+(`ChatFragmentTest.java:700-704`, gardé par `ChatType.CHAT`).
+
+**Cause exacte de l'échec CI (à documenter honnêtement, pas masquée)** : le premier correctif
+(`98b8c7d`) appelait `chatRepository.emitPresence(username: target.to)` sans remarquer que
+`RosterModel.to` est déclaré `String?` (optionnel) alors que `emitPresence(username:)` exige un
+`String` non-optionnel — erreur de compilation Swift réelle
+(`ChatViewModel.swift:95:54: error: value of optional type 'String?' must be unwrapped`),
+confirmée dans les logs du job CI (`xcodebuild`), PAS un faux échec d'infrastructure (le seul autre
+message d'erreur du log, `-downloadComponent`, est un avertissement non-fatal PRÉEXISTANT du
+workflow, avec repli `|| echo` explicite — vérifié avant d'écarter cette piste). Corrigé par un
+`guard let to = target.to else { return }` dans le même lot (`94bd731`), jamais contourné/masqué.
+
+**Fichiers modifiés** : `Messagerie/ChatViewModel.swift` — nouvelle `emitPresenceIfPrivateChat()`
+appelée en fin de `loadInitial()`, gardée par `!target.isGroup` ET par le `guard let` de
+déballage.
+
+**Flux frère vérifié** : `loadInitial()` a un seul site d'appel dans tout le projet
+(`ChatView.swift:64`).
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI de
+`94bd731` (voir Lot 15 ci-dessous pour le suivi).
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Lot 13 : V3-F-128 (bouton catégorie mal placé) / V3-F-129 (liens légaux faux)
+
+**Commit** : `9de8647` (contenait aussi le bug hérité de `98b8c7d`, re-vérifié après `94bd731`) —
+voir Lot 15 pour la confirmation CI finale.
+
+**V3-F-128 — cause exacte** : deux sessions de portage différentes ont traité le même gap sans se
+recouper — `EditProfileView.swift` documentait "Catégorie NON portée cette session" tandis qu'un
+doublon fonctionnel avait été ajouté dans `SettingAccountView` ("Réglages > Compte"), un
+emplacement sans équivalent Android identifié. **Fichiers modifiés** : déplacé (pas dupliqué) —
+retiré de `Settings/SettingSubViews.swift`, ajouté à `Profile/EditProfileView.swift`, fidèle à
+`categoryView.setOnClickListener` (`EditProfile.java:68-75`).
+
+**V3-F-129 — cause exacte** : les 2 `Link` de `SettingAboutView` pointaient vers la racine du site
+(`https://tiinver.com`), pas les pages légales réelles — `SettingAboutFragment.java` jamais lu en
+détail au moment du portage initial. **Fichiers modifiés** : URLs réelles
+(`/privacy_policy.html`, `/terms_conditions.html`, confirmées dans `SettingAboutFragment.java:93-108`
+ET déjà correctes dans `Authentication/PoliticaDemandView.swift`) ; ouvertes en `InAppWebView`
+(port de `MyWebView.java`, promu `internal` depuis `PoliticaDemandView.swift` et réutilisé plutôt
+que dupliqué) au lieu d'un `Link` Safari externe.
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI (Lot 15).
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Lot 14 : V3-F-137 (deep link "myaccount" — ouvre la liste réglages au lieu du sous-écran Compte)
+
+**Commit** : `94bd731` — voir Lot 15 pour la confirmation CI.
+
+**Cause exacte** : `DeepLinkDestination.settings` n'avait pas été granularisé pour porter une
+sous-destination — Android route DIRECTEMENT `myaccount` vers `SettingAccountFragment`
+(`ShareActivity.java:179-185`, `INDEX=7`), pas vers l'écran racine des réglages.
+
+**Fichiers modifiés** : `Navigation/DeepLinkCenter.swift` — `case settings` renommé
+`.settingsAccount` (aucun autre producteur que `myaccount` dans tout le projet, grep exhaustif) ;
+`Navigation/DeepLinkRouter.swift`, `Navigation/HomeShellView.swift` mis à jour en conséquence ;
+`Settings/SettingsView.swift` — nouveau `startAtAccount: Bool`, pousse directement vers
+`SettingAccountView` via `.navigationDestination(isPresented:)` à l'apparition (conserve le retour
+vers la liste complète, fidèle au conteneur de fragment `SettingsActivity`).
+
+**Flux frère vérifié** : `.settings`/`.settingsAccount` n'avait qu'un seul point de déclenchement
+dans tout le projet (`HomeShellView.swift`, switch sur `deepLinks.pending`) — aucun autre site à
+mettre à jour.
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI (Lot 15).

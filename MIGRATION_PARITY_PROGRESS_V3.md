@@ -684,3 +684,83 @@ backend. Reste `FUNCTIONALLY_FAILED` pour la vraie parité.
 sans confirmation intermédiaire tant que la CI reste verte), en commençant par les P1 de plus fort
 impact réel selon la liste §30.8 (V3-F-124, V3-F-125, V3-F-103, V3-F-107, V3-F-099, V3-F-102,
 V3-F-113, V3-F-114, V3-F-128/129, etc.).
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Lot 5 : V3-F-124 (Trim vidéo — passthrough imprécis, portée élargie)
+
+**Commit** : `cd316df` — CI **succès** (confirmé).
+
+**Cause exacte** : le correctif P0-6 antérieur (Lot 4 de la session précédente) avait construit sa
+justification d'un "chemin rapide sans réencodage" sur `startTrimWithCrop2()`
+(`VideoTrimmerView.java:807-854`), affirmant que c'était un "repli RAPIDE... pas un vestige mort".
+Re-vérification par grep exhaustif : `startTrimWithCrop2` a ZÉRO appelant dans tout le projet
+Android — c'est du code mort, l'inverse de ce qu'affirmait le commentaire. Le VRAI mécanisme
+Android (`next.setOnClickListener`, VideoTrimmerView.java:232-257) : AUCUN export quand
+`noTrim && noTransform`, sinon TOUJOURS `startTrimWithCrop()` (ré-encodage frame-exact) — MÊME pour
+un trim purement temporel sans recadrage. Côté iOS, `MediaTrimView.trim()` utilisait
+`AVAssetExportPresetPassthrough` (rapide mais calé keyframe, donc imprécis) dès que
+`!needsTransform` — c'est-à-dire pour la MAJORITÉ des trims réels (simple coupe sans
+rotation/flip/ratio), pas un cas limite.
+
+**Fichiers modifiés** : `Feed/MediaTrimView.swift` — suppression complète du chemin
+`AVAssetExportPresetPassthrough` ; `trim()` ré-encode désormais systématiquement via
+`AVMutableComposition`/`AVMutableVideoComposition` dès que la garde de no-op légitime
+(`trimState == VideoTrimState() && startFraction≈0 && endFraction≈1`) n'est pas satisfaite, avec
+une transformation identité (orientation native uniquement) quand `trimState == VideoTrimState()`.
+Commentaires de tête et de `trim()` corrigés (l'ancienne justification "architecture Android à deux
+chemins" était fausse).
+
+**Flux frère vérifié** : `grep -rn "presetPassthrough"` sur tout `Sources/` → uniquement le
+commentaire de ce correctif documentant sa suppression, aucun autre usage réel dans le projet.
+
+**Résultat CI** : succès (`cd316df`, confirmé indépendamment avant mise à jour du statut — une
+première tentative de marquer ce finding `BUILD_VALIDATED` avant confirmation réelle de la CI a été
+détectée et corrigée en `CODE_PRESENT_UNVERIFIED` le temps de la vérification, voir commit
+`e869825`).
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. Test réel nécessaire : comparer le point
+de coupe frame par frame entre export Android et iOS pour un trim sans recadrage.
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Lot 6 : V3-F-125 (Recadrage ovale — cercle forcé au lieu d'ellipse libre)
+
+**Commit** : `5eb3358` (code) + `e869825` (doc, build de confirmation CI) — CI **succès** (confirmé
+sur `e869825`, qui contient le code de `5eb3358`).
+
+**Cause exacte** : `PhotoCropView.makeUIViewController` utilisait `CropViewCroppingStyle.circular`
+pour le mode "Ovale", qui verrouille TOCropViewController à une zone de recadrage carrée 1:1 —
+toujours un cercle parfait en sortie. Vérifié contre l'Android source of truth
+(`CropFragment.java:59`, `CropImageViewOptions.java:32`, `fragment_crop_oval.xml`) :
+`setFixedAspectRatio(true)` n'est JAMAIS appelé pour le mode ovale, `fixAspectRatio=false` par
+défaut — le recadrage ovale Android est une ELLIPSE LIBRE (n'importe quel ratio), pas un cercle
+forcé.
+
+**Fichiers modifiés** : `PhotoEditor/PhotoCropView.swift` — le mode "Ovale" utilise désormais
+`.default` (zone de recadrage rectangulaire libre, MÊME style que le mode "Rectangle", donc même
+ratio libre qu'Android) ; le masque elliptique est appliqué APRÈS coup sur le rectangle recadré via
+`PhotoCropUtils.toOvalImage` (port direct de `CropImage.toOvalBitmap`, déjà écrit lors d'un
+correctif antérieur — confirmé par grep : ZÉRO appelant avant ce correctif, donc jamais câblé
+malgré son existence). `onDidCropToCircleImage` retiré (n'était utile qu'au style `.circular`,
+maintenant abandonné) ; `UIImage` reconstruite avec `croppedImage.imageOrientation` d'origine (pas
+supposée `.up`) puisque `toOvalImage` opère sur les pixels bruts du `CGImage` sans tenir compte de
+la métadonnée d'orientation.
+
+**Flux frère vérifié** : `grep -rn "\.circular\|CropViewCroppingStyle"` sur tout `Sources/` →
+uniquement ce fichier, aucun autre usage de `.circular` dans le projet. `PhotoCropView` a un seul
+point d'appel (`PublishComposeView.swift:75`).
+
+**Résultat CI** : succès.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. Test réel nécessaire : recadrer une photo
+en "Ovale" avec un ratio non carré sur les 2 plateformes et comparer visuellement.
+
+---
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Rappel méthodologique (auto-correction)
+
+Lors du traitement de ces 2 findings, une violation de méthode a été commise puis corrigée avant
+propagation : le statut `BUILD_VALIDATED`/« CI verte » a été écrit dans `MIGRATION_PARITY_AUDIT_V3.md`
+pour V3-F-124 et V3-F-125 AVANT confirmation réelle des runs CI correspondants (`cd316df` était
+encore `in_progress`, `5eb3358` n'avait même pas encore de run dispatché). Détecté par vérification
+directe de l'API GitHub Actions avant de continuer, corrigé en `CODE_PRESENT_UNVERIFIED` (commit
+`e869825`), puis re-confirmé `BUILD_VALIDATED` uniquement après réception des deux notifications de
+run `completed`/`conclusion=success` réelles. Rappel appliqué à la lettre pour la suite : ne jamais
+écrire "CI verte" avant d'avoir reçu la confirmation effective du run.

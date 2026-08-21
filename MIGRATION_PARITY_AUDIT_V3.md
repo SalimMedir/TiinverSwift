@@ -904,7 +904,7 @@ ANDROID SOURCE OF TRUTH : editor/croper/CropFragment.java:59 (setAspectRatio(1,1
 IOS FILES : PhotoEditor/PhotoCropView.swift:36-37 (`CropViewCroppingStyle.circular`)
 LOGIC PARITY : `setFixedAspectRatio(true)` n'est JAMAIS appelé dans `CropFragment.java` (grep exhaustif) — le recadrage ovale Android est donc une ELLIPSE LIBRE (n'importe quel ratio). `.circular` (TOCropViewController) verrouille la zone à un carré 1:1, produisant TOUJOURS un cercle parfait.
 RUNTIME CHAIN : Le résultat cerclé part réellement en publication (`croppedImage` → JPEG → Bunny).
-STATUT : **CODE_PRESENT_UNVERIFIED** (corrigé `5eb3358`, Phase B — CI pas encore dispatchée/confirmée ; passera à `BUILD_VALIDATED` une fois la CI verte confirmée, puis test visuel réel requis avant COMPLETE_PARITY_VALIDATED)
+STATUT : **BUILD_VALIDATED** (corrigé `5eb3358`, Phase B, CI confirmée verte `e869825` — test visuel réel requis avant COMPLETE_PARITY_VALIDATED)
 PREUVE : `CropImageViewOptions.java:32` (pas d'initialiseur = false) ; aucun `setFixedAspectRatio(true)` trouvé ; aucun `app:cropFixAspectRatio` dans les 2 layouts XML. (Avant correctif : `PhotoCropView.swift:36` utilisait `.circular`.)
 CAUSE : Remplacement du moteur maison Android par TOCropViewController (décision assumée), mais le style `.circular` ne couvre pas le mode "ellipse libre" réel d'Android.
 RISQUE : Perte silencieuse de fonctionnalité pour les portraits larges non carrés (le bouton "fonctionne" mais produit un résultat visuellement différent).
@@ -1333,7 +1333,7 @@ Les 4 corrections sont `BUILD_VALIDATED` (CI verte, comportement code re-tracé 
 
 **P0 reconfirmés (inchangés, déjà connus, bloqués backend)** : V3-F-140/V3-F-084 (StoreKit) — aucune correction client possible sans le endpoint backend `storekit/verify-purchase` (voir doc en tête de `CoinStoreManager.swift`, déjà écrite lors du travail P0-7 antérieur à cette session Phase B). Reste `FUNCTIONALLY_FAILED` pour la vraie parité tant que ce endpoint n'existe pas côté serveur — **BLOCKED BY BACKEND**.
 
-**P1 majeurs nouveaux** : V3-F-124 (portée élargie de V3-F-042 — passthrough imprécis pour la MAJORITÉ des trims, pas un cas limite), V3-F-125 (recadrage ovale confirmé, pas juste suspecté), V3-F-103 (recherche récente hashtag/mention → 0 résultat, reproductible à 100%), V3-F-107 (bouton Suivre peut mentir en permanence), V3-F-099 (hashtag/mention tap absent), V3-F-102 (pagination hashtag absente au-delà de 30), V3-F-113 (pas de surveillance réseau pour la reconnexion socket), V3-F-114 (présence jamais émise), V3-F-128/129 (Réglages : bouton catégorie mal placé, liens légaux faux).
+**P1 majeurs nouveaux** : V3-F-124 ✅ **CORRIGÉ le 2026-08-20** (commit `cd316df`, Phase B, CI verte confirmée — `BUILD_VALIDATED`), V3-F-125 ✅ **CORRIGÉ le 2026-08-20** (commit `5eb3358`, Phase B, CI verte confirmée sur `e869825` — `BUILD_VALIDATED`), V3-F-103 (recherche récente hashtag/mention → 0 résultat, reproductible à 100%), V3-F-107 (bouton Suivre peut mentir en permanence), V3-F-099 (hashtag/mention tap absent), V3-F-102 (pagination hashtag absente au-delà de 30), V3-F-113 (pas de surveillance réseau pour la reconnexion socket), V3-F-114 (présence jamais émise), V3-F-128/129 (Réglages : bouton catégorie mal placé, liens légaux faux).
 
 **2 découvertes notables où iOS est confirmé PLUS correct qu'Android** (à ne pas "corriger" — signaler à l'équipe QA pour éviter un faux rapport de régression) : V3-F-109 (recherche de conversation locale), V3-F-149 (restauration de session, déjà connu).
 

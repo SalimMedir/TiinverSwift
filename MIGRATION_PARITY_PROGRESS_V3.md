@@ -625,3 +625,62 @@ l'origine) était cassé.
 **Statut honnête après correction** : `BUILD_VALIDATED`. Test réel nécessaire : refuser la
 permission caméra/micro, confirmer l'alerte + le bouton Réglages, accorder la permission, revenir
 dans l'app et confirmer que la session caméra redémarre automatiquement.
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Lot 4 : V3-F-123 (Trim vidéo — republication silencieuse de l'original)
+
+**Commit** : `0ee101b` — CI **succès** (vérifié).
+
+**Cause exacte** : `MediaTrimView.trim()` avait 7 points de sortie anticipée (échec de création de
+l'`AVAssetExportSession`, échec de chargement de piste, échec de `composeTransform`, échec de
+création de piste composite, `status != .completed` sur le chemin passthrough ET sur le chemin de
+ré-encodage) qui appelaient TOUS `onTrimmed(sourceURL)` — republiant le fichier ORIGINAL brut (non
+coupé, non recadré, potentiellement bien plus long que la limite) comme si le trim/crop avait
+réussi, avec pour seul indice un `print()` invisible en production. Comportement Android réel
+(`VideoTrimmerView.startTrimWithCrop()`, `MediaTrim.onError`) : Toast d'erreur explicite,
+`callback.onVideo()` JAMAIS appelé en cas d'échec — l'utilisateur reste bloqué sur l'écran de trim,
+aucune publication de repli.
+
+**Fichiers modifiés** : `Feed/MediaTrimView.swift` — ajout de `@State private var errorText: String?`
++ `.alert("Échec du recadrage", ...)` ; chaque garde d'échec dans `trim()` définit désormais
+`errorText` et `return`s SANS appeler `onTrimmed`. Le `guard duration > 0` a été reclassé de no-op
+silencieux (`onTrimmed(sourceURL)`) en véritable échec. Seul le cas légitime
+`!needsTransform && startFraction ≈ 0 && endFraction ≈ 1` continue d'appeler `onTrimmed(sourceURL)`
+— fast-path Android réel (`noTrim && noTransform → callback.onVideo(null, false)`), pas un échec.
+
+**Flux frère vérifié** : `AVAssetExportSession` confirmé, par grep exhaustif sur tout le projet,
+utilisé UNIQUEMENT dans `MediaTrimView.swift` — aucune copie du bug ailleurs.
+
+**Résultat CI** : succès.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. Test réel nécessaire : provoquer un échec
+d'export réel (ex. média corrompu ou format non supporté) et confirmer que l'alerte s'affiche et
+qu'AUCUNE publication n'a lieu, plutôt qu'une republication silencieuse de l'original.
+
+---
+
+## 2026-08-20 — Phase B (cycle complémentaire) — Clôture du lot des 4 P0 nouveaux
+
+Les 4 P0 explicitement priorisés par l'utilisateur pour ce lot (V3-F-110, V3-F-131, V3-F-134,
+V3-F-123) sont maintenant tous corrigés côté code, committés, et CI verte. Aucun n'est encore
+`COMPLETE_PARITY_VALIDATED` — tous restent `BUILD_VALIDATED` en attendant un test réel sur
+device/simulateur (rappel de la règle : COMPILER N'EST PAS ÉQUIVALENT À FONCTIONNER).
+
+**V3-F-136** (notifications) : reclassé P3/`COMPLETE_PARITY_CANDIDATE` par correction d'audit
+(aucun code modifié) — la prémisse originale du finding était fausse : `NotificationUtils.show()`
+Android ouvre TOUJOURS `SplashActivity` sans payload, quel que soit le type de notification ; les
+Intents "riches" construits plus haut dans chaque méthode sont des variables locales mortes, jamais
+transmises à `show()` (confirmé par une ligne commentée `// getActionDestination()` et par
+`NotificationVO.getActionDestination()/setActionDestination()` sans aucun appelant dans tout le
+projet Android). Implémenter le routage initialement imaginé ferait diverger iOS d'Android dans le
+sens "iOS meilleur qu'Android" — décision produit, pas un gap de parité à corriger.
+
+**V3-F-140/V3-F-084** (StoreKit) : reconfirmé **BLOCKED BY BACKEND** — `CoinStoreManager.swift`
+documente déjà précisément (depuis le travail P0-7 antérieur à cette session Phase B) le endpoint
+serveur requis (`storekit/verify-purchase`, vérification via App Store Server API) ; aucune
+correction client supplémentaire n'est possible sans fabriquer une simulation trompeuse de ce
+backend. Reste `FUNCTIONALLY_FAILED` pour la vraie parité.
+
+**Suite** : passage automatique au backlog P1 (autorisation explicite de l'utilisateur à continuer
+sans confirmation intermédiaire tant que la CI reste verte), en commençant par les P1 de plus fort
+impact réel selon la liste §30.8 (V3-F-124, V3-F-125, V3-F-103, V3-F-107, V3-F-099, V3-F-102,
+V3-F-113, V3-F-114, V3-F-128/129, etc.).

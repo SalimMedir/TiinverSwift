@@ -871,11 +871,11 @@ ANDROID SOURCE OF TRUTH : VideoTrimmerView.java:670-758 (Toast d'erreur explicit
 IOS FILES : Feed/MediaTrimView.swift:220-309 (`trim()`)
 LOGIC PARITY : Android bloque l'utilisateur sur l'écran de trim en cas d'échec (Toast + pas de callback succès). iOS a 7 points de sortie anticipée (échec export, échec chargement piste, échec composeTransform, échec piste composite, statut != completed sur les 2 chemins) qui appellent TOUS `onTrimmed(sourceURL)` — publient le fichier ORIGINAL BRUT (non coupé, non recadré, potentiellement &gt;60s) comme si le trim avait réussi. Seul indice : un `print()` invisible en production.
 RUNTIME CHAIN : `trim()` échoue → `onTrimmed(sourceURL)` → `PublishComposeView.publish()` → `FeedRepository.publish` → Bunny → `activity/add`. Chaîne tracée en entier, confirmée.
-STATUT : FUNCTIONALLY_FAILED (sur le chemin d'erreur — le chemin de succès reste BUILD_VALIDATED)
-PREUVE : `MediaTrimView.swift:303-308` — `if exportSession.status == .completed { onTrimmed(outputURL) } else { print(...); onTrimmed(sourceURL) }`, contrat `onTrimmed: (URL) -&gt; Void` sans variante d'échec.
+STATUT : **BUILD_VALIDATED** (corrigé `0ee101b`, Phase B, CI verte — test réel de trim/crop en échec requis avant COMPLETE_PARITY_VALIDATED)
+PREUVE : `MediaTrimView.swift:303-308` — `if exportSession.status == .completed { onTrimmed(outputURL) } else { print(...); onTrimmed(sourceURL) }`, contrat `onTrimmed: (URL) -&gt; Void` sans variante d'échec. (Avant correctif.)
 CAUSE : Le contrat de callback ne permet structurellement pas de distinguer succès et échec — chaque garde a été ajoutée en "meilleur effort" plutôt que remontée en erreur.
 RISQUE : L'utilisateur qui coupe explicitement une vidéo de 3 minutes à 15 secondes (ou pivote/recadre) peut publier silencieusement l'intégralité non coupée — régression de confidentialité/contenu potentiellement grave.
-RECOMMANDATION : Changer la signature en `(Result&lt;URL, Error&gt;) -&gt; Void`, ne JAMAIS retomber sur `sourceURL` sans consentement explicite — fidèle au comportement Android réel (blocage, pas de publication de repli).
+RECOMMANDATION : Changer la signature en `(Result&lt;URL, Error&gt;) -&gt; Void`, ne JAMAIS retomber sur `sourceURL` sans consentement explicite — fidèle au comportement Android réel (blocage, pas de publication de repli). **Appliqué le 2026-08-20** (`MediaTrimView.swift`) : chaque garde d'échec (création `AVAssetExportSession`, chargement de piste, `composeTransform`, création de piste composite, `status != .completed` sur les 2 chemins export) affiche désormais une alerte `"Échec du recadrage"` et `return`, SANS appeler `onTrimmed` — fidèle au blocage Android réel. Seul le cas légitime `noTrim && noTransform` continue d'appeler `onTrimmed(sourceURL)` (fast-path Android réel, pas un échec). `AVAssetExportSession` confirmé unique dans tout le projet (aucun flux frère à corriger).
 TEST RÉEL NÉCESSAIRE : oui — forcer un échec d'export et vérifier qu'aucune vidéo non coupée ne part au serveur.
 ```
 
@@ -1323,13 +1323,15 @@ donc déjà à parité, voire meilleur qu'Android (qui perd tout contexte au tap
 complet ci-dessus pour le détail — **aucun code n'a été modifié pour ce point**, correction
 purement documentaire.
 
-**Nouveaux P0 (4 restants après requalification de V3-F-136, tous non identifiés par les cycles précédents)** :
-1. **V3-F-110** — WebRTC : `isOnCall` jamais mis à `true`, signalisation d'appel entrant jamais routée vers l'appel réel. **Le plus sévère.** ✅ **CORRIGÉ le 2026-08-20** (commit `2a779f6`, Phase B).
-2. **V3-F-131** — Réglages : toggle thème clair/sombre sans aucun effet visuel.
-3. **V3-F-134** — Permissions : aucun repli utilisateur (alerte/redirection Réglages) en cas de refus caméra/micro/photos.
-4. **V3-F-123** — Vidéo : tout échec d'export republie silencieusement le fichier ORIGINAL non modifié.
+**Nouveaux P0 (4 restants après requalification de V3-F-136, tous non identifiés par les cycles précédents) — LOT TERMINÉ le 2026-08-20 (Phase B), 4/4 corrigés côté code, CI verte sur les 4** :
+1. **V3-F-110** — WebRTC : `isOnCall` jamais mis à `true`, signalisation d'appel entrant jamais routée vers l'appel réel. **Le plus sévère.** ✅ **CORRIGÉ le 2026-08-20** (commit `2a779f6`, Phase B) — `BUILD_VALIDATED`.
+2. **V3-F-131** — Réglages : toggle thème clair/sombre sans aucun effet visuel. ✅ **CORRIGÉ le 2026-08-20** (commit `11f118a`, Phase B) — `BUILD_VALIDATED`.
+3. **V3-F-134** — Permissions : aucun repli utilisateur (alerte/redirection Réglages) en cas de refus caméra/micro/photos. ✅ **CORRIGÉ le 2026-08-20** (commit `83e9dee`, Phase B) — `BUILD_VALIDATED`.
+4. **V3-F-123** — Vidéo : tout échec d'export republie silencieusement le fichier ORIGINAL non modifié. ✅ **CORRIGÉ le 2026-08-20** (commit `0ee101b`, Phase B) — `BUILD_VALIDATED`.
 
-**P0 reconfirmés (inchangés, déjà connus)** : V3-F-140 (StoreKit).
+Les 4 corrections sont `BUILD_VALIDATED` (CI verte, comportement code re-tracé et vérifié ligne à ligne contre l'Android source of truth) mais PAS `COMPLETE_PARITY_VALIDATED` — aucun test réel sur device/simulateur n'a été effectué (rappel : COMPILER N'EST PAS ÉQUIVALENT À FONCTIONNER).
+
+**P0 reconfirmés (inchangés, déjà connus, bloqués backend)** : V3-F-140/V3-F-084 (StoreKit) — aucune correction client possible sans le endpoint backend `storekit/verify-purchase` (voir doc en tête de `CoinStoreManager.swift`, déjà écrite lors du travail P0-7 antérieur à cette session Phase B). Reste `FUNCTIONALLY_FAILED` pour la vraie parité tant que ce endpoint n'existe pas côté serveur — **BLOCKED BY BACKEND**.
 
 **P1 majeurs nouveaux** : V3-F-124 (portée élargie de V3-F-042 — passthrough imprécis pour la MAJORITÉ des trims, pas un cas limite), V3-F-125 (recadrage ovale confirmé, pas juste suspecté), V3-F-103 (recherche récente hashtag/mention → 0 résultat, reproductible à 100%), V3-F-107 (bouton Suivre peut mentir en permanence), V3-F-099 (hashtag/mention tap absent), V3-F-102 (pagination hashtag absente au-delà de 30), V3-F-113 (pas de surveillance réseau pour la reconnexion socket), V3-F-114 (présence jamais émise), V3-F-128/129 (Réglages : bouton catégorie mal placé, liens légaux faux).
 

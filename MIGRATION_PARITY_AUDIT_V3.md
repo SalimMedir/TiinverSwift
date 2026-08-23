@@ -487,7 +487,7 @@ FEATURE : Présentation des résultats "Publications" (grille vs liste)
 ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:143-153 (GridLayoutManager 3 colonnes) ; UniversalSearchAdapter.java:103-106,255-314
 IOS FILES : Discover/SearchView.swift:67-73,171-182
 VIEW PARITY : Android insère les résultats posts comme tuiles carrées dans une grille 3 colonnes entrelacée. iOS les affiche en liste verticale de lignes.
-STATUT : **CORRIGÉ le 2026-08-23** — `postRow` (`HStack`) remplacé par `postGridCell` dans un `LazyVGrid` 3 colonnes, fidèle au `SpanSizeLookup` (`TYPE_POST`=1 colonne). Tuile carrée : vignette + icône vidéo (si `verb=="video"`/`object=="videos"`) + compteur de vues formaté, port de `PostViewHolder.bind` (`UniversalSearchAdapter.java:255-314`).
+STATUT : **BUILD_VALIDATED, corrigé `3d6a9ed`, CI verte confirmée run `32631556810`** — `postRow` (`HStack`) remplacé par `postGridCell` dans un `LazyVGrid` 3 colonnes, fidèle au `SpanSizeLookup` (`TYPE_POST`=1 colonne). Tuile carrée : vignette + icône vidéo (si `verb=="video"`/`object=="videos"`) + compteur de vues formaté, port de `PostViewHolder.bind` (`UniversalSearchAdapter.java:255-314`).
 PREUVE : `RechercheTiinver.java:144-151` vs `SearchView.swift` (`postGridCell`, `postGridColumns`). (Avant correctif : `postRow`, `HStack`.)
 CAUSE : Reconstruction UI native sans layout XML Android, jamais comparée en détail au visuel réel des résultats posts.
 RISQUE : Incohérence visuelle notable, aucune perte de donnée.
@@ -503,7 +503,7 @@ FEATURE : Métadonnées hashtag (nb publications/vues) décodées mais jamais af
 ANDROID SOURCE OF TRUTH : UniversalSearchAdapter.java:320-349 ; HashtagProfile.java:282-284,343-347
 IOS FILES : Discover/SearchView.swift:58-65, Discover/HashtagFeedView.swift, Discover/SearchModels.swift:46-52
 LOGIC PARITY : `SearchHashtagResult.post_count`/`total_views` décodés côté modèle mais jamais lus par aucune vue.
-STATUT : **CORRIGÉ le 2026-08-23** — affiché aux 2 endroits recommandés : ligne résultat de recherche (`hashtagRow`, `"{n} publication(s)"` + `"{formatCount} vues"`, port de `HashtagViewHolder.bind`) ET header du fil hashtag (`HashtagFeedView.statsHeader`, nouveaux params `postCount`/`totalViews` transmis depuis la recherche, port de `HashtagProfile.java:343-347`, défaut `0` pour les autres points d'entrée fidèle à `getIntExtra(...,0)`).
+STATUT : **BUILD_VALIDATED, corrigé `3d6a9ed`, CI verte confirmée run `32631556810`** — affiché aux 2 endroits recommandés : ligne résultat de recherche (`hashtagRow`, `"{n} publication(s)"` + `"{formatCount} vues"`, port de `HashtagViewHolder.bind`) ET header du fil hashtag (`HashtagFeedView.statsHeader`, nouveaux params `postCount`/`totalViews` transmis depuis la recherche, port de `HashtagProfile.java:343-347`, défaut `0` pour les autres points d'entrée fidèle à `getIntExtra(...,0)`).
 PREUVE : `SearchModels.swift:46-52` déclare les champs ; `SearchView.swift`(`hashtagRow`)/`HashtagFeedView.swift`(`statsHeader`) les utilisent désormais. (Avant correctif : jamais utilisés.)
 CAUSE : Champs modélisés lors du portage réseau, oubliés lors de la construction de la vue.
 RISQUE : Perte d'information utile visible sur Android à deux endroits.
@@ -553,7 +553,7 @@ FEATURE : Sauvegarde dans l'historique local même en cas d'échec réseau
 ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:440-458 (save UNIQUEMENT dans onResonse)
 IOS FILES : Discover/SearchView.swift:194-209
 LOGIC PARITY : `RecentSearchStore.save(query)` placé après le bloc `do/catch`, donc exécuté même dans la branche catch.
-STATUT : **CORRIGÉ le 2026-08-23** — `RecentSearchStore.save(query)`/`recent = ...all()` déplacés à l'intérieur de la branche succès du `do`.
+STATUT : **BUILD_VALIDATED, corrigé `3d6a9ed`, CI verte confirmée run `32631556810`** — `RecentSearchStore.save(query)`/`recent = ...all()` déplacés à l'intérieur de la branche succès du `do`.
 PREUVE : `SearchView.swift` (`runSearch`, save maintenant dans le `do`). (Avant correctif : hors du bloc `do`, sans `return`/`guard`.)
 CAUSE : Positionnement du `save()` après le do/catch au lieu de dans le do.
 RISQUE : Pollution de l'historique avec des recherches jamais réellement abouties.
@@ -569,7 +569,7 @@ FEATURE : Écran figé sans feedback pour une query d'exactement 1 caractère en
 ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:412-431,567 (showEmpty inconditionnel)
 IOS FILES : Discover/SearchView.swift:74-86,92-102,184-192
 LOGIC PARITY : Le bloc d'affichage erreur/vide est protégé par `query.count &gt;= 2`, mais `suggest()` (seule fonction alimentant `errorText` pour une query courte) n'est déclenchée QUE pour `query.count == 1` — les deux conditions ne se recoupent jamais.
-STATUT : **CORRIGÉ le 2026-08-23** — condition d'affichage étendue à `query.count >= 1`.
+STATUT : **BUILD_VALIDATED, corrigé `3d6a9ed`, CI verte confirmée run `32631556810`** — condition d'affichage étendue à `query.count >= 1`.
 PREUVE : `SearchView.swift` (condition `>= 1`). (Avant correctif : `SearchView.swift:79` `query.count &gt;= 2` vs `:97-98` suggest à `count &gt;= 1`, exclusivement `==1` en pratique.)
 CAUSE : Seuil réseau Android copié par erreur sur le seuil d'affichage.
 RISQUE : Écran semble cassé/gelé pour une query de 1 caractère en échec.
@@ -584,7 +584,7 @@ DOMAINE : Recherche
 FEATURE : Filtrage "posts" absent du chemin suggestion (garde `isFull` Android non reproduite)
 ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:421,461,528 (`isFull=false` garantit l'absence de section Publications en suggestion)
 IOS FILES : Discover/SearchRepository.swift:16-20, Discover/SearchView.swift:67-73,184-192
-STATUT : **CORRIGÉ le 2026-08-23** — `decodeResults(_:isFull:)` reçoit maintenant `isFull` (`false` pour `suggest`, `true` pour `search`) et vide `results.posts` quand `!isFull`, reproduisant le garde `showPosts = isFull && (...)` CÔTÉ CLIENT, indépendamment de ce que le serveur envoie réellement — pas besoin d'inspection réseau pour trancher, la garde est défensive par construction.
+STATUT : **BUILD_VALIDATED, corrigé `3d6a9ed`, CI verte confirmée run `32631556810`** — `decodeResults(_:isFull:)` reçoit maintenant `isFull` (`false` pour `suggest`, `true` pour `search`) et vide `results.posts` quand `!isFull`, reproduisant le garde `showPosts = isFull && (...)` CÔTÉ CLIENT, indépendamment de ce que le serveur envoie réellement — pas besoin d'inspection réseau pour trancher, la garde est défensive par construction.
 PREUVE : `SearchRepository.swift` (`decodeResults(_:isFull:)`). (Avant correctif : aucune garde équivalente à `isFull`.)
 CAUSE : Simplification du portage — une seule fonction `decodeResults` partagée entre les deux endpoints, sans le paramètre `isFull`.
 RISQUE : Incertain — dépend d'un comportement serveur non observable par lecture de code.
@@ -617,7 +617,7 @@ FEATURE : Recherche de conversations locales — filtrage sur le texte du dernie
 ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:663-674 (filtre sur titre/message/sous-titre)
 IOS FILES : Messagerie/ChatSearchView.swift:29-38, Messagerie/RosterListView.swift:195-203,246
 LOGIC PARITY : iOS ne filtre que sur `title`/`subtitle` — `subtitle` n'est JAMAIS le texte du dernier message (nom d'utilisateur ou chaîne statique groupe), alors que la donnée existe (`pair.lastMessage?.message`) mais n'est jamais exposée au filtre.
-STATUT : **CORRIGÉ le 2026-08-23** — `RosterListViewModel.Row` reçoit un nouveau champ `lastMessage: String?` (`model.message`, déjà calculé mais jamais exposé), inclus dans le filtre local de `ChatSearchView`.
+STATUT : **BUILD_VALIDATED, corrigé `3d6a9ed`, CI verte confirmée run `32631556810`** — `RosterListViewModel.Row` reçoit un nouveau champ `lastMessage: String?` (`model.message`, déjà calculé mais jamais exposé), inclus dans le filtre local de `ChatSearchView`.
 PREUVE : `RechercheTiinver.java:666-668` (3 champs) vs `RosterListView.swift`(`Row.lastMessage`)/`ChatSearchView.swift`(filtre à 3 conditions). (Avant correctif : 2 champs, ni l'un ni l'autre = texte du message.)
 CAUSE : `Row` n'expose pas le dernier message comme champ filtrable.
 RISQUE : Recherche de conversation par mot-clé de message échoue silencieusement sur iOS.
@@ -752,7 +752,7 @@ FEATURE : Suppression de message privé "pour tous" reçue — pas de mise à jo
 ANDROID SOURCE OF TRUTH : messagerie/repository/ChatRepository.java:127-129,962 (`ON_DELETE_PRIVATE_MESSAGE`, écouté ET émis sur le même canal)
 IOS FILES : Realtime/ChatRepository.swift:315-320,400,90,104-106
 LOGIC PARITY : Contrairement à V3-F-115 (groupe), la suppression privée est bien écoutée ET émise sur le même canal, propagation confirmée. Mais `handleDeleteMessage` persiste en Core Data SANS émettre d'événement Combine — si la conversation est déjà ouverte, aucun rafraîchissement UI.
-STATUT : **CORRIGÉ le 2026-08-23** — nouveau cas `ChatEvent.messageDeleted(messageId:)`, émis par `handleDeleteMessage` après chaque persistance, consommé par `ChatViewModel.handleRemoteDelete(messageId:)` (même transformation `message`/`object`/`verb`="deletemessage" que la branche de suppression LOCALE existante).
+STATUT : **BUILD_VALIDATED, corrigé `3d6a9ed`, CI verte confirmée run `32631556810`** — nouveau cas `ChatEvent.messageDeleted(messageId:)`, émis par `handleDeleteMessage` après chaque persistance, consommé par `ChatViewModel.handleRemoteDelete(messageId:)` (même transformation `message`/`object`/`verb`="deletemessage" que la branche de suppression LOCALE existante).
 PREUVE : `ChatRepository.swift`(`handleDeleteMessage`, `chatEvents.send` ajouté)/`ChatViewModel.swift`(`handleRemoteDelete`). (Avant correctif : aucun `chatEvents.send` après persistance.)
 CAUSE : Angle mort — persistance faite, notification Combine oubliée.
 RISQUE : Message supprimé "pour tous" reste visible à l'écran jusqu'à fermeture/réouverture, si le destinataire a la conversation déjà ouverte.

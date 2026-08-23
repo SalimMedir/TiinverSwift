@@ -1727,11 +1727,11 @@ persistance, consommé par `ChatViewModel.handleRemoteDelete(messageId:)` (même
 `Sources/TiinverSwift/Realtime/ChatRepository.swift`,
 `Sources/TiinverSwift/Messagerie/ChatViewModel.swift`.
 
-**Commit** : *(à renseigner après ce commit)*.
+**Commit** : `3d6a9ed`.
 
-**Résultat CI** : à déclencher.
+**Résultat CI** : run `32631556810` → **`conclusion: success`**.
 
-**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED`/`PARTIAL` → corrigé pour les 7,
+**Statut honnête après correction** : `BUILD_VALIDATED` pour les 7 (CI verte confirmée),
 jusqu'à confirmation CI puis test réel. Tests réels nécessaires par finding : V3-F-100/101 (visuel,
 comparer capture Android vs iOS sur une recherche avec posts/hashtags réels) ; V3-F-104 (couper le
 réseau pendant une recherche, confirmer qu'elle n'apparaît PAS dans l'historique) ; V3-F-105 (query

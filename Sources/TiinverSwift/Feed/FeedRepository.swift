@@ -135,9 +135,19 @@ final class FeedRepository {
     /// d'équivalent iOS — MIGRATION_PARITY_AUDIT_V3.md V3-F-058 PROFILE-03, écran distinct non
     /// construit dans ce lot) : si `category` est vide, la publication continue quand même côté
     /// iOS, contrairement à Android — gap documenté, pas silencieusement fermé.
+    enum PublishError: Error { case missingMedia }
+
+    /// `fileData` (photo, déjà en mémoire post-recadrage/ré-encodage JPEG) et `videoFileURL`
+    /// (vidéo, streamée depuis le disque — voir `FeedMediaUploader.uploadVideo`, V3-F-019) sont
+    /// mutuellement exclusifs selon `object` ; `uploadProgress` (vidéo uniquement, fraction 0...1)
+    /// est ignoré pour une photo (upload trop court pour qu'une barre de progression soit utile,
+    /// fidèle à l'absence de source de streaming côté client pour ce cas précis — voir le
+    /// commentaire de `FeedMediaUploader.uploadVideo`).
     func publish(
-        actorId: String, object: String, message: String, hashtags: [String], fileData: Data,
-        category: String? = nil, width: Int? = nil, height: Int? = nil, videoDurationMs: Int? = nil
+        actorId: String, object: String, message: String, hashtags: [String],
+        fileData: Data? = nil, videoFileURL: URL? = nil,
+        category: String? = nil, width: Int? = nil, height: Int? = nil, videoDurationMs: Int? = nil,
+        uploadProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws {
         // `category` : **corrigé le 2026-08-19 (V3-F-058 PROFILE-03)** — désormais transmis par
         // l'appelant (`PublishComposeView`, qui gère le blocage/sélection forcée, port de
@@ -152,14 +162,18 @@ final class FeedRepository {
         var cdnContentUrl: String
         var cdnThumbnailUrl: String?
 
-        print("FEED PUBLISH: step=1/2 uploading to BunnyCDN object=\(object) token=\(token) bytes=\(fileData.count)")
+        print("FEED PUBLISH: step=1/2 uploading to BunnyCDN object=\(object) token=\(token)")
         do {
             if object == "videos" {
-                let result = try await FeedMediaUploader.uploadVideo(token: token, videoData: fileData)
+                guard let videoFileURL else { throw PublishError.missingMedia }
+                let result = try await FeedMediaUploader.uploadVideo(
+                    token: token, fileURL: videoFileURL, progress: uploadProgress
+                )
                 cdnContentId = result.cdnContentId
                 cdnContentUrl = result.cdnContentUrl
                 cdnThumbnailUrl = result.cdnThumbnailUrl
             } else {
+                guard let fileData else { throw PublishError.missingMedia }
                 let result = try await FeedMediaUploader.uploadPhoto(token: token, jpegData: fileData)
                 cdnContentId = result.cdnContentId
                 cdnContentUrl = result.cdnContentUrl

@@ -41,6 +41,10 @@ struct PublishComposeView: View {
     @State private var freeformPath = Path()
     @State private var caption = ""
     @State private var isPublishing = false
+    /// Port du callback `onProgress(percentage)` (V3-F-019, BUNNY-03) — `nil` tant qu'aucun octet
+    /// n'a été envoyé (photo, ou vidéo pas encore démarrée) ; fraction 0...1 une fois l'upload
+    /// vidéo en cours, fidèle à `updateView(progress)` Android.
+    @State private var videoUploadProgress: Double?
     @State private var errorText: String?
     @State private var showShareSheet = false
     @State private var publishedShareText: String?
@@ -164,7 +168,11 @@ struct PublishComposeView: View {
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         if isPublishing {
-                            ProgressView()
+                            if let videoUploadProgress {
+                                ProgressView(value: videoUploadProgress)
+                            } else {
+                                ProgressView()
+                            }
                         } else {
                             Button("Publier") { Task { await publish() } }
                         }
@@ -273,6 +281,7 @@ struct PublishComposeView: View {
         }
 
         isPublishing = true
+        videoUploadProgress = nil
         errorText = nil
         defer { isPublishing = false }
 
@@ -295,8 +304,12 @@ struct PublishComposeView: View {
                     fileData: jpegData, category: resolvedCategory, width: Int(pixelSize.width), height: Int(pixelSize.height)
                 )
             case .video(let url):
-                let videoData = try Data(contentsOf: url)
-                print("PUBLISH REQUEST: object=videos captionLength=\(caption.count) fileBytes=\(videoData.count) — flux réel : BunnyCDN Video Library puis activity/add (métadonnées)")
+                // Corrigé (V3-F-019, BUNNY-03) : ne charge plus toute la vidéo en `Data` avant
+                // l'upload (risque réel d'OOM sur une vidéo volumineuse) — `FeedRepository.publish`
+                // prend maintenant directement l'URL du fichier et streame depuis le disque, fidèle
+                // à `ProgressRequestBodyUri`/`InputStream` côté Android.
+                let fileBytes = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int
+                print("PUBLISH REQUEST: object=videos captionLength=\(caption.count) fileBytes=\(fileBytes.flatMap { $0 } ?? -1) — flux réel : BunnyCDN Video Library puis activity/add (métadonnées)")
                 // Port de `ActivityService.java` `width`/`height`/`video_duration` (V3-F-017) —
                 // dimensions natives + durée réelle de la vidéo publiée. Unité de `video_duration`
                 // NON confirmée dans le code source Android lu cette passe (aucun producteur trouvé
@@ -320,8 +333,11 @@ struct PublishComposeView: View {
                 }
                 try await FeedRepository().publish(
                     actorId: actorId, object: "videos", message: caption, hashtags: hashtags,
-                    fileData: videoData, category: resolvedCategory, width: videoWidth, height: videoHeight,
-                    videoDurationMs: videoDurationMs
+                    videoFileURL: url, category: resolvedCategory, width: videoWidth, height: videoHeight,
+                    videoDurationMs: videoDurationMs,
+                    uploadProgress: { fraction in
+                        Task { @MainActor in videoUploadProgress = fraction }
+                    }
                 )
             }
             print("PUBLISH RESPONSE: success")

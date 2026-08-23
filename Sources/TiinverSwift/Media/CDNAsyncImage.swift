@@ -56,17 +56,22 @@ struct CDNAsyncImage<Content: View>: View {
         var request = URLRequest(url: url)
         // Valeur EXACTE de `ChargerImages.java` — voir commentaire de tête.
         request.setValue("https://tiinver.com", forHTTPHeaderField: "Referer")
-        // Défensif (2026-08-17, retest utilisateur signalant le problème encore présent après le
-        // correctif ci-dessus) : `URLCache.shared` peut avoir mis en cache une réponse d'ERREUR
-        // (403 sans `Referer`) obtenue sur un appareil/simulateur testé AVANT ce correctif — la clé
-        // de cache HTTP standard porte sur l'URL, pas sur les en-têtes de la requête, donc rejouer
-        // la MÊME URL après coup peut servir l'échec caché au lieu de refaire la requête (désormais
-        // correcte). Élimine cette classe d'échec fantôme plutôt que de la diagnostiquer au cas par
-        // cas.
-        request.cachePolicy = .reloadIgnoringLocalCacheData
+        // Corrigé (V3-F-012, FEED-04) : le contournement précédent (`.reloadIgnoringLocalCacheData`
+        // inconditionnel) désactivait le cache HTTP pour TOUTE image, y compris les téléchargements
+        // réussis — écart réel vs Android (`ChargerImages.java`, `DiskCacheStrategy.ALL` sur TOUS
+        // les chargeurs Glide), pas une fidélité voulue. Cache par défaut restauré ici
+        // (`request.cachePolicy` non modifié = `.useProtocolCachePolicy`) ; le vrai problème
+        // d'origine (une réponse 403 mise en cache AVANT l'ajout du header `Referer` ci-dessus,
+        // la clé de cache HTTP standard ne portant pas sur les en-têtes) est traité plus bas de
+        // façon ciblée : toute réponse invalide (statut non-2xx OU image indécodable) est
+        // explicitement PURGÉE de `URLCache.shared` pour ne jamais rejouer indéfiniment un échec
+        // figé, au lieu de désactiver le cache pour tout le monde en permanence.
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
-            guard let uiImage = UIImage(data: data) else {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                let uiImage = UIImage(data: data)
+            else {
+                URLCache.shared.removeCachedResponse(for: request)
                 phase = .failure(URLError(.cannotDecodeContentData))
                 return
             }

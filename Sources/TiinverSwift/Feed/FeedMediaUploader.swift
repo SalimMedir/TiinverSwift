@@ -72,7 +72,19 @@ enum FeedMediaUploader {
 
     /// Port de `getCdnVideoId`+`uploadFileToBunny` — DEUX appels réseau distincts vers la Video
     /// Library BunnyCDN, dans cet ordre : créer l'entrée (obtenir `guid`), PUIS uploader les octets.
-    static func uploadVideo(token: String, videoData: Data) async throws -> VideoResult {
+    ///
+    /// **Corrigé (V3-F-019, BUNNY-03)** — `ProgressRequestBodyUri.java` (`writeTo`, 8192 octets par
+    /// bloc, `InputStream` sur `Uri.parse(data.getFileUri())`) streame la vidéo DIRECTEMENT depuis
+    /// le fichier, jamais chargée intégralement en mémoire, et calcule une vraie progression
+    /// (`uploaded*100/contentLength`, `callback.onProgress(...)`). L'ancienne version de cette
+    /// fonction prenait un paramètre `Data` — l'appelant (`PublishComposeView`) avait DÉJÀ dû
+    /// charger toute la vidéo via `Data(contentsOf:)` avant même d'appeler cette fonction, risque
+    /// réel d'OOM sur une vidéo volumineuse. Prend maintenant directement l'URL du fichier et
+    /// utilise `URLSession.upload(for:fromFile:delegate:)`, qui streame depuis le disque sans
+    /// jamais matérialiser le fichier entier en `Data` ; `progress` (optionnel) reçoit une
+    /// fraction 0...1 au fil de l'envoi via `UploadProgressDelegate`, port fidèle du callback
+    /// `onProgress(percentage)` Android.
+    static func uploadVideo(token: String, fileURL: URL, progress: (@Sendable (Double) -> Void)? = nil) async throws -> VideoResult {
         let guid = try await createVideoLibraryEntry(title: token)
 
         let remoteURL = URL(string: "\(videoLibraryBaseURL)/\(videoLibraryId)/videos/\(guid)")!
@@ -86,7 +98,8 @@ enum FeedMediaUploader {
         // volontairement pas ajouté là) — manquait côté iOS.
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let (_, response) = try await URLSession.shared.upload(for: request, from: videoData)
+        let delegate = progress.map { UploadProgressDelegate(onProgress: $0) }
+        let (_, response) = try await URLSession.shared.upload(for: request, fromFile: fileURL, delegate: delegate)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw UploadError.httpFailure((response as? HTTPURLResponse)?.statusCode ?? -1)
         }
@@ -120,5 +133,26 @@ enum FeedMediaUploader {
             throw UploadError.missingGuid
         }
         return guid
+    }
+}
+
+/// Port de `ProgressRequestBodyUri.UploadCallback`/`writeTo` (calcul `uploaded*100/contentLength`
+/// à chaque bloc de 8192o écrit) — ici, `URLSessionTaskDelegate` fournit directement
+/// `totalBytesSent`/`totalBytesExpectedToSend` sans avoir besoin de gérer le découpage par bloc
+/// soi-même (`URLSession.upload(for:fromFile:)` s'en charge en interne). Fraction 0...1 plutôt que
+/// 0...100 — conversion laissée à l'appelant UI, cohérent avec `ProgressView(value:)` SwiftUI natif.
+private final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate {
+    private let onProgress: @Sendable (Double) -> Void
+
+    init(onProgress: @escaping @Sendable (Double) -> Void) {
+        self.onProgress = onProgress
+    }
+
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64, totalBytesExpectedToSend: Int64
+    ) {
+        guard totalBytesExpectedToSend > 0 else { return }
+        onProgress(Double(totalBytesSent) / Double(totalBytesExpectedToSend))
     }
 }

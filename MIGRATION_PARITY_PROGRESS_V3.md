@@ -1394,3 +1394,108 @@ standard suffit ici, contrairement au piège rencontré ailleurs dans ce portage
 nécessaire : observer l'écran Créateurs de la semaine avec des données réelles ; si le serveur omet
 `user_id` pour une entrée, confirmer que la ligne correspondante n'est plus tapable (au lieu d'ouvrir
 un profil vide).
+
+---
+
+**Contexte (2026-08-23, reprise)** : suite explicite de l'utilisateur — continuer méthodiquement le
+backlog P2 puis P3 restant de `MIGRATION_PARITY_AUDIT_V3.md`, finding par finding, sans s'arrêter
+pour confirmation entre chaque, en différant V3-F-095. Repo Android source de vérité confirmé au
+chemin `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+
+### Lot 22 : V3-F-012 (Feed — cache HTTP désactivé pour toutes les images)
+
+**Finding ID** : V3-F-012 (FEED-04)
+
+**Problème réel** : `CDNAsyncImage.load()` forçait `request.cachePolicy = .reloadIgnoringLocalCacheData`
+sur CHAQUE chargement d'image (avatars, vignettes Feed/Profile/Chat/Notifications/Recherche) —
+aucune image n'était jamais servie depuis le cache disque, même en cas de succès, forçant un
+re-téléchargement réseau à chaque affichage (scroll, réouverture d'écran, etc.).
+
+**Preuve Android** : `ChargerImages.java` (lu en entier, 554 lignes) — TOUS les chargeurs Glide
+(`glidLoadAvatar`, `glidLoadMediumAvatar`, `glidLoadSmallImage`, `glidLoadExpandedAvatar`,
+`glidLoadImageRequireAuth`, `glidLoadLargeImageRequireAuth`, etc., y compris ceux qui ajoutent déjà
+le header `Referer` via `GlideUrl`/`LazyHeaders`) utilisent `.diskCacheStrategy(DiskCacheStrategy.
+ALL)` — cache complet (image source ET transformée), jamais désactivé.
+
+**Cause historique du contournement (2026-08-17)** : `URLCache.shared` avait pu mettre en cache une
+réponse 403 obtenue AVANT l'ajout du header `Referer` (correctif antérieur) — la clé de cache HTTP
+standard ne porte pas sur les en-têtes de requête, donc rejouer la même URL après coup pouvait
+resservir l'échec figé indéfiniment. Le contournement adopté à l'époque (désactiver le cache pour
+TOUTE requête) réglait ce symptôme précis mais au prix d'une régression de performance/bande
+passante permanente et généralisée, jamais restreinte depuis.
+
+**Divergence iOS (avant ce correctif)** : cache HTTP désactivé pour 100% des images, y compris les
+téléchargements réussis — écart réel vs `DiskCacheStrategy.ALL` côté Android.
+
+**Correctif** : `request.cachePolicy` non modifié (= `.useProtocolCachePolicy` par défaut, cache
+normal restauré). Le problème d'origine (réponse figée invalide en cache) traité de façon ciblée
+plutôt que par désactivation globale : la réponse est maintenant validée (statut HTTP 2xx ET
+décodage `UIImage` réussi) ; si l'une des deux conditions échoue, `URLCache.shared.
+removeCachedResponse(for: request)` purge explicitement l'entrée AVANT de retomber en état
+`.failure` — un prochain chargement de la même URL refera une requête réseau fraîche au lieu de
+rejouer l'échec, sans avoir besoin de désactiver le cache pour les cas de succès.
+
+**Flux frère vérifié** : aucune autre occurrence de `.reloadIgnoringLocalCacheData` dans le projet
+(grep exhaustif) — `VideoCacheManager` (V3-F-010, correctif antérieur) utilise déjà `URLSession`/
+`URLRequest` avec les bons en-têtes sans ce contournement, pas concerné.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Media/CDNAsyncImage.swift`.
+
+**Commit** : *(à renseigner après ce commit)*.
+
+**Résultat CI** : à déclencher.
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Test réel
+nécessaire : observer que les images déjà vues (avatars/vignettes) se chargent instantanément
+(depuis le cache) au lieu de re-télécharger à chaque scroll/réouverture, ET confirmer qu'aucune
+image cassée ne reste bloquée en permanence après un échec réseau ponctuel (le mécanisme de purge
+doit permettre un nouveau succès dès que le réseau redevient disponible).
+
+### Lot 23 : V3-F-019 (Bunny — progression upload + vidéo chargée entière en RAM)
+
+**Finding ID** : V3-F-019 (BUNNY-03)
+
+**Problème réel** : `PublishComposeView` chargeait la vidéo entière en `Data` (`Data(contentsOf:
+url)`) AVANT même d'appeler `FeedMediaUploader.uploadVideo`, qui envoyait ensuite ce buffer complet
+via `URLSession.shared.upload(for:from:)` — risque réel d'OOM sur une vidéo volumineuse (l'app
+n'a alors plus aucune marge mémoire pour le reste de son fonctionnement). Aucune progression réelle
+n'était exposée à l'UI (`ProgressView()` généraliste, indéterminée).
+
+**Preuve Android** : `Activity/service/ProgressRequestBodyUri.java` (lu en entier, 112 lignes) —
+`writeTo(BufferedSink sink)` lit le fichier via `ContentResolver.openInputStream(fileUri)` par
+blocs de 8192 octets (`byte[] buffer = new byte[8192]`), écrit chaque bloc au fur et à mesure
+(jamais de buffer complet en mémoire), calcule `(uploaded*100)/contentLength` à chaque bloc et
+appelle `callback.onProgress(progress)` — utilisé identiquement pour la PUT photo (storage,
+`ActivityService.java:399-402`) ET la PUT vidéo (`ligne 277-280`).
+
+**Divergence iOS (avant correctif)** : chargement complet en mémoire + aucune progression réelle
+exposée, pour la vidéo.
+
+**Correctif** : `FeedMediaUploader.uploadVideo` prend maintenant `fileURL: URL` (plus `videoData:
+Data`) et utilise `URLSession.upload(for:fromFile:delegate:)` — l'implémentation système streame
+directement depuis le disque sans jamais matérialiser le fichier entier en mémoire iOS-side, même
+principe que Android. Nouveau `UploadProgressDelegate` (`URLSessionTaskDelegate`,
+`didSendBodyData(...)`) traduit `totalBytesSent`/`totalBytesExpectedToSend` en fraction 0...1, port
+du callback `onProgress(percentage)`. `FeedRepository.publish` prend maintenant `videoFileURL: URL?`
+(vidéo) séparément de `fileData: Data?` (photo, toujours en mémoire — déjà un JPEG ré-encodé
+post-recadrage côté iOS, pas de fichier source à streamer pour ce cas) + `uploadProgress` optionnel
+propagé jusqu'à `FeedMediaUploader.uploadVideo`. `PublishComposeView` affiche maintenant
+`ProgressView(value: videoUploadProgress)` dans la toolbar pendant l'upload vidéo au lieu du spinner
+indéterminé générique.
+
+**Périmètre volontairement pas étendu à la photo** : la branche photo Android utilise aussi
+`ProgressRequestBodyUri`, mais côté iOS le JPEG est déjà entièrement en mémoire après recadrage/
+ré-encodage (`image.jpegData(...)`) — il n'existe pas de fichier source à streamer pour ce cas, et
+la taille (quelques Mo max) ne présente pas le même risque mémoire qu'une vidéo. Non modifié.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedMediaUploader.swift`,
+`Sources/TiinverSwift/Feed/FeedRepository.swift`, `Sources/TiinverSwift/Feed/PublishComposeView.swift`.
+
+**Commit** : *(à renseigner après ce commit)*.
+
+**Résultat CI** : à déclencher.
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Test réel
+nécessaire : publier une vidéo volumineuse (plusieurs centaines de Mo si possible) et confirmer (a)
+l'app ne plante pas / ne subit pas de pic mémoire excessif, (b) la barre de progression dans la
+toolbar avance réellement de 0 à 100% pendant l'upload au lieu de rester un spinner indéterminé.

@@ -1322,3 +1322,75 @@ malformé (ou couper le réseau après le décodage du corps mais avant la fin, 
 proxy) — plus simplement, confirmer par observation directe que la recherche normale (0 résultat
 légitime) affiche toujours "Aucun résultat pour…" et non "Erreur de chargement.", pour écarter une
 régression de faux-positif sur le nouveau `throw`.
+
+### Lot 20 : V3-F-021 (Bunny — en-tête `Accept` manquant sur PUT vidéo)
+
+**Finding ID** : V3-F-021 (BUNNY-05)
+
+**Problème réel** : la PUT d'upload d'octets vidéo vers BunnyCDN (`FeedMediaUploader.uploadVideo`,
+étape 2 après création de l'entrée) n'envoyait aucun en-tête `Accept`, contrairement à Android.
+
+**Preuve Android** : `Activity/service/ActivityService.java:287-292` (`uploadFileToBunny`) —
+`.addHeader("accept", "application/json")` explicitement présent sur cette PUT précise. Vérifié en
+contraste avec la PUT storage/photo du même fichier (`ligne 403-407`, `uploadPhotoToBunny`
+implicite) qui elle N'A PAS cet en-tête — confirmé que ce n'est pas un oubli Android généralisé mais
+une différence RÉELLE entre les deux endpoints (vidéo vs storage), donc pas à généraliser côté iOS
+non plus.
+
+**Divergence iOS (avant correctif)** : `FeedMediaUploader.uploadVideo` (PUT vers
+`video.bunnycdn.com/library/{id}/videos/{guid}`) n'avait que `AccessKey`, pas `Accept`.
+
+**Correctif** : `request.setValue("application/json", forHTTPHeaderField: "Accept")` ajouté à cette
+PUT précise uniquement.
+
+**Flux frère vérifié** : `ChatMediaUploadService.uploadToBunny` (pièces jointes chat) utilise
+l'endpoint STORAGE (`storage.bunnycdn.com`), pas Video Library — confirmé correspondre à la branche
+Android SANS `Accept` (`ligne 403-407`), donc PAS de gap là, non modifié. `FeedMediaUploader.
+uploadImageToBunny` (branche photo du même fichier) également storage, également sans `Accept`,
+également correct tel quel.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedMediaUploader.swift`.
+
+**Commit** : *(à renseigner après ce commit)*.
+
+**Résultat CI** : à déclencher.
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Impact réel
+incertain (le finding original le notait déjà LOW) — un test réel d'upload vidéo bout-en-bout reste
+la seule façon de confirmer si ce manque causait une régression observable (ex. réponse serveur mal
+interprétée) ou n'avait aucun effet pratique.
+
+### Lot 21 : V3-F-094 (Créateurs de la semaine — navigation profil avec id vide)
+
+**Finding ID** : V3-F-094 (SILENT-05)
+
+**Problème réel** : `CreatorOfWeekView` ouvrait toujours `ProfileView(userId: star.userId ?? "",
+isCurrentUser: false)` au tap, y compris quand `userId` (`CreatorModel.userId`, `String?` — décodage
+tolérant déjà en place car le champ est parfois absent/malformé côté serveur) est `nil` — atterrissant
+sur un écran de profil pour un identifiant vide plutôt que de ne rien faire.
+
+**Preuve Android** : `creatorOfweek/CreatorAdapter.java:59-64` — garde explicite avant toute
+navigation : `String idStr = model.getId(); if (idStr == null || idStr.trim().isEmpty()) return;`
+— le tap est un no-op silencieux si l'id est absent, `UserProfile` n'est JAMAIS ouvert avec un id
+vide côté Android.
+
+**Divergence iOS (avant correctif)** : aucune garde, `NavigationLink` toujours actif, navigue vers
+`ProfileView(userId: "", ...)` quel que soit l'état de `userId`.
+
+**Correctif** : `.disabled((star.userId ?? "").trimmingCharacters(in: .whitespaces).isEmpty)` /
+même expression pour `creator.userId` — ajouté sur les 2 `NavigationLink` (créateur en vedette +
+liste du classement), reproduisant le guard Android sans réécrire toute la navigation en
+`fullScreenCover`+état local (le contexte est déjà dans un `NavigationStack`, `NavigationLink`
+standard suffit ici, contrairement au piège rencontré ailleurs dans ce portage pour des vues hors
+`NavigationStack`).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Creators/CreatorOfWeekView.swift`.
+
+**Commit** : *(à renseigner après ce commit)*.
+
+**Résultat CI** : à déclencher.
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Test réel
+nécessaire : observer l'écran Créateurs de la semaine avec des données réelles ; si le serveur omet
+`user_id` pour une entrée, confirmer que la ligne correspondante n'est plus tapable (au lieu d'ouvrir
+un profil vide).

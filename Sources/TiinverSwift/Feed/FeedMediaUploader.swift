@@ -81,6 +81,10 @@ enum FeedMediaUploader {
         request.setValue(videoLibraryAPIKey, forHTTPHeaderField: "AccessKey")
         // PAS de Content-Type ici — fidèle à `uploadFileToBunny` (`MediaType` passé à `null` côté
         // Android pour cette PUT précise, contrairement à la branche photo).
+        // Corrigé (V3-F-021, BUNNY-05) : `ActivityService.java:287-292` ajoute `addHeader("accept",
+        // "application/json")` sur CETTE PUT précise (absent de la PUT photo/storage, ligne 403-407,
+        // volontairement pas ajouté là) — manquait côté iOS.
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let (_, response) = try await URLSession.shared.upload(for: request, from: videoData)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {

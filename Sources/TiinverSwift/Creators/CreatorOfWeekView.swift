@@ -84,11 +84,16 @@ struct CreatorOfWeekView: View {
                 .listRowBackground(Color.black)
                 .listRowSeparator(.hidden)
 
+                // Corrigé (V3-F-094, SILENT-05) : `CreatorAdapter.java:59-64` n'ouvre `UserProfile`
+                // QUE si `idStr` est non-nul/non-vide (`if (idStr == null || idStr.trim().isEmpty())
+                // return;`), sinon le tap est un no-op — reproduit ici via `.disabled(...)` plutôt
+                // que de naviguer vers un `ProfileView(userId: "")` cassé.
                 NavigationLink {
                     ProfileView(userId: star.userId ?? "", isCurrentUser: false)
                 } label: {
                     starCard(star)
                 }
+                .disabled((star.userId ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
                 .listRowBackground(Color.black)
             }
             Section {
@@ -98,6 +103,7 @@ struct CreatorOfWeekView: View {
                     } label: {
                         rankRow(creator, badge: "TOP \(index + 1)")
                     }
+                    .disabled((creator.userId ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
                     .listRowBackground(Color(red: 0.1, green: 0.1, blue: 0.14))
                 }
             }

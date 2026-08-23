@@ -49,13 +49,12 @@ jamais envoyé au réseau). Corrigé en reproduisant exactement le motif déjà 
 succès, accumulé sur échec (ce qui résout aussi V4-F-066 dans la foulée — même fonction Android de
 référence, même 3 fichiers). Détail complet, preuve Android ligne par ligne, et flux frères vérifiés
 (`grep creditReward` = exactement 5 sites, aucun autre écran affecté) dans `PROGRESS_V4.md`, Lot
-P0-1. **Commit et confirmation CI : voir PROGRESS_V4.md pour le SHA et le résultat exact au moment
-de la reprise** (renseigné après ce commit, à vérifier si cette session s'est arrêtée avant).
+P0-1. **Commit `393b485`, CI verte confirmée (run `32663823532`)** — `BUILD_VALIDATED`, PAS
+`COMPLETE_PARITY_VALIDATED` (test réel requis : regarder la pub après un retrait réel, inspecter le
+payload réseau `rewardedCoins`, confirmer que le solde serveur n'augmente pas anormalement).
 
-**PROCHAINE TÂCHE EXACTE** : si le Lot P0-1 n'a pas encore de commit/CI confirmés ci-dessus, terminer
-cette étape en premier (commit → push → déclencher CI → attendre confirmation → mettre à jour
-AUDIT_V4.md/PROGRESS_V4.md avec le SHA et le résultat). Sinon, enchaîner **automatiquement** sur
-**Lot P0-2 : V4-F-040** (push VoIP reçu pendant un appel en cours saute le report CallKit obligatoire
+**PROCHAINE TÂCHE EXACTE** : Lot P0-1 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur **Lot P0-2 : V4-F-040** (push VoIP reçu pendant un appel en cours saute le report CallKit obligatoire
 — `Calls/CallCoordinator.swift:198-202`, comparer contre le comportement PushKit/CallKit attendu,
 même méthode : lire Android [N/A ici, obligation spécifique iOS] → vérifier iOS → corriger → CI →
 documenter), puis Lot P0-3 (V4-F-007, viewer Profile), Lot P0-4 (V4-F-008, upload photo profil),

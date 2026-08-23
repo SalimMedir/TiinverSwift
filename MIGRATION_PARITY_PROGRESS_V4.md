@@ -124,11 +124,11 @@ Aucun autre site à corriger.
 **Fichiers modifiés** : `Sources/TiinverSwift/Wallet/WithdrawView.swift`,
 `Sources/TiinverSwift/Wallet/TransferCoinsView.swift`, `Sources/TiinverSwift/Wallet/ConversionView.swift`.
 
-**Commit** : *(à renseigner après ce commit)*.
+**Commit** : `393b485`.
 
-**Résultat CI** : à déclencher.
+**Résultat CI** : run `32663823532` → **`conclusion: success`**.
 
-**Statut honnête après correction** : `BUILD_VALIDATED` jusqu'à confirmation CI, PUIS seulement
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée), PUIS seulement
 (pas `COMPLETE_PARITY_VALIDATED` même après CI verte — test réel requis) : regarder la pub
 rewarded-interstitial après un retrait/transfert/conversion réussi sur un compte réel, confirmer via
 un outil d'inspection réseau que le champ `"coins"` envoyé à `rewardedCoins` correspond bien au gain

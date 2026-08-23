@@ -465,7 +465,20 @@ extension CallCoordinator: VoIPPushManagerDelegate {
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
             let profile = try? JSONDecoder().decode(ChatProfile.self, from: data)
         else {
-            completion()
+            // Corrigé (V3-F-031, CHAT-09) : le contrat PushKit d'Apple exige `reportNewIncomingCall`
+            // pour CHAQUE push VoIP reçu, AVANT/autour de `completion()`, indépendamment de la
+            // validité de son contenu — des manquements répétés exposent l'app à une révocation du
+            // droit de recevoir des push VoIP. Un échec de décodage ne signalait auparavant AUCUN
+            // appel à CallKit. Reporte maintenant un appel générique puis le termine immédiatement
+            // (`reason: .failed`) plutôt que de ne jamais reporter — indépendant du contrat serveur
+            // VoIP (non encore défini, voir doc de tête de cette extension), cette garde s'applique
+            // quel que soit le format réel du payload.
+            let uuid = UUID()
+            Task {
+                try? await callKit.reportIncomingCall(uuid: uuid, callerName: "Appel entrant")
+                completion()
+                callKit.reportCallEnded(uuid: uuid, reason: .failed)
+            }
             return
         }
         Task {

@@ -24,7 +24,29 @@ final class TrophyRepository {
         // Swift, PAS du JSON valide — le second décodage échouait donc TOUJOURS, quelle que soit
         // la donnée réelle, d'où "Impossible de charger le classement" à chaque fois). Décodage
         // direct du tableau maintenant, sans supposer un double encodage qui n'existe pas ici.
-        guard let arrayData = value["data"]?.rawData else { return [] }
-        return (try? JSONDecoder().decode([CreatorModel].self, from: arrayData)) ?? []
+        // Corrigé (V3-F-093, SILENT-04) : décodage du tableau ENTIER en un seul `try?` — un seul
+        // créateur avec un champ non-lenient de type inattendu (`firstname`/`profilePicture`,
+        // `String?` mais pas `decodeLenientStringIfPresent`, contrairement à `userId`) faisait
+        // échouer TOUT le classement d'un coup, vidé silencieusement en `[]`. Même motif déjà
+        // corrigé pour `SuggestionsRepository.decodeUsers`/`ChatRepository.decodeMessages`/
+        // `FeedRepository.fetchTimeline` — `compactMap` per-item avec diagnostic, pas un décodage
+        // global.
+        guard let array = value["data"]?.toArray() else { return [] }
+        let decoded = array.compactMap { item -> CreatorModel? in
+            guard let data = item.rawData else {
+                print("TROPHY: item.rawData nil for one creator — raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+            do {
+                return try JSONDecoder().decode(CreatorModel.self, from: data)
+            } catch {
+                print("TROPHY: decode failure for one creator — error=\(error) raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+        }
+        if decoded.count != array.count {
+            print("TROPHY: received=\(array.count) creators, only \(decoded.count) usable — \(array.count - decoded.count) skipped, see above")
+        }
+        return decoded
     }
 }

@@ -19,10 +19,32 @@ final class WalletRepository {
 
     // MARK: - Historique (port de `getTransaction`/`WorkerTask`)
 
+    // Corrigé (V3-F-093, SILENT-04) : décodage du tableau ENTIER en un seul `try?` — plusieurs
+    // champs de `WalletTransaction` (`transactionId`/`currency`/`operatorName`/.../`type`) ne sont
+    // PAS lenient (`decodeIfPresent(String.self,...)` strict sur le TYPE si la clé est présente),
+    // donc UNE SEULE transaction avec un champ de type inattendu faisait échouer TOUT l'historique
+    // d'un coup, vidé silencieusement en `[]`. Même motif déjà corrigé pour `TrophyRepository.
+    // weeklyRank`/`SuggestionsRepository.decodeUsers`/`ChatRepository.decodeMessages` — `compactMap`
+    // per-item avec diagnostic, pas un décodage global.
     func transactions(userId: String, limit: Int, offset: Int) async throws -> [WalletTransaction] {
         let value = try await APIClient.shared.get("transactions/\(userId)/\(limit)/\(offset)")
-        guard let data = value["transactions"]?.rawData else { return [] }
-        return (try? JSONDecoder().decode([WalletTransaction].self, from: data)) ?? []
+        guard let array = value["transactions"]?.toArray() else { return [] }
+        let decoded = array.compactMap { item -> WalletTransaction? in
+            guard let data = item.rawData else {
+                print("WALLET TRANSACTIONS: item.rawData nil for one transaction — raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+            do {
+                return try JSONDecoder().decode(WalletTransaction.self, from: data)
+            } catch {
+                print("WALLET TRANSACTIONS: decode failure for one transaction — error=\(error) raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+        }
+        if decoded.count != array.count {
+            print("WALLET TRANSACTIONS: received=\(array.count), only \(decoded.count) usable — \(array.count - decoded.count) skipped, see above")
+        }
+        return decoded
     }
 
     // MARK: - Retrait (port de `submitWithdrawalRequest`/`submitWithdrawalByCrypto`)

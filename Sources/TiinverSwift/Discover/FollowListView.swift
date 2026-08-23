@@ -59,9 +59,30 @@ final class FollowRepository {
     static let shared = FollowRepository()
     private init() {}
 
+    // Corrigé (V3-F-093, SILENT-04) : décodage du tableau ENTIER en un seul `try?` — plusieurs
+    // champs de `SearchUserResult` (`username`/`firstname`/.../`category`) ne sont PAS lenient, donc
+    // UN SEUL utilisateur avec un champ de type inattendu faisait échouer TOUTE la liste
+    // abonnés/abonnements d'un coup, vidée silencieusement en `[]`. Même motif déjà corrigé pour
+    // `TrophyRepository.weeklyRank`/`WalletRepository.transactions`/`CommentRepository.
+    // decodeComments` — `compactMap` per-item avec diagnostic.
     func list(type: String, userId: String, followerId: String, limit: Int, offset: Int) async throws -> [SearchUserResult] {
         let value = try await APIClient.shared.get("\(type)/\(userId)/\(followerId)/\(limit)/\(offset)")
-        guard value.isBackendSuccess, let data = value["users"]?.rawData else { return [] }
-        return (try? JSONDecoder().decode([SearchUserResult].self, from: data)) ?? []
+        guard value.isBackendSuccess, let array = value["users"]?.toArray() else { return [] }
+        let decoded = array.compactMap { item -> SearchUserResult? in
+            guard let data = item.rawData else {
+                print("FOLLOW LIST: item.rawData nil for one user — raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+            do {
+                return try JSONDecoder().decode(SearchUserResult.self, from: data)
+            } catch {
+                print("FOLLOW LIST: decode failure for one user — error=\(error) raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+        }
+        if decoded.count != array.count {
+            print("FOLLOW LIST: received=\(array.count), only \(decoded.count) usable — \(array.count - decoded.count) skipped, see above")
+        }
+        return decoded
     }
 }

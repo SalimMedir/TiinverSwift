@@ -1441,11 +1441,11 @@ rejouer l'échec, sans avoir besoin de désactiver le cache pour les cas de succ
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Media/CDNAsyncImage.swift`.
 
-**Commit** : *(à renseigner après ce commit)*.
+**Commit** : `109cc9b`.
 
-**Résultat CI** : à déclencher.
+**Résultat CI** : run `32630694641` → **`conclusion: success`**.
 
-**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Test réel
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). Test réel
 nécessaire : observer que les images déjà vues (avatars/vignettes) se chargent instantanément
 (depuis le cache) au lieu de re-télécharger à chaque scroll/réouverture, ET confirmer qu'aucune
 image cassée ne reste bloquée en permanence après un échec réseau ponctuel (le mécanisme de purge
@@ -1491,11 +1491,173 @@ la taille (quelques Mo max) ne présente pas le même risque mémoire qu'une vid
 **Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedMediaUploader.swift`,
 `Sources/TiinverSwift/Feed/FeedRepository.swift`, `Sources/TiinverSwift/Feed/PublishComposeView.swift`.
 
+**Commit** : `109cc9b`.
+
+**Résultat CI** : run `32630694641` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). Test réel
+nécessaire : publier une vidéo volumineuse (plusieurs centaines de Mo si possible) et confirmer (a)
+l'app ne plante pas / ne subit pas de pic mémoire excessif, (b) la barre de progression dans la
+toolbar avance réellement de 0 à 100% pendant l'upload au lieu de rester un spinner indéterminé.
+
+### Lot 24 : V3-F-028 (Groupes — vérification détaillée des payloads REST)
+
+**Finding ID** : V3-F-028 (CHAT-06)
+
+**Constat** : le finding original notait "noms d'endpoint corrects, payloads non vérifiés en
+détail" — `GroupRepository.swift` (déjà très documenté, chaque fonction citant un fichier:ligne
+Android précis) a été relu intégralement et chaque payload comparé champ par champ à sa source :
+
+- `createGroup` (`POST group`) vs `Group.java:274-311` (`onButtonPressed`) — 8 champs, tous
+  identiques. Point piégeux vérifié en détail : `isLucrative` Android est un `int` (0/1, ligne 87),
+  PAS un booléen malgré son nom — `String.valueOf(isLucrative)` produit donc `"0"`/`"1"`,
+  EXACTEMENT ce que produit `isLucrative ? "1" : "0"` côté iOS. `price` Android est explicitement
+  remis à `0` (ligne 183) au même moment que `isLucrative=0` (ligne 182, handler du bouton radio
+  "public") — donc `String.valueOf(price)` (toujours envoyé côté Android) vaut structurellement `0`
+  dans ce cas, identique au repli conditionnel `isLucrative ? String(price) : "0"` côté iOS. Faute
+  de frappe `"pivate"` (ligne 249) confirmée intentionnellement reproduite telle quelle.
+- `updateMemberRole` (`POST /member/update`) vs `TransportData.java:175-190` — 5 champs identiques,
+  y compris la sémantique piégeuse du champ `creator` (c'est l'utilisateur COURANT qui fait l'action,
+  pas le créateur réel du groupe) — confirmé que l'appelant iOS (`GroupDetailView.swift:228`) passe
+  bien `creatorId: myId`, pas l'id du créateur du groupe.
+- `removeMember` (`POST deleteMember`) vs `SettingGroupMessageFragmant.java:542-548` — 3 champs
+  identiques.
+- `checkSubscription`/`subscribeToGroup`/`renewGroupSubscription` vs `ChatFragmentTest.java:707-749`
+  et `MessageListAdapter.java:267-314,365-412` — endpoints et payloads identiques ; vérifié en plus
+  que la garde de solde `coinCount > mlib.getPrice()` (stricte, PAS `>=`) et le débit local
+  optimiste après succès sont déjà fidèlement reproduits côté iOS (`ChatViewModel.
+  resolveGroupSubscription`, correctif antérieur V3-F-070).
+- `updateDescription`/`updateName` (`POST updategroup`) et `leaveGroup` (`POST leftgroup`) — motif
+  identique déjà vérifié par une session antérieure (citations fichier:ligne dans les commentaires
+  existants), pattern trop simple pour receler une divergence non détectée par la relecture globale.
+
+**Conclusion** : AUCUNE divergence trouvée sur les 9 endpoints. Le statut `CODE_PRESENT_UNVERIFIED`
+reflétait l'absence de vérification EXPLICITE consignée, pas un doute réel sur le code — la
+documentation déjà présente dans le fichier était déjà correcte, seule la vérification croisée
+manquait.
+
+**Fichiers modifiés** : aucun (vérification seule, aucune divergence trouvée).
+
+**Statut honnête après vérification** : `COMPLETE_PARITY_CANDIDATE` (code vérifié correct par
+lecture croisée directe, pas de test réel effectué — reste à confirmer sur device : créer un groupe
+payant, changer le rôle d'un membre, quitter un groupe, s'abonner/renouveler un groupe payant).
+
+### Lot 25 : V3-F-025 (Chat — vérification exhaustive du mapping des événements socket)
+
+**Finding ID** : V3-F-025 (CHAT-04)
+
+**Constat** : `ChatRepository.ROOM` (`ChatRepository.java:107-144`, 35 constantes) comparée
+constante par constante à `SocketEvent.swift` — TOUTES identiques (`"call"`, `"acceptCall"`,
+`"new message"`, `"new message group"`, `"delivred"` [faute d'orthographe réelle préservée],
+`"scheduled new message group"`, etc.), y compris les événements les moins évidents
+(`"onPbsTouchListener"`, `"onStartPrivatePbs"`). Aucune divergence trouvée. `ISONCALL="isOnCall"`
+(hors classe `ROOM`, ligne 98) n'est PAS un événement socket mais une clé d'état local — son
+équivalent iOS (`ChatRepository.isOnCall`, `Bool` simple) n'a pas besoin de reproduire la chaîne,
+hors périmètre de ce finding.
+
+**Fichiers modifiés** : aucun (vérification seule, aucune divergence trouvée).
+
+**Statut honnête après vérification** : `COMPLETE_PARITY_CANDIDATE`. Test réel requis : échanger un
+message privé ET un message de groupe entre 2 comptes réels, confirmer réception en direct (pas
+seulement l'écho optimiste local).
+
+### Lot 26 : V3-F-027 (Chat — vérification du chemin d'envoi de message, réserve V3-F-016 levée)
+
+**Finding ID** : V3-F-027 (CHAT-05)
+
+**Constat** : le finding original datait d'avant la correction de V3-F-016 (socket jamais connecté)
+— à l'époque, `socket?.emit(...)` ne s'exécutait jamais réellement (`socket` toujours `nil`),
+rendant l'écho optimiste local trompeur (l'UI affichait le message envoyé sans qu'il parte
+réellement). V3-F-016 étant `BUILD_VALIDATED` depuis le Lot 1, cette session a relu la chaîne
+complète `ChatViewModel.send`→`ChatRepository.sendPrivateMessage`/`sendGroupMessage`→`MessagePacket`
+pour confirmer qu'aucun autre bug ne s'était caché derrière ce blocage. Noms d'événements ET
+construction de payload confirmés fidèles ; un bug Android réel (`updateGroupMessage` émet
+l'enveloppe chat privé au lieu de l'enveloppe groupe) est intentionnellement PAS corrigé côté iOS,
+pour rester compatible avec ce que le serveur reçoit réellement des deux côtés — déjà documenté
+dans le code, reconfirmé ici.
+
+**Fichiers modifiés** : aucun (vérification seule, aucune divergence trouvée).
+
+**Statut honnête après vérification** : reste `CODE_PRESENT_UNVERIFIED` — le code est confirmé
+correct par lecture, mais seul un test réel d'aller-retour socket (envoyer un message, confirmer sa
+réception côté destinataire) peut valider la parité fonctionnelle de bout en bout.
+
+### Lot 27 : V3-F-031 (Chat — risque de révocation PushKit sur payload VoIP malformé)
+
+**Finding ID** : V3-F-031 (CHAT-09)
+
+**Problème réel** : `CallCoordinator.voIPPushManager(_:didReceiveIncomingCallPayload:completion:)`,
+sur échec de décodage du payload (`JSONSerialization`/`JSONDecoder` sur `ChatProfile`), appelait
+`completion()` et retournait SANS jamais appeler `CallKitManager.reportIncomingCall` — violation du
+contrat strict PushKit d'Apple (CHAQUE push VoIP reçu DOIT provoquer un `reportNewIncomingCall`,
+indépendamment de son contenu). Déjà identifié comme RISQUE dans l'audit §30 (ligne ~774) mais noté
+"non-bloquant tant que le backend VoIP n'existe pas" — cette session a distingué les deux volets du
+finding : le contrat serveur (format du payload, endpoint `user/voip-token`) reste bloqué backend,
+MAIS la garde CallKit elle-même est un vrai bug client, indépendant de ce contrat (elle doit
+protéger contre TOUT payload malformé, pas seulement ceux prévus par un contrat qui n'existe pas
+encore).
+
+**Preuve** : documentation déjà présente dans `VoIPPushManager.swift`/`CallCoordinator.swift`
+(commentaires de tête citant la règle Apple explicitement) — pas une nouvelle découverte Android,
+une règle de plateforme iOS (PushKit) déjà connue et documentée mais pas encore appliquée à CE point
+de défaillance précis.
+
+**Correctif** : sur échec de décodage, `reportIncomingCall(uuid:callerName: "Appel entrant")` puis
+`completion()` puis `reportCallEnded(uuid:reason: .failed)` immédiatement — CallKit voit un appel
+entrant générique se terminer aussitôt en échec, plutôt que de ne jamais être notifié. Ne bloque pas
+`completion()` en attendant l'échec (même ordre que `handleIncomingCall` : report → `onReported()`
+→ suite), cohérent avec le reste du fichier.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Calls/CallCoordinator.swift`.
+
+**Commit** : *(à renseigner après ce commit)*.
+
+**Résultat CI** : à déclencher.
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Le volet
+serveur (format réel du payload VoIP, endpoint `user/voip-token`) reste `BLOCKED BY BACKEND` — pas
+une action possible côté client, non retenté ici. Test réel de CE correctif précis quasi impossible
+sans backend VoIP fonctionnel pour déclencher un vrai push (donc un payload malformé) — risque
+documenté, corrigé par construction, mais non observable en pratique tant que le backend n'existe
+pas.
+
+### Lot 28 : V3-F-093 (Wallet/Discover/Créateurs — décodage tableau entier)
+
+**Finding ID** : V3-F-093 (SILENT-04)
+
+**Problème réel** : 5 chaînes de décodage de tableau (sur 4 fichiers) décodaient encore le tableau
+ENTIER en un seul `try?`/`JSONDecoder().decode([T].self, ...)` plutôt que per-item, malgré des
+modèles déjà partiellement tolérants (lenient sur `id`/entiers/booléens, mais PAS sur les champs
+`String?` en simple `decodeIfPresent(String.self,...)`) — un seul item avec un champ `String?`
+arrivant en type inattendu (nombre, objet, etc.) fait échouer TOUT le tableau d'un coup, vidé
+silencieusement.
+
+**Chaînes corrigées** :
+- `TrophyRepository.weeklyRank` (`GET weekly_rank` → `[CreatorModel]`, classement Créateurs).
+- `WalletRepository.transactions` (`GET transactions/...` → `[WalletTransaction]`, historique
+  Wallet).
+- `CommentRepository.comments`/`replies` (`GET comment/...`/`GET /comment/replay/...` →
+  `[Comment]`, factorisés dans un nouveau `decodeComments(_:)` privé partagé).
+- `FollowRepository.list` (`GET {type}/{userId}/{followerId}/...` → `[SearchUserResult]`, listes
+  abonnés/abonnements, Discover).
+
+**Correctif** : même motif déjà établi ailleurs dans le portage (`SuggestionsRepository.
+decodeUsers`/`ChatRepository.decodeMessages`/`FeedRepository.fetchTimeline`) — `array.compactMap`
+avec `do/catch` par item, log de diagnostic (`print("... decode failure for one ...")`) sur chaque
+échec individuel, décompte `reçu vs utilisable` si différent.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Creators/TrophyRepository.swift`,
+`Sources/TiinverSwift/Wallet/WalletRepository.swift`,
+`Sources/TiinverSwift/Discover/CommentRepository.swift`,
+`Sources/TiinverSwift/Discover/FollowListView.swift`.
+
 **Commit** : *(à renseigner après ce commit)*.
 
 **Résultat CI** : à déclencher.
 
 **Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Test réel
-nécessaire : publier une vidéo volumineuse (plusieurs centaines de Mo si possible) et confirmer (a)
-l'app ne plante pas / ne subit pas de pic mémoire excessif, (b) la barre de progression dans la
-toolbar avance réellement de 0 à 100% pendant l'upload au lieu de rester un spinner indéterminé.
+nécessaire : observer chaque écran (classement Créateurs, historique Wallet, commentaires/réponses
+d'une publication, listes abonnés/abonnements) avec des données réelles — le risque ne se manifeste
+que si le serveur envoie effectivement un champ de type inattendu pour un item, donc pas garanti
+observable sans un tel cas réel, mais le correctif élimine la classe d'échec silencieux quoi qu'il
+arrive.

@@ -213,11 +213,26 @@ final class FeedViewModel: ObservableObject {
     /// Port de la branche `block_content` de `OnclickMoreExpand` → `block(mediaObject)` — mêmes
     /// paramètres exacts (`username`=mon pseudo, `username_blocked`=pseudo cible, `userId`=mon id,
     /// `user_blocked_id`=`mediaObject.getActor()`).
+    ///
+    /// **Corrigé le 2026-08-23 (MIGRATION_PARITY_AUDIT_V4.md V4-F-033, Phase B P1)** — `_ = try?`
+    /// avalait le résultat de `toggleBlock` (déjà un `Bool` fidèle à
+    /// `message.equals(USER_BLOCKED)`, voir `ProfileRepository.toggleBlock`) et retirait le post
+    /// INCONDITIONNELLEMENT. Vérifié dans `MainFragment.block()` (`Activity/ui/MainFragment.java:
+    /// 1704-1758`, lu en entier) : `mAdapter.deletePost` (retrait local) n'est appelé QUE dans la
+    /// branche `response.equals(USER_BLOCKED)` — PAS sur `USER_UNBLOCKED` (bascule inverse : le
+    /// serveur débloque au lieu de bloquer si l'utilisateur était déjà bloqué) ni sur `onError`
+    /// (Toast seul). Retrait local désormais conditionné à `blocked == true` ; aucun affichage
+    /// d'erreur ajouté ici (contrairement à V4-F-032) — `toggleBlock` retourne le même `Bool` `false`
+    /// pour un déblocage légitime ET pour un rejet backend, les distinguer nécessiterait de modifier
+    /// `toggleBlock` lui-même, hors périmètre de ce lot ; le comportement correct (ne pas retirer le
+    /// post) est identique dans les deux cas.
     func block(_ post: FeedActivity) async {
         guard let myId = UserSession.shared.myId, let myUsername = UserSession.shared.username,
               let targetUsername = post.username, let actorId = post.actor
         else { return }
-        _ = try? await profileRepository.toggleBlock(myUsername: myUsername, myId: myId, targetUsername: targetUsername, targetUserId: actorId)
+        guard let blocked = try? await profileRepository.toggleBlock(myUsername: myUsername, myId: myId, targetUsername: targetUsername, targetUserId: actorId),
+              blocked
+        else { return }
         posts.removeAll { $0.id == post.id }
     }
 

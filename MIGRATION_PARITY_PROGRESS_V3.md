@@ -1351,11 +1351,11 @@ uploadImageToBunny` (branche photo du même fichier) également storage, égalem
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedMediaUploader.swift`.
 
-**Commit** : *(à renseigner après ce commit)*.
+**Commit** : `bc7c544`.
 
-**Résultat CI** : à déclencher.
+**Résultat CI** : run `32629372490` → **`conclusion: success`**.
 
-**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Impact réel
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). Impact réel
 incertain (le finding original le notait déjà LOW) — un test réel d'upload vidéo bout-en-bout reste
 la seule façon de confirmer si ce manque causait une régression observable (ex. réponse serveur mal
 interprétée) ou n'avait aucun effet pratique.
@@ -1386,11 +1386,11 @@ standard suffit ici, contrairement au piège rencontré ailleurs dans ce portage
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Creators/CreatorOfWeekView.swift`.
 
-**Commit** : *(à renseigner après ce commit)*.
+**Commit** : `bc7c544`.
 
-**Résultat CI** : à déclencher.
+**Résultat CI** : run `32629372490` → **`conclusion: success`**.
 
-**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Test réel
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). Test réel
 nécessaire : observer l'écran Créateurs de la semaine avec des données réelles ; si le serveur omet
 `user_id` pour une entrée, confirmer que la ligne correspondante n'est plus tapable (au lieu d'ouvrir
 un profil vide).

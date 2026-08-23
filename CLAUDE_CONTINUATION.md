@@ -38,9 +38,10 @@ divergence iOS, correctif, flux frère vérifié, commit, CI) :
 - **V3-F-094** (SILENT-05, P2) — `CreatorOfWeekView` naviguait vers un profil vide quand
   `creator.userId` est `nil` ; ajouté `.disabled(...)` reproduisant le guard Android
   (`CreatorAdapter.java:59-64`). Commit `bc7c544`.
-- CI dispatchée pour `adcb677` (run `32629255548`) et `bc7c544` (run `32629372490`) — **vérifier le
-  résultat au prochain démarrage si cette session s'est arrêtée avant confirmation** (voir
-  `PROGRESS_V3.md` Lots 19-21 pour l'état exact au moment de l'arrêt).
+- CI confirmée verte pour les deux : `adcb677` (run `32629255548`) et `bc7c544` (run `32629372490`).
+  Les 6 findings de cette session (V3-F-034/011/063/002/021/094) sont donc tous `BUILD_VALIDATED` —
+  **aucun test réel sur device n'a été fait pour aucun d'entre eux**, reste la vraie prochaine étape
+  avant de les considérer `COMPLETE_PARITY_VALIDATED`.
 
 **Bookkeeping (aucun code changé)** :
 - **V3-F-038** (GALERIE-07) reclassifié `PARTIAL` → `IOS_INTENTIONAL_DIFFERENCE` : `RemoveBackground.

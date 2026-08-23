@@ -132,7 +132,7 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 | ID | Domaine | Statut | Prio | Écart | Confiance |
 |---|---|---|---|---|---|
 | V3-F-001 (SEARCH-01) | Recherche universelle réseau/decode | COMPLETE_PARITY_CANDIDATE | P1 | Aucun | HIGH |
-| V3-F-002 (SEARCH-02) | Décodage résidu strict | PARTIAL | P2 | `try?` avale une erreur réelle de décodage en "0 résultat" au lieu d'"erreur" | MEDIUM |
+| V3-F-002 (SEARCH-02) | Décodage résidu strict | **BUILD_VALIDATED** (corrigé `adcb677`, session 2026-08-23 — `decodeResults` passée en `throws`, propage vers `errorText` déjà câblé dans `SearchView`, fidèle à `RechercheTiinver.java:461-573` ; CI verte confirmée run `32629255548` — test réel requis) | P2 | `try?` avalait une erreur réelle de décodage en "0 résultat" au lieu d'"erreur" — CORRIGÉ | MEDIUM |
 | V3-F-003 (SEARCH-03) | Tap résultat utilisateur | IOS_INTENTIONAL_DIFFERENCE | P2 | Zone tapable élargie (amélioration) | HIGH |
 | V3-F-004 (SEARCH-04) | Tap résultat publication → plein écran | **BUILD_VALIDATED** (corrigé `77b1fc8`, Phase B lot P1, CI verte — refetch via `getactivity/{token}`, repli sur les données obsolètes seulement si le réseau échoue ; test réel requis) | P1 | Pas de refetch avant affichage (Android en fait un) — état like/compteurs possiblement obsolète | MEDIUM |
 | V3-F-005 (SEARCH-05) | Tap hashtag → fil | COMPLETE_PARITY_CANDIDATE | P2 | Aucun | HIGH |

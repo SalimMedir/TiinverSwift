@@ -1311,12 +1311,12 @@ de `results` lui-même (clé absente, pas un type de champ interne).
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Discover/SearchRepository.swift`.
 
-**Commit** : *(à renseigner après ce commit)*.
+**Commit** : `adcb677`.
 
-**Résultat CI** : non déclenché par cette session à la rédaction — déclenchement manuel requis
-(même contrainte que les lots précédents, sauf autorisation explicite renouvelée par l'utilisateur).
+**Résultat CI** : déclenchée par cette session (autorisation déjà accordée), run `32629255548` →
+**`conclusion: success`**.
 
-**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Test réel
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). Test réel
 nécessaire : provoquer une réponse `content/search`/`content/search/suggest` avec un JSON `results`
 malformé (ou couper le réseau après le décodage du corps mais avant la fin, difficile à simuler sans
 proxy) — plus simplement, confirmer par observation directe que la recherche normale (0 résultat

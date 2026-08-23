@@ -256,6 +256,12 @@ struct FeedView: View {
         } message: {
             Text("Vous ne verrez plus le contenu de cette personne, et elle ne pourra plus voir le vôtre.")
         }
+        // Port du `Toast` d'échec de `deleteMyPost` (V4-F-032, voir `FeedViewModel.deleteOwnPost`).
+        .alert("Échec de la suppression", isPresented: Binding(get: { viewModel.deleteError != nil }, set: { if !$0 { viewModel.deleteError = nil } })) {
+            Button("OK", role: .cancel) { viewModel.deleteError = nil }
+        } message: {
+            Text(viewModel.deleteError ?? "")
+        }
     }
 
     /// État affiché tant qu'aucun post n'est chargé — distingue explicitement les 3 cas
@@ -643,6 +649,12 @@ struct FeedDetailPagerView: View {
             Button("OK", role: .cancel) { downloadError = nil }
         } message: {
             Text(downloadError ?? "")
+        }
+        // Port du `Toast` d'échec de `deleteMyPost` (V4-F-032, voir `FeedViewModel.deleteOwnPost`).
+        .alert("Échec de la suppression", isPresented: Binding(get: { viewModel.deleteError != nil }, set: { if !$0 { viewModel.deleteError = nil } })) {
+            Button("OK", role: .cancel) { viewModel.deleteError = nil }
+        } message: {
+            Text(viewModel.deleteError ?? "")
         }
     }
 

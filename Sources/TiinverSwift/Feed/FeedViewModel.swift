@@ -16,6 +16,9 @@ final class FeedViewModel: ObservableObject {
     /// depuis Appetize) — demande explicite de l'utilisateur suite à plusieurs tours de rapports
     /// "Home vide" non résolus par la seule lecture de code. Retiré une fois la cause confirmée.
     @Published var diagnostics: String = ""
+    /// Port du `Toast` d'échec de `ActivityAdapter.deleteMyPost`'s `onError` (V4-F-032) — transitoire,
+    /// affiché par les vues qui déclenchent `deleteOwnPost` (`FeedView`/`FeedDetailPagerView`).
+    @Published var deleteError: String?
 
     private let repository = FeedRepository()
     private let profileRepository = ProfileRepository.shared
@@ -141,10 +144,25 @@ final class FeedViewModel: ObservableObject {
 
     /// Port de `ActivityAdapter.deleteMyPost` — UNIQUEMENT pour ses propres publications (garde déjà
     /// faite par l'appelant via `FeedActivity`'s `actor == myId`, voir `FeedView.moreActions`).
+    ///
+    /// **Corrigé le 2026-08-23 (MIGRATION_PARITY_AUDIT_V4.md V4-F-032, Phase B P1)** — `try?`
+    /// avalait l'échec de `deleteActivity` (réseau OU rejet backend, `deleteActivity` lève déjà
+    /// correctement via `isBackendSuccess`) et retirait le post de `posts` INCONDITIONNELLEMENT.
+    /// Vérifié dans `ActivityAdapter.deleteMyPost` (`Activity/adapter/ActivityAdapter.java:847-867`,
+    /// lu en entier) : `deletePostById` (retrait local) n'est appelé QUE dans `onResonse` (succès,
+    /// `error=="false"` — même contrat `TransportData.Post` que V4-F-020) ; `onError` affiche
+    /// seulement un Toast, sans toucher la liste. Le post disparaissait donc de l'UI même sur échec,
+    /// pour réapparaître au rechargement suivant — désynchronisation silencieuse. Retrait local
+    /// désormais conditionné au succès réel ; `deleteError` publié sinon (équivalent du Toast
+    /// Android, affiché par les 2 vues qui déclenchent cette action).
     func deleteOwnPost(_ post: FeedActivity) async {
         guard let myId = UserSession.shared.myId else { return }
-        try? await repository.deleteActivity(id: post.id, actorId: myId)
-        posts.removeAll { $0.id == post.id }
+        do {
+            try await repository.deleteActivity(id: post.id, actorId: myId)
+            posts.removeAll { $0.id == post.id }
+        } catch {
+            deleteError = "Échec de la suppression du post."
+        }
     }
 
     /// Port de la branche non-propriétaire de `OnclickMoreExpand`'s `delete_content`

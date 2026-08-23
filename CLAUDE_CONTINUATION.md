@@ -9,69 +9,75 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-23 — CI débloquée, Lots 16-21 confirmés/corrigés)
+# CURRENT HANDOFF (2026-08-23 — backlog P2/P3 V3 balayé exhaustivement, ne reste que du bloqué/différé)
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES** — elles
-n'ont pas été mises à jour par les sessions qui ont continué le travail jusqu'au 2026-08-21/23
-(cycle `MIGRATION_PARITY_AUDIT_V3.md`/`PROGRESS_V3.md`, la vraie source de vérité vivante, voir
-commits `a829267`→`bc7c544`). Conservées pour l'historique GAP-020 à GAP-023 (contexte P0 ancien
-toujours valide), mais ne pas s'y fier pour l'état actuel — lire V3 en premier.
+n'ont pas été mises à jour par les sessions qui ont continué le travail jusqu'au 2026-08-23 (cycle
+`MIGRATION_PARITY_AUDIT_V3.md`/`PROGRESS_V3.md`, la vraie source de vérité vivante). Conservées pour
+l'historique GAP-020 à GAP-023 (contexte P0 ancien toujours valide), mais ne pas s'y fier pour
+l'état actuel — lire V3 en premier.
 
-**Contexte** : nouvelle session reprenant le travail. Blocage identifié dès le départ : 3 commits
-(`0422fda` V3-F-034, `f238e8b` V3-F-011, `36559d2` V3-F-063) poussés par la session précédente
-n'avaient aucune CI confirmée (`ios-build.yml` = `workflow_dispatch` uniquement, `gh` CLI absent).
-Autorisation explicite demandée et obtenue de l'utilisateur pour récupérer un token via Git
-Credential Manager (jamais affiché) et déclencher/interroger l'API REST GitHub — méthode déjà
-utilisée par les sessions antérieures.
+**Contexte** : deux sessions consécutives le 2026-08-23. Session A a débloqué la CI (3 commits en
+attente depuis le 2026-08-21) et corrigé 6 findings (V3-F-002/011/021/034/063/094). Session B
+(directive explicite de l'utilisateur : "termine méthodiquement tout le backlog P2 puis P3 restant
+avant V3-F-095") a balayé l'INTÉGRALITÉ du reste de `MIGRATION_PARITY_AUDIT_V3.md` — table §6
+(V3-F-001 à 098) ET cycle complémentaire §30 (V3-F-099 à 152) — finding par finding, avec preuve
+Android fichier:ligne indépendante à chaque fois (pas de confiance aveugle dans les résumés
+existants). Repo Android source de vérité :
+`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
-**CI débloquée et confirmée verte** (run `32628912305`, `head_sha=36559d27`, `conclusion: success`)
-→ V3-F-034/011/063 passés de `CODE_PRESENT_UNVERIFIED` à `BUILD_VALIDATED` dans la table §6 et
-`PROGRESS_V3.md`. **Aucun test réel sur device n'a été fait pour ces 3** — reste à faire.
+**Résultat du balayage : le backlog P2/P3 actionnable est ÉPUISÉ.** Tout ce qui restait ouvert est
+maintenant soit corrigé et confirmé par CI verte, soit documenté comme légitimement bloqué
+(backend/serveur/test physique), soit une prémisse de finding invalidée par relecture plus
+approfondie. Table §6 : plus AUCUNE ligne `MISSING`/`PARTIAL`/`CODE_PRESENT_UNVERIFIED` sauf
+V3-F-081 (bloqué : `appStoreId` inconnu tant que l'app n'est pas publiée sur l'App Store, pas une
+action cliente possible). §30 : plus aucune ligne actionnable sauf V3-F-115/121 (dépendent d'un
+test serveur/device, déjà documentés comme tels) et V3-F-140 (bloqué backend, endpoint
+`storekit/verify-purchase` inexistant, même blocage que V3-F-084).
 
-**Nouveaux findings corrigés cette session** (méthodologie complète : preuve Android fichier:ligne,
-divergence iOS, correctif, flux frère vérifié, commit, CI) :
-- **V3-F-002** (SEARCH-02, P2) — `SearchRepository.decodeResults` avalait toute erreur de décodage
-  réelle en "0 résultat" silencieux ; passé en `throws`, propage maintenant vers l'état `errorText`
-  déjà câblé dans `SearchView` (V3-F-008). Commit `adcb677`.
-- **V3-F-021** (BUNNY-05, P2) — en-tête `Accept: application/json` manquant sur la PUT vidéo
-  BunnyCDN (présent côté Android, `ActivityService.java:287-292`). Commit `bc7c544`.
-- **V3-F-094** (SILENT-05, P2) — `CreatorOfWeekView` naviguait vers un profil vide quand
-  `creator.userId` est `nil` ; ajouté `.disabled(...)` reproduisant le guard Android
-  (`CreatorAdapter.java:59-64`). Commit `bc7c544`.
-- CI confirmée verte pour les deux : `adcb677` (run `32629255548`) et `bc7c544` (run `32629372490`).
-  Les 6 findings de cette session (V3-F-034/011/063/002/021/094) sont donc tous `BUILD_VALIDATED` —
-  **aucun test réel sur device n'a été fait pour aucun d'entre eux**, reste la vraie prochaine étape
-  avant de les considérer `COMPLETE_PARITY_VALIDATED`.
+**Findings corrigés cette session (CI verte confirmée sur chaque commit)** :
+- Session A : V3-F-034/011/063 (déblocage CI initial) + V3-F-002/021/094 (nouveaux) + V3-F-012/019
+  (cache image, upload vidéo streamé+progression) + V3-F-031/093 (garde CallKit VoIP, décodage
+  tableau per-item ×5) — commits `0422fda`→`1afa611`.
+- Session B (finding par finding, méthodologie complète à chaque fois) :
+  - **V3-F-100/101/104/105/106/108/116** (7 findings Recherche/Chat, commit `3d6a9ed`) : grille
+    posts 3 colonnes, stats hashtag affichées, historique non pollué par les échecs, seuil
+    d'affichage d'erreur corrigé, garde `isFull` posts en suggestion, filtre recherche conversation
+    sur le dernier message, rafraîchissement live sur suppression "pour tous".
+  - **V3-F-130/138** (Settings/DeepLinks, commit `5ee5734`) : FAQ localisée fr/en, alerte visible
+    sur échec de résolution de lien profond.
+- **Vérifications positives sans correctif nécessaire** (code déjà correct, documenté) : V3-F-025
+  (35 constantes socket vérifiées), V3-F-027 (chemin d'envoi de message re-vérifié post-V3-F-016),
+  V3-F-028 (9 payloads REST Groupes vérifiés champ par champ), V3-F-036/046 (composant tiers/
+  intégration croisée — bloqués sur test physique, pas plus de code à lire), V3-F-055 (Google
+  Sign-In, doublon de V3-F-145).
+- **Prémisses invalidées, aucun code changé** : V3-F-133 (`AUTHORIZED_ADS` ne configure PAS l'ad
+  personalization — son seul consommateur réel gate un mini-jeu "bounce" déjà mort/commenté côté
+  Android) ; V3-F-151 (doublon de V3-F-091, déjà résolu — silence partagé Android/iOS, PAS un gap).
 
-**Bookkeeping (aucun code changé)** :
-- **V3-F-038** (GALERIE-07) reclassifié `PARTIAL` → `IOS_INTENTIONAL_DIFFERENCE` : `RemoveBackground.
-  swift` documente déjà (session antérieure) que `VNGenerateForegroundInstanceMaskRequest` (sujet
-  général) est iOS 17+, incompatible avec la cible 16.0 du projet — pas un gap corrigible sans
-  décision produit hors périmètre.
-- **V3-F-077** (NOTIF-06) reclassifié `PARTIAL` → `COMPLETE_PARITY_CANDIDATE` : doublon de V3-F-136
-  (déjà requalifié le 2026-08-20, §30.8) — Android lui-même ne route jamais par type au tap
-  notification (`NotificationUtils.java.show()` = `Intent` bare toujours), donc pas de gap réel.
+**Tous ces correctifs sont `BUILD_VALIDATED` (CI verte), PAS `COMPLETE_PARITY_VALIDATED` — aucun
+test réel sur device/simulateur n'a été fait pour aucun d'entre eux.** C'est la vraie prochaine
+étape avant de les considérer pleinement validés.
 
-**Repo Android source de vérité (chemin confirmé cette session)** :
-`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\` — utiliser ce chemin
-directement pour toute preuve fichier:ligne future, plutôt que de deviner.
-
-**PROCHAINE TÂCHE EXACTE** :
-1. Si les runs `32629255548`/`32629372490` n'ont pas été confirmés avant l'arrêt de session : les
-   revérifier (`GET /repos/SalimMedir/TiinverSwift/actions/runs/{id}`) et mettre à jour Lots 19-21
-   dans `PROGRESS_V3.md` + table §6 en conséquence.
-2. **V3-F-095** (ORPHAN-01, P2, HIGH) — analytics temps de visionnage jamais collectées côté iOS.
-   Recherché cette session, PAS corrigé — scope réel important, pas une petite correction :
-   `ViewEventRepository.swift` (stockage local CoreData) existe déjà et est complet, mais (a) aucun
-   point d'appel — Android déclenche `ViewTracker.record(...)` depuis `FeedFragment.java:1417-1436`
-   via un `WatchTimeTracker` lié au scroll RecyclerView (temps passé par item visible), rien
-   d'équivalent câblé dans `FeedView.swift` ; (b) la synchronisation périodique vers le serveur
-   (`ViewSyncWorker.java` via `WorkManager`) n'a aucun équivalent iOS (`BGTaskScheduler` à
-   construire). Nécessite une session dédiée avec focus, pas une correction rapide en fin de budget.
-3. Backlog P2/P3 restant : voir §6 de `MIGRATION_PARITY_AUDIT_V3.md` pour d'autres lignes
-   `PARTIAL`/`CODE_PRESENT_UNVERIFIED`/`MISSING` non encore couvertes par cette session (la plupart
-   des items `CODE_PRESENT_UNVERIFIED` restants nécessitent un test réel, pas du code — ne pas
-   coder à l'aveugle dessus, voir méthode "TEST RÉEL NÉCESSAIRE" documentée par finding).
+**PROCHAINE TÂCHE EXACTE (dans l'ordre)** :
+1. **Tests réels sur device/simulateur** — gros volume de correctifs `BUILD_VALIDATED` jamais
+   testés en pratique, listés lot par lot dans `MIGRATION_PARITY_PROGRESS_V3.md` (chaque lot précise
+   exactement quoi tester). Priorité suggérée : chat (envoi/réception message, suppression "pour
+   tous"), recherche (grille posts, historique, hashtags), upload vidéo (mémoire + progression),
+   deep links (alerte d'échec).
+2. **V3-F-095** (ORPHAN-01, P2, HIGH) — analytics temps de visionnage jamais collectées côté iOS,
+   différé jusqu'ici sur demande explicite de l'utilisateur. Scope réel important, PAS une petite
+   correction : `ViewEventRepository.swift` (stockage local CoreData) existe déjà et est complet,
+   mais (a) aucun point d'appel — Android déclenche `ViewTracker.record(...)` depuis
+   `FeedFragment.java:1417-1436` via un `WatchTimeTracker` lié au scroll RecyclerView (temps passé
+   par item visible), rien d'équivalent câblé dans `FeedView.swift` ; (b) la synchronisation
+   périodique vers le serveur (`ViewSyncWorker.java` via `WorkManager`) n'a aucun équivalent iOS
+   (`BGTaskScheduler` à construire). Nécessite une session dédiée avec focus.
+3. Items légitimement bloqués (backend/serveur/test physique), à re-vérifier périodiquement si le
+   contexte change (nouveau endpoint serveur livré, app publiée sur l'App Store, etc.) : V3-F-078
+   (Universal Links, AASA manquant), V3-F-081 (appStoreId), V3-F-084/140 (StoreKit,
+   `storekit/verify-purchase`), V3-F-115 (canal socket non écouté des 2 côtés), V3-F-121 (pièces
+   jointes chat), V3-F-036/046 (composant tiers/intégration croisée, test physique requis).
 4. `MIGRATION_PARITY_AUDIT_V4.md`/`PROGRESS_V4.md` toujours en Phase Audit uniquement, non touchés,
    à re-vérifier s'ils ont progressé avant de les ignorer par réflexe.
 

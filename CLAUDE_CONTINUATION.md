@@ -10,7 +10,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 ---
 
 # CURRENT HANDOFF (2026-08-23 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
-Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS [V4-F-020/032 traités])
+Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS [V4-F-020/032/033 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -140,12 +140,27 @@ Détail complet dans `PROGRESS_V4.md`, Lot P1-2. **Commit `f503a72`, CI verte co
 `32674024379`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : provoquer
 un rejet serveur réel sur une suppression et confirmer que le post reste visible avec l'alerte).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-2 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur **V4-F-033** (Feed — bloquer un utilisateur depuis le Feed retire son post
-même en cas d'échec ou de bascule inverse [déblocage] : `FeedViewModel.swift:198-204`, `_ = try?`,
-retrait inconditionnel — utiliser le `Bool` déjà retourné par `toggleBlock` [`message==USER_BLOCKED`]
-pour ne retirer le post que sur un vrai succès de blocage, `Activity/ui/MainFragment.java:1704-1745`),
-puis V4-F-042→038→017→046→048→049→050→001→002→029→030→056→064→059→068→073→021→027→019→003
+**Lot P1-3 traité (V4-F-033)** — Feed, bloquer un utilisateur depuis le Feed retirait son post même
+en cas d'échec ou de bascule inverse (déblocage). Vérifié dans `MainFragment.block()`
+(`Activity/ui/MainFragment.java:1704-1758`, entier) : `mAdapter.deletePost` n'est appelé QUE sur
+`message.equals(USER_BLOCKED)` — pas sur `USER_UNBLOCKED` (bascule inverse), pas sur `onError`
+(Toast seul). `ProfileRepository.toggleBlock` retournait déjà le bon `Bool`
+(`message == "USER BLOCKED"`), mais `FeedViewModel.block` le discardait (`_ = try?`) et retirait le
+post inconditionnellement. Corrigé : retrait local conditionné à `blocked == true`. **Décision de
+scope** : pas d'UI d'erreur ajoutée (contrairement à V4-F-032) — `toggleBlock` ne distingue pas
+"déblocage légitime" de "rejet backend" (les deux retournent `false`) et la modifier aurait affecté
+`ProfileViewModel.toggleBlock` (bouton Profil, usage différent, déjà correct), hors périmètre de ce
+lot ; le comportement correct (ne pas retirer le post) est identique dans les deux cas. Détail complet
+dans `PROGRESS_V4.md`, Lot P1-3. **Commit `8d6ebae`, CI verte confirmée (run `32674513016`)** —
+`BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : bloquer puis débloquer un
+utilisateur depuis le Feed, confirmer le retrait uniquement sur blocage réussi).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-3 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur **V4-F-042** (WebRTC-Calls — logique de notification d'appel manqué inversée :
+`CallCoordinator.swift:347-357` déclenche `if !isOutgoingCall, !wasAnswered` [côté CALLEE], alors
+qu'Android n'enregistre l'appel manqué QUE côté APPELANT, `CallActivity.java:85,467-480,503-507,
+509-525` — inverser la garde en `isOutgoingCall && !wasAnswered`), puis
+V4-F-038→017→046→048→049→050→001→002→029→030→056→064→059→068→073→021→027→019→003
 (Chat→Calls→Animems→Session/DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→Social→
 Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android
 source de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.

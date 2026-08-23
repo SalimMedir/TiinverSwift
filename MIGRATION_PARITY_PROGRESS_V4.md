@@ -3,7 +3,7 @@
 Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
 **État actuel (2026-08-23) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
-(P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032 clos. Prochain : V4-F-033.**
+(P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033 clos. Prochain : V4-F-042.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -520,3 +520,72 @@ dans ce lot — scope strictement limité à `deleteOwnPost`.
 `COMPLETE_PARITY_VALIDATED` — nécessite de provoquer un rejet serveur réel sur une suppression de
 post propre (ex. token expiré, id déjà supprimé) et de confirmer que le post reste visible avec
 l'alerte affichée, plutôt que de disparaître puis réapparaître au rechargement suivant.
+
+## 2026-08-23 — Phase B V4 — Lot P1-3 : V4-F-033 (Feed — bloquer un utilisateur retire son post
+même en cas d'échec ou de bascule inverse)
+
+**Commit** : `8d6ebae` — CI **run 32674513016, conclusion: success**.
+
+### Vérification Android (avant tout changement)
+
+`Activity/ui/MainFragment.java:1704-1758` (`block`), lu en entier :
+```java
+td.Post(map, "block", new Callback() {
+    public void onResonse(Context context, int action, JSONObject object) {
+        String response = object.getString("message");
+        if (response.equals(USER_BLOCKED)) {
+            collapseAll();
+            mAdapter.deletePost(mediaObject.getActor());   // retrait local — UNIQUEMENT ici
+            ...
+        } else if (response.equals(USER_UNBLOCKED)) {
+            ...                                             // PAS de retrait local — bascule inverse
+        }
+    }
+    public void onError(String message) {
+        Toast.makeText(...errorLoad..., Toast.LENGTH_LONG).show();  // PAS de retrait local non plus
+    }
+});
+```
+`infoContract.java:101,103` confirme `USER_BLOCKED="USER BLOCKED"` / `USER_UNBLOCKED="USER UNBLOCKED"`
+— exactement la comparaison déjà faite côté iOS dans `ProfileRepository.toggleBlock`
+(`(try? value.string("message")) == "USER BLOCKED"`).
+
+### Écart iOS constaté (avant correctif)
+
+`FeedViewModel.block` (lignes 216-222 avant correctif) :
+```swift
+_ = try? await profileRepository.toggleBlock(...)
+posts.removeAll { $0.id == post.id }
+```
+`toggleBlock` retournait DÉJÀ le bon `Bool`, mais le résultat était discardé et le retrait local
+s'exécutait dans TOUS les cas — succès de blocage, bascule vers déblocage, ou échec réseau/backend.
+
+### Correctif appliqué
+
+```swift
+guard let blocked = try? await profileRepository.toggleBlock(...), blocked else { return }
+posts.removeAll { $0.id == post.id }
+```
+
+**Décision de scope prise pendant ce lot** : PAS d'UI d'erreur ajoutée ici, contrairement à
+V4-F-032. `toggleBlock` ne vérifie pas `isBackendSuccess` (retourne `false` aussi bien pour un
+déblocage légitime que pour un rejet backend) — les distinguer aurait nécessité de modifier
+`toggleBlock` elle-même, qui est aussi utilisée par `ProfileViewModel.toggleBlock` (bouton bloquer de
+l'écran Profil, comportement différent et déjà correct — bascule un état `Bool` local, pas de retrait
+de liste). Modifier son contrat aurait dépassé le périmètre de ce finding précis et risqué d'affecter
+un appelant non concerné. Le comportement correct pour V4-F-033 (ne pas retirer le post) est de toute
+façon identique que la cause soit "juste débloqué" ou "rejet backend" — aucune perte de fidélité.
+
+### Flux frères vérifiés
+
+`grep -n "viewModel.block("` → exactement 2 sites d'appel (`FeedView.swift` — menu "..." de la
+grille et du plein écran, tous deux derrière la même alerte de confirmation `blockTargetPost`),
+aucun ne dépend de la valeur de retour de `block()` — aucun changement nécessaire côté appelants.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedViewModel.swift`.
+
+**Résultat CI** : run `32674513016` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — nécessite de bloquer réellement un utilisateur depuis le Feed et de
+confirmer le retrait du post, puis de débloquer et de confirmer qu'aucun post ne disparaît par erreur.

@@ -665,6 +665,18 @@ IMPACT : Même classe de bug que V4-F-032 — un blocage échoué ou une bascule
 disparaître le post silencieusement, sans distinction possible pour l'utilisateur.
 RECOMMANDATION : Utiliser le `Bool` déjà retourné par `toggleBlock` (et propager l'erreur) pour ne
 retirer le post que sur un vrai succès de blocage.
+STATUT : BUILD_VALIDATED (2026-08-23, commit 8d6ebae, CI run 32674513016 succès). Reconfirmé par
+relecture directe de `MainFragment.block()` (lignes 1704-1758, entier) : `mAdapter.deletePost` n'est
+appelé QUE dans la branche `response.equals(USER_BLOCKED)`, ni sur `USER_UNBLOCKED` (bascule inverse)
+ni sur `onError` (Toast seul). `ProfileRepository.toggleBlock` retournait déjà le `Bool` fidèle
+(`message == "USER BLOCKED"`) mais `FeedViewModel.block` le discardait (`_ = try?`) et retirait le
+post inconditionnellement. Corrigé : retrait local conditionné à `blocked == true`. Aucune UI
+d'erreur ajoutée ici (contrairement à V4-F-032) — `toggleBlock` retourne le même `false` pour un
+déblocage légitime ET un rejet backend (elle ne vérifie pas `isBackendSuccess`), les distinguer
+sortirait du périmètre de ce lot ; le comportement correct (ne pas retirer le post) est identique
+dans les deux cas, donc aucune régression fonctionnelle. DEVICE_TEST_REQUIRED pour
+COMPLETE_PARITY_VALIDATED (bloquer réellement un utilisateur depuis le Feed et confirmer le retrait
+du post ; débloquer et confirmer qu'aucun post ne disparaît).
 ```
 
 ```

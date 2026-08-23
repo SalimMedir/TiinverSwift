@@ -9,36 +9,74 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-17, suite 5 — bandeau debug corrigé + BLOQUÉ sur confirmation build Appetize)
+# CURRENT HANDOFF (2026-08-23 — CI débloquée, Lots 16-21 confirmés/corrigés)
 
-**Contexte** : l'utilisateur a fourni 3 nouvelles captures Appetize réelles (Feed Grid vide,
-Fullscreen sans boutons/avatar, création de groupe en mode sélection immédiate) accompagnées d'un
-rappel ferme : ne plus déclarer "corrigé" sans preuve, s'arrêter et demander plutôt que deviner.
+**⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES** — elles
+n'ont pas été mises à jour par les sessions qui ont continué le travail jusqu'au 2026-08-21/23
+(cycle `MIGRATION_PARITY_AUDIT_V3.md`/`PROGRESS_V3.md`, la vraie source de vérité vivante, voir
+commits `a829267`→`bc7c544`). Conservées pour l'historique GAP-020 à GAP-023 (contexte P0 ancien
+toujours valide), mais ne pas s'y fier pour l'état actuel — lire V3 en premier.
 
-**GAP-023 (RÉSOLU)** : le bandeau de diagnostic session (`HomeShellView.userIdDebugBanner`) était
-visible en permanence, y compris sur Appetize — `#if DEBUG` aurait été insuffisant (vérifié :
-`codemagic.yaml` build les DEUX workflows sans `-configuration`, donc en Debug par défaut, chaque
-build Appetize est Debug). Gated derrière un flag `UserDefaults` explicite, désactivé par défaut.
-Commit `f669a89`, CI verte.
+**Contexte** : nouvelle session reprenant le travail. Blocage identifié dès le départ : 3 commits
+(`0422fda` V3-F-034, `f238e8b` V3-F-011, `36559d2` V3-F-063) poussés par la session précédente
+n'avaient aucune CI confirmée (`ios-build.yml` = `workflow_dispatch` uniquement, `gh` CLI absent).
+Autorisation explicite demandée et obtenue de l'utilisateur pour récupérer un token via Git
+Credential Manager (jamais affiché) et déclencher/interroger l'API REST GitHub — méthode déjà
+utilisée par les sessions antérieures.
 
-**Ratio letterboxé du fullscreen vidéo — vérifié FAITHFUL À ANDROID, pas un bug** :
-`video_expanded_item.xml` (vrai layout Android) ne définit AUCUN `app:resize_mode` sur son
-`PlayerView` → Media3 utilise son défaut `RESIZE_MODE_FIT` (letterbox) — EXACTEMENT le défaut de
-`VideoPlayer` SwiftUI (`.resizeAspect`), confirmé qu'aucune surcharge n'existe côté iOS. Ne PAS
-"corriger" en recadrage plein écran, ce serait une divergence introduite, pas une correction.
+**CI débloquée et confirmée verte** (run `32628912305`, `head_sha=36559d27`, `conclusion: success`)
+→ V3-F-034/011/063 passés de `CODE_PRESENT_UNVERIFIED` à `BUILD_VALIDATED` dans la table §6 et
+`PROGRESS_V3.md`. **Aucun test réel sur device n'a été fait pour ces 3** — reste à faire.
 
-**BLOQUÉ, question posée explicitement à l'utilisateur (en attente de réponse)** : les 3 captures
-fournies montrent un fullscreen SANS avatar/boutons Like-Comment-Partager-Plus, et un écran "créer
-groupe" SANS l'étape browse-d'abord — alors que le code actuel sur `main` a DÉJÀ ces deux
-comportements (commits `a796446`/`3bf7ae3` pour le fullscreen, `acbddc7`/`e860d32` pour la création
-de groupe). Le pipeline Codemagic `visual-smoke-test` (qui produit le binaire Appetize) est
-déclenché MANUELLEMENT par l'utilisateur, séparément de la CI GitHub Actions automatique de cette
-session — aucune preuve qu'il ait été relancé depuis ces commits. Demandé explicitement : a-t-il été
-relancé après ces commits ? Réponse nécessaire avant de ré-investiguer ces 2 points comme de
-véritables régressions (au lieu de re-corriger un code déjà correct sans preuve). Même incertitude
-pour le Feed Grid vide (point 1) vis-à-vis des commits `8fd7493`/`eded5f1`.
+**Nouveaux findings corrigés cette session** (méthodologie complète : preuve Android fichier:ligne,
+divergence iOS, correctif, flux frère vérifié, commit, CI) :
+- **V3-F-002** (SEARCH-02, P2) — `SearchRepository.decodeResults` avalait toute erreur de décodage
+  réelle en "0 résultat" silencieux ; passé en `throws`, propage maintenant vers l'état `errorText`
+  déjà câblé dans `SearchView` (V3-F-008). Commit `adcb677`.
+- **V3-F-021** (BUNNY-05, P2) — en-tête `Accept: application/json` manquant sur la PUT vidéo
+  BunnyCDN (présent côté Android, `ActivityService.java:287-292`). Commit `bc7c544`.
+- **V3-F-094** (SILENT-05, P2) — `CreatorOfWeekView` naviguait vers un profil vide quand
+  `creator.userId` est `nil` ; ajouté `.disabled(...)` reproduisant le guard Android
+  (`CreatorAdapter.java:59-64`). Commit `bc7c544`.
+- CI dispatchée pour `adcb677` (run `32629255548`) et `bc7c544` (run `32629372490`) — **vérifier le
+  résultat au prochain démarrage si cette session s'est arrêtée avant confirmation** (voir
+  `PROGRESS_V3.md` Lots 19-21 pour l'état exact au moment de l'arrêt).
 
-Détail complet : voir `MIGRATION_AUDIT.md` GAP-023 + la note de vérification qui suit juste après.
+**Bookkeeping (aucun code changé)** :
+- **V3-F-038** (GALERIE-07) reclassifié `PARTIAL` → `IOS_INTENTIONAL_DIFFERENCE` : `RemoveBackground.
+  swift` documente déjà (session antérieure) que `VNGenerateForegroundInstanceMaskRequest` (sujet
+  général) est iOS 17+, incompatible avec la cible 16.0 du projet — pas un gap corrigible sans
+  décision produit hors périmètre.
+- **V3-F-077** (NOTIF-06) reclassifié `PARTIAL` → `COMPLETE_PARITY_CANDIDATE` : doublon de V3-F-136
+  (déjà requalifié le 2026-08-20, §30.8) — Android lui-même ne route jamais par type au tap
+  notification (`NotificationUtils.java.show()` = `Intent` bare toujours), donc pas de gap réel.
+
+**Repo Android source de vérité (chemin confirmé cette session)** :
+`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\` — utiliser ce chemin
+directement pour toute preuve fichier:ligne future, plutôt que de deviner.
+
+**PROCHAINE TÂCHE EXACTE** :
+1. Si les runs `32629255548`/`32629372490` n'ont pas été confirmés avant l'arrêt de session : les
+   revérifier (`GET /repos/SalimMedir/TiinverSwift/actions/runs/{id}`) et mettre à jour Lots 19-21
+   dans `PROGRESS_V3.md` + table §6 en conséquence.
+2. **V3-F-095** (ORPHAN-01, P2, HIGH) — analytics temps de visionnage jamais collectées côté iOS.
+   Recherché cette session, PAS corrigé — scope réel important, pas une petite correction :
+   `ViewEventRepository.swift` (stockage local CoreData) existe déjà et est complet, mais (a) aucun
+   point d'appel — Android déclenche `ViewTracker.record(...)` depuis `FeedFragment.java:1417-1436`
+   via un `WatchTimeTracker` lié au scroll RecyclerView (temps passé par item visible), rien
+   d'équivalent câblé dans `FeedView.swift` ; (b) la synchronisation périodique vers le serveur
+   (`ViewSyncWorker.java` via `WorkManager`) n'a aucun équivalent iOS (`BGTaskScheduler` à
+   construire). Nécessite une session dédiée avec focus, pas une correction rapide en fin de budget.
+3. Backlog P2/P3 restant : voir §6 de `MIGRATION_PARITY_AUDIT_V3.md` pour d'autres lignes
+   `PARTIAL`/`CODE_PRESENT_UNVERIFIED`/`MISSING` non encore couvertes par cette session (la plupart
+   des items `CODE_PRESENT_UNVERIFIED` restants nécessitent un test réel, pas du code — ne pas
+   coder à l'aveugle dessus, voir méthode "TEST RÉEL NÉCESSAIRE" documentée par finding).
+4. `MIGRATION_PARITY_AUDIT_V4.md`/`PROGRESS_V4.md` toujours en Phase Audit uniquement, non touchés,
+   à re-vérifier s'ils ont progressé avant de les ignorer par réflexe.
+
+---
+
+# ARCHIVE — entrées 2026-08-17 (PÉRIMÉES, voir avertissement ci-dessus, conservées pour GAP-020/021/022/023)
 
 ---
 

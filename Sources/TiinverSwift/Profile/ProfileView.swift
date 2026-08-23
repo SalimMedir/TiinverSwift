@@ -62,7 +62,9 @@ struct ProfileView: View {
             await viewModel.loadInitialPosts()
         }
         .fullScreenCover(isPresented: $showDetail) {
-            FeedDetailPagerView(posts: viewModel.posts, startIndex: detailStartIndex, onClose: { showDetail = false })
+            // Port de `ProfileFeedFragment.OnclickMoreExpand` — SEUL menu Android à câbler
+            // `R.id.download` (V4-F-007, voir `FeedMediaDownloader.swift`).
+            FeedDetailPagerView(posts: viewModel.posts, startIndex: detailStartIndex, includesDownload: true, onClose: { showDetail = false })
         }
         .confirmationDialog(
             viewModel.isBlocked ? "Débloquer cet utilisateur ?" : "Bloquer cet utilisateur ?", // R.string.unblock / block_info

@@ -179,6 +179,10 @@ targets:
         NSCameraUsageDescription: "Tiinver a besoin de la caméra pour publier des photos et vidéos."
         NSMicrophoneUsageDescription: "Tiinver a besoin du micro pour les vidéos, messages vocaux et appels."
         NSPhotoLibraryUsageDescription: "Tiinver a besoin d'accéder à vos photos pour publier du contenu."
+        # Port de `ProfileFeedFragment.downloadFile` (V4-F-007, Phase B P0-3) — enregistrement d'un
+        # média téléchargé (`PHPhotoLibrary.performChanges`, permission ÉCRITURE, distincte de la
+        # lecture ci-dessus utilisée pour la publication).
+        NSPhotoLibraryAddUsageDescription: "Tiinver a besoin d'enregistrer les photos et vidéos que vous téléchargez."
         NSContactsUsageDescription: "Tiinver utilise vos contacts pour vous suggérer des amis."
         # Module 16 (AdMob) — App ID CONFIRMÉ (pas deviné) : `AndroidManifest.xml:419`,
         # `ca-app-pub-2461482190230201~9045103625`, identique quelle que soit la plateforme (un

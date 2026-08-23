@@ -16,6 +16,16 @@ import UIKit
 /// `GlobalMedias.selectedItemId`). Architecture corrigée en conséquence : grille = écran principal,
 /// pager plein écran = écran de détail atteint par tap, réutilisant le code du pager existant
 /// (`FeedDetailPagerView` ci-dessous, ex-corps de ce fichier avant correction).
+
+/// Port de `R.array.report_setting_array` (`strings.xml:516-525`) — partagé par `FeedView` (menu
+/// "..." de la grille) et `FeedDetailPagerView` (menu "..." du plein écran), deux implémentations
+/// Android SÉPARÉES (`MainFragment.OnclickMoreExpand` / `ProfileFeedFragment`+`FullScreenMedia`+
+/// `HashtagProfile.OnclickMoreExpand`) qui utilisent néanmoins la MÊME liste de motifs.
+private let feedReportReasons = [
+    "Nudité", "Violence", "Harcèlement", "Fausse information",
+    "Vente non autorisée", "Discours de haine", "Terrorisme", "Moins de 13 ans",
+]
+
 struct FeedView: View {
     @StateObject private var viewModel = FeedViewModel()
     @State private var showCamera = false
@@ -111,10 +121,12 @@ struct FeedView: View {
                 .padding(.bottom, 90)
         }
         .fullScreenCover(isPresented: $showDetail) {
+            // `showManagementActions: true` — SEUL contexte "..." avec Statistiques/Promouvoir (voir
+            // `boostTargetPost`/`statsTargetPost` ci-dessus, propres posts du fil principal
+            // uniquement, fidèle à `promoteBtn`/`statisticBtn` de `CustomCardView`).
             FeedDetailPagerView(
                 viewModel: viewModel, startIndex: detailStartIndex,
-                onComment: { commentsPost = $0 }, onMore: { moreActionsPost = $0 },
-                onClose: { showDetail = false }
+                showManagementActions: true, onClose: { showDetail = false }
             )
         }
         .fullScreenCover(isPresented: $showCamera) {
@@ -224,7 +236,7 @@ struct FeedView: View {
         // Port de `Report` (`R.array.report_setting_array`, 8 motifs) — sélection d'un motif avant
         // envoi (`Report.onItemClick`/`report()`).
         .confirmationDialog("Motif du signalement", isPresented: $showReportReasons, titleVisibility: .visible) {
-            ForEach(Self.reportReasons, id: \.self) { reason in
+            ForEach(feedReportReasons, id: \.self) { reason in
                 Button(reason) {
                     if let post = reportTargetPost { Task { await viewModel.report(post, reason: reason) } }
                 }
@@ -245,12 +257,6 @@ struct FeedView: View {
             Text("Vous ne verrez plus le contenu de cette personne, et elle ne pourra plus voir le vôtre.")
         }
     }
-
-    /// Port de `R.array.report_setting_array` (`strings.xml:516-525`).
-    private static let reportReasons = [
-        "Nudité", "Violence", "Harcèlement", "Fausse information",
-        "Vente non autorisée", "Discours de haine", "Terrorisme", "Moins de 13 ans",
-    ]
 
     /// État affiché tant qu'aucun post n'est chargé — distingue explicitement les 3 cas
     /// auparavant indiscernables (écran blanc dans tous les cas) : chargement en cours, erreur
@@ -425,8 +431,16 @@ struct FeedDetailPagerView: View {
     // d'interaction (likes) entre deux re-rendus.
     @StateObject private var viewModel: FeedViewModel
     let startIndex: Int
-    var onComment: (FeedActivity) -> Void = { _ in }
-    var onMore: (FeedActivity) -> Void = { _ in }
+    /// Port de `promoteBtn`/`statisticBtn` (`CustomCardView.java`, propres posts uniquement) — `true`
+    /// SEULEMENT depuis le fil principal (`FeedView`) ; Android n'a AUCUN équivalent dans les menus
+    /// "..." de `ProfileFeedFragment`/`FullScreenMedia`/`HashtagProfile` (vérifié par lecture des 4
+    /// fichiers, V4-F-007).
+    var showManagementActions = false
+    /// Port de `R.id.download` (`layout_post_action.xml`) — `true` SEULEMENT depuis `ProfileView` :
+    /// c'est le SEUL menu "..." Android où le download est réellement câblé (voir
+    /// `FeedMediaDownloader.swift`, V4-F-007 — les 3 autres menus `MainFragment`/`FullScreenMedia`/
+    /// `HashtagProfile` n'ont pas cet item, ou pointent vers un handler mort/erroné).
+    var includesDownload = false
     let onClose: () -> Void
 
     @State private var currentIndex: Int
@@ -442,24 +456,44 @@ struct FeedDetailPagerView: View {
     /// `ctx.startActivity(intent)` (nouvel écran Android empilé, pas un remplacement).
     @State private var searchToken: (query: String, tab: SearchTab)?
 
+    // Port de `OnclickCommentaire`/`OnclickMoreExpand` (bottom sheet `layout_post_action.xml`) —
+    // **ajouté le 2026-08-23 (V4-F-007, Phase B P0-3)** : ce pager plein écran affichait un bouton
+    // "..." et un bouton commentaire RÉELLEMENT DÉCORATIFS pour 5 des 6 écrans qui le réutilisent
+    // (`SearchView`/`HashtagFeedView`/`NotificationsListView`/`HomeShellView`/`ProfileView` passaient
+    // tous par l'initialiseur `posts:` sans `onComment`/`onMore`, dont les valeurs par défaut étaient
+    // des no-op) — état et boîtes de dialogue désormais INTERNES à cette vue plutôt que remontés par
+    // fermeture à l'appelant, pour que les 6 écrans en bénéficient automatiquement sans câblage
+    // séparé (comportement uniforme, fidèle à Android où CHAQUE fragment plein écran possède son
+    // propre `OnclickMoreExpand` complet).
+    @State private var moreActionsPost: FeedActivity?
+    @State private var reportTargetPost: FeedActivity?
+    @State private var showReportReasons = false
+    @State private var blockTargetPost: FeedActivity?
+    @State private var commentsPost: FeedActivity?
+    @State private var boostTargetPost: FeedActivity?
+    @State private var statsTargetPost: FeedActivity?
+    @State private var downloadError: String?
+
     /// Port ponctuel : quand ce pager est ouvert directement sur UN post isolé (résolution d'un lien
-    /// profond `/post/{token}`, `DeepLinkRouter.swift`) plutôt que sur le fil complet, un
-    /// `FeedViewModel` jetable suffit — les actions (like/commentaire/partage) restent
-    /// fonctionnelles même hors contexte fil.
-    init(posts: [FeedActivity], startIndex: Int, onClose: @escaping () -> Void) {
+    /// profond `/post/{token}`, `DeepLinkRouter.swift`) ou sur une liste jetable (résultats de
+    /// recherche, hashtag) plutôt que sur le fil principal, un `FeedViewModel` jetable suffit — les
+    /// actions (like/commentaire/partage/suppression/blocage/signalement) restent fonctionnelles
+    /// même hors contexte fil.
+    init(posts: [FeedActivity], startIndex: Int, includesDownload: Bool = false, onClose: @escaping () -> Void) {
         let vm = FeedViewModel()
         vm.posts = posts
         _viewModel = StateObject(wrappedValue: vm)
         self.startIndex = startIndex
+        self.includesDownload = includesDownload
         self.onClose = onClose
         _currentIndex = State(initialValue: startIndex)
     }
 
-    init(viewModel: FeedViewModel, startIndex: Int, onComment: @escaping (FeedActivity) -> Void = { _ in }, onMore: @escaping (FeedActivity) -> Void = { _ in }, onClose: @escaping () -> Void) {
+    init(viewModel: FeedViewModel, startIndex: Int, showManagementActions: Bool = false, includesDownload: Bool = false, onClose: @escaping () -> Void) {
         _viewModel = StateObject(wrappedValue: viewModel)
         self.startIndex = startIndex
-        self.onComment = onComment
-        self.onMore = onMore
+        self.showManagementActions = showManagementActions
+        self.includesDownload = includesDownload
         self.onClose = onClose
         _currentIndex = State(initialValue: startIndex)
     }
@@ -478,9 +512,9 @@ struct FeedDetailPagerView: View {
                                 FeedDetailCell(
                                     post: post, isActive: index == currentIndex,
                                     onLike: { viewModel.toggleLike(post) },
-                                    onComment: { onComment(post) },
+                                    onComment: { commentsPost = post },
                                     onShare: { Task { await viewModel.toggleShare(post) } },
-                                    onMore: { onMore(post) },
+                                    onMore: { moreActionsPost = post },
                                     onOpenProfile: { if let actor = post.actor { openProfileUserId = actor } },
                                     onFollow: { Task { await viewModel.followFromDetail(post) } },
                                     onOpenSearch: { query, tab in searchToken = (query, tab) }
@@ -539,6 +573,76 @@ struct FeedDetailPagerView: View {
                         }
                 }
             }
+        }
+        .sheet(item: $commentsPost) { post in
+            CommentsView(activityId: post.id)
+        }
+        .sheet(item: $boostTargetPost) { post in
+            NavigationStack { BoostView(activityId: post.id) }
+        }
+        .sheet(item: $statsTargetPost) { post in
+            NavigationStack { StatisticsView(activityId: post.id) }
+        }
+        // Port de `OnclickMoreExpand` — voir `ProfileFeedFragment`/`FullScreenMedia`/
+        // `HashtagProfile` selon l'écran d'origine (tous à 5 items de base ; Profile en a un 6ᵉ,
+        // `download`, seul menu Android où cet item est réellement câblé — `includesDownload`).
+        .confirmationDialog("Actions", isPresented: Binding(get: { moreActionsPost != nil }, set: { if !$0 { moreActionsPost = nil } }), titleVisibility: .hidden) {
+            if let post = moreActionsPost {
+                let isOwnPost = post.actor == UserSession.shared.myId
+                Button("Supprimer", role: .destructive) {
+                    if isOwnPost {
+                        Task { await viewModel.deleteOwnPost(post) }
+                    } else {
+                        viewModel.hideOthersPost(post)
+                    }
+                }
+                if isOwnPost, showManagementActions {
+                    Button("Statistiques") { statsTargetPost = post }
+                    Button("Promouvoir") { boostTargetPost = post }
+                }
+                if !isOwnPost {
+                    Button("Copier le lien") {
+                        if let token = post.token { UIPasteboard.general.string = "https://tiinver.com/post/\(token)" }
+                    }
+                    Button("Ne plus suivre @\(post.username ?? "")") { Task { await viewModel.unfollow(post) } }
+                    Button("Bloquer @\(post.username ?? "")", role: .destructive) { blockTargetPost = post }
+                    Button("Signaler le post") { reportTargetPost = post; showReportReasons = true }
+                    if includesDownload {
+                        Button("Télécharger") {
+                            Task {
+                                do { try await FeedMediaDownloader.download(post) } catch {
+                                    downloadError = error.localizedDescription
+                                }
+                            }
+                        }
+                    }
+                }
+                Button("Annuler", role: .cancel) {}
+            }
+        }
+        .confirmationDialog("Motif du signalement", isPresented: $showReportReasons, titleVisibility: .visible) {
+            ForEach(feedReportReasons, id: \.self) { reason in
+                Button(reason) {
+                    if let post = reportTargetPost { Task { await viewModel.report(post, reason: reason) } }
+                }
+            }
+            Button("Annuler", role: .cancel) { reportTargetPost = nil }
+        }
+        .alert(
+            "Bloquer @\(blockTargetPost?.username ?? "") ?", isPresented: Binding(get: { blockTargetPost != nil }, set: { if !$0 { blockTargetPost = nil } })
+        ) {
+            Button("Annuler", role: .cancel) { blockTargetPost = nil }
+            Button("Bloquer", role: .destructive) {
+                if let post = blockTargetPost { Task { await viewModel.block(post) } }
+                blockTargetPost = nil
+            }
+        } message: {
+            Text("Vous ne verrez plus le contenu de cette personne, et elle ne pourra plus voir le vôtre.")
+        }
+        .alert("Téléchargement impossible", isPresented: Binding(get: { downloadError != nil }, set: { if !$0 { downloadError = nil } })) {
+            Button("OK", role: .cancel) { downloadError = nil }
+        } message: {
+            Text(downloadError ?? "")
         }
     }
 

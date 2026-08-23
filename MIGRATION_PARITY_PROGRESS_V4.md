@@ -134,3 +134,77 @@ rewarded-interstitial après un retrait/transfert/conversion réussi sur un comp
 un outil d'inspection réseau que le champ `"coins"` envoyé à `rewardedCoins` correspond bien au gain
 de LA publicité (pas au solde total affiché), et confirmer que le solde serveur (rechargé depuis
 `getuserbyid`) augmente du montant attendu et non d'un montant absurdement plus élevé.
+
+---
+
+## 2026-08-23 — Phase B V4 — Lot P0-2 : V4-F-040 (Calls — push VoIP pendant un appel en cours saute
+le report CallKit obligatoire)
+
+**Statut avant** : ouvert (P0, découvert Phase A).
+
+### Vérification (obligatoire avant toute modification Swift)
+
+Ce finding n'a PAS d'équivalent Android — PushKit/CallKit sont des obligations de plateforme propres
+à iOS (Android n'a aucun contrat système équivalent pour les push d'appel entrant). La référence de
+correction est donc double : (1) le contrat Apple lui-même (chaque push VoIP DOIT provoquer un
+`CXProvider.reportNewIncomingCall`, sous peine de révocation du droit de recevoir des push VoIP après
+manquements répétés), et (2) le motif DÉJÀ appliqué et validé dans la branche sœur de la même
+fonction (`voIPPushManager(_:didReceiveIncomingCallPayload:completion:)`, branche "payload malformé",
+`CallCoordinator.swift:464-483`, corrigée lors du cycle V3, V3-F-031) : reporter un appel générique
+puis le terminer immédiatement (`reason: .failed`) plutôt que de ne jamais reporter.
+
+Relu en entier `CallCoordinator.swift` (le fichier complet) pour tracer les DEUX chemins réels qui
+atteignent la garde `guard state == .idle else { ... }` (ligne 199) :
+- **Chemin (a)** : `ChatRepository.swift:249`, `Task { await CallCoordinator.shared.
+  handleIncomingCall(profile:chatType:) }` — appel entrant déclenché par socket normal (app déjà
+  active), `onReported` non fourni = `nil`. AUCUNE obligation PushKit sur ce chemin.
+- **Chemin (b)** : `CallCoordinator.swift:501` (à l'intérieur de `voIPPushManager(_:
+  didReceiveIncomingCallPayload:completion:)`), `onReported: completion` — le callback PushKit du
+  système, avec obligation de report AVANT de l'appeler, quel que soit l'état de l'app.
+
+**Comportement Android le plus proche à ne PAS reproduire par erreur** : `ChatRepository.
+lunchcall` (Android) ne fait RIEN si `CallService.isOnCall` est déjà vrai — confirmé qu'un second
+appel entrant pendant un appel en cours est un no-op silencieux côté Android aussi. Ce comportement
+est correct et fidèle pour le CHEMIN (a) — ne pas y ajouter de report CallKit inventerait un
+comportement absent d'Android. Seul le CHEMIN (b), propre à la plateforme iOS, nécessite le correctif.
+
+### Divergence iOS (avant correctif)
+
+`guard state == .idle else { onReported?(); return }` — pour les DEUX chemins, `onReported?()` était
+appelé (ou rien, si nil) SANS jamais appeler `callKit.reportIncomingCall`. Pour le chemin (b), cela
+viole le contrat PushKit exactement de la même façon que le bug déjà corrigé sur la branche "payload
+malformé" de la fonction voisine — mais ce point de défaillance précis n'avait jamais été traité.
+
+### Correctif appliqué
+
+```swift
+guard state == .idle else {
+    guard let onReported else { return }              // chemin (a) : no-op fidèle à Android, inchangé
+    let uuid = UUID()                                  // chemin (b) : obligation PushKit
+    try? await callKit.reportIncomingCall(uuid: uuid, callerName: profile.nikname ?? profile.username ?? "Appel entrant")
+    onReported()
+    callKit.reportCallEnded(uuid: uuid, reason: .failed)
+    return
+}
+```
+Le chemin (a) reste un no-op silencieux (comportement Android fidèlement reproduit, inchangé). Le
+chemin (b) reproduit exactement le motif déjà validé de la branche "payload malformé" voisine.
+
+### Flux frères vérifiés
+
+`grep -n "handleIncomingCall("` sur tout le projet → exactement 2 sites d'appel réels de
+`CallCoordinator.handleIncomingCall` (`ChatRepository.swift:249` et `CallCoordinator.swift:501`),
+tous deux tracés et couverts explicitement ci-dessus. Aucun autre site n'atteint cette garde.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Calls/CallCoordinator.swift`.
+
+**Commit** : *(à renseigner après ce commit)*.
+
+**Résultat CI** : à déclencher.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` jusqu'à confirmation CI, PUIS seulement (pas
+`COMPLETE_PARITY_VALIDATED` même après CI verte — test réel quasi impossible à déclencher de façon
+fiable sans un second appareil ET un backend VoIP fonctionnel pour produire ce scénario précis :
+recevoir un vrai push VoIP pendant qu'un appel est déjà en cours. Le contrat serveur VoIP reste de
+toute façon non défini — voir V3-F-031/PROGRESS_V3.md. Risque documenté, corrigé par construction,
+non observable en pratique tant que le backend VoIP n'existe pas).

@@ -53,13 +53,26 @@ P0-1. **Commit `393b485`, CI verte confirmée (run `32663823532`)** — `BUILD_V
 `COMPLETE_PARITY_VALIDATED` (test réel requis : regarder la pub après un retrait réel, inspecter le
 payload réseau `rewardedCoins`, confirmer que le solde serveur n'augmente pas anormalement).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P0-1 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur **Lot P0-2 : V4-F-040** (push VoIP reçu pendant un appel en cours saute le report CallKit obligatoire
-— `Calls/CallCoordinator.swift:198-202`, comparer contre le comportement PushKit/CallKit attendu,
-même méthode : lire Android [N/A ici, obligation spécifique iOS] → vérifier iOS → corriger → CI →
-documenter), puis Lot P0-3 (V4-F-007, viewer Profile), Lot P0-4 (V4-F-008, upload photo profil),
-puis la liste P1 dans l'ordre exact donné par l'utilisateur (Groups→Feed→Chat→Calls→Animems→Session/
-DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→Social→Groups→Navigation, voir
+**Lot P0-2 traité (V4-F-040)** — Calls, push VoIP pendant un appel en cours saute le report CallKit
+obligatoire. Pas d'équivalent Android (obligation PushKit propre à iOS) — référence : le contrat
+Apple lui-même + le motif déjà validé sur la branche sœur "payload malformé" de la même fonction
+(V3-F-031). `guard state == .idle else { onReported?(); return }` (`CallCoordinator.swift:199`) est
+atteinte par 2 chemins réels (tracés via `grep handleIncomingCall(` = exactement 2 sites) : (a) socket
+normal app-déjà-active (`onReported=nil`, no-op fidèle à Android, `ChatRepository.lunchcall` ignore
+aussi silencieusement ce cas — INCHANGÉ) ; (b) push VoIP pendant un appel en cours (`onReported!=nil`
+= le callback PushKit système, DOIT être précédé d'un report CallKit quel que soit l'état de l'app).
+Corrigé : chemin (b) reporte maintenant un appel générique puis le termine (`reason: .failed`), même
+motif que la branche payload malformé voisine. Détail complet dans `PROGRESS_V4.md`, Lot P0-2.
+**Commit et CI : voir PROGRESS_V4.md pour le SHA/résultat exact au moment de la reprise si cette
+session s'est arrêtée avant confirmation.**
+
+**PROCHAINE TÂCHE EXACTE** : si le Lot P0-2 n'a pas encore de commit/CI confirmés ci-dessus, terminer
+cette étape en premier. Sinon, enchaîner **automatiquement** sur **Lot P0-3 : V4-F-007** (viewer
+plein écran depuis Profile — supprimer/signaler/bloquer/commenter/télécharger tous morts, vérifier
+CHAQUE action séparément contre Android, ne pas considérer corrigé juste parce que le viewer
+s'affiche), puis Lot P0-4 (V4-F-008, upload photo profil — pipeline BunnyCDN/backend précis à
+reproduire), puis la liste P1 dans l'ordre exact donné par l'utilisateur (Groups→Feed→Chat→Calls→
+Animems→Session/DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→Social→Groups→Navigation, voir
 `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 

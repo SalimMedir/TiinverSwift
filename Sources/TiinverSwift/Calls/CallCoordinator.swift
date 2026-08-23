@@ -197,7 +197,23 @@ final class CallCoordinator: ObservableObject {
     /// — le déclenchement socket normal (app déjà active) n'en a pas besoin, `onReported` reste nil.
     func handleIncomingCall(profile: ChatProfile, chatType: String, onReported: (() -> Void)? = nil) async {
         guard state == .idle else {
-            onReported?()
+            // Corrigé (V4-F-040, P0) : cette garde est atteinte par DEUX chemins distincts —
+            // (a) un second appel déclenché par socket pendant que l'app est déjà active sur un
+            // appel (`onReported == nil`, aucune obligation PushKit ; Android lui-même ignore
+            // silencieusement ce cas, `ChatRepository.lunchcall` ne fait rien si `CallService.
+            // isOnCall` — reproduit tel quel, ne pas reporter à CallKit ici serait une invention) ;
+            // (b) un push VoIP reçu pendant un appel déjà en cours (`onReported != nil` — le
+            // callback PushKit `completion` DOIT quand même être précédé d'un
+            // `reportNewIncomingCall`, contrat Apple strict et INDÉPENDANT de l'état de l'app, même
+            // motif déjà appliqué à la branche "payload malformé" juste en dessous, V3-F-031).
+            // Avant ce correctif, le chemin (b) ne reportait JAMAIS à CallKit pour ce push précis,
+            // exposant l'app au même risque de révocation du droit de recevoir des push VoIP que le
+            // bug déjà corrigé sur la branche payload malformé.
+            guard let onReported else { return }
+            let uuid = UUID()
+            try? await callKit.reportIncomingCall(uuid: uuid, callerName: profile.nikname ?? profile.username ?? "Appel entrant")
+            onReported()
+            callKit.reportCallEnded(uuid: uuid, reason: .failed)
             return
         }
         // Port de `CallService.onCreate()`/`onStartCommand()` — voir le commentaire détaillé dans

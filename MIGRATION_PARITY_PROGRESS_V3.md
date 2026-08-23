@@ -1786,12 +1786,12 @@ faisant rien ici non plus, le silence iOS EST la parité correcte.
 `Sources/TiinverSwift/Navigation/DeepLinkRouter.swift`,
 `Sources/TiinverSwift/Navigation/HomeShellView.swift`.
 
-**Commit** : *(à renseigner après ce commit)*.
+**Commit** : `5ee5734`.
 
-**Résultat CI** : à déclencher.
+**Résultat CI** : run `32631831099` → **`conclusion: success`**.
 
-**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI pour
-V3-F-130/138. V3-F-133/151 : aucun code changé, reclassification documentaire uniquement, statut
-définitif (pas de CI à attendre pour ces deux). Tests réels : V3-F-130 (ouvrir Aide en français ET
-anglais, confirmer la bonne FAQ) ; V3-F-138 (taper un lien profond vers un post/groupe/utilisateur
-inexistant ou supprimé, confirmer l'alerte visible au lieu d'un silence).
+**Statut honnête après correction** : `BUILD_VALIDATED` pour V3-F-130/138 (CI verte confirmée).
+V3-F-133/151 : aucun code changé, reclassification documentaire uniquement, statut définitif (pas de
+CI à attendre pour ces deux). Tests réels : V3-F-130 (ouvrir Aide en français ET anglais, confirmer
+la bonne FAQ) ; V3-F-138 (taper un lien profond vers un post/groupe/utilisateur inexistant ou
+supprimé, confirmer l'alerte visible au lieu d'un silence).

@@ -984,7 +984,7 @@ FEATURE : FAQ localisée (fr/en) et contact support absents côté iOS
 ANDROID SOURCE OF TRUTH : setting/SettingHelpFragment.java:88-119 (FAQ selon `Locale.getDefault()` ; bouton support avec handler VIDE côté Android aussi)
 IOS FILES : Settings/SettingSubViews.swift:211-218 (SettingHelpView)
 LOGIC PARITY : iOS n'a qu'un lien générique vers la racine du site, aucune FAQ localisée, aucun affichage de l'adresse support.
-STATUT : **CORRIGÉ le 2026-08-23** — `SettingHelpView` reconstruite : FAQ localisée (`faq_fr.html`/
+STATUT : **BUILD_VALIDATED, corrigé `5ee5734`, CI verte confirmée run `32631831099`** — `SettingHelpView` reconstruite : FAQ localisée (`faq_fr.html`/
 `faq_en.html` selon `Locale.current.language.languageCode`) ouverte en `InAppWebView` (fidèle à
 `Intent(MyWebView.class)`) ; adresse support affichée en lecture seule (`LabeledContent`, PAS
 tapable — `onClick` vide côté Android réel, reproduit fidèlement, pas "amélioré").
@@ -1128,7 +1128,7 @@ FEATURE : Échec silencieux des deep links user/post/group en cas d'erreur rése
 ANDROID SOURCE OF TRUTH : partage/ShareActivity.java:264-268 (`onError` → dialogue visible)
 IOS FILES : Navigation/DeepLinkRouter.swift:89-109
 LOGIC PARITY : `guard let ... = try? await ... else { return }` — aucun chemin d'erreur visible.
-STATUT : **CORRIGÉ le 2026-08-23** — `DeepLinkCenter.showError()` (nouveau `@Published errorMessage`)
+STATUT : **BUILD_VALIDATED, corrigé `5ee5734`, CI verte confirmée run `32631831099`** — `DeepLinkCenter.showError()` (nouveau `@Published errorMessage`)
 appelé par `routeToUser`/`routeToPost`/`routeToGroup` sur échec, affiché via `.alert(...)` dans
 `HomeShellView` — texte EXACT repris de `values-fr/strings.xml` (`R.string.errorLoad`, "pas de
 connexion internet, réessayer plus tard"), port de `ShareActivity.onError`→`showDialog()`.

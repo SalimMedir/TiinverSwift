@@ -95,11 +95,22 @@ struct TransferCoinsView: View {
     }
 
     /// Port de `showRewardedVideoAfter`/`showRewardedVideo` (`TransfertCoinsActivity`).
+    ///
+    /// **Corrigé (V4-F-065, P0)** — même bug que `WithdrawView`/`ConversionView` : le champ
+    /// `"coins"` envoyé à `rewardedCoins` doit être un DELTA (`pendingCoinCount + currenGainCoins`,
+    /// `wallet/WalletRepository.java:301-328`), pas le solde total du compte. Voir `WithdrawView.
+    /// showRewardedInterstitialAfterSuccess` pour la preuve Android complète.
     private func showRewardedInterstitialAfterSuccess() async {
         try? await Task.sleep(nanoseconds: 500_000_000)
         guard let reward = await rewardedInterstitial.showRewardedAd() else { return }
         UserSession.shared.coinsAmount += reward
         guard let userId = UserSession.shared.myId else { return }
-        try? await WalletRepository.shared.creditReward(userId: userId, totalAmount: UserSession.shared.coinsAmount, type: "coins")
+        let amountToReport = Double(UserSession.shared.pendingCoinsAmount) + reward
+        do {
+            try await WalletRepository.shared.creditReward(userId: userId, totalAmount: amountToReport, type: "coins")
+            UserSession.shared.pendingCoinsAmount = 0
+        } catch {
+            UserSession.shared.pendingCoinsAmount += Int(reward)
+        }
     }
 }

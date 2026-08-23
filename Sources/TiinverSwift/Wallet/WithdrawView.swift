@@ -128,11 +128,31 @@ struct WithdrawView: View {
 
     /// Port de `showRewardedVideoAfter`/`showRewardedVideo` — délai de 500ms fidèle à l'original
     /// (pas justifié par un commentaire Android non plus, conservé par fidélité).
+    ///
+    /// **Corrigé (V4-F-065, P0)** — `WithdrawActivity.addCoins`/`WalletRepository.updateToServer`
+    /// (`wallet/WithdrawActivity.java:558-563`, `wallet/WalletRepository.java:301-328`, relus en
+    /// entier) : `coinCount += coins` est un crédit local INCONDITIONNEL (affichage optimiste), mais
+    /// le champ `"coins"` réellement envoyé à `rewardedCoins` est calculé séparément par
+    /// `updateToServer` comme `pendingCoinCount + currenGainCoins` — un DELTA (ce gain + tout gain
+    /// en attente d'un échec précédent), JAMAIS le solde total du compte. Sur succès,
+    /// `PENDING_COINS_AMOUNT` est remis à 0 ; sur échec, le gain est ajouté à
+    /// `PENDING_COINS_AMOUNT` pour être réessayé au prochain crédit. L'ancienne version de cette
+    /// fonction envoyait `UserSession.shared.coinsAmount` (le solde TOTAL du compte après crédit
+    /// local) dans ce même champ `"coins"` — si le serveur traite ce champ comme un delta à
+    /// additionner (cohérent avec le nom de l'endpoint et le calcul Android), chaque publicité
+    /// regardée après un retrait aurait doublé le solde réel côté serveur. Même motif de correction
+    /// déjà établi dans `EarnCoinsView.onRewardEarned` (V3-F-092) — reproduit ici à l'identique.
     private func showRewardedInterstitialAfterSuccess() async {
         try? await Task.sleep(nanoseconds: 500_000_000)
         guard let reward = await rewardedInterstitial.showRewardedAd() else { return }
         UserSession.shared.coinsAmount += reward
         guard let userId = UserSession.shared.myId else { return }
-        try? await WalletRepository.shared.creditReward(userId: userId, totalAmount: UserSession.shared.coinsAmount, type: "coins")
+        let amountToReport = Double(UserSession.shared.pendingCoinsAmount) + reward
+        do {
+            try await WalletRepository.shared.creditReward(userId: userId, totalAmount: amountToReport, type: "coins")
+            UserSession.shared.pendingCoinsAmount = 0
+        } catch {
+            UserSession.shared.pendingCoinsAmount += Int(reward)
+        }
     }
 }

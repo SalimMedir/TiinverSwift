@@ -1167,6 +1167,8 @@ réutilisant `UploadProgressDelegate` déjà implémenté dans `FeedMediaUploade
 
 ```
 ID : V4-F-065
+STATUT : **BUILD_VALIDATED (corrigé session 2026-08-23, Phase B Lot P0-1 — voir PROGRESS_V4.md, CI à
+confirmer)** — statut avant : ouvert (audit Phase A)
 PRIORITÉ : P0
 DOMAINE : Wallet-Monetization
 FEATURE : Le crédit de récompense post-retrait/transfert/conversion envoie le SOLDE TOTAL au lieu du
@@ -1191,6 +1193,9 @@ attente, motif `pendingCoinsAmount` déjà implémenté dans `EarnCoinsView.swif
 
 ```
 ID : V4-F-066
+STATUT : **BUILD_VALIDATED (corrigé session 2026-08-23, résolu comme effet de bord nécessaire du Lot
+P0-1/V4-F-065 — même 3 fichiers, même fonction Android de référence `updateToServer` qui combine les
+deux comportements en une seule unité — voir PROGRESS_V4.md, CI à confirmer)** — statut avant : ouvert
 PRIORITÉ : P2
 DOMAINE : Wallet-Monetization
 FEATURE : Les échecs de rapport de crédit de récompense sont silencieusement avalés, sans retry de

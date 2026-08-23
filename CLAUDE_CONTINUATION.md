@@ -9,77 +9,60 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-23 — backlog P2/P3 V3 balayé exhaustivement, ne reste que du bloqué/différé)
+# CURRENT HANDOFF (2026-08-23 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
+Phase B V4 EN COURS, Lot P0-1 traité)
 
-**⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES** — elles
-n'ont pas été mises à jour par les sessions qui ont continué le travail jusqu'au 2026-08-23 (cycle
-`MIGRATION_PARITY_AUDIT_V3.md`/`PROGRESS_V3.md`, la vraie source de vérité vivante). Conservées pour
-l'historique GAP-020 à GAP-023 (contexte P0 ancien toujours valide), mais ne pas s'y fier pour
-l'état actuel — lire V3 en premier.
+**⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
+Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
 
-**Contexte** : deux sessions consécutives le 2026-08-23. Session A a débloqué la CI (3 commits en
-attente depuis le 2026-08-21) et corrigé 6 findings (V3-F-002/011/021/034/063/094). Session B
-(directive explicite de l'utilisateur : "termine méthodiquement tout le backlog P2 puis P3 restant
-avant V3-F-095") a balayé l'INTÉGRALITÉ du reste de `MIGRATION_PARITY_AUDIT_V3.md` — table §6
-(V3-F-001 à 098) ET cycle complémentaire §30 (V3-F-099 à 152) — finding par finding, avec preuve
-Android fichier:ligne indépendante à chaque fois (pas de confiance aveugle dans les résumés
-existants). Repo Android source de vérité :
+## Cycle V3 (CLOS pour ce cycle — voir `MIGRATION_PARITY_AUDIT_V3.md`/`PROGRESS_V3.md`)
+
+Backlog P0/P1/P2/P3 balayé exhaustivement finding par finding, preuve Android fichier:ligne à chaque
+fois. Tout ce qui restait ouvert est soit corrigé (CI verte), soit documenté comme légitimement
+bloqué (backend/serveur/test physique — V3-F-078/081/084/115/121/140/036/046), soit une prémisse
+invalidée (V3-F-133/151). **Tous les correctifs V3 sont `BUILD_VALIDATED`, AUCUN
+`COMPLETE_PARITY_VALIDATED`** — tests réels sur device toujours en attente, détail lot par lot dans
+`PROGRESS_V3.md`. V3-F-095 (analytics temps de visionnage) reste différé.
+
+## Cycle V4 — NOUVEAU (2026-08-23)
+
+**Phase A (Audit) TERMINÉE** : `MIGRATION_PARITY_AUDIT_V4.md` contient 75 findings (V4-F-001 à
+V4-F-075, 16 domaines), produits par 16 agents de recherche indépendants qui n'ont PAS lu les audits
+V1/V2/V3 (pour maximiser les chances de trouver ce qu'ils ont manqué). 4 findings découverts
+indépendamment par 2 agents différents (signal de fiabilité fort) : V4-F-008 (upload photo profil),
+et les findings fusionnés sous V4-F-004/012/022/031. Répartition : 3 P0, 25 P1, 32 P2, 15 P3.
+**AUCUN code modifié pendant la Phase A.** Commit `0d9caeb`.
+
+**Phase B DÉMARRÉE (2026-08-23)** — ordre imposé par l'utilisateur : P0-1(V4-F-065) →
+P0-2(V4-F-040) → P0-3(V4-F-007) → P0-4(V4-F-008) → puis 23 items P1 dans un ordre précis (voir le
+prompt Phase B de l'utilisateur pour la liste complète si besoin de la reconstituer). Règle stricte :
+un lot à la fois, jamais plusieurs findings en parallèle, vérification Android AVANT toute
+modification Swift à chaque fois.
+
+**Lot P0-1 traité (V4-F-065 + V4-F-066)** — Wallet, bug financier réel : le crédit de récompense
+post-retrait/transfert/conversion (`showRewardedInterstitialAfterSuccess` dans `WithdrawView.swift`/
+`TransferCoinsView.swift`/`ConversionView.swift`) envoyait le SOLDE TOTAL du compte au serveur
+(`rewardedCoins`) au lieu du DELTA (`pendingCoinCount + currenGainCoins`, vérifié dans
+`wallet/WalletRepository.java:301-328` — le solde total Android ne sert QUE à l'affichage local,
+jamais envoyé au réseau). Corrigé en reproduisant exactement le motif déjà validé dans
+`EarnCoinsView.onRewardEarned` (V3-F-092) : delta calculé via `pendingCoinsAmount`, remis à 0 sur
+succès, accumulé sur échec (ce qui résout aussi V4-F-066 dans la foulée — même fonction Android de
+référence, même 3 fichiers). Détail complet, preuve Android ligne par ligne, et flux frères vérifiés
+(`grep creditReward` = exactement 5 sites, aucun autre écran affecté) dans `PROGRESS_V4.md`, Lot
+P0-1. **Commit et confirmation CI : voir PROGRESS_V4.md pour le SHA et le résultat exact au moment
+de la reprise** (renseigné après ce commit, à vérifier si cette session s'est arrêtée avant).
+
+**PROCHAINE TÂCHE EXACTE** : si le Lot P0-1 n'a pas encore de commit/CI confirmés ci-dessus, terminer
+cette étape en premier (commit → push → déclencher CI → attendre confirmation → mettre à jour
+AUDIT_V4.md/PROGRESS_V4.md avec le SHA et le résultat). Sinon, enchaîner **automatiquement** sur
+**Lot P0-2 : V4-F-040** (push VoIP reçu pendant un appel en cours saute le report CallKit obligatoire
+— `Calls/CallCoordinator.swift:198-202`, comparer contre le comportement PushKit/CallKit attendu,
+même méthode : lire Android [N/A ici, obligation spécifique iOS] → vérifier iOS → corriger → CI →
+documenter), puis Lot P0-3 (V4-F-007, viewer Profile), Lot P0-4 (V4-F-008, upload photo profil),
+puis la liste P1 dans l'ordre exact donné par l'utilisateur (Groups→Feed→Chat→Calls→Animems→Session/
+DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→Social→Groups→Navigation, voir
+`MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
-
-**Résultat du balayage : le backlog P2/P3 actionnable est ÉPUISÉ.** Tout ce qui restait ouvert est
-maintenant soit corrigé et confirmé par CI verte, soit documenté comme légitimement bloqué
-(backend/serveur/test physique), soit une prémisse de finding invalidée par relecture plus
-approfondie. Table §6 : plus AUCUNE ligne `MISSING`/`PARTIAL`/`CODE_PRESENT_UNVERIFIED` sauf
-V3-F-081 (bloqué : `appStoreId` inconnu tant que l'app n'est pas publiée sur l'App Store, pas une
-action cliente possible). §30 : plus aucune ligne actionnable sauf V3-F-115/121 (dépendent d'un
-test serveur/device, déjà documentés comme tels) et V3-F-140 (bloqué backend, endpoint
-`storekit/verify-purchase` inexistant, même blocage que V3-F-084).
-
-**Findings corrigés cette session (CI verte confirmée sur chaque commit)** :
-- Session A : V3-F-034/011/063 (déblocage CI initial) + V3-F-002/021/094 (nouveaux) + V3-F-012/019
-  (cache image, upload vidéo streamé+progression) + V3-F-031/093 (garde CallKit VoIP, décodage
-  tableau per-item ×5) — commits `0422fda`→`1afa611`.
-- Session B (finding par finding, méthodologie complète à chaque fois) :
-  - **V3-F-100/101/104/105/106/108/116** (7 findings Recherche/Chat, commit `3d6a9ed`) : grille
-    posts 3 colonnes, stats hashtag affichées, historique non pollué par les échecs, seuil
-    d'affichage d'erreur corrigé, garde `isFull` posts en suggestion, filtre recherche conversation
-    sur le dernier message, rafraîchissement live sur suppression "pour tous".
-  - **V3-F-130/138** (Settings/DeepLinks, commit `5ee5734`) : FAQ localisée fr/en, alerte visible
-    sur échec de résolution de lien profond.
-- **Vérifications positives sans correctif nécessaire** (code déjà correct, documenté) : V3-F-025
-  (35 constantes socket vérifiées), V3-F-027 (chemin d'envoi de message re-vérifié post-V3-F-016),
-  V3-F-028 (9 payloads REST Groupes vérifiés champ par champ), V3-F-036/046 (composant tiers/
-  intégration croisée — bloqués sur test physique, pas plus de code à lire), V3-F-055 (Google
-  Sign-In, doublon de V3-F-145).
-- **Prémisses invalidées, aucun code changé** : V3-F-133 (`AUTHORIZED_ADS` ne configure PAS l'ad
-  personalization — son seul consommateur réel gate un mini-jeu "bounce" déjà mort/commenté côté
-  Android) ; V3-F-151 (doublon de V3-F-091, déjà résolu — silence partagé Android/iOS, PAS un gap).
-
-**Tous ces correctifs sont `BUILD_VALIDATED` (CI verte), PAS `COMPLETE_PARITY_VALIDATED` — aucun
-test réel sur device/simulateur n'a été fait pour aucun d'entre eux.** C'est la vraie prochaine
-étape avant de les considérer pleinement validés.
-
-**PROCHAINE TÂCHE EXACTE (dans l'ordre)** :
-1. **Tests réels sur device/simulateur** — gros volume de correctifs `BUILD_VALIDATED` jamais
-   testés en pratique, listés lot par lot dans `MIGRATION_PARITY_PROGRESS_V3.md` (chaque lot précise
-   exactement quoi tester). Priorité suggérée : chat (envoi/réception message, suppression "pour
-   tous"), recherche (grille posts, historique, hashtags), upload vidéo (mémoire + progression),
-   deep links (alerte d'échec).
-2. **V3-F-095** (ORPHAN-01, P2, HIGH) — analytics temps de visionnage jamais collectées côté iOS,
-   différé jusqu'ici sur demande explicite de l'utilisateur. Scope réel important, PAS une petite
-   correction : `ViewEventRepository.swift` (stockage local CoreData) existe déjà et est complet,
-   mais (a) aucun point d'appel — Android déclenche `ViewTracker.record(...)` depuis
-   `FeedFragment.java:1417-1436` via un `WatchTimeTracker` lié au scroll RecyclerView (temps passé
-   par item visible), rien d'équivalent câblé dans `FeedView.swift` ; (b) la synchronisation
-   périodique vers le serveur (`ViewSyncWorker.java` via `WorkManager`) n'a aucun équivalent iOS
-   (`BGTaskScheduler` à construire). Nécessite une session dédiée avec focus.
-3. Items légitimement bloqués (backend/serveur/test physique), à re-vérifier périodiquement si le
-   contexte change (nouveau endpoint serveur livré, app publiée sur l'App Store, etc.) : V3-F-078
-   (Universal Links, AASA manquant), V3-F-081 (appStoreId), V3-F-084/140 (StoreKit,
-   `storekit/verify-purchase`), V3-F-115 (canal socket non écouté des 2 côtés), V3-F-121 (pièces
-   jointes chat), V3-F-036/046 (composant tiers/intégration croisée, test physique requis).
-4. `MIGRATION_PARITY_AUDIT_V4.md`/`PROGRESS_V4.md` toujours en Phase Audit uniquement, non touchés,
-   à re-vérifier s'ils ont progressé avant de les ignorer par réflexe.
 
 ---
 

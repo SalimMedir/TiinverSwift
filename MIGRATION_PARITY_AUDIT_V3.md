@@ -984,10 +984,15 @@ FEATURE : FAQ localisée (fr/en) et contact support absents côté iOS
 ANDROID SOURCE OF TRUTH : setting/SettingHelpFragment.java:88-119 (FAQ selon `Locale.getDefault()` ; bouton support avec handler VIDE côté Android aussi)
 IOS FILES : Settings/SettingSubViews.swift:211-218 (SettingHelpView)
 LOGIC PARITY : iOS n'a qu'un lien générique vers la racine du site, aucune FAQ localisée, aucun affichage de l'adresse support.
-STATUT : PARTIAL
+STATUT : **CORRIGÉ le 2026-08-23** — `SettingHelpView` reconstruite : FAQ localisée (`faq_fr.html`/
+`faq_en.html` selon `Locale.current.language.languageCode`) ouverte en `InAppWebView` (fidèle à
+`Intent(MyWebView.class)`) ; adresse support affichée en lecture seule (`LabeledContent`, PAS
+tapable — `onClick` vide côté Android réel, reproduit fidèlement, pas "amélioré").
+PREUVE : `SettingHelpFragment.java:96-119` vs `SettingSubViews.swift`(`SettingHelpView`). (Avant
+correctif : lien générique vers la racine du site.)
 CAUSE : Fragment jamais lu en détail malgré sa présence dans la cartographie V2.
 RISQUE : Faible (le lien support est déjà mort côté Android) mais UX dégradée pour utilisateurs francophones.
-RECOMMANDATION : Porter le lien FAQ avec sélection de langue ; le bouton support n'a pas à devenir fonctionnel (fidèle à Android, mort des deux côtés).
+RECOMMANDATION : Porter le lien FAQ avec sélection de langue ; le bouton support n'a pas à devenir fonctionnel (fidèle à Android, mort des deux côtés). **Appliqué.**
 TEST RÉEL NÉCESSAIRE : non.
 ```
 
@@ -1030,11 +1035,28 @@ FEATURE : `AUTHORIZED_ADS` (pub personnalisée) — persisté mais jamais consul
 ANDROID SOURCE OF TRUTH : `infoContract.AUTHORIZED_ADS` lu réellement dans `FeedFragment.java:1804`/`MainFragment.java:1839` (gate réel avant injection de pub)
 IOS FILES : Settings/SettingSubViews.swift:195-204, Advertising/AdMobManager.swift
 LOGIC PARITY : Grep exhaustif : `AUTHORIZED_ADS` apparaît UNIQUEMENT dans sa propre déclaration/toggle, jamais dans `AdMobManager.swift`.
-STATUT : PARTIAL
-CAUSE : Toggle porté comme UI pure sans câblage vers le SDK AdMob iOS.
-RISQUE : Faible/moyen — cosmétique, l'utilisateur croit contrôler la personnalisation pub sans effet réel.
-RECOMMANDATION : Câbler `AUTHORIZED_ADS` dans `AdMobManager.swift` avant chargement d'une requête pub (mode "non personnalisé" si `false`).
-TEST RÉEL NÉCESSAIRE : non pour le constat, oui pour valider le fix.
+STATUT : **PRÉMISSE INVALIDÉE, requalifié ANDROID_DEAD_CODE session 2026-08-23** — le finding
+original assumait, sur la seule foi du libellé UI ("Autoriser les publicités personnalisées"), que
+`AUTHORIZED_ADS` configure le SDK AdMob en mode personnalisé/non-personnalisé (consentement GDPR
+classique). Grep exhaustif (`AUTHORIZED_ADS` dans tout le projet Android = 4 fichiers) montre que
+ses SEULS consommateurs réels sont `FeedFragment.startGame()`/`MainFragment.startGame()` — un mini-
+jeu "bounce" à récompense publicitaire (minuteur + `rewardedAd`), PAS une configuration
+personnalisation-pub. Et CE mini-jeu est lui-même MORT côté Android : `private BounceAdsRequestButton
+bounceButton;` (le SEUL déclencheur UI visible du jeu) est COMMENTÉ (`FeedFragment.java:341`), donc
+TOUTES ses utilisations dans la classe sont nécessairement commentées aussi (sans quoi le fichier ne
+compilerait pas) — vérifié : les 5 sites d'usage de `bounceButton` sont bien tous en commentaire.
+`loadRewardedAd()`/`createTimer()` continuent de s'exécuter en arrière-plan sans bouton visible pour
+interagir, un vestige inerte, pas une fonctionnalité active. Rien de fonctionnel à porter.
+PREUVE : `FeedFragment.java:341` (déclaration commentée) ; `:1809-1810,1868-1869,1912-1913`
+(usages commentés) ; `MainFragment.java:1839-1850` (même motif).
+CAUSE : Le finding original n'a pas tracé la chaîne d'exécution réelle jusqu'au bout (méthodologie
+"UI accessible → action → logique exécutée → résultat utilisé" non appliquée) — s'est arrêté au nom
+du préférence/libellé UI.
+RISQUE : Aucun — ni Android ni iOS n'ont de comportement fonctionnel réel à cet endroit.
+RECOMMANDATION : Câbler `AUTHORIZED_ADS` dans `AdMobManager.swift` avant chargement d'une requête
+pub (mode "non personnalisé" si `false`). **REJETÉE** — ne correspond à AUCUN comportement Android
+réel, câbler ceci inventerait une fonctionnalité absente d'Android plutôt que de porter un gap réel.
+TEST RÉEL NÉCESSAIRE : non.
 ```
 
 ```
@@ -1106,9 +1128,16 @@ FEATURE : Échec silencieux des deep links user/post/group en cas d'erreur rése
 ANDROID SOURCE OF TRUTH : partage/ShareActivity.java:264-268 (`onError` → dialogue visible)
 IOS FILES : Navigation/DeepLinkRouter.swift:89-109
 LOGIC PARITY : `guard let ... = try? await ... else { return }` — aucun chemin d'erreur visible.
-STATUT : PARTIAL
+STATUT : **CORRIGÉ le 2026-08-23** — `DeepLinkCenter.showError()` (nouveau `@Published errorMessage`)
+appelé par `routeToUser`/`routeToPost`/`routeToGroup` sur échec, affiché via `.alert(...)` dans
+`HomeShellView` — texte EXACT repris de `values-fr/strings.xml` (`R.string.errorLoad`, "pas de
+connexion internet, réessayer plus tard"), port de `ShareActivity.onError`→`showDialog()`.
+PREUVE : `ShareActivity.java:264-268` (`onError`→`showDialog()`, texte `R.string.errorLoad`) vs
+`DeepLinkCenter.swift`(`showError()`)/`DeepLinkRouter.swift`(3 sites d'appel)/`HomeShellView.swift`
+(`.alert`). (Avant correctif : `guard let ... = try? await ... else { return }`, aucun chemin
+d'erreur visible.)
 RISQUE : Faible/moyen — un lien mort/expiré ouvre l'app sans aucune indication d'échec.
-RECOMMANDATION : Ajouter un état d'erreur visible (toast/alert) sur échec de résolution.
+RECOMMANDATION : Ajouter un état d'erreur visible (toast/alert) sur échec de résolution. **Appliqué.**
 TEST RÉEL NÉCESSAIRE : non.
 ```
 
@@ -1272,12 +1301,24 @@ DOMAINE : Transversal
 FEATURE : Upload photo de profil — échec réseau totalement silencieux (`catch {}` littéralement vide)
 IOS FILES : Profile/ProfileViewModel.swift:157-165
 RUNTIME CHAIN : `ProfileView.swift:77-85` (sélection photo réelle via PhotosPicker) → `uploadProfilePicture` → `catch {}` vide, contrairement aux 53 autres clauses catch du projet (toutes avec message utilisateur ou diagnostic).
-STATUT : FUNCTIONALLY_FAILED (partiel — dégrade l'UX sans casser le succès)
-PREUVE : Ligne 164, corps vide, comparé à `loadProfile()` (ligne 105-108, même fichier, qui alimente `errorMessage`+`print()` pour un cas comparable).
-CAUSE : Oubli lors du portage.
-RISQUE : En cas d'échec réseau pendant l'upload, l'utilisateur voit le spinner disparaître sans indication — peut croire l'opération réussie.
-RECOMMANDATION : Ajouter `errorMessage` + `print()` diagnostic, à l'identique du motif de `loadProfile()`.
-TEST RÉEL NÉCESSAIRE : oui (simuler coupure réseau pendant l'upload).
+STATUT : **DOUBLON CONFIRMÉ de V3-F-091** (revérifié indépendamment session 2026-08-23 — même
+fichier/fonction `ProfileViewModel.uploadProfilePicture`, `catch {}` vide à la ligne 177 actuelle
+[la ligne a bougé depuis, contenu identique]. `AddPerfilFoto.java:655-658` relu directement :
+`onError(String message) { }` — corps VIDE côté Android réel aussi, confirmé indépendamment. La
+recommandation ci-dessous [câbler `errorMessage`] a déjà été évaluée par la session V3-F-091 et
+délibérément REJETÉE : `errorMessage` déclenche un bandeau PLEIN ÉCRAN avec bouton "Réessayer" qui
+recharge TOUT le profil (`ProfileView.swift:142-151`, vérifié) — sémantiquement faux pour un échec
+d'upload transitoire (le bouton ne relance pas l'upload, il recharge le profil), régression UX pire
+que le silence actuel. Puisqu'Android lui-même ne fait RIEN ici, le silence iOS EST la parité
+correcte — ajouter une UI d'erreur inventerait une fonctionnalité absente d'Android, hors périmètre
+d'un portage.
+PREUVE : `ProfileViewModel.swift:177` (`catch {}`, vide) ; `AddPerfilFoto.java:655-658` (`onError`
+vide, Android réel) ; `ProfileView.swift:142-151` (`errorMessage` = bandeau plein écran + reload).
+CAUSE : Oubli lors du portage — FAUX, doublon d'un finding déjà résolu avec analyse plus poussée.
+RISQUE : Aucun réel — bug partagé fidèlement reproduit, pas une régression iOS.
+RECOMMANDATION : Ajouter `errorMessage` + `print()` diagnostic, à l'identique du motif de
+`loadProfile()`. **REJETÉE** (voir STATUT) — non appliquée, à dessein.
+TEST RÉEL NÉCESSAIRE : non — parité déjà confirmée par construction (bug partagé des deux côtés).
 ```
 
 ```

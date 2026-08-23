@@ -33,6 +33,11 @@ enum DeepLinkDestination: Equatable {
 final class DeepLinkCenter: ObservableObject {
     static let shared = DeepLinkCenter()
     @Published var pending: DeepLinkDestination?
+    /// Port de `ShareActivity.onError` → `showDialog()` (V3-F-138, DeepLinks complémentaire) — un
+    /// lien profond dont la résolution réseau échoue (user/post/group introuvable, coupure réseau)
+    /// ouvrait l'app sans AUCUNE indication, contrairement à Android qui affiche une boîte de
+    /// dialogue (`R.string.errorLoad`, texte EXACT repris ci-dessous depuis `values-fr/strings.xml`).
+    @Published var errorMessage: String?
 
     private init() {}
 
@@ -43,5 +48,9 @@ final class DeepLinkCenter: ObservableObject {
     func consume() -> DeepLinkDestination? {
         defer { pending = nil }
         return pending
+    }
+
+    func showError() {
+        errorMessage = "Pas de connexion internet, réessayer plus tard"
     }
 }

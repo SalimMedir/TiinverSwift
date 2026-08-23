@@ -86,14 +86,22 @@ enum DeepLinkRouter {
     }
 
     /// Port de `getUser(String username)` → `connectToServeur(url,"user")` → `getUser(User)`.
+    /// **Corrigé (V3-F-138, DeepLinks complémentaire)** : échec réseau désormais visible, port de
+    /// `ShareActivity.onError` → `showDialog()`.
     private static func routeToUser(username: String) async {
-        guard let user = try? await ProfileRepository.shared.fetchUser(byUsername: username), let id = user.id else { return }
+        guard let user = try? await ProfileRepository.shared.fetchUser(byUsername: username), let id = user.id else {
+            DeepLinkCenter.shared.showError()
+            return
+        }
         DeepLinkCenter.shared.route(.userProfile(userId: String(id)))
     }
 
     /// Port de `getPost(String token)` → `connectToServeur(url,"post")` → `getActivities(activityLib)`.
     private static func routeToPost(token: String) async {
-        guard let post = try? await FeedRepository().fetchPost(byToken: token) else { return }
+        guard let post = try? await FeedRepository().fetchPost(byToken: token) else {
+            DeepLinkCenter.shared.showError()
+            return
+        }
         DeepLinkCenter.shared.route(.post(post))
     }
 
@@ -104,7 +112,10 @@ enum DeepLinkRouter {
     /// ouvrir/rejoindre un groupe connu seulement par son id/token).
     private static func routeToGroup(token: String) async {
         guard let myId = UserSession.shared.myId else { return }
-        guard let info = try? await GroupRepository.shared.fetchGroup(token: token, myId: myId) else { return }
+        guard let info = try? await GroupRepository.shared.fetchGroup(token: token, myId: myId) else {
+            DeepLinkCenter.shared.showError()
+            return
+        }
         DeepLinkCenter.shared.route(.groupChat(info.rosterModel(myId: myId, myUsername: UserSession.shared.username)))
     }
 }

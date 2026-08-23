@@ -176,12 +176,29 @@ struct SettingAdvertisementView: View {
 // obsolète/contredit — ce fragment contient bien 2 URLs légales réelles, pas juste des libellés
 // statiques.
 
+/// Port de `SettingHelpFragment.java:88-119` (V3-F-130) — FAQ localisée fr/en selon
+/// `Locale.getDefault().getLanguage()`, ET adresse support affichée (`ClickSpan.clickify(support,
+/// "support@tiinver.com", ...)`, `onClick` VIDE côté Android réel — le bouton support est mort des
+/// deux côtés, fidèlement reproduit : texte affiché mais pas actionnable).
 struct SettingHelpView: View {
+    @State private var webViewURL: URL?
+
+    private var faqURL: URL {
+        let isFrench = Locale.current.language.languageCode?.identifier == "fr"
+        return URL(string: isFrench ? "https://tiinver.com/faq_fr.html" : "https://tiinver.com/faq_en.html")!
+    }
+
     var body: some View {
         List {
-            Link("Centre d'aide Tiinver", destination: URL(string: "https://tiinver.com")!)
+            Button("FAQ") { webViewURL = faqURL }
+            LabeledContent("Support", value: "support@tiinver.com")
         }
         .navigationTitle("Aide")
+        .sheet(isPresented: Binding(get: { webViewURL != nil }, set: { if !$0 { webViewURL = nil } })) {
+            if let webViewURL {
+                InAppWebView(url: webViewURL)
+            }
+        }
     }
 }
 

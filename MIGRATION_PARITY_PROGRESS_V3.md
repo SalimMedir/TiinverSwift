@@ -1739,3 +1739,59 @@ réseau pendant une recherche, confirmer qu'elle n'apparaît PAS dans l'historiq
 chemin suggestion, confirmer l'absence de posts même si le serveur en enverrait) ; V3-F-108
 (rechercher par mot du contenu d'un message, confirmer que la conversation remonte) ; V3-F-116 (2
 appareils, conversation ouverte des 2 côtés, supprimer "pour tous", observer la mise à jour live).
+
+### Lot 30 : V3-F-130/133/138/151 (Settings/DeepLinks/Transversal — 2 corrigés, 2 requalifiés)
+
+**V3-F-130 (Settings, FAQ non localisée)** — `SettingHelpFragment.java:96-119` dérive l'URL FAQ de
+`Locale.getDefault().getLanguage()` (`faq_fr.html`/`faq_en.html`) et affiche `support@tiinver.com`
+en texte cliquable dont le handler est VIDE (`onClick(){}`, vérifié directement). `SettingHelpView`
+reconstruite : `faqURL` calculée depuis `Locale.current.language.languageCode`, ouverte en
+`InAppWebView` (fidèle à `Intent(MyWebView.class)`, cohérent avec `SettingAboutView` déjà corrigée
+en V3-F-129) ; support affiché en `LabeledContent` non-tapable — PAS rendu fonctionnel, fidèle au
+handler vide Android (aucune amélioration silencieuse).
+
+**V3-F-133 (Monétisation, `AUTHORIZED_ADS` "jamais câblé") — PRÉMISSE INVALIDÉE, aucun code changé.**
+Le finding original assumait, sur la seule foi du libellé UI ("publicités personnalisées"), que ce
+réglage configure le SDK AdMob en mode personnalisé/non-personnalisé. Vérification exhaustive
+(grep `AUTHORIZED_ADS` = 4 fichiers Android) : ses SEULS consommateurs réels sont `FeedFragment.
+startGame()`/`MainFragment.startGame()`, un mini-jeu "bounce" à récompense publicitaire — PAS une
+config SDK. Et ce mini-jeu est lui-même MORT côté Android : `private BounceAdsRequestButton
+bounceButton;` (seul déclencheur UI) est COMMENTÉ (`FeedFragment.java:341`), donc ses 5 sites
+d'usage dans la classe sont nécessairement commentés aussi (vérifié un par un). Rien de fonctionnel
+à porter — câbler `AUTHORIZED_ADS` dans `AdMobManager.swift` comme recommandé aurait inventé une
+fonctionnalité absente du vrai comportement Android. Reclassifié `PARTIAL` → prémisse invalidée,
+aucune action.
+
+**V3-F-138 (DeepLinks, échec de résolution silencieux)** — `ShareActivity.onError()` (ligne
+264-268) appelle `showDialog()` (texte `R.string.errorLoad`, vérifié dans `values-fr/strings.xml` :
+"pas de connexion internet, réessayer plus tard"). `DeepLinkRouter.routeToUser`/`routeToPost`/
+`routeToGroup` retournaient silencieusement (`guard ... try? ... else { return }`) sur échec réseau
+— aucune indication utilisateur qu'un lien profond a échoué. Nouveau `DeepLinkCenter.
+errorMessage`/`showError()`, appelé par les 3 fonctions de résolution sur échec, affiché via
+`.alert(...)` dans `HomeShellView` (observe déjà `DeepLinkCenter.shared` pour le routage normal,
+même mécanisme réutilisé). Le cas "pas de session" (`guard let myId = ...`) reste silencieux — ce
+n'est pas un échec réseau, hors périmètre de ce finding précis.
+
+**V3-F-151 (Transversal, upload photo de profil silencieux) — DOUBLON CONFIRMÉ de V3-F-091, aucun
+code changé.** Revérifié indépendamment : `ProfileViewModel.uploadProfilePicture` a bien un `catch
+{}` vide (ligne 177 actuelle) ; `AddPerfilFoto.java:655-658` relu directement, `onError(String
+message) { }` confirmé VIDE côté Android réel aussi. La recommandation (câbler `errorMessage`) a
+déjà été évaluée et REJETÉE par V3-F-091 : `errorMessage` déclenche un bandeau plein écran avec
+bouton "Réessayer" qui recharge TOUT le profil (`ProfileView.swift:142-151`, vérifié), sémantiquement
+faux pour un échec d'upload transitoire — régression UX pire que le silence actuel. Android ne
+faisant rien ici non plus, le silence iOS EST la parité correcte.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Settings/SettingSubViews.swift`,
+`Sources/TiinverSwift/Navigation/DeepLinkCenter.swift`,
+`Sources/TiinverSwift/Navigation/DeepLinkRouter.swift`,
+`Sources/TiinverSwift/Navigation/HomeShellView.swift`.
+
+**Commit** : *(à renseigner après ce commit)*.
+
+**Résultat CI** : à déclencher.
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI pour
+V3-F-130/138. V3-F-133/151 : aucun code changé, reclassification documentaire uniquement, statut
+définitif (pas de CI à attendre pour ces deux). Tests réels : V3-F-130 (ouvrir Aide en français ET
+anglais, confirmer la bonne FAQ) ; V3-F-138 (taper un lien profond vers un post/groupe/utilisateur
+inexistant ou supprimé, confirmer l'alerte visible au lieu d'un silence).

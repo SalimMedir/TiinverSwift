@@ -203,6 +203,17 @@ struct HomeShellView: View {
             case .referral: showReferral = true
             }
         }
+        // Port de `ShareActivity.onError` → `showDialog()` (V3-F-138, DeepLinks complémentaire) —
+        // affiche l'échec de résolution d'un lien profond (user/post/group introuvable, réseau),
+        // auparavant totalement silencieux côté iOS.
+        .alert(
+            "Erreur",
+            isPresented: Binding(get: { deepLinks.errorMessage != nil }, set: { if !$0 { deepLinks.errorMessage = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deepLinks.errorMessage ?? "")
+        }
     }
 
     /// Bandeau TEMPORAIRE (voir commentaire sur `.safeAreaInset` ci-dessus) — compare 3 valeurs en

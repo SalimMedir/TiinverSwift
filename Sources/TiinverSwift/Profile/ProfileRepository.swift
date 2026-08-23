@@ -106,27 +106,53 @@ final class ProfileRepository {
         _ = try await APIClient.shared.post(["id": userId, "column": column, "value": value], endpoint: "user")
     }
 
-    /// Port de `ProfileRepository.uploadPhotoProfile` (`HttpFileUploader`, type=2,
-    /// `uploadRequestBodyPerfil`) — `UploadFileOrDataService.java`/`HttpFileUploader.java` lus en
-    /// entier (GAP-004, 2026-08-15) : ce flux est un POST multipart DIRECT vers le backend Tiinver
-    /// (`{SERVER}user`), PAS BunnyCDN (BunnyCDN n'est utilisé QUE pour les pièces jointes chat —
-    /// protocole entièrement différent, voir `MIGRATION_AUDIT.md` GAP-004). Champs fidèles à
-    /// `uploadRequestBodyPerfil` : `id`=userId, `column`="profile_picture", `format`="json",
-    /// fichier nommé `wn_image.jpeg` (nom fixe côté Android, pas dynamique). Réponse `{error,
-    /// object_url}` — même convention `error` string que `JSONValue.isBackendSuccess`.
+    /// Port de `ProfileService.uploadImageToBunny`+`sendMetaDate`
+    /// (`uploadPerfilPhoto/service/ProfileService.java:174-321`) — **corrigé le 2026-08-23
+    /// (MIGRATION_PARITY_AUDIT_V4.md V4-F-008, Phase B P0-4)** : la version précédente portait
+    /// `ProfileRepository.uploadPhotoProfile` (`HttpFileUploader`, POST multipart direct vers
+    /// `{SERVER}user`), qui s'avère être du CODE MORT côté Android — confirmé par relecture directe
+    /// de `AddPerfilFoto.java` : son seul site d'appel possible, `profileViewModel.
+    /// uploadPhotoProfile(foto)` (ligne 558), est COMMENTÉ, jamais exécuté. Le flux RÉEL déclenché
+    /// par le bouton "changer l'avatar" (`uploadProfilePicture(uri)`, ligne 557, TOUJOURS exécuté —
+    /// démarre le `ProfileService` lié) est entièrement différent :
+    /// 1. `PUT https://storage.bunnycdn.com/tiinver-media/tiinver/profile/photos/{token}.webp`,
+    ///    en-tête `AccessKey` — MÊME zone/clé de stockage que `FeedMediaUploader.uploadPhoto` (photos
+    ///    de posts), dossier différent (`tiinver/profile/photos` au lieu de `tiinver/photos`).
+    /// 2. `POST user/avatar/add` avec `{id, column:"profile_picture", value:<url>, object_url:<url>}`
+    ///    où `<url>` est l'URL CDN ABSOLUE résultante (`cdn_url + folder + fileName`, `cdn_url =
+    ///    "https://cdn.tiinver.com/"` = `APIEnvironment.cdnPhotoBaseURL`) — **PAS** un chemin relatif
+    ///    comme le flux Feed (`FeedMediaUploader.uploadPhoto`, consommé différemment par
+    ///    `activity/add`) : vérifié ligne par ligne, ces deux flux BunnyCDN construisent leur URL
+    ///    finale différemment malgré la même zone de stockage.
+    ///
+    /// Constantes de stockage RÉUTILISÉES depuis `FeedMediaUploader` (même zone/clé/hôte, rendues
+    /// internes exprès pour cet usage) plutôt que redupliquées ici — écart délibéré par rapport à la
+    /// triplication réelle côté Android, pour éviter une 3ᵉ occurrence en clair de la clé d'accès
+    /// dans le dépôt ; comportement réseau identique (même zone, même clé, même hôte).
     func uploadProfilePicture(userId: String, imageData: Data) async throws -> String {
-        let value = try await APIClient.shared.uploadMultipart(
-            endpoint: "user",
-            fields: ["id": userId, "column": "profile_picture", "format": "json"],
-            fileFieldName: "object_url",
-            filename: "wn_image.jpeg",
-            mimeType: "image/jpeg",
-            fileData: imageData
+        let token = UUID().uuidString  // port de `Cryptography.generateUniqueBase64ID(myId)`
+        let folder = "tiinver/profile/photos"
+        let filename = "\(token).webp"
+        let storageURL = URL(string: "\(FeedMediaUploader.storageBaseURL)/\(FeedMediaUploader.storageZone)/\(folder)/\(filename)")!
+
+        var putRequest = URLRequest(url: storageURL)
+        putRequest.httpMethod = "PUT"
+        putRequest.setValue(FeedMediaUploader.storageAPIKey, forHTTPHeaderField: "AccessKey")
+        putRequest.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        let (_, putResponse) = try await URLSession.shared.upload(for: putRequest, from: imageData)
+        guard let putHTTP = putResponse as? HTTPURLResponse, (200..<300).contains(putHTTP.statusCode) else {
+            throw JSONError.typeMismatch("uploadProfilePicture: Bunny Storage PUT failed (status \((putResponse as? HTTPURLResponse)?.statusCode ?? -1))")
+        }
+
+        let objectURL = "\(APIEnvironment.cdnPhotoBaseURL)\(folder)/\(filename)"
+        let value = try await APIClient.shared.post(
+            ["id": userId, "column": "profile_picture", "value": objectURL, "object_url": objectURL],
+            endpoint: "user/avatar/add"
         )
         guard value.isBackendSuccess else {
-            throw JSONError.typeMismatch(value.backendErrorMessage ?? "uploadProfilePicture")
+            throw JSONError.typeMismatch(value.backendErrorMessage ?? "user/avatar/add")
         }
-        return try value.string("object_url")
+        return objectURL
     }
 
     /// Port de `SettingAccountFragment.logout`/`deleteAccount` — endpoints `logout`/`deleteaccount`,

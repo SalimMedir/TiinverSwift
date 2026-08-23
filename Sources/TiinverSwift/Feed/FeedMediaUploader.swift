@@ -25,13 +25,17 @@ import Foundation
 /// 2. SEULEMENT ENSUITE, `POST activity/add` avec les métadonnées en PARAMÈTRES TEXTE — JAMAIS de
 ///    fichier binaire envoyé à cet endpoint (voir `FeedRepository.publish`, qui consomme ce type).
 enum FeedMediaUploader {
-    /// Clé de STOCKAGE — MÊME valeur que `ChatMediaUploadService.storageAPIKey`, dupliquée ici
-    /// plutôt que partagée : Android lui-même duplique ces littéraux dans 3 fichiers source
-    /// distincts (`ActivityService.java`/`UploadFileOrDataService.java`/`ProfileService.java`),
-    /// donc cette duplication est FIDÈLE à l'original, pas une dette technique introduite ici.
-    private static let storageZone = "tiinver-media"
-    private static let storageAPIKey = "75ef8922-9f01-40d9-a71c66e21a22-a056-4615"
-    private static let storageBaseURL = "https://storage.bunnycdn.com"
+    /// Clé de STOCKAGE — MÊME valeur que `ChatMediaUploadService.storageAPIKey`, dupliquée dans ces
+    /// deux fichiers : Android lui-même duplique ces littéraux dans 3 fichiers source distincts
+    /// (`ActivityService.java`/`UploadFileOrDataService.java`/`ProfileService.java`). **Accès
+    /// interne (pas `private`)** : `ProfileRepository.uploadProfilePicture` (V4-F-008, port de
+    /// `ProfileService.java`, le 3ᵉ fichier Android ci-dessus) RÉUTILISE ces constantes plutôt que
+    /// de les redupliquer une 3ᵉ fois — écart délibéré par rapport à la triplication Android, pour
+    /// éviter une occurrence supplémentaire en clair de la clé d'accès dans le dépôt, sans changer
+    /// le comportement réseau (même zone, même clé, même hôte).
+    static let storageZone = "tiinver-media"
+    static let storageAPIKey = "75ef8922-9f01-40d9-a71c66e21a22-a056-4615"
+    static let storageBaseURL = "https://storage.bunnycdn.com"
 
     /// Clé de la VIDEO LIBRARY — DISTINCTE de la clé de stockage ci-dessus (vérifié dans
     /// `ActivityService.java:54-55` : `bunnyApiKey` ≠ `storageApiKey`), absente de tout le projet

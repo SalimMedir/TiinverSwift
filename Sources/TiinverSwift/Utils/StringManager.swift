@@ -10,4 +10,14 @@ enum StringManager {
         guard parts.count > 1 else { return parts.first ?? "" }
         return parts[0] + parts[1]
     }
+
+    /// Port de `formatCount` (V3-F-100/101, SEARCH complémentaire) — dupliqué à l'identique dans
+    /// `UniversalSearchAdapter.PostViewHolder`/`HashtagViewHolder` ET `HashtagProfile.java` côté
+    /// Android, factorisé ici en un seul endroit plutôt que triplé, sans impact fonctionnel (même
+    /// motif que `GoogleSignInCoordinator`, qui factorise 2 fichiers Android dupliqués).
+    static func formatCount(_ count: Int) -> String {
+        if count >= 1_000_000 { return String(format: "%.1fM", Double(count) / 1_000_000) }
+        if count >= 1_000 { return String(format: "%.1fk", Double(count) / 1_000) }
+        return String(count)
+    }
 }

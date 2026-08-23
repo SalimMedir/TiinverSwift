@@ -1610,11 +1610,11 @@ entrant générique se terminer aussitôt en échec, plutôt que de ne jamais ê
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Calls/CallCoordinator.swift`.
 
-**Commit** : *(à renseigner après ce commit)*.
+**Commit** : `1afa611`.
 
-**Résultat CI** : à déclencher.
+**Résultat CI** : run `32631078616` → **`conclusion: success`**.
 
-**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Le volet
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). Le volet
 serveur (format réel du payload VoIP, endpoint `user/voip-token`) reste `BLOCKED BY BACKEND` — pas
 une action possible côté client, non retenté ici. Test réel de CE correctif précis quasi impossible
 sans backend VoIP fonctionnel pour déclencher un vrai push (donc un payload malformé) — risque
@@ -1651,13 +1651,91 @@ avec `do/catch` par item, log de diagnostic (`print("... decode failure for one 
 `Sources/TiinverSwift/Discover/CommentRepository.swift`,
 `Sources/TiinverSwift/Discover/FollowListView.swift`.
 
-**Commit** : *(à renseigner après ce commit)*.
+**Commit** : `1afa611`.
 
-**Résultat CI** : à déclencher.
+**Résultat CI** : run `32631078616` → **`conclusion: success`**.
 
-**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Test réel
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). Test réel
 nécessaire : observer chaque écran (classement Créateurs, historique Wallet, commentaires/réponses
 d'une publication, listes abonnés/abonnements) avec des données réelles — le risque ne se manifeste
 que si le serveur envoie effectivement un champ de type inattendu pour un item, donc pas garanti
 observable sans un tel cas réel, mais le correctif élimine la classe d'échec silencieux quoi qu'il
 arrive.
+
+### Lot 29 : V3-F-100/101/104/105/106/108/116 (Recherche/Chat — 7 findings §30.1/30.2 corrigés)
+
+**Contexte** : suite du balayage méthodique du backlog §30 (cycle complémentaire), 7 findings P2/P3
+avec une recommandation de correctif précise et réalisable par lecture de code (pas de test réel
+préalable nécessaire pour les implémenter, contrairement à V3-F-036/046 laissés en l'état).
+
+**V3-F-100 (SEARCH, grille posts)** — `RechercheTiinver.java:143-153` : `GridLayoutManager(this,3)`
+avec `SpanSizeLookup` (`TYPE_POST`=1 colonne, tout le reste=3). `SearchView.postRow` (une `HStack`
+en liste verticale) remplacé par `postGridCell` dans un `LazyVGrid` 3 colonnes — vignette pleine
+cellule, icône vidéo (`verb=="video"`/`object=="videos"`, comparaison EXACTE fidèle à Android),
+compteur de vues formaté, port de `PostViewHolder.bind` (`UniversalSearchAdapter.java:255-314`).
+
+**V3-F-101 (SEARCH, stats hashtag jamais affichées)** — `post_count`/`total_views` déjà décodés
+(`SearchHashtagResult`) mais jamais lus par aucune vue. Affichés aux 2 endroits Android
+(`UniversalSearchAdapter.java:320-349` + `HashtagProfile.java:282-284,343-347`) : nouvelle
+`hashtagRow(_:)` dans les résultats de recherche (`"{n} publication(s)"` + `"{formatCount} vues"`,
+formats EXACTS Android) ; nouveau `HashtagFeedView.statsHeader` (params `postCount`/`totalViews`
+ajoutés à l'init, transmis depuis `SearchView`, défaut `0` fidèle à `getIntExtra(...,0)` pour les
+autres points d'entrée — tap `#hashtag` en légende, lien profond). Nouveau `StringManager.
+formatCount(_:)` partagé (factorise 3 copies dupliquées côté Android, même motif que
+`GoogleSignInCoordinator`).
+
+**V3-F-104 (SEARCH, historique pollué par les échecs)** — `RecentSearchStore.save(query)` était
+appelé APRÈS le `do/catch` de `runSearch`, donc inconditionnellement. Android ne sauvegarde QUE
+dans `onResonse` (`RechercheTiinver.java:440-458`). Déplacé dans la branche succès du `do`.
+
+**V3-F-105 (SEARCH, écran figé sur query 1 caractère en échec)** — condition d'affichage
+erreur/vide (`query.count >= 2`) et seuil de déclenchement de `suggest()` (`count == 1`
+exclusivement en pratique) ne se recoupaient jamais. Condition étendue à `query.count >= 1`, fidèle
+à `showEmpty` inconditionnel côté Android (`RechercheTiinver.java:412-431,567`).
+
+**V3-F-106 (SEARCH, filtre posts absent du chemin suggestion)** — `parseAndDisplay` garde
+`showPosts = isFull && (...)` (`RechercheTiinver.java:421,461,528`), jamais reproduite côté iOS.
+`decodeResults` reçoit maintenant `isFull: Bool` (`false` pour `suggest`, `true` pour `search`),
+vide `results.posts` quand `!isFull` — garde CLIENT défensive, ne dépend pas de ce que le serveur
+envoie réellement (contrairement à la recommandation initiale du finding qui suggérait une
+inspection réseau pour trancher — pas nécessaire, la garde est correcte quel que soit le
+comportement serveur réel).
+
+**V3-F-108 (SEARCH, recherche conversation ne filtre pas sur le dernier message)** — Android filtre
+sur `title`/`message`/`subTitle` (3 champs, `RechercheTiinver.java:663-674`), iOS ne filtrait que
+sur `title`/`subtitle` (2 champs, ni l'un ni l'autre = texte du dernier message). Nouveau champ
+`RosterListViewModel.Row.lastMessage: String?` (`model.message`, déjà calculé, jamais exposé),
+inclus dans le filtre de `ChatSearchView.localMatches`.
+
+**V3-F-116 (CHAT, suppression privée "pour tous" sans rafraîchissement UI live)** — contrairement à
+V3-F-115 (canal groupe, bug partagé Android/iOS non écouté des deux côtés, à juste titre laissé
+inchangé), le canal `ON_DELETE_PRIVATE_MESSAGE` EST bien écouté ET émis des deux côtés
+(`ChatRepository.java:127-129,962`) — `handleDeleteMessage` persistait déjà correctement en Core
+Data mais n'émettait jamais d'événement Combine, donc une conversation déjà ouverte à l'écran ne se
+mettait pas à jour en direct. Nouveau cas `ChatEvent.messageDeleted(messageId:)`, émis après
+persistance, consommé par `ChatViewModel.handleRemoteDelete(messageId:)` (même transformation
+`message`/`object`/`verb`="deletemessage" que la branche de suppression LOCALE existante,
+`deleteSelected()`).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/SearchView.swift`,
+`Sources/TiinverSwift/Discover/SearchRepository.swift`,
+`Sources/TiinverSwift/Discover/HashtagFeedView.swift`,
+`Sources/TiinverSwift/Utils/StringManager.swift`,
+`Sources/TiinverSwift/Messagerie/RosterListView.swift`,
+`Sources/TiinverSwift/Messagerie/ChatSearchView.swift`,
+`Sources/TiinverSwift/Models/ChatEvent.swift`,
+`Sources/TiinverSwift/Realtime/ChatRepository.swift`,
+`Sources/TiinverSwift/Messagerie/ChatViewModel.swift`.
+
+**Commit** : *(à renseigner après ce commit)*.
+
+**Résultat CI** : à déclencher.
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED`/`PARTIAL` → corrigé pour les 7,
+jusqu'à confirmation CI puis test réel. Tests réels nécessaires par finding : V3-F-100/101 (visuel,
+comparer capture Android vs iOS sur une recherche avec posts/hashtags réels) ; V3-F-104 (couper le
+réseau pendant une recherche, confirmer qu'elle n'apparaît PAS dans l'historique) ; V3-F-105 (query
+1 caractère + réseau coupé, confirmer qu'un message d'erreur apparaît) ; V3-F-106 (observer le
+chemin suggestion, confirmer l'absence de posts même si le serveur en enverrait) ; V3-F-108
+(rechercher par mot du contenu d'un message, confirmer que la conversation remonte) ; V3-F-116 (2
+appareils, conversation ouverte des 2 côtés, supprimer "pour tous", observer la mise à jour live).

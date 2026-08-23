@@ -32,8 +32,13 @@ struct ChatSearchView: View {
         // Port de `title.toLowerCase().contains(str) || message.toLowerCase().contains(str) ||
         // subTitle.toLowerCase().contains(str)` — filtre local sur les données DÉJÀ chargées par
         // `RosterListViewModel` (équivalent du `Cursor` local Android, mêmes lignes `wk_roster`).
+        // Corrigé (V3-F-108, SEARCH complémentaire) : `message` (texte du dernier message,
+        // `Row.lastMessage`) manquait au filtre — seuls `title`/`subtitle` étaient comparés, alors
+        // qu'Android compare les 3 champs. Une recherche par mot-clé du contenu d'un message
+        // échouait silencieusement côté iOS.
         return rosterViewModel.rows.filter {
             $0.title.lowercased().contains(q) || $0.subtitle.lowercased().contains(q)
+                || ($0.lastMessage?.lowercased().contains(q) ?? false)
         }
     }
 

@@ -200,6 +200,11 @@ final class RosterListViewModel: ObservableObject {
         let unreadCount: Int
         let stamp: String
         let rosterModel: RosterModel
+        /// Port du texte du dernier message (V3-F-108, SEARCH complémentaire) — la donnée existait
+        /// déjà (`model.message`) mais n'était exposée nulle part pour être filtrable, contrairement
+        /// à `RechercheTiinver.java:666-668` qui filtre sur `title`/`message`/`subTitle` (3 champs,
+        /// pas 2).
+        let lastMessage: String?
     }
 
     @Published private(set) var rows: [Row] = []
@@ -287,7 +292,8 @@ final class RosterListViewModel: ObservableObject {
                 profile: entity.profile,
                 unreadCount: Int(entity.unreadCount),
                 stamp: entity.stamp ?? "0",
-                rosterModel: model
+                rosterModel: model,
+                lastMessage: model.message
             )
         }
         .sorted { (Int64($0.stamp) ?? 0) > (Int64($1.stamp) ?? 0) }

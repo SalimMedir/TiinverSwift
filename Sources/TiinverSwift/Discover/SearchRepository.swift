@@ -12,18 +12,21 @@ final class SearchRepository {
     static let shared = SearchRepository()
     private init() {}
 
-    /// Port de `searchSuggest` — endpoint léger, pas de tri par onglet.
+    /// Port de `searchSuggest` — endpoint léger, pas de tri par onglet. `isFull: false`
+    /// (V3-F-106) : `parseAndDisplay(object, isFull=false, tab)` garde explicitement
+    /// `showPosts = isFull && (...)`, donc les résultats "posts" ne sont JAMAIS rendus sur ce
+    /// chemin même si le serveur les inclut dans la réponse.
     func suggest(query: String) async throws -> SearchResults {
         guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return SearchResults() }
         let value = try await APIClient.shared.get("content/search/suggest?q=\(encoded)")
-        return try Self.decodeResults(value)
+        return try Self.decodeResults(value, isFull: false)
     }
 
-    /// Port de `searchFull` — `types` dérivé de l'onglet actif (`getTypesForTab`).
+    /// Port de `searchFull` — `types` dérivé de l'onglet actif (`getTypesForTab`). `isFull: true`.
     func search(query: String, tab: SearchTab) async throws -> SearchResults {
         guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return SearchResults() }
         let value = try await APIClient.shared.get("content/search?q=\(encoded)&types=\(tab.apiTypes)&limit=10&offset=0")
-        return try Self.decodeResults(value)
+        return try Self.decodeResults(value, isFull: true)
     }
 
     /// Port de `object.getBoolean("error")`/`JSONObject results = object.getJSONObject("results")` —
@@ -41,12 +44,21 @@ final class SearchRepository {
     /// câblé (voir son commentaire `showEmpty("Erreur de chargement")`) — jamais atteint faute d'un
     /// throw ici. Seul le cas `error==true` reste silencieux ci-dessous ; tout échec de décodage de
     /// `results` (clé absente ou JSON malformé) propage maintenant l'erreur, fidèle à Android.
-    private static func decodeResults(_ value: JSONValue) throws -> SearchResults {
+    ///
+    /// **Corrigé (V3-F-106, SEARCH complémentaire)** — `parseAndDisplay` gate `showPosts = isFull
+    /// && (tab=="all"||tab=="posts")` (`RechercheTiinver.java:421,461,528`) : le chemin suggestion
+    /// (`isFull=false`) n'affiche JAMAIS de résultats "posts", même si le serveur les a inclus dans
+    /// la réponse — cette garde manquait côté iOS (`decodeResults` ne recevait pas l'information
+    /// `isFull`). `posts` vidé après décodage quand `isFull==false`, indépendant du comportement
+    /// réel du serveur (défensif par construction, pas besoin d'inspection réseau pour trancher).
+    private static func decodeResults(_ value: JSONValue, isFull: Bool) throws -> SearchResults {
         guard (try? value.bool("error")) != true else { return SearchResults() }
         guard let data = value["results"]?.rawData else {
             throw APIError.server(message: "results manquant")
         }
-        return try JSONDecoder().decode(SearchResults.self, from: data)
+        var results = try JSONDecoder().decode(SearchResults.self, from: data)
+        if !isFull { results.posts = [] }
+        return results
     }
 }
 

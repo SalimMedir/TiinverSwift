@@ -19,6 +19,11 @@ struct SearchView: View {
     /// n'y a pas eu de frappe).
     @State private var shouldAutoSearch: Bool
 
+    /// Port de `GridLayoutManager(this, 3)` (V3-F-100) — 3 colonnes pour les résultats
+    /// "Publications" uniquement (comptes/hashtags restent des lignes pleine-largeur, fidèle au
+    /// `SpanSizeLookup` Android : `TYPE_POST` = 1 colonne, tout le reste = 3).
+    private let postGridColumns = [GridItem(.flexible(), spacing: 2), GridItem(.flexible(), spacing: 2), GridItem(.flexible(), spacing: 2)]
+
     /// Port d'`Intent(ctx, RechercheTiinver.class)` avec `autoQuery`/`autoTab`
     /// (`TokenClickableSpan.onClick`, `MentionTextView.java:184-196`) — **ajouté le 2026-08-20
     /// (MIGRATION_PARITY_AUDIT_V3.md V3-F-099, Phase B P1)**. `initialQuery` est TOUJOURS la query
@@ -76,17 +81,27 @@ struct SearchView: View {
                     if !results.hashtags.isEmpty {
                         Section("Hashtags") {
                             ForEach(results.hashtags) { tag in
-                                NavigationLink { HashtagFeedView(tag: tag.tag) } label: {
-                                    Label("#\(tag.tag)", systemImage: "number")
+                                NavigationLink {
+                                    HashtagFeedView(tag: tag.tag, postCount: tag.post_count ?? 0, totalViews: tag.total_views ?? 0)
+                                } label: {
+                                    hashtagRow(tag)
                                 }
                             }
                         }
                     }
+                    // Corrigé (V3-F-100, SEARCH complémentaire) : Android affiche les résultats
+                    // "Publications" en grille 3 colonnes (`GridLayoutManager(this, 3)`,
+                    // `SpanSizeLookup` → `TYPE_POST` = 1 colonne, `RechercheTiinver.java:143-153`),
+                    // pas en liste verticale de lignes — reconstruit fidèlement via `LazyVGrid`
+                    // plutôt que la `postRow` en `HStack` précédente.
                     if !results.posts.isEmpty {
                         Section("Publications") { // R.string equivalent non identifié
-                            ForEach(results.posts) { post in
-                                postRow(post).contentShape(Rectangle()).onTapGesture { Task { await openDetail(for: post) } }
+                            LazyVGrid(columns: postGridColumns, spacing: 2) {
+                                ForEach(results.posts) { post in
+                                    postGridCell(post).onTapGesture { Task { await openDetail(for: post) } }
+                                }
                             }
+                            .listRowInsets(EdgeInsets())
                         }
                     }
                     if isLoading { ProgressView().frame(maxWidth: .infinity) }
@@ -94,7 +109,15 @@ struct SearchView: View {
                     // (`RechercheTiinver.java:452-455,567`) — les deux états manquaient côté iOS
                     // (échec réseau et absence de résultat rendus indistinguables d'une recherche
                     // jamais lancée, `try?` avalant l'erreur dans `SearchRepository`).
-                    if !isLoading, query.count >= 2 {
+                    // Corrigé (V3-F-105, SEARCH — complémentaire) : seuil `>= 2` hérité tel quel du
+                    // seuil RÉSEAU (`runSearch` n'est déclenché qu'à partir de 2 caractères), alors
+                    // que `suggest()` (la SEULE source d'`errorText` pour une query courte) n'est
+                    // déclenchée qu'à `count == 1` (`.onChange(of: query)` ci-dessous) — les deux
+                    // seuils ne se recoupaient jamais, donc un échec réseau sur une query d'exactement
+                    // 1 caractère ne montrait ni erreur ni "aucun résultat", écran figé sans feedback.
+                    // Fidèle à `RechercheTiinver.java:412-431,567` (`showEmpty` inconditionnel, pas de
+                    // seuil de longueur pour l'affichage).
+                    if !isLoading, query.count >= 1 {
                         if let errorText {
                             Text(errorText).foregroundStyle(.red).frame(maxWidth: .infinity)
                         } else if results.users.isEmpty, results.hashtags.isEmpty, results.posts.isEmpty {
@@ -210,17 +233,56 @@ struct SearchView: View {
         }
     }
 
-    private func postRow(_ post: SearchPostResult) -> some View {
+    /// Port de `HashtagViewHolder.bind` (V3-F-101, SEARCH complémentaire) — `post_count`/
+    /// `total_views` étaient décodés (`SearchHashtagResult`) mais jamais affichés côté iOS.
+    /// Formats EXACTS reproduits : `"{n} publication(s)"` (pluriel français conditionnel),
+    /// `"{formatCount(total_views)} vues"` (`UniversalSearchAdapter.java:334-339`).
+    private func hashtagRow(_ tag: SearchHashtagResult) -> some View {
         HStack {
-            if let thumb = post.thumbnailURL {
-                CDNAsyncImage(url: thumb) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color(.secondarySystemBackground) }
-                    .frame(width: 48, height: 48).clipShape(RoundedRectangle(cornerRadius: 6))
+            Label("#\(tag.tag)", systemImage: "number")
+            Spacer()
+            VStack(alignment: .trailing, spacing: 1) {
+                let count = tag.post_count ?? 0
+                Text("\(count) publication\(count > 1 ? "s" : "")").font(.caption2)
+                Text("\(StringManager.formatCount(tag.total_views ?? 0)) vues").font(.caption2)
             }
-            VStack(alignment: .leading) {
-                Text(post.message ?? "").lineLimit(2)
-                Text("@\(post.username ?? "") · \(post.likes ?? 0) ❤️").font(.caption2).foregroundStyle(.secondary)
-            }
+            .foregroundStyle(.secondary)
         }
+    }
+
+    /// Port de `PostViewHolder.bind` (V3-F-100, SEARCH complémentaire) — tuile carrée réutilisée
+    /// pour la grille 3 colonnes : vignette pleine cellule, icône vidéo (coin haut-droit) si
+    /// `verb=="video"`/`object=="videos"` (comparaison EXACTE, pas insensible à la casse — fidèle à
+    /// `"video".equals(item.getVerb())`/`"videos".equals(item.getObject())`), compteur de vues
+    /// formaté (coin bas-gauche).
+    private func postGridCell(_ post: SearchPostResult) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            Group {
+                if let thumb = post.thumbnailURL {
+                    CDNAsyncImage(url: thumb) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color(.secondarySystemBackground) }
+                } else {
+                    Color(.secondarySystemBackground)
+                }
+            }
+            if post.verb == "video" || post.object == "videos" {
+                Image(systemName: "play.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.white)
+                    .padding(4)
+                    .background(.black.opacity(0.45), in: Circle())
+                    .padding(4)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
+            Text(StringManager.formatCount(post.views ?? 0))
+                .font(.caption2.bold())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 5).padding(.vertical, 2)
+                .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 4))
+                .padding(4)
+        }
+        .aspectRatio(1, contentMode: .fill)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .contentShape(Rectangle())
     }
 
     private func suggest(_ text: String) async {
@@ -265,12 +327,17 @@ struct SearchView: View {
             do {
                 results = try await SearchRepository.shared.search(query: query, tab: tab)
                 errorText = nil
+                // Corrigé (V3-F-104, SEARCH — complémentaire) : `save()` était appelé APRÈS le
+                // do/catch, donc inconditionnellement même en cas d'échec réseau — Android ne
+                // sauvegarde QUE dans `onResonse` (`RechercheTiinver.java:440-458`), jamais dans
+                // `onError`. Déplacé DANS la branche succès pour ne plus polluer l'historique
+                // local avec des recherches jamais réellement abouties.
+                RecentSearchStore.save(query)
+                recent = RecentSearchStore.all()
             } catch {
                 results = SearchResults()
                 errorText = "Erreur de chargement."
             }
-            RecentSearchStore.save(query)
-            recent = RecentSearchStore.all()
         }
     }
 }

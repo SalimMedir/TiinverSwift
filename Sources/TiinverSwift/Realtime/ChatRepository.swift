@@ -312,10 +312,18 @@ final class ChatRepository {
         LocalNotificationBuilder.present(LocalNotificationBuilder.chatMessageNotificationContent(payload))
     }
 
+    /// Corrigé (V3-F-116, CHAT complémentaire) : la persistance Core Data était déjà correcte, mais
+    /// aucun événement Combine n'était émis après — si la conversation concernée était déjà ouverte
+    /// à l'écran, le message resté visible jusqu'à la fermeture/réouverture. `chatEvents.send(
+    /// .messageDeleted(...))` après chaque persistance, même motif que `handleResponse`/
+    /// `.messageStatus` pour les accusés de réception.
     private func handleDeleteMessage(_ data: [Any]) async {
         guard let payload = data.first as? [String: Any], let metas = Self.decodeMessages(from: payload) else { return }
         for meta in metas {
             try? await messages.deleteMessageForEveryOne(meta, isFromServer: true)
+            if let messageId = meta.messageId, !messageId.isEmpty {
+                chatEvents.send(.messageDeleted(messageId: messageId))
+            }
         }
     }
 

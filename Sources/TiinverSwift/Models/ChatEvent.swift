@@ -13,6 +13,12 @@ enum ChatEvent {
     case presence(username: String, online: Bool)
     case typing(username: String, isTyping: Bool)
     case pbs(PBSEvent)
+    /// Port de la propagation live d'une suppression "pour tous" reçue du pair (V3-F-116, CHAT
+    /// complémentaire) — `ChatRepository.handleDeleteMessage` persistait déjà en Core Data, mais
+    /// n'émettait jamais d'événement Combine, contrairement à `handleResponse`/`.messageStatus`
+    /// pour les accusés de réception (même canal `ON_DELETE_PRIVATE_MESSAGE`, écouté ET émis, voir
+    /// `V3-F-116`).
+    case messageDeleted(messageId: String)
 }
 
 /// Port des constantes `MessageStatusModel`/`ChatRepository.onResponse` (`"sended"`/`"delivered"`/

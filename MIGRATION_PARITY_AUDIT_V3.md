@@ -173,7 +173,7 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 | V3-F-028 (CHAT-06) | Groupes — endpoints REST | **COMPLETE_PARITY_CANDIDATE** (vérifié en détail session 2026-08-23 — les 9 endpoints de `GroupRepository.swift` comparés champ par champ à `Group.java`/`TransportData.java`/`SettingGroupMessageFragmant.java`/`MessageListAdapter.java` : tous corrects, y compris le cas piégeux `isLucrative`/`price` (Android : `int isLucrative` 0/1 PAS un booléen, `price` explicitement remis à 0 quand désactivé — confirmé équivalent au `isLucrative ? price : "0"` iOS) ; test réel requis) | P2 | Noms d'endpoint corrects, payloads non vérifiés en détail — VÉRIFIÉ CORRECT, aucun code changé | MEDIUM |
 | V3-F-029 (CHAT-07) | Indicateur de frappe sortant | IOS_INTENTIONAL_DIFFERENCE | P2 | Android : code mort (commenté). iOS : fonctionnel — amélioration assumée | HIGH |
 | V3-F-030 (CHAT-08) | Payload suppression groupe malformé | COMPLETE_PARITY_CANDIDATE (bug partagé) | P2 | Bug Android reproduit fidèlement, pas une régression iOS | MEDIUM |
-| V3-F-031 (CHAT-09) | Réveil app tuée (VoIP push) | **CODE_PRESENT_UNVERIFIED** (partiellement corrigé session 2026-08-23 — le point le plus sévère du RISQUE §30, l'absence de `reportIncomingCall` sur échec de décodage du payload VoIP, est CORRIGÉ indépendamment du contrat serveur, voir Progress_V3 ; le contrat serveur VoIP lui-même (`user/voip-token`, format du payload) reste `BLOCKED BY BACKEND`, hors portée client) | P2 | Contrat serveur non confirmé — risque de révocation PushKit corrigé côté client, endpoint serveur toujours manquant | LOW-MEDIUM |
+| V3-F-031 (CHAT-09) | Réveil app tuée (VoIP push) | **BUILD_VALIDATED** pour le volet client (corrigé `1afa611`, session 2026-08-23 — CI verte confirmée run `32631078616` ; le point le plus sévère du RISQUE §30, l'absence de `reportIncomingCall` sur échec de décodage du payload VoIP, est CORRIGÉ indépendamment du contrat serveur) ; contrat serveur VoIP lui-même (`user/voip-token`, format du payload) reste `BLOCKED BY BACKEND`, hors portée client | P2 | Contrat serveur non confirmé — risque de révocation PushKit corrigé côté client, endpoint serveur toujours manquant | LOW-MEDIUM |
 
 ### Galerie / Éditeur photo / Éditeur vidéo (V3-F-032 à 046)
 | ID | Domaine | Statut | Prio | Écart | Confiance |
@@ -182,7 +182,7 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 | V3-F-033 (GALERIE-02) | Vidéo — peinture/texte/stickers | COMPLETE_PARITY_CANDIDATE | — | Absence symétrique confirmée (pas un écart) | HIGH |
 | V3-F-034 (GALERIE-03) | Flux de choix du mode de recadrage | **BUILD_VALIDATED** (corrigé `0422fda`, session 2026-08-21 — barre de bascule Rectangle/Ovale permanente sur `PhotoCropView`, fidèle à `CropFragment.java:60-77`, CI verte confirmée 2026-08-23 run `32628912305` — test réel requis) | P1 | Android permet de changer de mode en cours ; iOS imposait un choix figé irréversible — CORRIGÉ | MEDIUM |
 | V3-F-035 (GALERIE-04) | Recadrage ovale — contrainte 1:1 possible | **BUILD_VALIDATED** — **doublon confirmé de V3-F-125** (même feature, "requalifiée de risque à confirmée" puis corrigée par le cycle complémentaire, commit `5eb3358`/`e869825`, CI verte ; test visuel réel requis avant COMPLETE_PARITY_VALIDATED) — mise à jour de bookkeeping 2026-08-21, aucun code changé pour cette entrée | P1 | `TOCropViewController.circular` forçait un cercle vs ellipse libre Android — CORRIGÉ, voir V3-F-125 pour le détail complet | MEDIUM |
-| V3-F-036 (GALERIE-05) | Géométrie de recadrage — composant tiers non vérifié | CODE_PRESENT_UNVERIFIED | P1 | Remplacement délibéré du moteur maison Android (~5000 lignes) par une bibliothèque tierce, comportement aux limites non garanti identique | MEDIUM |
+| V3-F-036 (GALERIE-05) | Géométrie de recadrage — composant tiers non vérifié | CODE_PRESENT_UNVERIFIED (relu session 2026-08-23 — `PhotoCropView.swift` déjà très documenté, wrapper `TOCropViewController` confirmé minimal/correct côté câblage ; la question réelle du finding [comportement des poignées tactiles AUX LIMITES d'un composant tiers fermé vs le moteur maison Android] est structurellement un test d'INTERACTION, pas résoluble par lecture de code statique — genre de finding à laisser en l'état jusqu'à test physique, pas à re-coder à l'aveugle) | P1 | Remplacement délibéré du moteur maison Android (~5000 lignes) par une bibliothèque tierce, comportement aux limites non garanti identique | MEDIUM |
 | V3-F-037 (GALERIE-06) | Recadrage forme libre | COMPLETE_PARITY_CANDIDATE | P2 | Port très fidèle, y compris un défaut visuel partagé | HIGH |
 | V3-F-038 (GALERIE-07) | Suppression d'arrière-plan — qualité sujet non-humain | **IOS_INTENTIONAL_DIFFERENCE** (reclassifié 2026-08-23, aucun code changé — voir `RemoveBackground.swift:6-34` déjà présent : `VNGenerateForegroundInstanceMaskRequest` (équivalent réel de `SubjectSegmenter` ML Kit) vérifié contre la doc Apple **iOS 17+ uniquement**, incompatible avec `deploymentTarget.iOS=16.0` de ce projet — relever la cible est une décision produit hors périmètre de ce portage, pas prise unilatéralement ici. `VNGeneratePersonSegmentationRequest` (iOS 15+) retenu comme repli le plus proche, avec le même repli géométrique à 2 niveaux qu'Android en cas d'échec) | P1 | Vision (iOS) = personnes uniquement (contrainte API iOS 16) ; ML Kit (Android) = sujet général. Repli géométrique identique des deux côtés | HIGH |
 | V3-F-039 (GALERIE-08) | Aplatissement (bake) — risque de distorsion de ratio | IOS_INTENTIONAL_DIFFERENCE (risque réel) | P1 | `flatten()` applique un facteur d'échelle unique malgré un `aspectRatio(.fit)` non uniforme — pourrait réintroduire des marges après annotation | MEDIUM |
@@ -192,7 +192,7 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 | V3-F-043 (GALERIE-12) | Sélection média + permissions | COMPLETE_PARITY_CANDIDATE | P2 | Aucun | HIGH |
 | V3-F-044 (GALERIE-13) | Miniature + durée vidéo | COMPLETE_PARITY_CANDIDATE | P2 | Aucun | MEDIUM |
 | V3-F-045 (GALERIE-14) | Catégorie/consentement IA — omission vérifiée fidèle | COMPLETE_PARITY_CANDIDATE | — | Vérifié indépendamment dans `HttpFileUploader.java` : ces champs Android ne sont PAS envoyés au réseau non plus malgré leur présence en UI — omission iOS correcte, pas un gap | HIGH |
-| V3-F-046 (GALERIE-15) | Publication — cohérence façade avec pipeline Bunny | CODE_PRESENT_UNVERIFIED | P1 | Cohérence structurelle observée, non testée en intégration croisée | MEDIUM |
+| V3-F-046 (GALERIE-15) | Publication — cohérence façade avec pipeline Bunny | CODE_PRESENT_UNVERIFIED (pipeline complet relu en profondeur session 2026-08-23 dans le cadre des correctifs V3-F-019/021 — `PublishComposeView`→`FeedRepository.publish`→`FeedMediaUploader` cohérent bout en bout pour les 2 branches photo/vidéo, catégorie bloquante, dimensions/durée ; reste `CODE_PRESENT_UNVERIFIED` faute d'un test réel de publication bout en bout [galerie→recadrage→publication→apparition dans le fil], intégration croisée non simulable par lecture statique seule) | P1 | Cohérence structurelle observée, non testée en intégration croisée | MEDIUM |
 
 ### Auth / Session (V3-F-047 à 055)
 | ID | Domaine | Statut | Prio | Écart | Confiance |
@@ -259,7 +259,7 @@ sous-jacents. Colonnes : ID · Domaine · Statut · Priorité · Écart (résum�
 | V3-F-090 (SILENT-01) | **Décodage messages chat entrants fragile** | **BUILD_VALIDATED** (corrigé `57fd300`, Phase B Lot 1 — `decodeMessages` passé en `compactMap` per-item, CI verte — test réel requis) | **P0** | `ChatRepository.decodeMessages` décode le tableau ENTIER, pas per-item — un seul message malformé fait disparaître tout le lot socket entrant, sans trace | HIGH |
 | V3-F-091 (SILENT-02) | Upload photo de profil — erreur avalée | **CORRIGÉ EN COMPLETE_PARITY_CANDIDATE (bug partagé)** — vérifié directement dans `AddPerfilFoto.java:655-658` : `onError(String message)` est ÉGALEMENT vide côté Android réel (aucun Toast, aucun feedback), le finding original supposait à tort qu'Android faisait mieux ; réutiliser `ProfileViewModel.errorMessage` ici aurait remplacé tout l'écran profil par un bandeau "recharger", une régression UX pire que le silence actuel — non modifié | P1 | `catch {}` vide, `errorMessage` jamais alimenté | HIGH |
 | V3-F-092 (SILENT-03) | **Gains de pub récompensée perdus silencieusement** | **BUILD_VALIDATED** (corrigé `aa83ab4`, Phase B lot P1, CI verte — test réel requis ; bug plus sévère que décrit, voir Progress_V3 : le champ `"coins"` envoyé au serveur était le solde total du compte au lieu d'un delta, risque de doublement du solde à chaque pub, pas seulement une perte du solde en attente) | **P1** | `pendingCoinsAmount`/`pendingGemsAmount` écrits une fois, jamais réinjectés (Android le fait) — écrasés par le solde serveur au prochain reload | HIGH |
-| V3-F-093 (SILENT-04) | Décodage tableau entier — Wallet/Discover/Créateurs | **CODE_PRESENT_UNVERIFIED** (corrigé session 2026-08-23 — `TrophyRepository.weeklyRank`, `WalletRepository.transactions`, `CommentRepository.comments`/`replies`, `FollowRepository.list` passés en `compactMap` per-item, même motif que les correctifs V3-F-002/011/090/099 ; CI à confirmer) | P2 | Risque résiduel atténué par les décodages tolérants déjà en place — CORRIGÉ pour les 5 chaînes de décodage restantes | MEDIUM |
+| V3-F-093 (SILENT-04) | Décodage tableau entier — Wallet/Discover/Créateurs | **BUILD_VALIDATED** (corrigé `1afa611`, session 2026-08-23 — `TrophyRepository.weeklyRank`, `WalletRepository.transactions`, `CommentRepository.comments`/`replies`, `FollowRepository.list` passés en `compactMap` per-item, même motif que les correctifs V3-F-002/011/090/099 ; CI verte confirmée run `32631078616`) | P2 | Risque résiduel atténué par les décodages tolérants déjà en place — CORRIGÉ pour les 5 chaînes de décodage restantes | MEDIUM |
 | V3-F-094 (SILENT-05) | Navigation profil "créateur de la semaine" avec id vide | **BUILD_VALIDATED** (corrigé `bc7c544`, session 2026-08-23 — `.disabled(...)` sur les 2 `NavigationLink` de `CreatorOfWeekView`, fidèle au guard `if (idStr==null\|\|idStr.trim().isEmpty()) return;` de `CreatorAdapter.java:59-64` ; CI verte confirmée run `32629372490` — test réel requis) | P2 | Pas de filet de sécurité pour `isCurrentUser==false` — CORRIGÉ | MEDIUM |
 | V3-F-095 (ORPHAN-01) | Analytics temps de visionnage jamais collectées | DEAD_CODE / MISSING | P2 | `ViewEventRepository` complet, zéro appelant — Android collecte activement | HIGH |
 | V3-F-096 (ORPHAN-02) | Contrôles rotation/flip/ratio vidéo (état) jamais montés | BUILD_VALIDATED (corrigé `f519361`, Phase B Lot 5 — `VideoTrimState` maintenant monté dans `MediaTrimView` — test réel requis) | P1 | `VideoTrimState` écrit en prévision, jamais utilisé — recoupe directement V3-F-032 | HIGH |
@@ -487,11 +487,11 @@ FEATURE : Présentation des résultats "Publications" (grille vs liste)
 ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:143-153 (GridLayoutManager 3 colonnes) ; UniversalSearchAdapter.java:103-106,255-314
 IOS FILES : Discover/SearchView.swift:67-73,171-182
 VIEW PARITY : Android insère les résultats posts comme tuiles carrées dans une grille 3 colonnes entrelacée. iOS les affiche en liste verticale de lignes.
-STATUT : PARTIAL
-PREUVE : `RechercheTiinver.java:144-151` vs `SearchView.swift:171-182` (`postRow`, `HStack`).
+STATUT : **CORRIGÉ le 2026-08-23** — `postRow` (`HStack`) remplacé par `postGridCell` dans un `LazyVGrid` 3 colonnes, fidèle au `SpanSizeLookup` (`TYPE_POST`=1 colonne). Tuile carrée : vignette + icône vidéo (si `verb=="video"`/`object=="videos"`) + compteur de vues formaté, port de `PostViewHolder.bind` (`UniversalSearchAdapter.java:255-314`).
+PREUVE : `RechercheTiinver.java:144-151` vs `SearchView.swift` (`postGridCell`, `postGridColumns`). (Avant correctif : `postRow`, `HStack`.)
 CAUSE : Reconstruction UI native sans layout XML Android, jamais comparée en détail au visuel réel des résultats posts.
 RISQUE : Incohérence visuelle notable, aucune perte de donnée.
-RECOMMANDATION : Reproduire la grille 3 colonnes (`LazyVGrid`) pour les résultats posts.
+RECOMMANDATION : Reproduire la grille 3 colonnes (`LazyVGrid`) pour les résultats posts. **Appliqué.**
 TEST RÉEL NÉCESSAIRE : oui.
 ```
 
@@ -503,11 +503,11 @@ FEATURE : Métadonnées hashtag (nb publications/vues) décodées mais jamais af
 ANDROID SOURCE OF TRUTH : UniversalSearchAdapter.java:320-349 ; HashtagProfile.java:282-284,343-347
 IOS FILES : Discover/SearchView.swift:58-65, Discover/HashtagFeedView.swift, Discover/SearchModels.swift:46-52
 LOGIC PARITY : `SearchHashtagResult.post_count`/`total_views` décodés côté modèle mais jamais lus par aucune vue.
-STATUT : PARTIAL
-PREUVE : `SearchModels.swift:46-52` déclare les champs ; `SearchView.swift:58-65`/`HashtagFeedView.swift:8-16` ne les utilisent jamais.
+STATUT : **CORRIGÉ le 2026-08-23** — affiché aux 2 endroits recommandés : ligne résultat de recherche (`hashtagRow`, `"{n} publication(s)"` + `"{formatCount} vues"`, port de `HashtagViewHolder.bind`) ET header du fil hashtag (`HashtagFeedView.statsHeader`, nouveaux params `postCount`/`totalViews` transmis depuis la recherche, port de `HashtagProfile.java:343-347`, défaut `0` pour les autres points d'entrée fidèle à `getIntExtra(...,0)`).
+PREUVE : `SearchModels.swift:46-52` déclare les champs ; `SearchView.swift`(`hashtagRow`)/`HashtagFeedView.swift`(`statsHeader`) les utilisent désormais. (Avant correctif : jamais utilisés.)
 CAUSE : Champs modélisés lors du portage réseau, oubliés lors de la construction de la vue.
 RISQUE : Perte d'information utile visible sur Android à deux endroits.
-RECOMMANDATION : Afficher `post_count`/`total_views` sur la ligne résultat ET en header du fil hashtag.
+RECOMMANDATION : Afficher `post_count`/`total_views` sur la ligne résultat ET en header du fil hashtag. **Appliqué.**
 TEST RÉEL NÉCESSAIRE : non.
 ```
 
@@ -553,11 +553,11 @@ FEATURE : Sauvegarde dans l'historique local même en cas d'échec réseau
 ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:440-458 (save UNIQUEMENT dans onResonse)
 IOS FILES : Discover/SearchView.swift:194-209
 LOGIC PARITY : `RecentSearchStore.save(query)` placé après le bloc `do/catch`, donc exécuté même dans la branche catch.
-STATUT : PARTIAL
-PREUVE : `SearchView.swift:199-207` (save hors du bloc `do`, sans `return`/`guard`).
+STATUT : **CORRIGÉ le 2026-08-23** — `RecentSearchStore.save(query)`/`recent = ...all()` déplacés à l'intérieur de la branche succès du `do`.
+PREUVE : `SearchView.swift` (`runSearch`, save maintenant dans le `do`). (Avant correctif : hors du bloc `do`, sans `return`/`guard`.)
 CAUSE : Positionnement du `save()` après le do/catch au lieu de dans le do.
 RISQUE : Pollution de l'historique avec des recherches jamais réellement abouties.
-RECOMMANDATION : Déplacer `save()` à l'intérieur du bloc `do`.
+RECOMMANDATION : Déplacer `save()` à l'intérieur du bloc `do`. **Appliqué.**
 TEST RÉEL NÉCESSAIRE : non.
 ```
 
@@ -569,11 +569,11 @@ FEATURE : Écran figé sans feedback pour une query d'exactement 1 caractère en
 ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:412-431,567 (showEmpty inconditionnel)
 IOS FILES : Discover/SearchView.swift:74-86,92-102,184-192
 LOGIC PARITY : Le bloc d'affichage erreur/vide est protégé par `query.count &gt;= 2`, mais `suggest()` (seule fonction alimentant `errorText` pour une query courte) n'est déclenchée QUE pour `query.count == 1` — les deux conditions ne se recoupent jamais.
-STATUT : PARTIAL
-PREUVE : `SearchView.swift:79` (`query.count &gt;= 2`) vs `:97-98` (suggest à `count &gt;= 1`, exclusivement `==1` en pratique).
+STATUT : **CORRIGÉ le 2026-08-23** — condition d'affichage étendue à `query.count >= 1`.
+PREUVE : `SearchView.swift` (condition `>= 1`). (Avant correctif : `SearchView.swift:79` `query.count &gt;= 2` vs `:97-98` suggest à `count &gt;= 1`, exclusivement `==1` en pratique.)
 CAUSE : Seuil réseau Android copié par erreur sur le seuil d'affichage.
 RISQUE : Écran semble cassé/gelé pour une query de 1 caractère en échec.
-RECOMMANDATION : Étendre la condition d'affichage à `query.count &gt;= 1`.
+RECOMMANDATION : Étendre la condition d'affichage à `query.count &gt;= 1`. **Appliqué.**
 TEST RÉEL NÉCESSAIRE : oui.
 ```
 
@@ -584,12 +584,12 @@ DOMAINE : Recherche
 FEATURE : Filtrage "posts" absent du chemin suggestion (garde `isFull` Android non reproduite)
 ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:421,461,528 (`isFull=false` garantit l'absence de section Publications en suggestion)
 IOS FILES : Discover/SearchRepository.swift:16-20, Discover/SearchView.swift:67-73,184-192
-STATUT : CODE_PRESENT_UNVERIFIED
-PREUVE : Aucune garde équivalente à `isFull` dans `SearchView.suggest`/`SearchRepository.suggest`.
-CAUSE : Simplification du portage — une seule fonction `decodeResults` partagée entre les deux endpoints.
+STATUT : **CORRIGÉ le 2026-08-23** — `decodeResults(_:isFull:)` reçoit maintenant `isFull` (`false` pour `suggest`, `true` pour `search`) et vide `results.posts` quand `!isFull`, reproduisant le garde `showPosts = isFull && (...)` CÔTÉ CLIENT, indépendamment de ce que le serveur envoie réellement — pas besoin d'inspection réseau pour trancher, la garde est défensive par construction.
+PREUVE : `SearchRepository.swift` (`decodeResults(_:isFull:)`). (Avant correctif : aucune garde équivalente à `isFull`.)
+CAUSE : Simplification du portage — une seule fonction `decodeResults` partagée entre les deux endpoints, sans le paramètre `isFull`.
 RISQUE : Incertain — dépend d'un comportement serveur non observable par lecture de code.
-RECOMMANDATION : Capturer une réponse réelle de `content/search/suggest` pour trancher.
-TEST RÉEL NÉCESSAIRE : oui (inspection réseau).
+RECOMMANDATION : Capturer une réponse réelle de `content/search/suggest` pour trancher. **Contournée** : garde client ajoutée, rend l'inspection réseau non-bloquante (le résultat est correct que le serveur envoie ou non des posts en suggestion).
+TEST RÉEL NÉCESSAIRE : non (garde client suffit désormais, inspection réseau reste utile mais plus bloquante).
 ```
 
 ```
@@ -617,11 +617,11 @@ FEATURE : Recherche de conversations locales — filtrage sur le texte du dernie
 ANDROID SOURCE OF TRUTH : Recherche/ui/RechercheTiinver.java:663-674 (filtre sur titre/message/sous-titre)
 IOS FILES : Messagerie/ChatSearchView.swift:29-38, Messagerie/RosterListView.swift:195-203,246
 LOGIC PARITY : iOS ne filtre que sur `title`/`subtitle` — `subtitle` n'est JAMAIS le texte du dernier message (nom d'utilisateur ou chaîne statique groupe), alors que la donnée existe (`pair.lastMessage?.message`) mais n'est jamais exposée au filtre.
-STATUT : PARTIAL
-PREUVE : `RechercheTiinver.java:666-668` (3 champs) vs `ChatSearchView.swift:35-37` (2 champs, ni l'un ni l'autre = texte du message).
+STATUT : **CORRIGÉ le 2026-08-23** — `RosterListViewModel.Row` reçoit un nouveau champ `lastMessage: String?` (`model.message`, déjà calculé mais jamais exposé), inclus dans le filtre local de `ChatSearchView`.
+PREUVE : `RechercheTiinver.java:666-668` (3 champs) vs `RosterListView.swift`(`Row.lastMessage`)/`ChatSearchView.swift`(filtre à 3 conditions). (Avant correctif : 2 champs, ni l'un ni l'autre = texte du message.)
 CAUSE : `Row` n'expose pas le dernier message comme champ filtrable.
 RISQUE : Recherche de conversation par mot-clé de message échoue silencieusement sur iOS.
-RECOMMANDATION : Ajouter un champ `lastMessage: String` à `Row`, l'inclure dans le filtre.
+RECOMMANDATION : Ajouter un champ `lastMessage: String` à `Row`, l'inclure dans le filtre. **Appliqué.**
 TEST RÉEL NÉCESSAIRE : oui.
 ```
 
@@ -752,11 +752,11 @@ FEATURE : Suppression de message privé "pour tous" reçue — pas de mise à jo
 ANDROID SOURCE OF TRUTH : messagerie/repository/ChatRepository.java:127-129,962 (`ON_DELETE_PRIVATE_MESSAGE`, écouté ET émis sur le même canal)
 IOS FILES : Realtime/ChatRepository.swift:315-320,400,90,104-106
 LOGIC PARITY : Contrairement à V3-F-115 (groupe), la suppression privée est bien écoutée ET émise sur le même canal, propagation confirmée. Mais `handleDeleteMessage` persiste en Core Data SANS émettre d'événement Combine — si la conversation est déjà ouverte, aucun rafraîchissement UI.
-STATUT : PARTIAL
-PREUVE : `ChatRepository.swift:315-320` (aucun `chatEvents.send` après persistance) vs `handleNewMessage` (envoie bien `chatEvents.send`).
+STATUT : **CORRIGÉ le 2026-08-23** — nouveau cas `ChatEvent.messageDeleted(messageId:)`, émis par `handleDeleteMessage` après chaque persistance, consommé par `ChatViewModel.handleRemoteDelete(messageId:)` (même transformation `message`/`object`/`verb`="deletemessage" que la branche de suppression LOCALE existante).
+PREUVE : `ChatRepository.swift`(`handleDeleteMessage`, `chatEvents.send` ajouté)/`ChatViewModel.swift`(`handleRemoteDelete`). (Avant correctif : aucun `chatEvents.send` après persistance.)
 CAUSE : Angle mort — persistance faite, notification Combine oubliée.
 RISQUE : Message supprimé "pour tous" reste visible à l'écran jusqu'à fermeture/réouverture, si le destinataire a la conversation déjà ouverte.
-RECOMMANDATION : Ajouter `chatEvents.send(.messageDeleted(id:))` (nouveau cas), consommé par `ChatViewModel.handle(_:)`.
+RECOMMANDATION : Ajouter `chatEvents.send(.messageDeleted(id:))` (nouveau cas), consommé par `ChatViewModel.handle(_:)`. **Appliqué exactement comme recommandé.**
 TEST RÉEL NÉCESSAIRE : oui — 2 appareils, conversation déjà ouverte des deux côtés, supprimer "pour tous" et observer.
 ```
 
@@ -768,11 +768,11 @@ FEATURE : Push VoIP à payload malformé — violation potentielle du contrat Ca
 ANDROID SOURCE OF TRUTH : Sans équivalent direct (PushKit = fonctionnalité 100% iOS)
 IOS FILES : Calls/CallCoordinator.swift:442-452
 LOGIC PARITY : Si le décodage du payload échoue, `completion()` est appelé SANS jamais appeler `reportIncomingCall` — viole la règle Apple documentée dans le fichier lui-même (toute notification VoIP DOIT déclencher `reportNewIncomingCall` de façon synchrone).
-STATUT : PARTIAL
-PREUVE : `CallCoordinator.swift:443-448`.
+STATUT : **CORRIGÉ le 2026-08-23** — doublon confirmé de V3-F-031 (même finding, mêmes lignes). Fix appliqué : sur échec de décodage, `reportIncomingCall(uuid:callerName: "Appel entrant")` → `completion()` → `reportCallEnded(uuid:reason: .failed)`, exactement la recommandation ci-dessous. Voir V3-F-031/Progress_V3 Lot 27 pour le détail complet.
+PREUVE : `CallCoordinator.swift:443-448`. (Avant correctif.)
 CAUSE : Défense contre décodage invalide qui viole une règle plus stricte documentée juste au-dessus dans le même fichier.
 RISQUE : Faible probabilité (contrat serveur VoIP inexistant, V3-F-031) mais sévérité élevée si déclenché — iOS peut révoquer le droit de recevoir des push VoIP après manquements répétés.
-RECOMMANDATION : En cas d'échec de décodage, reporter quand même un appel générique puis le terminer immédiatement, plutôt que de ne jamais reporter.
+RECOMMANDATION : En cas d'échec de décodage, reporter quand même un appel générique puis le terminer immédiatement, plutôt que de ne jamais reporter. **Appliqué.**
 TEST RÉEL NÉCESSAIRE : non-bloquant tant que le backend VoIP n'existe pas — à re-tester dès son implémentation.
 ```
 

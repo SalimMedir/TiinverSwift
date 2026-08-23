@@ -231,6 +231,8 @@ final class ChatViewModel: ObservableObject {
             await onIncoming(meta)
         case .messageStatus(let messageId, _, let status):
             updateStatus(messageId: messageId, status: status.rawValue)
+        case .messageDeleted(let messageId):
+            handleRemoteDelete(messageId: messageId)
         case .presence(let username, let online):
             guard username == target.to else { return }
             isPeerOnline = online
@@ -269,6 +271,21 @@ final class ChatViewModel: ObservableObject {
         guard let index = items.firstIndex(where: { $0.messageId == messageId }) else { return }
         guard case .message(var mlib) = items[index] else { return }
         mlib.status = status
+        items[index] = .message(mlib)
+    }
+
+    /// Port de la réception live d'une suppression "pour tous" (V3-F-116, CHAT complémentaire) —
+    /// même transformation que la branche locale de `deleteSelected()` (`message`/`object`/`verb`
+    /// = `"deletemessage"`), déclenchée ici par l'événement Combine reçu du pair au lieu d'une
+    /// action utilisateur locale. Ne fait rien si le message n'est pas (encore/plus) visible dans
+    /// `items` — la persistance Core Data (déjà faite par `ChatRepository.handleDeleteMessage`)
+    /// suffit alors, la conversation affichera l'état supprimé à sa prochaine ouverture.
+    private func handleRemoteDelete(messageId: String) {
+        guard let index = items.firstIndex(where: { $0.messageId == messageId }) else { return }
+        guard case .message(var mlib) = items[index] else { return }
+        mlib.message = "deletemessage"
+        mlib.object = "deletemessage"
+        mlib.verb = "deletemessage"
         items[index] = .message(mlib)
     }
 

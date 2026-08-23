@@ -7,6 +7,13 @@ import SwiftUI
 /// que de dupliquer le rendu de cellule).
 struct HashtagFeedView: View {
     let tag: String
+    /// Port de `intent.getIntExtra("post_count"/"total_views", 0)` (V3-F-101, SEARCH complémentaire)
+    /// — "déjà connus depuis la recherche, pas besoin d'un appel réseau" (commentaire Android
+    /// lui-même, `HashtagProfile.java:343-344`) : ces stats ne sont disponibles QUE quand on arrive
+    /// depuis un résultat de recherche hashtag (`SearchView`), défaut `0` pour tout autre point
+    /// d'entrée (tap `#hashtag` en légende, lien profond) — fidèle au défaut `getIntExtra(...,0)`.
+    var postCount: Int = 0
+    var totalViews: Int = 0
 
     @State private var posts: [FeedActivity] = []
     @State private var isLoading = true
@@ -31,7 +38,9 @@ struct HashtagFeedView: View {
     private let columns = [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)]
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            statsHeader
+            Group {
             if isLoading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorText {
@@ -60,6 +69,7 @@ struct HashtagFeedView: View {
                     .padding(1)
                 }
             }
+            }
         }
         .navigationTitle("#\(tag)")
         .navigationBarTitleDisplayMode(.inline)
@@ -67,6 +77,24 @@ struct HashtagFeedView: View {
         .fullScreenCover(isPresented: $showDetail) {
             FeedDetailPagerView(posts: posts, startIndex: detailStartIndex, onClose: { showDetail = false })
         }
+    }
+
+    /// Port de `postValueView`/`viewsValueView` (`HashtagProfile.java:325-326,346-347`, V3-F-101) —
+    /// toujours affiché, y compris à `0` (Android n'a pas de logique de masquage conditionnel sur
+    /// ces `TextView`, valeurs par défaut `getIntExtra(...,0)` affichées telles quelles).
+    private var statsHeader: some View {
+        HStack(spacing: 24) {
+            VStack {
+                Text(StringManager.formatCount(postCount)).font(.headline)
+                Text("Publications").font(.caption2).foregroundStyle(.secondary)
+            }
+            VStack {
+                Text(StringManager.formatCount(totalViews)).font(.headline)
+                Text("Vues").font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
     }
 
     private func emptyState(systemImage: String, text: String) -> some View {

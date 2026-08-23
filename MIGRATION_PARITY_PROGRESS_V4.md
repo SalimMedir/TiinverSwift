@@ -2,7 +2,8 @@
 
 Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
-**État actuel (2026-08-23) : Phase A (Audit) TERMINÉE, Phase B PAS démarrée.**
+**État actuel (2026-08-23) : Phase A (Audit) TERMINÉE. Phase B EN COURS — Lots P0-1, P0-2, P0-3
+clos (CI verte). Prochain : Lot P0-4 (V4-F-008).**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -208,3 +209,93 @@ fiable sans un second appareil ET un backend VoIP fonctionnel pour produire ce s
 recevoir un vrai push VoIP pendant qu'un appel est déjà en cours. Le contrat serveur VoIP reste de
 toute façon non défini — voir V3-F-031/PROGRESS_V3.md. Risque documenté, corrigé par construction,
 non observable en pratique tant que le backend VoIP n'existe pas).
+
+## 2026-08-23 — Phase B V4 — Lot P0-3 : V4-F-007 (Viewer plein écran — actions supprimer/signaler/
+bloquer/commenter/télécharger mortes)
+
+**Commit** : `d9bb80e` — CI **run 32665481871, conclusion: success**.
+
+### Vérification Android (avant tout changement)
+
+Quatre menus "..." Android lus intégralement et comparés :
+
+- `uploadPerfilPhoto/ProfileFeedFragment.java:682-849` (Profile) — 6 items (`delete_content`,
+  `copy_link`, `unfollow`, `block_content`, `report_content`, `download`), `hide[]` masque tout sauf
+  `delete_content` pour ses propres posts. `download` RÉELLEMENT câblé :
+  `addingDownloadingFileToQueue` → `checkBestQualityAndDownload` (sonde 720p/480p/360p via
+  `VideoPlaybackCoordinator.urlExists`, HEAD + `Referer: https://tiinver.com`, repli sur
+  `cdn_content_url` brut) → `downloadFile` (`DownloadManager`, `Referer: https://tiinver.com`,
+  `.mp4`/`.webp`).
+- `Activity/ui/MainFragment.java:1260-1367` (Feed principal) — `ids[]` NE CONTIENT PAS
+  `R.id.download` ; le `else if (view.getId()==R.id.download)` existant (1361-1367) est mort
+  (inatteignable) ET buggé (copie-collé qui rouvre l'écran Report au lieu de télécharger).
+- `NotiLikecmt/FullScreenMedia.java:485-494` (tap depuis Notifications/Search) — 5 items, sans
+  `download`.
+- `uploadPerfilPhoto/HashtagProfile.java:637-646` (tap depuis résultats hashtag) — 5 items, sans
+  `download`.
+
+Conclusion Android : le menu "..." plein écran est une implémentation PROPRE à chaque fragment (pas
+partagée), et `download` n'est câblé QUE dans `ProfileFeedFragment`. Un portage qui l'ajouterait aux
+3 autres contextes migrerait une fonctionnalité qui n'existe nulle part ailleurs côté Android.
+
+### Écart iOS constaté (portée RÉELLE, plus large que le texte d'audit initial)
+
+L'audit ciblait uniquement Profile, mais `FeedDetailPagerView` (le pager plein écran, réutilisé par
+6 écrans) exposait DEUX initialiseurs : `init(viewModel:...onComment:onMore:...)` — utilisé
+UNIQUEMENT par `FeedView` (fil principal), avec de vraies closures — et `init(posts:...)`, dont les
+paramètres `onComment`/`onMore` retombaient sur `{ _ in }` (no-op) car cet init ne les exposait même
+pas. `grep -n "FeedDetailPagerView("` confirme que **5 des 6 appelants** utilisent ce second init :
+`SearchView.swift:146`, `HashtagFeedView.swift:78`, `NotificationsListView.swift:53`,
+`HomeShellView.swift:145`, `Profile/ProfileView.swift:65`. Sur ces 5 écrans, le bouton "..." et le
+bouton commentaire du viewer plein écran étaient donc de purs éléments visuels sans effet — pas
+seulement depuis Profile comme le texte d'audit le formulait. `download`, séparément, était absent
+même de l'implémentation "de référence" (`FeedView.swift`) : `grep` confirme zéro occurrence de
+"download"/"télécharg" dans le fichier avant ce correctif — cohérent avec le fait que ce n'est pas
+un item du menu Android d'origine (`MainFragment`/`FullScreenMedia`/`HashtagProfile`).
+
+### Correctif appliqué
+
+1. Tout l'état d'action (`moreActionsPost`, `reportTargetPost`, `showReportReasons`,
+   `blockTargetPost`, `commentsPost`, `boostTargetPost`, `statsTargetPost`) et les
+   `.sheet`/`.confirmationDialog`/`.alert` associés, déplacés DE `FeedView` (où ils ne servaient que
+   le pager) VERS `FeedDetailPagerView` elle-même — la vue possède déjà le `FeedViewModel` complet
+   (`deleteOwnPost`, `hideOthersPost`, `unfollow`, `block`, `report`, tous déjà présents et
+   fonctionnels, non modifiés ici).
+2. Les paramètres `onComment`/`onMore` supprimés (plus nécessaires, l'état est interne) ; remplacés
+   par deux flags : `showManagementActions: Bool = false` (Statistiques/Promouvoir — `FeedView`
+   uniquement, aucun équivalent Android ailleurs) et `includesDownload: Bool = false` (`ProfileView`
+   uniquement, seul menu Android où `download` est réellement câblé).
+3. `FeedView.swift`'s propre grille (`FeedGridCell`/`MainFragment.OnclickMoreExpand`) **non
+   touchée** — elle possédait déjà sa propre implémentation fonctionnelle, distincte côté Android
+   (`MainFragment` vs les 3 fragments plein écran), donc légitimement dupliquée plutôt que
+   partagée — fidèle à la structure Android réelle (4 implémentations Java indépendantes).
+4. Nouveau fichier `Sources/TiinverSwift/Feed/FeedMediaDownloader.swift` — port de
+   `checkBestQualityAndDownload`/`extractVideoId`/`downloadFile` : sonde HEAD 720p→480p→360p
+   (`Referer: https://tiinver.com`, timeout 3s, succès uniquement sur 200 — fidèle à
+   `responseCode == HTTP_OK`, pas toute la plage 2xx), repli sur `cdn_content_url` brut, téléchargement
+   avec le même `Referer`, puis `PHPhotoLibrary.performChanges` (équivalent iOS le plus proche du
+   `DownloadManager` public Android — pas de dossier "Downloads" partagé sur iOS). Permission ajoutée :
+   `NSPhotoLibraryAddUsageDescription` (`project.yml`) — distincte de la permission lecture déjà
+   présente pour la publication.
+
+### Flux frères vérifiés
+
+`grep -n "FeedDetailPagerView("` sur tout le projet → exactement 6 sites d'appel, tous couverts :
+`FeedView.swift` (`showManagementActions: true`), `ProfileView.swift` (`includesDownload: true`),
+`SearchView.swift`/`HashtagFeedView.swift`/`NotificationsListView.swift`/`HomeShellView.swift`
+(défauts `false`/`false` — obtiennent automatiquement le menu à 5 items de base, fidèle à
+`FullScreenMedia`/`HashtagProfile`, sans câblage supplémentaire par écran).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedView.swift`,
+`Sources/TiinverSwift/Feed/FeedMediaDownloader.swift` (nouveau),
+`Sources/TiinverSwift/Profile/ProfileView.swift`, `project.yml`.
+
+**Résultat CI** : run `32665481871` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — chacune des 5 actions (supprimer/signaler/bloquer/commenter/
+télécharger) doit être vérifiée séparément sur device réel, depuis CHACUN des 6 points d'entrée
+(consigne explicite de l'utilisateur : "Ne pas considérer le viewer comme corrigé simplement parce
+qu'il s'affiche"). Point d'attention spécifique pour le test réel : le téléchargement nécessite une
+autorisation Photos ("Ajouter uniquement") jamais demandée avant ce correctif — premier appel
+déclenchera la boîte de dialogue système iOS, à valider manuellement.

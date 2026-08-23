@@ -10,7 +10,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 ---
 
 # CURRENT HANDOFF (2026-08-23 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
-Phase B V4 EN COURS, Lot P0-1 traité)
+Phase B V4 EN COURS, Lots P0-1/P0-2/P0-3 traités)
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -66,15 +66,37 @@ motif que la branche payload malformé voisine. Détail complet dans `PROGRESS_V
 **Commit `14e5ee1`, CI verte confirmée (run `32664500075`)** — `BUILD_VALIDATED`, PAS
 `COMPLETE_PARITY_VALIDATED` (test réel quasi impossible sans backend VoIP fonctionnel + 2 appareils).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P0-2 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur **Lot P0-3 : V4-F-007** (viewer
-plein écran depuis Profile — supprimer/signaler/bloquer/commenter/télécharger tous morts, vérifier
-CHAQUE action séparément contre Android, ne pas considérer corrigé juste parce que le viewer
-s'affiche), puis Lot P0-4 (V4-F-008, upload photo profil — pipeline BunnyCDN/backend précis à
-reproduire), puis la liste P1 dans l'ordre exact donné par l'utilisateur (Groups→Feed→Chat→Calls→
-Animems→Session/DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→Social→Groups→Navigation, voir
-`MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de vérité :
-`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lot P0-3 traité (V4-F-007)** — Viewer plein écran (`FeedDetailPagerView`) : boutons "..."
+(supprimer/copier lien/ne plus suivre/bloquer/signaler/télécharger) et commentaire réellement morts.
+Portée RÉELLE plus large que le texte d'audit (limité à Profile) : `grep FeedDetailPagerView(` a
+confirmé que 5 des 6 appelants (`SearchView`/`HashtagFeedView`/`NotificationsListView`/
+`HomeShellView`/`ProfileView`) utilisaient l'init `posts:` dont `onComment`/`onMore` retombaient sur
+`{ _ in }` — le pager affichait les boutons mais rien ne se passait au tap, PARTOUT sauf depuis le
+fil principal (`FeedView`, seul appelant à fournir de vraies closures). Vérification Android : 4
+menus "..." lus intégralement (`ProfileFeedFragment`/`MainFragment`/`FullScreenMedia`/
+`HashtagProfile`) — confirmé que `download` n'est câblé QUE dans `ProfileFeedFragment` (les 3 autres
+n'ont pas l'item, ou pointent vers un handler mort/buggé), donc PAS ajouté ailleurs. Corrigé : tout
+l'état/dialogues déplacé DANS `FeedDetailPagerView` elle-même (plus de closures remontées à
+l'appelant), avec 2 flags `showManagementActions`/`includesDownload` pour les 2 écarts légitimes
+(Statistiques/Promouvoir = `FeedView` seul ; téléchargement = `ProfileView` seul). Nouveau
+`FeedMediaDownloader.swift` : port fidèle de `checkBestQualityAndDownload`/`downloadFile` (sonde
+HEAD 720p/480p/360p, `Referer: https://tiinver.com`, repli `cdn_content_url` brut,
+`PHPhotoLibrary.performChanges`), + `NSPhotoLibraryAddUsageDescription` ajoutée à `project.yml`.
+Détail complet dans `PROGRESS_V4.md`, Lot P0-3. **Commit `d9bb80e`, CI verte confirmée (run
+`32665481871`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (chacune des 5 actions à
+vérifier séparément sur device réel, depuis chacun des 6 points d'entrée — y compris la première
+demande d'autorisation Photos jamais déclenchée avant ce correctif).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P0-3 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur **Lot P0-4 : V4-F-008** (upload photo profil — vérifier précisément le
+pipeline BunnyCDN/backend : l'audit Phase A a trouvé, via 2 agents indépendants, que l'iOS porte le
+chemin Android MORT `ProfileRepository.uploadPhotoProfile` (multipart direct vers `/user`) au lieu du
+chemin RÉELLEMENT utilisé `ProfileService.uploadImageToBunny` + `sendMetaDate` (PUT direct vers
+Bunny, puis POST `user/avatar/add`) — preuve déjà double-vérifiée en Phase A, à reconfirmer par
+lecture directe avant correction), puis la liste P1 dans l'ordre exact donné par l'utilisateur
+(Groups→Feed→Chat→Calls→Animems→Session/DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→
+Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo
+Android source de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

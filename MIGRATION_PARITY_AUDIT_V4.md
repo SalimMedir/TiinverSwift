@@ -198,6 +198,20 @@ PREUVE : `FeedView.swift:428-429` déclare les closures par défaut à `{ _ in }
 `ProfileView` (lignes 449-456) ne les définit jamais.
 RECOMMANDATION : Donner à `ProfileView` sa propre présentation `FeedViewModel` (ou câbler les vraies
 closures) pour un comportement identique quel que soit le point d'entrée.
+STATUT : BUILD_VALIDATED (2026-08-23, Lot P0-3, commit d9bb80e, CI run 32665481871 succès). Portée
+RÉELLE plus large que le texte d'audit ci-dessus : le même bug (`onComment`/`onMore` no-op) touchait
+EN RÉALITÉ 5 des 6 appelants de `FeedDetailPagerView` (`SearchView`, `HashtagFeedView`,
+`NotificationsListView`, `HomeShellView`, `ProfileView` — tous via l'init `posts:` sans closures),
+pas seulement Profile. État/dialogues (`moreActionsPost`, `reportTargetPost`, `blockTargetPost`,
+`commentsPost`, `boostTargetPost`, `statsTargetPost`) déplacés DANS `FeedDetailPagerView` elle-même
+(plus de closures remontées à l'appelant) — les 6 écrans en bénéficient désormais uniformément.
+`showManagementActions: true` réservé à `FeedView` (Statistiques/Promouvoir, sans équivalent
+Android dans les 3 autres menus "..." vérifiés). Téléchargement (`FeedMediaDownloader.swift`, port
+de `checkBestQualityAndDownload`/`downloadFile`) confirmé RÉEL uniquement dans
+`ProfileFeedFragment` par lecture croisée de `MainFragment`/`FullScreenMedia`/`HashtagProfile` (`ids`
+n'y liste jamais `R.id.download`, ou pointe vers un handler mort) — gated `includesDownload: true`
+sur le seul appel `ProfileView`. DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (5 actions +
+téléchargement à vérifier séparément sur device réel, cf. méthode Phase B).
 ```
 
 ```

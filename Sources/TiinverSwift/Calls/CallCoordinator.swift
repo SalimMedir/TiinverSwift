@@ -358,15 +358,27 @@ extension CallCoordinator: CallKitManagerDelegate {
     }
 
     /// Port de `CallService.onOutgoingCallEnd`/`onIncomingCallEnd` — raccrocher LOCALEMENT :
-    /// notifie le serveur (`onCallEnd`), et pour un appel entrant jamais décroché, signale un
+    /// notifie le serveur (`onCallEnd`), et pour un appel SORTANT jamais décroché, signale un
     /// appel manqué (`notifyMissedCall`, port de `CallActivity.endCall`/`isCalleMissedCall`).
+    ///
+    /// **Corrigé le 2026-08-23 (MIGRATION_PARITY_AUDIT_V4.md V4-F-042, Phase B P1)** — la garde
+    /// était inversée (`!isOutgoingCall, !wasAnswered`, déclenchée côté CALLEE) depuis l'origine.
+    /// Vérifié dans `CallActivity.java` (lu en entier) : `CallService.java:571-578` confirme que
+    /// `CallActivity` n'est lancée QUE pour `callType == CallModel.OUTGOINGCALL` — le côté ENTRANT
+    /// route TOUJOURS vers `IncomingCallActivity` (`CallService.java:591-612`), une classe SÉPARÉE
+    /// qui n'appelle jamais `notifyMissedCall`. `isCalleMissedCall` (`CallActivity.java:85`, init
+    /// `true`) n'est mis à `false` que sur `onAccepCall()` (ligne 506) ou `callEnd()` reçu du socket
+    /// (ligne 476, l'AUTRE partie a terminé l'appel) ; `endCall()` (ligne 509-511) déclenche
+    /// `notifyMissedCall` UNIQUEMENT si encore `true` à ce moment — donc UNIQUEMENT quand
+    /// l'APPELANT raccroche lui-même un appel sortant jamais décroché ni terminé par l'autre partie.
+    /// Le côté callee n'enregistre JAMAIS ce message lui-même côté Android.
     func callKitManager(_ manager: CallKitManager, performEndCall uuid: UUID, completion: @escaping (Bool) -> Void) {
         defer { completion(true) }
         guard let profile else { return }
         let wasAnswered = state == .connected || state == .connecting
         let packet: [String: Any] = ["receiver": profile.to ?? profile.username ?? "", "packet": (try? Self.encodeJSONString(profile)) ?? ""]
         chatRepository.onCallEnd(packet, chatType: chatType)
-        if !isOutgoingCall, !wasAnswered {
+        if isOutgoingCall, !wasAnswered {
             chatRepository.notifyMissedCall(profile: profile, chatType: chatType, object: "missedvoicecall", messageId: messageId ?? "")
         }
         teardown()

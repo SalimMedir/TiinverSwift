@@ -1116,17 +1116,19 @@ de recadrage en cours dans les deux cas, fidèle, pas "amélioré" silencieuseme
 
 **Commit** : `0422fda`, poussé sur `origin/main`.
 
-**Résultat CI** : **NON DÉCLENCHÉ par cette session** — le workflow `.github/workflows/ios-build.yml`
-n'a QUE `workflow_dispatch` comme déclencheur (aucun trigger automatique sur `push`), et cette
-session n'a pas accès à `gh` CLI ; consigne explicite de l'utilisateur ce tour de ne chercher/
-utiliser aucun token — donc pas de contournement par API REST comme les tours précédents l'ont fait.
-**Déclenchement manuel requis par l'utilisateur** (bouton "Run workflow" sur GitHub Actions, ou
-Codemagic) avant de pouvoir confirmer BUILD_VALIDATED.
+**Résultat CI** : **NON DÉCLENCHÉ par cette session** au moment du correctif — le workflow `.github/
+workflows/ios-build.yml` n'a QUE `workflow_dispatch` comme déclencheur (aucun trigger automatique sur
+`push`), et cette session n'avait pas accès à `gh` CLI ; consigne explicite de l'utilisateur ce tour
+de ne chercher/utiliser aucun token — donc pas de contournement par API REST comme les tours
+précédents l'ont fait. **CONFIRMÉ le 2026-08-23** (session suivante, autorisation explicite obtenue
+de l'utilisateur pour ce déclenchement précis) : dispatch via API REST GitHub (token Git Credential
+Manager, jamais affiché), run `32628912305` contre `head_sha=36559d27` (HEAD `main`, couvre ce commit
+et les 2 suivants) → **`conclusion: success`**.
 
-**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI, PUIS
-`BUILD_VALIDATED` seulement (pas `COMPLETE_PARITY_VALIDATED`) même après CI verte — test réel requis
-(ouvrir l'écran de recadrage, taper "Ovale" puis "Rectangle" plusieurs fois, confirmer qu'aucune
-forme ne reste bloquée et que le résultat final correspond à la DERNIÈRE forme tapée).
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée 2026-08-23, run
+`32628912305`) — PAS `COMPLETE_PARITY_VALIDATED`, test réel toujours requis (ouvrir l'écran de
+recadrage, taper "Ovale" puis "Rectangle" plusieurs fois, confirmer qu'aucune forme ne reste bloquée
+et que le résultat final correspond à la DERNIÈRE forme tapée).
 
 ### Lot 17 : V3-F-011 (Feed — décodage tableau entier fragile, suggestions de comptes)
 
@@ -1155,12 +1157,13 @@ nouveau style.
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Feed/SuggestionsRepository.swift`.
 
-**Commit** : *(à renseigner après ce commit)*.
+**Commit** : `f238e8b`.
 
-**Résultat CI** : non déclenché par cette session (même contrainte que Lot 16 — pas de token
-utilisé, déclenchement manuel requis).
+**Résultat CI** : non déclenché par la session d'origine (même contrainte que Lot 16). **CONFIRMÉ
+le 2026-08-23** — même run `32628912305` (couvre ce commit, `head_sha=36559d27`) → `conclusion:
+success`.
 
-**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Test réel
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée 2026-08-23). Test réel
 nécessaire : provoquer une réponse `suggestions/{userId}` contenant un utilisateur avec un champ
 manquant/malformé (ou simplement observer le carrousel de suggestions sur un compte réel), confirmer
 que les autres utilisateurs valides du même lot s'affichent quand même.
@@ -1190,11 +1193,132 @@ sinon `UIApplication.shared.open(url)` (externe).
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Profile/ProfileView.swift`.
 
-**Commit** : *(à renseigner après ce commit)*.
+**Commit** : `36559d2`.
 
-**Résultat CI** : non déclenché par cette session (même contrainte que les lots précédents).
+**Résultat CI** : non déclenché par la session d'origine (même contrainte que les lots précédents).
+**CONFIRMÉ le 2026-08-23** — même run `32628912305` (couvre ce commit, `head_sha=36559d27`) →
+`conclusion: success`.
 
-**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Test réel
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée 2026-08-23). Test réel
 nécessaire : définir un lien de bio pointant vers `https://tiinver.com/user/<username>` sur un
 compte réel, taper le lien depuis Profile, confirmer un routage interne (pas de sortie vers Safari)
 ; confirmer aussi qu'un lien externe (ex. Instagram) continue d'ouvrir Safari normalement.
+
+---
+
+**Contexte (2026-08-23)** : nouvelle session, reprise après épuisement de crédit de la session
+précédente. Lecture complète de `CLAUDE_CONTINUATION.md` (dernier "CURRENT HANDOFF" daté 2026-08-17,
+donc PÉRIMÉ par rapport à `git log`/ce fichier — dernier commit réel `36559d2` du 2026-08-21, non
+reflété dans `CLAUDE_CONTINUATION.md`), `MIGRATION_PARITY_AUDIT_V3.md`, `MIGRATION_PARITY_PROGRESS_
+V3.md`. `AUDIT_V4.md`/`PROGRESS_V4.md` reconfirmés Phase Audit uniquement, non touchés.
+
+### Déblocage CI — Lots 16/17/18 (commits `0422fda`/`f238e8b`/`36559d2`)
+
+**Blocage** : les 3 commits ci-dessus n'avaient aucune CI confirmée (workflow `workflow_dispatch`
+uniquement, `gh` CLI absent de cet environnement). Autorisation explicite demandée à l'utilisateur
+pour cette action précise (récupération d'un token via Git Credential Manager, comme les sessions
+antérieures) — accordée. Token récupéré via `git credential fill` (jamais affiché ni loggé),
+utilisé UNIQUEMENT pour déclencher `POST /repos/SalimMedir/TiinverSwift/actions/workflows/ios-build.
+yml/dispatches` (`ref=main`, HTTP 204 confirmé) puis interroger `GET .../actions/runs/{id}` jusqu'à
+complétion. Run `32628912305` déclenché contre `head_sha=36559d2` (HEAD `main` au moment du
+déclenchement, couvre les 3 commits en une seule fois car tous sur `main` sans divergence).
+Résultat : voir entrée séparée ci-dessous une fois la CI terminée.
+
+### Bookkeeping (aucun code changé) — V3-F-038 reclassifié PARTIAL → IOS_INTENTIONAL_DIFFERENCE
+
+**Finding ID** : V3-F-038 (GALERIE-07)
+
+**Constat** : `RemoveBackground.swift:6-34` (commentaire déjà présent, écrit par une session
+antérieure, jamais recoupé avec le tableau §6) documente une décision d'architecture déjà vérifiée
+contre la documentation Apple réelle (pas devinée) : `VNGenerateForegroundInstanceMaskRequest`
+(équivalent Vision le plus proche de `SubjectSegmenter` ML Kit — segmentation de sujet général,
+pas seulement humain) est confirmé **iOS 17+ uniquement** et ne fonctionne pas en simulateur. Ce
+projet cible `deploymentTarget.iOS = 16.0` (`project.yml`, décidé au module 1) — relever la cible
+pour cette seule fonctionnalité est une décision produit hors périmètre d'un portage, jamais prise
+unilatéralement par aucune session. `VNGeneratePersonSegmentationRequest` (iOS 15+, personnes
+uniquement) a donc été retenu comme le remplacement compatible le plus proche, avec le même repli
+géométrique à 2 niveaux (`removeBackgroundAdvanced`, agnostique au sujet) qu'Android
+(`removeBackgroundWithMLKit` → repli), fidèle à la structure Android.
+
+**Pourquoi ce n'était pas un gap réel** : le tableau §6 classait ce finding `PARTIAL`/P1, laissant
+supposer qu'un correctif restait possible. Ce n'est pas le cas sans changement de cible de
+déploiement (décision produit, pas technique) — la classification correcte est
+`IOS_INTENTIONAL_DIFFERENCE`, au même titre que V3-F-039/076/083 déjà classés ainsi pour des
+raisons de contrainte plateforme similaires.
+
+**Fichiers modifiés** : aucun (bookkeeping seul — `RemoveBackground.swift` déjà correct).
+
+**Table §6 mise à jour** : `PARTIAL` → `IOS_INTENTIONAL_DIFFERENCE`.
+
+### Bookkeeping (aucun code changé) — V3-F-077 reclassifié PARTIAL → COMPLETE_PARITY_CANDIDATE (doublon de V3-F-136)
+
+**Finding ID** : V3-F-077 (NOTIF-06)
+
+**Constat** : `V3-F-136` (cycle complémentaire, §30.8 de `MIGRATION_PARITY_AUDIT_V3.md`, ligne ~1311)
+couvre exactement la même fonctionnalité — navigation au tap sur une notification — et a déjà été
+vérifiée et requalifiée le 2026-08-20 : `NotificationUtils.java.show()` (Android réel) reconstruit
+TOUJOURS un `Intent` bare vers `SplashActivity`/`activityMap.get("MainActivity")`, quel que soit le
+type de notification. Les `Intent` riches construits en amont par `displayNotificationOrPushMessage`/
+`displayNotification`/`displayNoMessageNotification` sont des variables locales JAMAIS utilisées —
+confirmé par une ligne commentée dans le code Android lui-même
+(`// String destination = notificationVO.getActionDestination();`), preuve que le routage dynamique
+existait autrefois et a été désactivé côté ANDROID. `getActionDestination()`/`setActionDestination()`
+confirmés morts par grep exhaustif (zéro appelant dans tout le projet Android).
+
+**Conséquence pour V3-F-077** : la réserve de blocage "bloqué en aval par V3-F-075 pour les messages"
+n'a plus de sens — il n'y a jamais eu de routage par type à débloquer, ni côté Android ni donc côté
+iOS. Le comportement iOS actuel (`Sources/TiinverSwift/App/AppDelegate.swift:153-162`,
+`userNotificationCenter(didReceive:)` → `DeepLinkCenter.shared.route(.notifications)` pour TOUTE
+notification) est déjà à parité réelle avec Android — ouvrir le centre de notifications au lieu de
+perdre le contexte, ce qui est même légèrement meilleur que le comportement Android bare-Intent.
+
+**Fichiers modifiés** : aucun (bookkeeping seul).
+
+**Table §6 mise à jour** : `PARTIAL` → `COMPLETE_PARITY_CANDIDATE`.
+
+### Lot 19 : V3-F-002 (Recherche — décodage résidu strict avale une erreur réelle)
+
+**Finding ID** : V3-F-002 (SEARCH-02)
+
+**Problème réel** : `SearchRepository.decodeResults` avalait TOUTE erreur de décodage JSON dans un
+seul `try?`, retombant systématiquement sur `SearchResults()` (vide) — indiscernable pour
+l'utilisateur d'une recherche légitimement sans résultat. `SearchView` avait pourtant déjà (Phase B
+antérieure, V3-F-008) l'état `errorText` correctement câblé avec le bon texte ("Erreur de
+chargement.") dans ses `catch` — jamais atteint en pratique car `decodeResults` ne relançait jamais
+d'erreur de décodage vers l'appelant.
+
+**Preuve Android** : `Recherche/ui/RechercheTiinver.java:461-573` (`parseAndDisplay`, lu en entier)
+— deux chemins distincts au même point du flux : `error==true` → `showEmpty("Aucun résultat")`
+(silencieux, chemin normal, ligne 467) ; `results = object.getJSONObject("results")` (ligne 469)
+lève `JSONException` si la clé est absente ou malformée, catchée en dehors de la boucle de parsing
+(ligne 569) et affichée avec un message DIFFÉRENT : `showEmpty("Erreur de chargement")` (ligne 571).
+Les deux états ne sont donc PAS fusionnés côté Android.
+
+**Divergence iOS (avant correctif)** : `decodeResults` fusionnait les deux chemins Android
+(`error==true` ET `results` absent/malformé) dans le même `try?` → vide silencieux, sans jamais
+propager d'erreur à l'appelant.
+
+**Correctif** : `decodeResults` passée en `throws` — `error==true` reste silencieux (`SearchResults()`
+vide, fidèle) ; `results` absent/malformé lève désormais `APIError.server(message:)` ou l'erreur de
+`JSONDecoder` elle-même, propagée par `suggest`/`search` (déjà `async throws`) jusqu'aux `catch` déjà
+présents dans `SearchView.suggest(_:)`/`runSearch(full:)`, qui posent `errorText` — code UI
+inchangé, seul le maillon manquant réseau→UI a été réparé.
+
+**Flux frère vérifié** : `SearchUserResult`/`SearchPostResult` ont déjà un décodage tolérant par
+champ (`decodeLenientInt`/`decodeLenientBoolIfPresent`, correctif antérieur) — ce correctif ne les
+modifie pas, il ne change que le comportement quand le JSON est structurellement invalide au niveau
+de `results` lui-même (clé absente, pas un type de champ interne).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/SearchRepository.swift`.
+
+**Commit** : *(à renseigner après ce commit)*.
+
+**Résultat CI** : non déclenché par cette session à la rédaction — déclenchement manuel requis
+(même contrainte que les lots précédents, sauf autorisation explicite renouvelée par l'utilisateur).
+
+**Statut honnête après correction** : `CODE_PRESENT_UNVERIFIED` jusqu'à confirmation CI. Test réel
+nécessaire : provoquer une réponse `content/search`/`content/search/suggest` avec un JSON `results`
+malformé (ou couper le réseau après le décodage du corps mais avant la fin, difficile à simuler sans
+proxy) — plus simplement, confirmer par observation directe que la recherche normale (0 résultat
+légitime) affiche toujours "Aucun résultat pour…" et non "Erreur de chargement.", pour écarter une
+régression de faux-positif sur le nouveau `throw`.

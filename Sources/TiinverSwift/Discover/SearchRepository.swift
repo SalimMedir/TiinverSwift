@@ -16,25 +16,37 @@ final class SearchRepository {
     func suggest(query: String) async throws -> SearchResults {
         guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return SearchResults() }
         let value = try await APIClient.shared.get("content/search/suggest?q=\(encoded)")
-        return Self.decodeResults(value)
+        return try Self.decodeResults(value)
     }
 
     /// Port de `searchFull` — `types` dérivé de l'onglet actif (`getTypesForTab`).
     func search(query: String, tab: SearchTab) async throws -> SearchResults {
         guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return SearchResults() }
         let value = try await APIClient.shared.get("content/search?q=\(encoded)&types=\(tab.apiTypes)&limit=10&offset=0")
-        return Self.decodeResults(value)
+        return try Self.decodeResults(value)
     }
 
     /// Port de `object.getBoolean("error")`/`JSONObject results = object.getJSONObject("results")` —
     /// **convention DIFFÉRENTE du reste du backend ici** : `"error"` est un VRAI booléen JSON sur
     /// cet endpoint (vérifié dans `parseAndDisplay`), pas la chaîne `"false"`/`"true"` habituelle
     /// (`JSONValue.isBackendSuccess`, qui NE S'APPLIQUE PAS ici — pas utilisée volontairement).
-    private static func decodeResults(_ value: JSONValue) -> SearchResults {
-        guard (try? value.bool("error")) != true, let data = value["results"]?.rawData,
-            let results = try? JSONDecoder().decode(SearchResults.self, from: data)
-        else { return SearchResults() }
-        return results
+    ///
+    /// **Corrigé (V3-F-002, SEARCH-02)** — `parseAndDisplay` (`RechercheTiinver.java:461-573`)
+    /// distingue deux états bien différents au même point du flux : `error==true` → `showEmpty(
+    /// "Aucun résultat")` (silencieux, chemin normal) ; `results` absent/malformé →
+    /// `JSONException` remontée par `getJSONObject("results")`, catchée en dehors et affichée comme
+    /// `showEmpty("Erreur de chargement")` (échec RÉEL, message différent). L'ancienne version de
+    /// cette fonction avalait les deux cas dans le même `try?` → `SearchResults()` vide, rendant les
+    /// deux états indiscernables côté iOS malgré `SearchView` ayant déjà le bon état `errorText`
+    /// câblé (voir son commentaire `showEmpty("Erreur de chargement")`) — jamais atteint faute d'un
+    /// throw ici. Seul le cas `error==true` reste silencieux ci-dessous ; tout échec de décodage de
+    /// `results` (clé absente ou JSON malformé) propage maintenant l'erreur, fidèle à Android.
+    private static func decodeResults(_ value: JSONValue) throws -> SearchResults {
+        guard (try? value.bool("error")) != true else { return SearchResults() }
+        guard let data = value["results"]?.rawData else {
+            throw APIError.server(message: "results manquant")
+        }
+        return try JSONDecoder().decode(SearchResults.self, from: data)
     }
 }
 

@@ -226,47 +226,78 @@ final class GroupRepository {
 
     /// Port de `TransportData.updateMember` (`Http/TransportData.java:175-190`) — `POST
     /// /member/update`, `column="roles"`, `value="admin"`/`"user"`.
+    ///
+    /// **Corrigé le 2026-08-23 (MIGRATION_PARITY_AUDIT_V4.md V4-F-020, Phase B P1)** — les 7
+    /// méthodes de mutation de ce fichier (celle-ci et les 6 suivantes) ignoraient jusqu'ici
+    /// `value.isBackendSuccess`, contrairement à `createGroup`/`fetchGroup` ci-dessus qui font déjà
+    /// ce contrôle. Vérifié dans `TransportData.Post` (`Http/TransportData.java:615-681`, lu en
+    /// entier) : le callback Android n'appelle `onResonse` (qui applique les effets locaux) QUE si
+    /// `response.getString("error").equals("false")` — sinon `onError` est appelé à la place. Le
+    /// `if (action==0)` visible dans chaque appelant (`SettingGroupMessageFragmant.java:553` etc.)
+    /// est donc TOUJOURS vrai quand `onResonse` est atteint (`action` y est un littéral `0` fixé par
+    /// le framework, pas un champ lu dans la réponse) — le vrai gate Android est `error=="false"`,
+    /// exactement `JSONValue.isBackendSuccess`. Les appelants iOS (`GroupDetailView.swift`,
+    /// `ChatViewModel.resolveGroupSubscription`) enveloppent déjà chaque appel dans un `do/catch` et
+    /// n'appliquent leurs effets locaux qu'APRÈS le `try await` — il ne manquait que le `throw` côté
+    /// dépôt pour que ce `catch` existant se déclenche réellement sur un rejet backend.
     func updateMemberRole(userId: Int, groupId: String, creatorId: String, makeAdmin: Bool) async throws {
         let params: [String: String] = [
             "creator": creatorId, "groupId": groupId, "value": makeAdmin ? "admin" : "user", "column": "roles",
             "userId": String(userId),
         ]
-        _ = try await APIClient.shared.post(params, endpoint: "/member/update")
+        let value = try await APIClient.shared.post(params, endpoint: "/member/update")
+        guard value.isBackendSuccess else {
+            throw JSONError.typeMismatch(value.backendErrorMessage ?? "/member/update")
+        }
     }
 
     /// Port de `SettingGroupMessageFragmant.deleteGroupMemebers` (lignes 542-548 pour les
     /// paramètres réseau — le reste de la méthode Android insère un message système local, déjà
     /// géré côté iOS par le rendu existant des messages système reçus via Socket.IO, pas dupliqué
-    /// ici).
+    /// ici). Voir V4-F-020 ci-dessus pour le contrôle `isBackendSuccess`.
     func removeMember(userId: Int, groupId: String, creatorId: String) async throws {
         let params: [String: String] = ["userId": String(userId), "creator": creatorId, "groupId": groupId]
-        _ = try await APIClient.shared.post(params, endpoint: "deleteMember")
+        let value = try await APIClient.shared.post(params, endpoint: "deleteMember")
+        guard value.isBackendSuccess else {
+            throw JSONError.typeMismatch(value.backendErrorMessage ?? "deleteMember")
+        }
     }
 
     /// Port de `AddGroupDescriptionActivity.updateGroup` (lignes 95-105) — endpoint générique
     /// `updategroup` par colonne, réutilisé aussi par le changement de photo côté Android
     /// (`sendFotoPerfilToServer`, type=4 multipart — pas porté ici, périmètre texte uniquement pour
-    /// ce gap, voir avertissement `GroupDetailView.swift`).
+    /// ce gap, voir avertissement `GroupDetailView.swift`). Voir V4-F-020 ci-dessus.
     func updateDescription(_ description: String, groupId: String, creatorId: String, apiKey: String) async throws {
         let params: [String: String] = [
             "creator": creatorId, "id": groupId, "value": description, "column": "description", "apiKey": apiKey,
         ]
-        _ = try await APIClient.shared.post(params, endpoint: "updategroup")
+        let value = try await APIClient.shared.post(params, endpoint: "updategroup")
+        guard value.isBackendSuccess else {
+            throw JSONError.typeMismatch(value.backendErrorMessage ?? "updategroup")
+        }
     }
 
     /// Port de `ChangeGroupTopicActivity.updateGroup` (lignes 91-101, entier, 2026-08-18 P2) —
-    /// MÊME endpoint générique `updategroup` qu'`updateDescription` ci-dessus, `column="name"`.
+    /// MÊME endpoint générique `updategroup` qu'`updateDescription` ci-dessus, `column="name"`. Voir
+    /// V4-F-020 ci-dessus.
     func updateName(_ name: String, groupId: String, creatorId: String, apiKey: String) async throws {
         let params: [String: String] = [
             "creator": creatorId, "id": groupId, "value": name, "column": "name", "apiKey": apiKey,
         ]
-        _ = try await APIClient.shared.post(params, endpoint: "updategroup")
+        let value = try await APIClient.shared.post(params, endpoint: "updategroup")
+        guard value.isBackendSuccess else {
+            throw JSONError.typeMismatch(value.backendErrorMessage ?? "updategroup")
+        }
     }
 
-    /// Port de `GroupDetailActivity.exit()` (lignes 260-271) — `POST leftgroup`.
+    /// Port de `GroupDetailActivity.exit()` (lignes 260-271) — `POST leftgroup`. Voir V4-F-020
+    /// ci-dessus.
     func leaveGroup(groupId: String, userId: String, apiKey: String) async throws {
         let params: [String: String] = ["groupId": groupId, "userId": userId, "apiKey": apiKey]
-        _ = try await APIClient.shared.post(params, endpoint: "leftgroup")
+        let value = try await APIClient.shared.post(params, endpoint: "leftgroup")
+        guard value.isBackendSuccess else {
+            throw JSONError.typeMismatch(value.backendErrorMessage ?? "leftgroup")
+        }
     }
 
     // MARK: - Groupes payants (port de `ChatFragmentTest.checkSubcribtion`/`displaySubscriptionInfo`/
@@ -301,24 +332,31 @@ final class GroupRepository {
 
     /// Port de `Subscribe.bind`'s `subscribe.setOnClickListener` (`MessageListAdapter.java:267-314`)
     /// — `POST group/subscribe`. Champs fidèles à l'original, y compris `joined`/`invited`/`role`
-    /// toujours fixés à `"1"`/`"0"`/`"user"` (aucune variation observée dans le code source).
+    /// toujours fixés à `"1"`/`"0"`/`"user"` (aucune variation observée dans le code source). Voir
+    /// V4-F-020 ci-dessus pour le contrôle `isBackendSuccess`.
     func subscribeToGroup(groupId: String, userId: String, creatorId: String, price: Int) async throws {
         let params: [String: String] = [
             "groupId": groupId, "userId": userId, "receiver": creatorId,
             "quantity": String(price), "joined": "1", "invited": "0", "role": "user",
         ]
-        _ = try await APIClient.shared.post(params, endpoint: "group/subscribe")
+        let value = try await APIClient.shared.post(params, endpoint: "group/subscribe")
+        guard value.isBackendSuccess else {
+            throw JSONError.typeMismatch(value.backendErrorMessage ?? "group/subscribe")
+        }
     }
 
     /// Port de `RenewSubscription.bind`'s `subscribe.setOnClickListener`
     /// (`MessageListAdapter.java:365-412`) — MÊME payload que `subscribeToGroup`, endpoint différent
     /// (`group/renewsubscription`, tout en minuscules — vérifié, contrairement à
-    /// `group/checksubscription` qui a la même casse).
+    /// `group/checksubscription` qui a la même casse). Voir V4-F-020 ci-dessus.
     func renewGroupSubscription(groupId: String, userId: String, creatorId: String, price: Int) async throws {
         let params: [String: String] = [
             "groupId": groupId, "userId": userId, "receiver": creatorId,
             "quantity": String(price), "joined": "1", "invited": "0", "role": "user",
         ]
-        _ = try await APIClient.shared.post(params, endpoint: "group/renewsubscription")
+        let value = try await APIClient.shared.post(params, endpoint: "group/renewsubscription")
+        guard value.isBackendSuccess else {
+            throw JSONError.typeMismatch(value.backendErrorMessage ?? "group/renewsubscription")
+        }
     }
 }

@@ -443,6 +443,21 @@ effets locaux (membre disparaît, nom/description mis à jour, écran fermé) m�
 rejeté l'opération — désynchronisation client/serveur silencieuse.
 RECOMMANDATION : Ajouter `guard value.isBackendSuccess else { throw ... }` aux 7 méthodes, comme déjà
 fait pour `createGroup`/`fetchGroup` dans le même fichier.
+STATUT : BUILD_VALIDATED (2026-08-23, commit 6190dee, CI run 32673545395 succès). Vérification
+Android approfondie : `TransportData.Post` (`Http/TransportData.java:615-681`, lu en entier) confirme
+que le callback `onResonse` (qui applique les effets locaux) n'est appelé QUE si
+`response.getString("error").equals("false")`, sinon `onError` est appelé à la place — le `action==0`
+visible dans chaque appelant est donc TOUJOURS vrai quand `onResonse` est atteint (`action` y est un
+littéral `0` fixé par le framework, pas un champ de la réponse), le vrai gate étant `error=="false"`,
+exactement `JSONValue.isBackendSuccess`. Les 7 appelants iOS (`GroupDetailView.swift`,
+`ChatViewModel.resolveGroupSubscription`) enveloppaient déjà chaque appel dans un `do/catch`
+appliquant les effets locaux seulement après le `try await` — il ne manquait que le `throw` côté
+`GroupRepository` pour que ce `catch` existant se déclenche réellement. Correctif : `guard
+value.isBackendSuccess else { throw ... }` ajouté aux 7 méthodes (`grep "_ = try await APIClient"` →
+0 occurrence restante dans le fichier après correctif). Aucun changement côté appelants nécessaire.
+DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (provoquer un rejet backend réel — ex. retirer un
+membre déjà retiré, renommer un groupe avec des droits insuffisants — et confirmer que le message
+d'erreur s'affiche sans appliquer l'effet local).
 ```
 
 ```

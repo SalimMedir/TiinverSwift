@@ -10,7 +10,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 ---
 
 # CURRENT HANDOFF (2026-08-23 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
-Phase B V4 EN COURS, backlog P0 épuisé [Lots P0-1/P0-2/P0-3/P0-4 traités], liste P1 démarre)
+Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS [V4-F-020 traité])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -110,17 +110,29 @@ réel, inspecter le PUT Bunny + le POST `user/avatar/add`, confirmer que l'avata
 
 **Backlog P0 (V4) épuisé** — les 4 lots P0 sont tous `BUILD_VALIDATED`, CI verte à chaque fois.
 
-**PROCHAINE TÂCHE EXACTE** : Lot P0-4 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur la liste P1 (23 items), dans l'ordre exact donné par l'utilisateur, en
-commençant par **V4-F-020** (Groups — 7 méthodes de `GroupRepository.swift` [`updateMemberRole`,
-`removeMember`, `updateDescription`, `updateName`, `leaveGroup`, `subscribeToGroup`,
-`renewGroupSubscription`] ignorent `value.isBackendSuccess`/`backendErrorMessage`, contrairement à
-`createGroup`/`fetchGroup` dans le même fichier qui font bien ce contrôle — un rejet backend HTTP 200
-avec `error:"true"` est traité comme un succès), puis V4-F-032→033→042→038→017→046→048→049→050→
-001→002→029→030→056→064→059→068→073→021→027→019→003 (Groups→Feed→Chat→Calls→Animems→Session/
-DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→Social→Groups→Navigation, voir
-`MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de vérité :
-`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lot P1-1 traité (V4-F-020)** — Groups, 7 méthodes de `GroupRepository.swift`
+(`updateMemberRole`/`removeMember`/`updateDescription`/`updateName`/`leaveGroup`/`subscribeToGroup`/
+`renewGroupSubscription`) discardaient la réponse serveur (`_ = try await ...`) au lieu de vérifier
+`value.isBackendSuccess`, contrairement à `createGroup`/`fetchGroup` dans le même fichier. Vérifié
+dans `Http/TransportData.java:615-681` (lu en entier) : le `if (action==0)` de chaque appelant Android
+est un artefact — `action` est un littéral `0` fixé par le framework UNIQUEMENT dans la branche
+`error.equals("false")` du callback ; le vrai gate est `error=="false"`, exactement
+`JSONValue.isBackendSuccess`. Les 7 appelants iOS (`GroupDetailView.swift`,
+`ChatViewModel.resolveGroupSubscription`) enveloppaient déjà chaque appel dans un `do/catch`
+n'appliquant les effets locaux qu'après succès — il ne manquait que le `throw` côté dépôt. Correctif :
+`guard value.isBackendSuccess else { throw ... }` ajouté aux 7 méthodes, aucun changement côté
+appelants. Détail complet dans `PROGRESS_V4.md`, Lot P1-1. **Commit `6190dee`, CI verte confirmée (run
+`32673545395`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : provoquer un
+rejet backend réel et confirmer que l'effet local ne s'applique pas).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-1 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur **V4-F-032** (Feed — supprimer son propre post retire le post du fil MÊME si
+l'appel serveur échoue : `FeedViewModel.swift:144-148`, `try?` avale l'erreur, `posts.removeAll`
+inconditionnel — Android ne retire l'item qu'après succès confirmé, `ActivityAdapter.java:847-867`),
+puis V4-F-033→042→038→017→046→048→049→050→001→002→029→030→056→064→059→068→073→021→027→019→003
+(Feed→Chat→Calls→Animems→Session/DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→Social→
+Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android
+source de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

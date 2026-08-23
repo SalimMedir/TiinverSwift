@@ -2,9 +2,8 @@
 
 Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
-**État actuel (2026-08-23) : Phase A (Audit) TERMINÉE. Phase B EN COURS — Lots P0-1, P0-2, P0-3,
-P0-4 clos (CI verte). Backlog P0 épuisé. Prochain : liste P1 dans l'ordre imposé, en commençant par
-V4-F-020.**
+**État actuel (2026-08-23) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
+(P0-1..P0-4 clos). Liste P1 démarrée : V4-F-020 clos. Prochain : V4-F-032.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -394,3 +393,66 @@ silencieusement côté serveur, scénario non couvert par la seule CI).
 **Backlog P0 (V4) épuisé** — les 4 lots P0 (P0-1/V4-F-065+066, P0-2/V4-F-040, P0-3/V4-F-007, P0-4/
 V4-F-008) sont tous `BUILD_VALIDATED`, CI verte. Prochain : liste P1 (23 items) dans l'ordre exact
 donné par l'utilisateur, en commençant par V4-F-020.
+
+## 2026-08-23 — Phase B V4 — Lot P1-1 : V4-F-020 (Groups — mutations ignorent les rejets backend)
+
+**Commit** : `6190dee` — CI **run 32673545395, conclusion: success**.
+
+### Vérification Android (avant tout changement)
+
+`Http/TransportData.java:615-681` (`Post`), lu en entier — le point d'entrée réseau commun aux 7
+mutations citées par l'audit :
+```java
+public void onResponse(JSONObject response) {
+    String error = response.getString(ERROR);
+    if (callBack != null) {
+        if (error.equals("false")) {
+            callBack.onResonse(context, 0, response);   // action TOUJOURS 0 ici — littéral, pas un champ lu
+        } else {
+            String message = response.getString(MESSAGE);
+            callBack.onError(message);                   // rejet backend → onError, jamais onResonse
+        }
+    }
+}
+```
+Confirme que le `if (action==0)` visible dans chaque appelant (`SettingGroupMessageFragmant.java:553`,
+`ChangeGroupTopicActivity.java`, `AddGroupDescriptionActivity.java`, `GroupDetailActivity.java`) est
+un artefact — `action` est un littéral `0` fixé par le framework à l'intérieur de la branche succès,
+JAMAIS lu depuis la réponse. Le vrai gate Android est `error.equals("false")`, exactement l'équivalent
+de `JSONValue.isBackendSuccess` déjà utilisé ailleurs dans ce portage.
+
+### Écart iOS constaté (avant correctif)
+
+Les 7 méthodes de `GroupRepository.swift` (`updateMemberRole`, `removeMember`, `updateDescription`,
+`updateName`, `leaveGroup`, `subscribeToGroup`, `renewGroupSubscription`) faisaient toutes `_ = try
+await APIClient.shared.post(...)` — la réponse était systématiquement DISCARDÉE, jamais inspectée.
+Contraste net avec `createGroup`/`fetchGroup` dans le MÊME fichier, qui font déjà `guard
+value.isBackendSuccess else { throw ... }`.
+
+### Correctif appliqué
+
+Ajout du même garde aux 7 méthodes :
+```swift
+let value = try await APIClient.shared.post(params, endpoint: "...")
+guard value.isBackendSuccess else {
+    throw JSONError.typeMismatch(value.backendErrorMessage ?? "...")
+}
+```
+
+### Flux frères vérifiés
+
+Les 7 sites d'appel (`GroupDetailView.swift` ×5, `ChatViewModel.resolveGroupSubscription` ×2)
+enveloppaient DÉJÀ chaque appel dans un `do { try await ...; <effets locaux> } catch { errorMessage =
+... }` — aucun changement nécessaire côté appelants, le `catch` existant n'avait simplement jamais
+rien à attraper avant ce correctif. `grep "_ = try await APIClient" GroupRepository.swift` → 0
+occurrence restante après correctif (toutes les mutations du fichier vérifient désormais leur
+réponse).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/GroupRepository.swift`.
+
+**Résultat CI** : run `32673545395` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — nécessite de provoquer un rejet backend réel (ex. retirer un membre
+déjà retiré, renommer un groupe sans les droits requis) et de confirmer que le message d'erreur
+s'affiche SANS que l'effet local (membre disparu, nom mis à jour, écran fermé) ne soit appliqué.

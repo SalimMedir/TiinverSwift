@@ -241,6 +241,22 @@ PREUVE : `AddPerfilFoto.java:558` — `// profileViewModel.uploadPhotoProfile(fo
 chemin réel démarre `ProfileService` à la ligne 157.
 RECOMMANDATION : Réécrire `uploadProfilePicture` pour PUT vers Bunny Storage puis POST `user/
 avatar/add` avec l'URL CDN résultante, en reprenant le motif déjà établi dans `FeedMediaUploader.swift`.
+STATUT : BUILD_VALIDATED (2026-08-23, Lot P0-4, commit 4293e06, CI run 32673048282 succès).
+Reconfirmé par relecture directe d'`AddPerfilFoto.java` (pas seulement les conclusions Phase A) :
+`uploadPhotoProfile` est bien mort (ligne 558 commentée), le flux réel (`uploadProfilePicture`,
+ligne 557 → `ProfileService`) fait exactement PUT Bunny Storage puis POST `user/avatar/add` comme
+décrit ci-dessus. `ProfileRepository.uploadProfilePicture` réécrit en conséquence : PUT `tiinver-
+media/tiinver/profile/photos/{token}.webp` (AccessKey), puis POST `user/avatar/add` avec l'URL CDN
+ABSOLUE résultante (`cdn.tiinver.com/...`, PAS un chemin relatif comme le flux Feed — vérifié comme
+une différence RÉELLE entre les deux flux BunnyCDN, pas une simplification de ce portage). Constantes
+de stockage RÉUTILISÉES depuis `FeedMediaUploader` (rendues internes) plutôt que redupliquées une 3ᵉ
+fois — écart délibéré par rapport à la triplication Android, pour éviter une occurrence
+supplémentaire en clair de la clé d'accès dans le dépôt, sans changement de comportement réseau.
+`CertificationRepository.submit` (endpoint `certification/request`) vérifié comme un flux SÉPARÉ,
+non affecté par ce correctif malgré une référence en commentaire. DEVICE_TEST_REQUIRED pour
+COMPLETE_PARITY_VALIDATED (changer l'avatar sur un compte réel, confirmer via inspection réseau que
+le PUT Bunny et le POST `user/avatar/add` aboutissent, et que l'avatar affiché après rechargement du
+profil correspond bien à l'image envoyée).
 ```
 
 ```

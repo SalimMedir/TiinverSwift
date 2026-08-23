@@ -10,7 +10,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 ---
 
 # CURRENT HANDOFF (2026-08-23 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
-Phase B V4 EN COURS, Lots P0-1/P0-2/P0-3 traités)
+Phase B V4 EN COURS, backlog P0 épuisé [Lots P0-1/P0-2/P0-3/P0-4 traités], liste P1 démarre)
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -87,16 +87,40 @@ Détail complet dans `PROGRESS_V4.md`, Lot P0-3. **Commit `d9bb80e`, CI verte co
 vérifier séparément sur device réel, depuis chacun des 6 points d'entrée — y compris la première
 demande d'autorisation Photos jamais déclenchée avant ce correctif).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P0-3 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur **Lot P0-4 : V4-F-008** (upload photo profil — vérifier précisément le
-pipeline BunnyCDN/backend : l'audit Phase A a trouvé, via 2 agents indépendants, que l'iOS porte le
-chemin Android MORT `ProfileRepository.uploadPhotoProfile` (multipart direct vers `/user`) au lieu du
-chemin RÉELLEMENT utilisé `ProfileService.uploadImageToBunny` + `sendMetaDate` (PUT direct vers
-Bunny, puis POST `user/avatar/add`) — preuve déjà double-vérifiée en Phase A, à reconfirmer par
-lecture directe avant correction), puis la liste P1 dans l'ordre exact donné par l'utilisateur
-(Groups→Feed→Chat→Calls→Animems→Session/DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→
-Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo
-Android source de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lot P0-4 traité (V4-F-008)** — Profile, upload photo de profil contournait BunnyCDN. Reconfirmé
+par relecture directe (pas seulement Phase A) : `AddPerfilFoto.java:558`
+(`// profileViewModel.uploadPhotoProfile(foto);`) est commenté, seul site d'appel possible de
+`ProfileRepository.uploadPhotoProfile` — chemin mort. Le vrai flux (`uploadProfilePicture`, ligne
+557, toujours exécuté → `ProfileService`) fait PUT direct vers Bunny Storage
+(`storage.bunnycdn.com/tiinver-media/tiinver/profile/photos/{token}.webp`, `AccessKey`) puis POST
+`user/avatar/add` avec l'URL CDN ABSOLUE résultante (`cdn.tiinver.com/...` — différent du chemin
+RELATIF que renvoie le flux Feed, écart réel entre les deux, pas une simplification). iOS portait le
+POST multipart mort vers `{SERVER}user` — réécrit pour reproduire PUT Bunny + POST `user/avatar/add`.
+**Décision prise avec l'utilisateur pendant ce lot** : les constantes de stockage BunnyCDN
+(zone/clé/hôte) sont RÉUTILISÉES depuis `FeedMediaUploader` (rendues internes) plutôt que
+redupliquées une 3ᵉ fois dans `ProfileRepository.swift` — bien qu'Android lui-même triple ces
+littéraux dans 3 fichiers source, le détecteur de secrets de la session a bloqué le premier `git
+add`/`git push` contenant une 3ᵉ copie littérale de la clé d'accès ; réutiliser la constante existante
+évite cette 3ᵉ occurrence en clair dans le dépôt SANS changer le comportement réseau (même zone/clé/
+hôte). `CertificationRepository.submit` vérifié comme un flux séparé non affecté. Détail complet dans
+`PROGRESS_V4.md`, Lot P0-4. **Commit `4293e06`, CI verte confirmée (run `32673048282`)** —
+`BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : changer l'avatar sur un compte
+réel, inspecter le PUT Bunny + le POST `user/avatar/add`, confirmer que l'avatar rechargé depuis
+`getuserbyid` correspond à l'image envoyée).
+
+**Backlog P0 (V4) épuisé** — les 4 lots P0 sont tous `BUILD_VALIDATED`, CI verte à chaque fois.
+
+**PROCHAINE TÂCHE EXACTE** : Lot P0-4 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur la liste P1 (23 items), dans l'ordre exact donné par l'utilisateur, en
+commençant par **V4-F-020** (Groups — 7 méthodes de `GroupRepository.swift` [`updateMemberRole`,
+`removeMember`, `updateDescription`, `updateName`, `leaveGroup`, `subscribeToGroup`,
+`renewGroupSubscription`] ignorent `value.isBackendSuccess`/`backendErrorMessage`, contrairement à
+`createGroup`/`fetchGroup` dans le même fichier qui font bien ce contrôle — un rejet backend HTTP 200
+avec `error:"true"` est traité comme un succès), puis V4-F-032→033→042→038→017→046→048→049→050→
+001→002→029→030→056→064→059→068→073→021→027→019→003 (Groups→Feed→Chat→Calls→Animems→Session/
+DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→Social→Groups→Navigation, voir
+`MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de vérité :
+`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

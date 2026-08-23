@@ -2,8 +2,9 @@
 
 Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
-**État actuel (2026-08-23) : Phase A (Audit) TERMINÉE. Phase B EN COURS — Lots P0-1, P0-2, P0-3
-clos (CI verte). Prochain : Lot P0-4 (V4-F-008).**
+**État actuel (2026-08-23) : Phase A (Audit) TERMINÉE. Phase B EN COURS — Lots P0-1, P0-2, P0-3,
+P0-4 clos (CI verte). Backlog P0 épuisé. Prochain : liste P1 dans l'ordre imposé, en commençant par
+V4-F-020.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -299,3 +300,97 @@ télécharger) doit être vérifiée séparément sur device réel, depuis CHACU
 qu'il s'affiche"). Point d'attention spécifique pour le test réel : le téléchargement nécessite une
 autorisation Photos ("Ajouter uniquement") jamais demandée avant ce correctif — premier appel
 déclenchera la boîte de dialogue système iOS, à valider manuellement.
+
+## 2026-08-23 — Phase B V4 — Lot P0-4 : V4-F-008 (Profile — upload photo de profil contourne
+BunnyCDN, porte un chemin Android mort)
+
+**Commit** : `4293e06` — CI **run 32673048282, conclusion: success**.
+
+### Vérification Android (avant tout changement)
+
+Relecture directe (pas seulement les conclusions de l'audit Phase A, déjà double-confirmées par 2
+agents indépendants à l'époque) :
+
+- `uploadPerfilPhoto/AddPerfilFoto.java:157-173,557-558` — `uploadProfilePicture(uri)` (ligne 157)
+  démarre `ProfileService` avec `ACTION_UPLOAD` et un `UploadData(token, userId, fileUri)`. Site
+  d'appel réel confirmé : ligne 557, `uploadProfilePicture(uri.toString());`, TOUJOURS exécuté.
+  Juste en dessous (ligne 558) : `// profileViewModel.uploadPhotoProfile(foto);` — **commenté**,
+  seul site d'appel possible de la méthode `uploadPhotoProfile` côté `ProfileRepository.java`,
+  confirmant que cette dernière est un chemin mort, jamais exécuté en pratique.
+- `uploadPerfilPhoto/service/ProfileService.java:174-321` — flux réel :
+  1. `uploadImageToBunny(data)` (274-321) : `PUT https://storage.bunnycdn.com/tiinver-media/
+     tiinver/profile/photos/{token}.webp`, header `AccessKey`, octets bruts
+     (`ProgressRequestBodyUri`, `application/octet-stream`).
+  2. Sur succès HTTP, `cdn_content_url = cdn_url + folder + fileName` où `cdn_url =
+     "https://cdn.tiinver.com/"` (ligne 60) — **URL ABSOLUE**, contrairement au chemin RELATIF que
+     `FeedMediaUploader.uploadPhoto` renvoie pour les posts Feed (vérifié comme un écart réel entre
+     les deux flux, pas une simplification de ce portage).
+  3. `sendMetaDate(userId, cdn_content_url)` (178-244) : `POST user/avatar/add` avec `{id,
+     column:"profile_picture", value:<url>, object_url:<url>}`, réponse `{"error":"false"/...}`
+     (même convention que `JSONValue.isBackendSuccess`).
+
+### Écart iOS constaté (avant correctif)
+
+`ProfileRepository.uploadProfilePicture` (ligne 117 avant correctif) faisait un POST multipart
+DIRECT vers `{SERVER}user` avec un fichier nommé `wn_image.jpeg` — reproduction fidèle de
+`ProfileRepository.uploadPhotoProfile`/`HttpFileUploader` côté Android, qui est EXACTEMENT le chemin
+confirmé mort ci-dessus. BunnyCDN n'était jamais sollicité pour cette fonctionnalité.
+
+### Correctif appliqué
+
+`ProfileRepository.uploadProfilePicture` réécrite pour reproduire le flux réel en 2 étapes :
+```swift
+let token = UUID().uuidString
+let folder = "tiinver/profile/photos"
+let filename = "\(token).webp"
+// 1. PUT vers Bunny Storage
+var putRequest = URLRequest(url: URL(string: "\(FeedMediaUploader.storageBaseURL)/\(FeedMediaUploader.storageZone)/\(folder)/\(filename)")!)
+putRequest.httpMethod = "PUT"
+putRequest.setValue(FeedMediaUploader.storageAPIKey, forHTTPHeaderField: "AccessKey")
+// ... upload, vérification du statut HTTP ...
+
+// 2. POST des métadonnées avec l'URL CDN ABSOLUE résultante
+let objectURL = "\(APIEnvironment.cdnPhotoBaseURL)\(folder)/\(filename)"
+let value = try await APIClient.shared.post(
+    ["id": userId, "column": "profile_picture", "value": objectURL, "object_url": objectURL],
+    endpoint: "user/avatar/add"
+)
+```
+**Décision prise pendant ce lot** : les constantes de stockage BunnyCDN (`storageZone`/
+`storageAPIKey`/`storageBaseURL`) sont RÉUTILISÉES depuis `FeedMediaUploader` (rendues internes,
+`private` → sans modificateur) plutôt que redupliquées une 3ᵉ fois dans `ProfileRepository.swift`.
+Android lui-même triple ces littéraux dans 3 fichiers source (`ActivityService.java`/
+`UploadFileOrDataService.java`/`ProfileService.java`) — un portage strictement fidèle les aurait donc
+aussi dupliqués une 3ᵉ fois. Écart délibéré, décidé avec l'utilisateur : éviter une occurrence
+supplémentaire en clair de la clé d'accès dans le dépôt (le détecteur de secrets de la session a
+bloqué le premier `git add`/`git push` contenant cette 3ᵉ copie littérale), sans aucun changement de
+comportement réseau — même zone, même clé, même hôte, valeur identique à celle déjà committée dans
+`FeedMediaUploader.swift`/`ChatMediaUploadService.swift`.
+
+### Flux frères vérifiés
+
+`grep -rn "uploadProfilePicture"` → un seul appelant réel (`ProfileViewModel.uploadProfilePicture`
+→ `ProfileView.swift:85`). `CertificationRepository.submit` (`Discover/CertificationModels.swift`)
+référence `ProfileRepository.uploadProfilePicture` dans un COMMENTAIRE ("même protocole que...") mais
+ne l'appelle jamais — c'est un flux multipart-vers-backend SÉPARÉ et réellement correct
+(`certification/request`, endpoint Android distinct, vérifié indépendamment), non affecté par ce
+correctif.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Profile/ProfileRepository.swift`,
+`Sources/TiinverSwift/Feed/FeedMediaUploader.swift` (constantes de stockage rendues internes).
+
+**Résultat CI** : run `32673048282` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — nécessite de changer l'avatar sur un compte réel et de confirmer par
+inspection réseau que le PUT Bunny (statut 2xx) et le POST `user/avatar/add` (`error:"false"`)
+aboutissent tous deux, et que l'avatar affiché après rechargement du profil (`getuserbyid`)
+correspond bien à l'image envoyée — pas seulement que l'UI locale se met à jour immédiatement après
+le retour de la fonction (optimisme local possible même si le POST de métadonnées échouait
+silencieusement côté serveur, scénario non couvert par la seule CI).
+
+---
+
+**Backlog P0 (V4) épuisé** — les 4 lots P0 (P0-1/V4-F-065+066, P0-2/V4-F-040, P0-3/V4-F-007, P0-4/
+V4-F-008) sont tous `BUILD_VALIDATED`, CI verte. Prochain : liste P1 (23 items) dans l'ordre exact
+donné par l'utilisateur, en commençant par V4-F-020.

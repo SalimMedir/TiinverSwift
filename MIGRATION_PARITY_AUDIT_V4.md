@@ -712,8 +712,9 @@ local + `leaveRoom` émis quand l'utilisateur courant est retiré.
 
 ```
 ID : V4-F-040
-STATUT : **BUILD_VALIDATED (corrigé session 2026-08-23, Phase B Lot P0-2 — voir PROGRESS_V4.md, CI à
-confirmer)** — statut avant : ouvert (audit Phase A)
+STATUT : **BUILD_VALIDATED (corrigé `14e5ee1`, Phase B Lot P0-2, CI verte confirmée run
+`32664500075` — voir PROGRESS_V4.md ; test réel quasi impossible sans backend VoIP fonctionnel, voir
+détail)** — statut avant : ouvert (audit Phase A)
 PRIORITÉ : P0
 DOMAINE : WebRTC-Calls
 FEATURE : Un push VoIP reçu alors qu'un appel est déjà en cours saute le report CallKit obligatoire

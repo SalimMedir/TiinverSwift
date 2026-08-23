@@ -198,11 +198,11 @@ tous deux tracés et couverts explicitement ci-dessus. Aucun autre site n'attein
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Calls/CallCoordinator.swift`.
 
-**Commit** : *(à renseigner après ce commit)*.
+**Commit** : `14e5ee1`.
 
-**Résultat CI** : à déclencher.
+**Résultat CI** : run `32664500075` → **`conclusion: success`**.
 
-**Statut honnête après correction** : `BUILD_VALIDATED` jusqu'à confirmation CI, PUIS seulement (pas
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée), PUIS seulement (pas
 `COMPLETE_PARITY_VALIDATED` même après CI verte — test réel quasi impossible à déclencher de façon
 fiable sans un second appareil ET un backend VoIP fonctionnel pour produire ce scénario précis :
 recevoir un vrai push VoIP pendant qu'un appel est déjà en cours. Le contrat serveur VoIP reste de

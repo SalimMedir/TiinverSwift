@@ -63,11 +63,11 @@ aussi silencieusement ce cas — INCHANGÉ) ; (b) push VoIP pendant un appel en 
 = le callback PushKit système, DOIT être précédé d'un report CallKit quel que soit l'état de l'app).
 Corrigé : chemin (b) reporte maintenant un appel générique puis le termine (`reason: .failed`), même
 motif que la branche payload malformé voisine. Détail complet dans `PROGRESS_V4.md`, Lot P0-2.
-**Commit et CI : voir PROGRESS_V4.md pour le SHA/résultat exact au moment de la reprise si cette
-session s'est arrêtée avant confirmation.**
+**Commit `14e5ee1`, CI verte confirmée (run `32664500075`)** — `BUILD_VALIDATED`, PAS
+`COMPLETE_PARITY_VALIDATED` (test réel quasi impossible sans backend VoIP fonctionnel + 2 appareils).
 
-**PROCHAINE TÂCHE EXACTE** : si le Lot P0-2 n'a pas encore de commit/CI confirmés ci-dessus, terminer
-cette étape en premier. Sinon, enchaîner **automatiquement** sur **Lot P0-3 : V4-F-007** (viewer
+**PROCHAINE TÂCHE EXACTE** : Lot P0-2 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur **Lot P0-3 : V4-F-007** (viewer
 plein écran depuis Profile — supprimer/signaler/bloquer/commenter/télécharger tous morts, vérifier
 CHAQUE action séparément contre Android, ne pas considérer corrigé juste parce que le viewer
 s'affiche), puis Lot P0-4 (V4-F-008, upload photo profil — pipeline BunnyCDN/backend précis à

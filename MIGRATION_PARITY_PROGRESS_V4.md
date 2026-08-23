@@ -3,7 +3,7 @@
 Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
 **État actuel (2026-08-23) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
-(P0-1..P0-4 clos). Liste P1 démarrée : V4-F-020 clos. Prochain : V4-F-032.**
+(P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032 clos. Prochain : V4-F-033.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -456,3 +456,67 @@ réponse).
 `COMPLETE_PARITY_VALIDATED` — nécessite de provoquer un rejet backend réel (ex. retirer un membre
 déjà retiré, renommer un groupe sans les droits requis) et de confirmer que le message d'erreur
 s'affiche SANS que l'effet local (membre disparu, nom mis à jour, écran fermé) ne soit appliqué.
+
+## 2026-08-23 — Phase B V4 — Lot P1-2 : V4-F-032 (Feed — supprimer son propre post le retire même si
+le serveur rejette)
+
+**Commit** : `f503a72` — CI **run 32674024379, conclusion: success**.
+
+### Vérification Android (avant tout changement)
+
+`Activity/adapter/ActivityAdapter.java:847-867` (`deleteMyPost`), lu en entier — même contrat
+`TransportData.Post` déjà vérifié pour V4-F-020 (`Http/TransportData.java:615-681`) :
+```java
+td.Post(map, "deleteactivity", new Callback() {
+    public void onResonse(Context context, int action, JSONObject object) {
+        Toast.makeText(context, ...effectuer..., Toast.LENGTH_LONG).show();
+        deletePostById(mediaObject.getId());   // retrait LOCAL — uniquement ici, succès confirmé
+    }
+    public void onError(String message) {
+        Toast.makeText(context, ...errorLoad..., Toast.LENGTH_LONG).show();  // PAS de retrait local
+    }
+});
+```
+
+### Écart iOS constaté (avant correctif)
+
+`FeedViewModel.deleteOwnPost` (lignes 144-148 avant correctif) :
+```swift
+try? await repository.deleteActivity(id: post.id, actorId: myId)
+posts.removeAll { $0.id == post.id }
+```
+`FeedRepository.deleteActivity` (`FeedRepository.swift:243-246`) vérifiait DÉJÀ correctement
+`value.isBackendSuccess` et levait une erreur sur rejet — le `try?` de l'appelant avalait cette
+levée, puis `posts.removeAll` s'exécutait INCONDITIONNELLEMENT, qu'il y ait eu succès ou non.
+
+### Correctif appliqué
+
+```swift
+do {
+    try await repository.deleteActivity(id: post.id, actorId: myId)
+    posts.removeAll { $0.id == post.id }
+} catch {
+    deleteError = "Échec de la suppression du post."
+}
+```
+Nouvelle propriété `@Published var deleteError: String?` (équivalent du `Toast` d'erreur Android),
+affichée via une alerte dans les 2 vues qui déclenchent `deleteOwnPost`.
+
+### Flux frères vérifiés
+
+`grep -n "deleteOwnPost"` → exactement 2 sites d'appel réels (`FeedView.swift` — menu "..." de la
+grille — et `FeedDetailPagerView` — menu "..." du plein écran, voir V4-F-007/Lot P0-3). Alerte
+`deleteError` ajoutée aux DEUX vues. `hideOthersPost` (branche non-propriétaire du même bouton, pas
+d'appel serveur côté Android — juste un masquage local persisté) et `block` (même pattern `try?` +
+retrait inconditionnel, MAIS finding séparé V4-F-033, prochain de la liste) délibérément NON touchés
+dans ce lot — scope strictement limité à `deleteOwnPost`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedViewModel.swift`,
+`Sources/TiinverSwift/Feed/FeedView.swift`.
+
+**Résultat CI** : run `32674024379` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — nécessite de provoquer un rejet serveur réel sur une suppression de
+post propre (ex. token expiré, id déjà supprimé) et de confirmer que le post reste visible avec
+l'alerte affichée, plutôt que de disparaître puis réapparaître au rechargement suivant.

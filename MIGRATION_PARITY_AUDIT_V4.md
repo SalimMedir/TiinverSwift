@@ -640,6 +640,17 @@ avait réussi, sans erreur visible ; il réapparaît au prochain rechargement �
 corrigée une fois dans ce fichier (`followFromDetail`) mais manquée ici.
 RECOMMANDATION : Ne retirer le post qu'après un `deleteActivity` réussi (sans `try?`) ; afficher une
 erreur sinon.
+STATUT : BUILD_VALIDATED (2026-08-23, commit f503a72, CI run 32674024379 succès). Reconfirmé par
+relecture directe d'`ActivityAdapter.deleteMyPost` : `deletePostById` (retrait local) n'est appelé QUE
+dans `onResonse`, jamais dans `onError` (simple Toast) — même contrat `TransportData.Post` que
+V4-F-020 (`error=="false"` ⇔ `onResonse`). `deleteActivity` (`FeedRepository.swift`) vérifiait déjà
+`isBackendSuccess` et levait correctement ; le seul bug était le `try?` de `deleteOwnPost` qui avalait
+cette levée. Corrigé : retrait local conditionné au succès réel (`do/catch`), nouvelle propriété
+`@Published var deleteError: String?` (équivalent du Toast Android) affichée via une alerte dans les
+2 vues qui déclenchent cette action (`FeedView` grille, `FeedDetailPagerView` plein écran — les 2
+seuls sites d'appel, confirmés par `grep deleteOwnPost`). DEVICE_TEST_REQUIRED pour
+COMPLETE_PARITY_VALIDATED (provoquer un rejet serveur réel sur une suppression et confirmer que le
+post reste visible avec l'alerte affichée, plutôt que de disparaître puis réapparaître).
 ```
 
 ```

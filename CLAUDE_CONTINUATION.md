@@ -10,7 +10,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 ---
 
 # CURRENT HANDOFF (2026-08-23 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
-Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS [V4-F-020 traité])
+Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS [V4-F-020/032 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -125,12 +125,28 @@ appelants. Détail complet dans `PROGRESS_V4.md`, Lot P1-1. **Commit `6190dee`, 
 `32673545395`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : provoquer un
 rejet backend réel et confirmer que l'effet local ne s'applique pas).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-1 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur **V4-F-032** (Feed — supprimer son propre post retire le post du fil MÊME si
-l'appel serveur échoue : `FeedViewModel.swift:144-148`, `try?` avale l'erreur, `posts.removeAll`
-inconditionnel — Android ne retire l'item qu'après succès confirmé, `ActivityAdapter.java:847-867`),
-puis V4-F-033→042→038→017→046→048→049→050→001→002→029→030→056→064→059→068→073→021→027→019→003
-(Feed→Chat→Calls→Animems→Session/DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→Social→
+**Lot P1-2 traité (V4-F-032)** — Feed, supprimer son propre post retirait le post du fil MÊME si
+l'appel serveur échouait. Vérifié dans `ActivityAdapter.deleteMyPost`
+(`Activity/adapter/ActivityAdapter.java:847-867`) : `deletePostById` (retrait local) n'est appelé QUE
+dans `onResonse` (succès), `onError` affiche seulement un Toast — même contrat `TransportData.Post`
+que V4-F-020. `FeedRepository.deleteActivity` vérifiait déjà `isBackendSuccess` et levait
+correctement ; le `try?` de `FeedViewModel.deleteOwnPost` avalait cette levée, puis
+`posts.removeAll` s'exécutait inconditionnellement. Corrigé : retrait local conditionné au succès
+réel (`do/catch`), nouvelle propriété `@Published var deleteError: String?` (équivalent du Toast
+Android) affichée via une alerte dans les 2 vrais sites d'appel (`FeedView` grille,
+`FeedDetailPagerView` plein écran). `hideOthersPost` (pas d'appel serveur côté Android, masquage
+local seul) et `block` (même pattern bugué, mais finding SÉPARÉ V4-F-033) délibérément non touchés.
+Détail complet dans `PROGRESS_V4.md`, Lot P1-2. **Commit `f503a72`, CI verte confirmée (run
+`32674024379`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : provoquer
+un rejet serveur réel sur une suppression et confirmer que le post reste visible avec l'alerte).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-2 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur **V4-F-033** (Feed — bloquer un utilisateur depuis le Feed retire son post
+même en cas d'échec ou de bascule inverse [déblocage] : `FeedViewModel.swift:198-204`, `_ = try?`,
+retrait inconditionnel — utiliser le `Bool` déjà retourné par `toggleBlock` [`message==USER_BLOCKED`]
+pour ne retirer le post que sur un vrai succès de blocage, `Activity/ui/MainFragment.java:1704-1745`),
+puis V4-F-042→038→017→046→048→049→050→001→002→029→030→056→064→059→068→073→021→027→019→003
+(Chat→Calls→Animems→Session/DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→Social→
 Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android
 source de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 

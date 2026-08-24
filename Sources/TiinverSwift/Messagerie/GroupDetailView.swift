@@ -14,9 +14,9 @@ import SwiftUI
 /// seul écran aurait été hors de proportion avec le gap réel à combler.
 ///
 /// **Non porté ici, gap restant documenté** : changement de photo de groupe (Android :
-/// `CustomGalleryView`+`CroperView`+upload multipart type=4 vers `updategroup`) et lien d'un membre
-/// vers une conversation privée directe (Android : action "Message" du menu contextuel membre) —
-/// tous deux secondaires par rapport au cœur du gap (membres/rôles/description/lien d'invitation).
+/// `CustomGalleryView`+`CroperView`+upload multipart type=4 vers `updategroup`) — secondaire par
+/// rapport au cœur du gap (membres/rôles/description/lien d'invitation). L'action "Message" du menu
+/// contextuel membre a été portée (V4-F-019, voir `memberRow`/`chatTarget`).
 struct GroupDetailView: View {
     let groupId: String
     /// Port de `ChangeGroupTopicActivity` (168 lignes, entier, 2026-08-18 P2) — `@State` plutôt
@@ -46,6 +46,13 @@ struct GroupDetailView: View {
     @State private var showLeaveConfirm = false
     @State private var memberActionTarget: GroupMember?
     @State private var showInviteShare = false
+    /// **Ajouté le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-019, Phase B P1)** — port de
+    /// `SettingGroupMessageFragmant.showMemberIsNotAdminDialog` (`action_on_members_group_no_admin`,
+    /// `strings.xml:453-455`, un seul item "Message") : dialogue à option unique proposé à un
+    /// non-admin qui tape sur un AUTRE membre.
+    @State private var messageOnlyTarget: GroupMember?
+    @State private var chatDestination: RosterModel?
+    @State private var openChat = false
 
     init(groupId: String, groupName: String, groupToken: String, groupType: String, groupDescription: String?, groupProfile: String?) {
         self.groupId = groupId
@@ -169,16 +176,25 @@ struct GroupDetailView: View {
         .sheet(isPresented: $showInviteShare) {
             if let inviteLink { ShareSheet(items: [inviteLink]) }
         }
-        // Port de `showMemberDialog`/`showMemberIsNotAdminDialog` — menu contextuel à 2 actions
-        // (promouvoir/rétrograder, retirer) pour un admin, RIEN pour un non-admin (l'action
-        // "Message" — ouvrir une conversation privée avec ce membre — n'est pas portée, voir
-        // avertissement de tête de fichier).
+        // Port de `showMemberDialog` (`action_on_members_group`/`action_on_members_group_admin`,
+        // `strings.xml:443-451` — "Message" TOUJOURS en premier, avant le rôle/retrait) — menu
+        // contextuel admin, 3 actions.
         .confirmationDialog("Gérer ce membre", isPresented: Binding(get: { memberActionTarget != nil }, set: { if !$0 { memberActionTarget = nil } }), presenting: memberActionTarget) { member in
+            Button("Message") { openChatWithMember(member); memberActionTarget = nil }
             Button(member.isAdmin ? "Retirer le rôle admin" : "Nommer administrateur") {
                 Task { await toggleAdmin(member) }
             }
             Button("Retirer du groupe", role: .destructive) { Task { await remove(member) } }
             Button("Annuler", role: .cancel) {}
+        }
+        // Port de `showMemberIsNotAdminDialog` (`action_on_members_group_no_admin`, un seul item
+        // "Message") — menu contextuel non-admin, 1 action.
+        .confirmationDialog("Ce membre", isPresented: Binding(get: { messageOnlyTarget != nil }, set: { if !$0 { messageOnlyTarget = nil } }), presenting: messageOnlyTarget) { member in
+            Button("Message") { openChatWithMember(member); messageOnlyTarget = nil }
+            Button("Annuler", role: .cancel) {}
+        }
+        .navigationDestination(isPresented: $openChat) {
+            if let chatDestination { ChatView(target: chatDestination) }
         }
         .alert("Quitter le groupe ?", isPresented: $showLeaveConfirm) {
             Button("Quitter", role: .destructive) { Task { await leaveGroup() } }
@@ -203,12 +219,44 @@ struct GroupDetailView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            // Port du `if (IAM_ADMIN) showMemberDialog(...) else showMemberIsNotAdminDialog(...)` —
-            // seul un admin obtient un menu d'actions ; un non-admin qui tape sur un membre n'a
-            // qu'un menu "Message" (non porté, voir tête de fichier), donc rien n'est présenté ici.
-            guard isCurrentUserAdmin, member.userId != currentUserId else { return }
-            memberActionTarget = member
+            // Port du `if (IAM_ADMIN) showMemberDialog(...) else showMemberIsNotAdminDialog(...)`
+            // (`onItemClick`, `SettingGroupMessageFragmant.java:162-172`) — un admin obtient le menu
+            // à 3 actions (Message/rôle/retrait), un non-admin obtient le menu à 1 action (Message
+            // seul), tous deux CÂBLÉS maintenant (V4-F-019) — plus de tap mort pour un non-admin.
+            guard member.userId != currentUserId else { return }
+            if isCurrentUserAdmin {
+                memberActionTarget = member
+            } else {
+                messageOnlyTarget = member
+            }
         }
+    }
+
+    /// Port de `Adapter.sendMessage(pos)` (`messagerie/group/Adapter.java:119-144`) — construit le
+    /// `RosterModel` d'une conversation 1:1 (`type=CHAT`, pas `group`) avec les mêmes champs que
+    /// l'original (`nikname`/`username`/`userId`/`profile`/`from`=utilisateur courant/`to`=membre
+    /// ciblé), même motif déjà établi par `ProfileView.messageTarget`/`NewMessageView.rosterTarget`.
+    private func chatTarget(for member: GroupMember) -> RosterModel? {
+        guard let username = member.username else { return nil }
+        var target = RosterModel()
+        target.type = ChatType.chat.wireValue
+        target.nikname = member.nikname ?? member.displayName
+        target.username = username
+        target.to = username
+        target.from = UserSession.shared.username
+        target.currentUsername = UserSession.shared.username
+        target.currentUserId = UserSession.shared.myId
+        target.userId = String(member.userId)
+        target.title = target.nikname
+        target.subTitle = username
+        target.profile = member.profile
+        return target
+    }
+
+    private func openChatWithMember(_ member: GroupMember) {
+        guard let target = chatTarget(for: member) else { return }
+        chatDestination = target
+        openChat = true
     }
 
     private func loadMembers() async {

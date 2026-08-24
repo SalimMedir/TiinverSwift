@@ -1552,6 +1552,27 @@ IMPACT : Aucun moyen direct de faire remonter un calque enfoui sous d'autres par
 RECOMMANDATION : Ajouter un `LongPressGesture` (avec vérification sur device, historique de
 régressions de composition de gestes documenté dans ce fichier) résolvant le calque le plus haut et
 appelant `bringLayerToFront`, déjà prêt.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-14) — Vérifié contre
+`MemesView2.java:1565-1574` (`GestureListener.onLongPress`, entier) : hit-test top-to-bottom
+(`for (i = size-1; i >= 0; i--) if (isPointInsideObject(e, i)) { bringLayerToFront(i); break; }`),
+AUCUNE garde `locked` (fidèle à V4-F-050 : un calque verrouillé reste sélectionnable/remontable) ;
+`:1613-1616` (`bringLayerToFront`, entier) — port déjà correct côté
+`AnimemesGestureController.bringLayerToFront`. Confirmé qu'aucun `LongPressGesture` n'existait
+côté iOS. Correctif : nouvelle `AnimemesEditorState.bringTopLayerToFront(at:)` (même hit-test
+top-to-bottom que `selectObject(at:)` déjà porté, `syncTimeline()`/`version += 1` — même motif que
+`removeLast`/`deleteSelected`, un réordonnancement de calques est structurel) ; `LongPressGesture`
+seul (pas de composition `.sequenced`/`.simultaneously`) câblé via `.simultaneousGesture` — un
+modificateur SÉPARÉ de `.gesture(combinedGesture)`, délibérément PAS fusionné dans sa composition
+`SimultaneousGesture` déjà fragile (2 échecs de build documentés dans ce même fichier lors d'une
+tentative antérieure de fusion de jeux de gestes). Position lue depuis `lastTouchLocation`, tenue à
+jour par le premier callback de `dragGesture` (`minimumDistance: 0`, immédiat au toucher). Commit
+`2fa5f27`, push confirmé (`dbebfb3..2fa5f27 main -> main`), CI run `32722412964` conclusion
+`success`. **DEVICE_TEST_REQUIRED IMPÉRATIF pour COMPLETE_PARITY_VALIDATED** (aucun
+simulateur/Xcode dans cet environnement, ET l'audit lui-même signale l'historique de régressions
+de composition de gestes de ce fichier précis) : confirmer qu'un appui long immobile déclenche bien
+la remontée du calque SANS interférer avec `dragGesture`/`combinedGesture` (déplacement de calque
+non désiré, geste qui ne se déclenche plus, etc.).
 ```
 
 ```
@@ -1664,6 +1685,24 @@ global prouvablement incorrect pour des éditions entrelacées (ex. trait→text
 au lieu du trait réellement le plus récent).
 RECOMMANDATION : Suivre une pile chronologique unique (enum trait/texte) et dépiler la vraie dernière
 entrée ; évaluer si la suppression individuelle par tap vaut la peine d'être portée.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-15) — Vérifié contre
+`ImageViewCanvas.deletePrecedenteDraw` (`:317-326`, entier) : `composer.getPaintLayers()` UNIQUEMENT
+— texte/stickers jamais touchés par ce bouton. `ImageEditorCompound.java:458-460`
+(`R.id.undo` → `mView.deletePrecedenteDraw()`) confirme le déclencheur unique. Corrigé : `undo()`
+ne retire plus JAMAIS `texts` — scope réduit à `strokes` seul (`guard !strokes.isEmpty else {
+return }; strokes.removeLast()`), garde de visibilité du bouton alignée (`!strokes.isEmpty`,
+retrait de `|| !texts.isEmpty`). **Décision de portée explicite** : la RECOMMANDATION elle-même
+qualifie la suppression individuelle par tap de texte/sticker comme optionnelle ("évaluer si...
+vaut la peine") — PAS portée dans ce lot, car les calques texte/sticker de ce portage n'ont
+ACTUELLEMENT aucun câblage d'interaction (sélection/déplacement/suppression individuelle), déjà
+documenté comme hors périmètre en tête de fichier — l'ajouter seulement pour ce bouton aurait été
+une fonctionnalité nouvelle, pas la correction de sémantique demandée par ce finding précis. Flux
+frères vérifiés : `grep "texts.removeLast\|strokes.removeLast"` → `PBSCanvasEngine.swift`/
+`AnimemesDrawingView.swift` déjà strokes-only, non affectés. Commit `0654f17`, push confirmé
+(`2fa5f27..0654f17 main -> main`), CI run `32723488039` conclusion `success`.
+DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (placer trait→texte→trait, appuyer "Annuler",
+confirmer que c'est le DERNIER TRAIT [pas le texte] qui disparaît, fidèle à Android).
 ```
 
 ```

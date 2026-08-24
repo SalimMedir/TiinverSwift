@@ -8,8 +8,8 @@ V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, 
 V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027, V4-F-019 clos. V4-F-003 documenté `BLOQUÉ` (hors
 dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE.** Backlog P2 EN
 COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014/022/025/028/
-035/039/041/043/047/051 (`BUILD_VALIDATED`) clos, V4-F-031 (différé, hors périmètre d'un petit lot).
-Prochain : V4-F-052.**
+035/039/041/043/047/051/052/057 (`BUILD_VALIDATED`) clos, V4-F-031 (différé, hors périmètre d'un
+petit lot). Prochain : V4-F-058.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -2907,3 +2907,128 @@ pas de 3ᵉ site de déplacement de playhead à corriger dans ce fichier.
 `COMPLETE_PARITY_VALIDATED` — test réel requis : faire défiler la timeline vers une section,
 appuyer sur Play, confirmer que la lecture reprend depuis la frame affichée à l'écran (pas une
 frame antérieure périmée).
+
+## 2026-08-24 — Phase B V4 — Lot P2-14 : V4-F-052 (Animems-Interaction — aucun appui long pour ramener un calque au premier plan)
+
+### Vérification Android
+
+`MemesView2.java:1565-1574` (`GestureListener.onLongPress`, entier) :
+```java
+@Override public void onLongPress(MotionEvent e) {
+    for (int i = composer.getLayers().size()-1; i >= 0; i--)
+        if (isPointInsideObject(e, i)) { bringLayerToFront(i); invalidate(); break; }
+}
+```
+Hit-test du plus haut (index max) vers le plus bas, s'arrête au PREMIER match — AUCUNE garde
+`isLocked()` (fidèle à V4-F-050, un calque verrouillé reste sélectionnable/remontable, seule la
+manipulation directe est bloquée). `:1613-1616` (`bringLayerToFront`, entier) — déplace le calque
+en fin de liste (dernier = dessiné au-dessus).
+
+### État iOS avant correctif
+
+`AnimemesGestureController.bringLayerToFront(_:composer:)` était déjà porté fidèlement mais
+`grep` confirmait ZÉRO appelant. `grep LongPressGesture` sur `AnimemesEditorView.swift` (930
+lignes, lecture complète) → 0 résultat.
+
+### Correctif appliqué
+
+1. Nouvelle `AnimemesEditorState.bringTopLayerToFront(at:)` — même hit-test top-to-bottom que
+   `selectObject(at:)` déjà porté (`(0..<layers.count).reversed().first(where:)`), appelle
+   `gestureController.bringLayerToFront`, puis `syncTimeline()`/`version += 1` (même motif que
+   `removeLast()`/`deleteSelected()` : un réordonnancement de calques est un changement structurel).
+2. Nouvelle `lastTouchLocation` (`@State`), tenue à jour par le PREMIER callback de `dragGesture`
+   (`minimumDistance: 0`, déclenché immédiatement au toucher, avant tout mouvement).
+3. Nouveau `longPressGesture` — `LongPressGesture(minimumDuration: 0.5)` SEUL (pas de composition
+   `.sequenced`/`.simultaneously`), câblé via `.simultaneousGesture(longPressGesture)` — un
+   modificateur SÉPARÉ de `.gesture(combinedGesture)`, délibérément PAS fusionné dans sa
+   composition `SimultaneousGesture` : ce fichier documente 2 échecs de build antérieurs
+   précisément sur une tentative de fusion de jeux de gestes (`some Gesture` opaque non unifiable,
+   puis ambiguïté même après érasure `AnyGesture`) — approche la plus prudente possible compte tenu
+   de cet historique, sans accès à un environnement de build/simulateur pour vérifier une
+   alternative.
+
+### Flux frères vérifiés
+
+`grep "AnimemesGestureController.bringLayerToFront\|bringTopLayerToFront"` → un seul site d'appel
+après correctif (celui ajouté). Vérifié qu'Android n'a aucun équivalent "appui long" dans
+`handleMaskEditTouch` (mode masque) — pas de garde `isMaskEditMode` ajoutée, fidèle à l'absence de
+toute logique long-press dans ce chemin côté Android.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorState.swift`,
+`Sources/TiinverSwift/Animems/AnimemesEditorView.swift`.
+
+**Résultat CI** : commit `2fa5f27`, push confirmé (`dbebfb3..2fa5f27 main -> main`), run
+`32722412964` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — **test réel IMPÉRATIF** (aucun simulateur/Xcode disponible dans cet
+environnement, ET historique documenté de régressions de composition de gestes sur ce fichier
+précis) : confirmer qu'un appui long immobile ramène bien le calque au premier plan SANS
+interférer avec `dragGesture`/`combinedGesture` (déplacement de calque non désiré déclenché par le
+même geste, ou inversement `longPressGesture` qui ne se déclenche jamais à cause de la présence de
+`dragGesture`).
+
+## 2026-08-24 — Phase B V4 — Lot P2-15 : V4-F-057 (Gallery-PhotoEditor — sémantique d'annuler/supprimer un objet divergente d'Android)
+
+### Vérification Android
+
+`ImageEditorCompound.java:458-460` : `if (v.getId() == R.id.undo) { mView.deletePrecedenteDraw();
+}` — déclencheur UNIQUE. `ImageViewCanvas.deletePrecedenteDraw` (`:317-326`, entier) :
+```java
+public void deletePrecedenteDraw(){
+    if (!composer.getPaintLayers().isEmpty()) {
+        int index = composer.getPaintLayers().size() - 1;
+        composer.getPaintLayers().remove(index);
+        if (mListener != null) mListener.touchUp(composerIndex);
+        postInvalidate();
+    }
+}
+```
+`composer.getPaintLayers()` UNIQUEMENT — jamais `composer.getLayers()` (texte/stickers/images).
+Confirmé aussi (`:565-566,590-591`) que `btn_undo` n'est visible QUE pendant le mode peinture actif
+(`ic_paint` sélectionné) — encore un signal que ce bouton n'a jamais eu vocation à toucher au
+texte/aux stickers. `ImageViewCanvas.deleteObjectById(id)` (`:327+`) existe SÉPARÉMENT pour une
+suppression individuelle par identifiant (texte/sticker/image), déclenchée par une icône dédiée
+distincte du bouton "annuler" — non lue en détail (hors périmètre, l'audit lui-même qualifie cette
+partie d'optionnelle).
+
+### État iOS avant correctif
+
+`PhotoToolsView.undo()` : `if !texts.isEmpty { texts.removeLast() } else if !strokes.isEmpty {
+strokes.removeLast() }` — retirait TOUJOURS le dernier TEXTE en premier, peu importe l'ordre
+chronologique réel des éditions, et ne touchait aux traits qu'une fois `texts` vide. Pour une
+séquence trait→texte→trait, "Annuler" retirait le TEXTE au lieu du trait réellement le plus récent
+— divergence prouvable, pas seulement théorique.
+
+### Correctif appliqué
+
+`undo()` réduit à `strokes` seul (`guard !strokes.isEmpty else { return }; strokes.removeLast()`),
+fidèle à `deletePrecedenteDraw`. Garde de visibilité du bouton toolbar alignée (`!strokes.isEmpty`,
+`|| !texts.isEmpty` retiré).
+
+**Décision de portée explicite** : la suppression individuelle par tap de texte/sticker
+(`deleteObjectById`, icône dédiée séparée côté Android) N'A PAS été portée dans ce lot — la
+RECOMMANDATION de l'audit la qualifie elle-même d'optionnelle ("évaluer si... vaut la peine d'être
+portée"), et les calques texte/sticker de ce portage n'ont ACTUELLEMENT aucun câblage d'interaction
+(sélection/déplacement/suppression individuelle) — déjà documenté comme hors périmètre en tête de
+`PhotoToolsView.swift` avant même ce lot. L'ajouter seulement pour ce bouton aurait constitué une
+fonctionnalité NOUVELLE, pas la correction de sémantique erronée que ce finding demande précisément.
+Conséquence honnête assumée : après ce correctif, un texte/sticker placé par erreur ne peut plus
+être retiré via AUCUN bouton de cet écran (ni "Annuler", ni un remplaçant) — fidèle à Android, qui
+n'offre pas non plus ce retrait via "Annuler", mais un gap UX réel si la suppression individuelle
+n'est jamais portée séparément.
+
+### Flux frères vérifiés
+
+`grep "texts.removeLast\|strokes.removeLast"` dans tout le projet → `PBSCanvasEngine.swift`
+(Shareboard) et `AnimemesDrawingView.swift` (Animems) étaient DÉJÀ strokes-only, non affectés par
+ce bug — celui-ci était isolé à `PhotoToolsView.swift`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/PhotoEditor/PhotoToolsView.swift`.
+
+**Résultat CI** : commit `0654f17`, push confirmé (`2fa5f27..0654f17 main -> main`), run
+`32723488039` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : placer trait→texte→trait, appuyer "Annuler",
+confirmer que c'est le DERNIER TRAIT (pas le texte) qui disparaît, fidèle à Android.

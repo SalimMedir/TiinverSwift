@@ -17,7 +17,8 @@ BUILD_VALIDATED ; Lot P2-4 : V4-F-022 BUILD_VALIDATED ; Lot P2-5 : V4-F-025 BUIL
 Lot P2-6 : V4-F-028 BUILD_VALIDATED ; Lot P2-7 : V4-F-031 différé (hors périmètre) ; Lot P2-8 :
 V4-F-035 BUILD_VALIDATED ; Lot P2-9 : V4-F-039 BUILD_VALIDATED ; Lot P2-10 : V4-F-041
 BUILD_VALIDATED ; Lot P2-11 : V4-F-043 BUILD_VALIDATED ; Lot P2-12 : V4-F-047 BUILD_VALIDATED ;
-Lot P2-13 : V4-F-051 BUILD_VALIDATED] — backlog P3 PAS ENCORE ATTAQUÉ)
+Lot P2-13 : V4-F-051 BUILD_VALIDATED ; Lot P2-14 : V4-F-052 BUILD_VALIDATED ; Lot P2-15 :
+V4-F-057 BUILD_VALIDATED] — backlog P3 PAS ENCORE ATTAQUÉ)
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -657,21 +658,41 @@ vérifiée (UI→geste→état→moteur→renderer→timeline ; export confirmé
 `totalFramesMinus1`). **Commit `b3291be`, CI verte (run `32721332296`)** — `BUILD_VALIDATED`.
 Détail complet dans `PROGRESS_V4.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Lot P2-13 terminé. Enchaîner **automatiquement** sur le prochain P2
-dans l'ordre du document : **V4-F-052** (Animems-Interaction — aucun appui long pour ramener un
-calque au premier plan : `Animems/AnimemesGestureController.swift:74-82` [`bringLayerToFront`,
-PORTÉ, zéro appelant] ; aucun `LongPressGesture` nulle part dans `AnimemesEditorView.swift` [930
-lignes, lecture complète] ; Android — `engine/.../memes/MemesView2.java:1571-1574,1613-1616`
-[appui long sur le canevas → calque le plus haut sous le doigt → premier plan] — aucun moyen direct
-de faire remonter un calque enfoui sous d'autres par manipulation directe — recommandation :
-ajouter un `LongPressGesture` [avec vérification sur device, historique de régressions de
-composition de gestes documenté dans ce fichier] résolvant le calque le plus haut et appelant
-`bringLayerToFront`, déjà prêt — **consigne de rigueur Animems applicable**), puis continuer
-AUTOMATIQUEMENT le backlog P2 restant dans l'ordre du document (V4-F-057, V4-F-058, V4-F-060,
-V4-F-061, V4-F-066, V4-F-067, V4-F-069, V4-F-070, V4-F-074 — 9 findings restants après V4-F-052),
-puis le backlog P3 (21 findings) une fois P2 entièrement clos, SANS attendre de nouvelle
-confirmation utilisateur pour chaque lot (instruction explicite : continuer
-automatiquement). Repo Android source de vérité :
+**Lot P2-14 traité (V4-F-052)** — Animems-Interaction, aucun appui long pour ramener un calque au
+premier plan. `bringLayerToFront` était déjà porté mais zéro appelant. Corrigé : nouvelle
+`AnimemesEditorState.bringTopLayerToFront(at:)` (même hit-test top-to-bottom que `selectObject`),
+`LongPressGesture` seul câblé via `.simultaneousGesture` (SÉPARÉ de `combinedGesture`, pour ne pas
+toucher sa composition déjà fragile — 2 échecs de build documentés dans ce fichier). **Commit
+`2fa5f27`, CI verte (run `32722412964`)** — `BUILD_VALIDATED`. **DEVICE_TEST_REQUIRED IMPÉRATIF**
+(aucun simulateur disponible, historique de régressions de gestes sur ce fichier précis).
+
+**Lot P2-15 traité (V4-F-057)** — Gallery-PhotoEditor, sémantique d'annuler/supprimer divergente
+d'Android. Vérifié dans `ImageViewCanvas.deletePrecedenteDraw` (`composer.getPaintLayers()`
+uniquement, jamais texte/stickers) + `ImageEditorCompound.java:458-460` (déclencheur unique).
+`PhotoToolsView.undo()` retirait TOUJOURS le dernier texte en premier, peu importe l'ordre
+chronologique réel. Corrigé : `undo()` réduit à `strokes` seul, garde de visibilité alignée.
+Décision de portée explicite : suppression individuelle par tap de texte/sticker NON portée
+(RECOMMANDATION de l'audit elle-même l'qualifie d'optionnelle, aucun câblage d'interaction
+n'existe pour ces calques dans ce portage — ajouter cette fonctionnalité aurait dépassé la
+correction de sémantique demandée). **Commit `0654f17`, CI verte (run `32723488039`)** —
+`BUILD_VALIDATED`. Détail complet des 2 lots dans `PROGRESS_V4.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Lots P2-14/15 terminés. Enchaîner **automatiquement** sur le prochain
+P2 dans l'ordre du document : **V4-F-058** (Gallery-PhotoEditor — le picker de galerie avale
+silencieusement les échecs de chargement, feuille bloquée :
+`Camera/GalleryPickerView.swift:55-76` [`loadFileRepresentation` : `{ url, _ in guard let url else
+{ return } ... }` ignore l'erreur, ni `onImagePicked`/`onVideoPicked` ni `onCancel` ne se
+déclenchent sur échec] ; Android — `editor/camera/BaseCameraFragment.java:218-227` [le picker
+système ne peut pas atterrir sur un état "sélectionné mais échoué"] — sur un échec réel [asset
+iCloud non téléchargé, permission révoquée en cours de sélection, erreur I/O transitoire],
+l'utilisateur reste bloqué derrière/sur la feuille de sélection, sans message d'erreur, sans
+fermeture automatique — recommandation : appeler `onCancel()` [avec éventuellement l'erreur
+affichée] quand `url == nil`, comme le fait déjà le garde `results.first == nil` juste au-dessus),
+puis continuer AUTOMATIQUEMENT le backlog P2 restant dans l'ordre du document (V4-F-060, V4-F-061,
+V4-F-066, V4-F-067, V4-F-069, V4-F-070, V4-F-074 — 7 findings restants après V4-F-058), puis le
+backlog P3 (21 findings) une fois P2 entièrement clos, SANS attendre de nouvelle confirmation
+utilisateur pour chaque lot (instruction explicite : continuer automatiquement). Repo Android
+source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---

@@ -323,6 +323,17 @@ struct SearchView: View {
         runSearch(full: true)
     }
 
+    /// Port de `buildDisplayEntry` (`RechercheTiinver.java:324-328`) — pendant WRITE de
+    /// `selectRecent` ci-dessus (le pendant READ). Seuls `hashtags`/`users` sont préfixés — `posts`
+    /// ET `all` sauvegardent la query brute, fidèle à Android (`return query;` par défaut).
+    private func displayEntry(query: String, tab: SearchTab) -> String {
+        switch tab {
+        case .hashtags: return "#" + query
+        case .users: return "@" + query
+        case .all, .posts: return query
+        }
+    }
+
     private func runSearch(full: Bool) {
         guard query.count >= 2 else { return }
         Task {
@@ -336,7 +347,16 @@ struct SearchView: View {
                 // sauvegarde QUE dans `onResonse` (`RechercheTiinver.java:440-458`), jamais dans
                 // `onError`. Déplacé DANS la branche succès pour ne plus polluer l'historique
                 // local avec des recherches jamais réellement abouties.
-                RecentSearchStore.save(query)
+                //
+                // Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-035, Phase B P2) —
+                // `save(query)` sauvegardait la query BRUTE, sans le préfixe `#`/`@` selon l'onglet
+                // actif (port manquant de `buildDisplayEntry`, `RechercheTiinver.java:210,324-328,
+                // 433-447` — le CÔTÉ LECTURE de ce même aller-retour, `selectRecent` ci-dessus, était
+                // déjà correctement fixé en V3-F-103, mais réécrivait toujours une entrée non
+                // préfixée puisque `save` ne le préfixait jamais). Retaper une entrée sauvegardée
+                // sous l'onglet Hashtags/Utilisateurs restaurait donc l'onglet "Tous" au lieu du bon
+                // onglet.
+                RecentSearchStore.save(displayEntry(query: query, tab: tab))
                 recent = RecentSearchStore.all()
             } catch {
                 results = SearchResults()

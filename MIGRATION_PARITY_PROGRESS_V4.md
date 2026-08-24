@@ -7,8 +7,8 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064,
 V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027, V4-F-019 clos. V4-F-003 documenté `BLOQUÉ` (hors
 dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE.** Backlog P2 EN
-COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011 (`BUILD_VALIDATED`)
-clos. Prochain : V4-F-012.**
+COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012
+(`BUILD_VALIDATED`) clos. Prochain : V4-F-014.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -2207,3 +2207,70 @@ aucun autre écran de l'app n'a de champ bio/lien à préremplir.
 **Statut honnête après ce lot** : V4-F-004 `BLOQUÉ` (hors dépôt) ; V4-F-006 différé (sans objet
 avant publication App Store) ; V4-F-009/010/011 `BUILD_VALIDATED` (CI verte confirmée) — PAS
 `COMPLETE_PARITY_VALIDATED` (tests réels requis, détaillés par finding ci-dessus).
+
+## 2026-08-24 — Phase B V4 — Lot P2-2 : V4-F-012 (Profile / Settings — écran résumé lecture-seule "Informations personnelles" absent)
+
+### Vérification Android
+
+`setting/FragmentProfile.java` (247, entier) — écran lecture seule, `CursorWorkerTask` (lecture
+locale `infoContract.ACCOUNT_URI`) affiche `nikname`/`location`/`work`/`qualification`/`school`/
+`username`/`gender`/`birthday`/`phone`/`email` dans des `TextView`. Chaîne de navigation réelle
+tracée par lecture croisée de 3 fichiers :
+```java
+// SettingAccountFragment.java:97-105
+pref_personnel_info.setOnClickListener(v -> mListener.onFragmentInteraction(9));
+// SettingsActivity.java:164-172
+case 9: activeFragment = new FragmentProfile(); ...
+// FragmentProfile.java:73-80
+editbtn.setOnClickListener(v -> mListener.onFragmentInteraction(10));
+// SettingsActivity.java:173-181
+case 10: activeFragment = new EditPersonalInformation(); ...
+```
+`grep -rn "onFragmentInteraction(10)"` dans tout `com.tiinver` → **UN SEUL résultat**, ce bouton
+`editbtn` précis — confirmé qu'Android n'offre AUCUN accès direct au formulaire d'édition depuis la
+liste racine des réglages ; le SEUL chemin réel est Réglages → Compte → Informations personnelles
+(lecture seule) → Modifier.
+
+### État iOS avant correctif
+
+`SettingsView.swift:22` : `NavigationLink("Informations personnelles") { EditPersonalInformationView() }`
+— accès DIRECT au formulaire d'édition depuis la racine des réglages, sans écran intermédiaire —
+DEUX déviations par rapport à Android : (1) aucun écran lecture seule n'existe nulle part dans
+l'app (donc téléphone/email jamais visibles), (2) le raccourci racine lui-même n'a pas
+d'équivalent Android (le vrai point d'entrée est niché dans "Compte", absent de
+`SettingAccountView` avant ce correctif).
+
+### Correctif appliqué
+
+1. Nouvelle `PersonalInformationSummaryView.swift` (`Sources/TiinverSwift/Settings/`) — port fidèle
+   de `FragmentProfile` : 10 lignes lecture seule (dont téléphone/email, jusqu'ici invisibles
+   partout dans l'app) chargées via `ProfileRepository.fetchProfile` (même endpoint que le reste du
+   profil), bouton "Modifier" en bas menant à `EditPersonalInformationView` (déjà existant, non
+   modifié).
+2. `SettingAccountView` ("Compte") : nouvelle entrée "Informations personnelles" en tête de liste,
+   fidèle à `pref_personnel_info` — cette vue n'avait AUCUN moyen d'atteindre les infos
+   personnelles avant ce correctif.
+3. `SettingsView` (racine) : le raccourci préexistant redirigé vers le nouveau résumé au lieu du
+   formulaire d'édition direct — conserve la commodité d'un accès rapide depuis la racine (un ajout
+   pas lui-même fidèle à Android, mais préexistant à ce correctif et non demandé à supprimer par ce
+   finding) tout en imposant le même passage par la vue lecture seule qu'Android partout.
+
+### Flux frères vérifiés
+
+`grep EditPersonalInformationView(` dans tout le projet → 2 sites après correctif (le nouveau
+bouton "Modifier" du résumé, et l'ancien raccourci racine — mais CE DERNIER a été changé pour
+pointer vers le résumé, pas vers le formulaire ; donc en réalité 1 seul site pointe encore
+directement vers `EditPersonalInformationView`, le bouton "Modifier" lui-même, fidèle à Android).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Settings/PersonalInformationSummaryView.swift`
+(nouveau), `Sources/TiinverSwift/Settings/SettingsView.swift`,
+`Sources/TiinverSwift/Settings/SettingSubViews.swift`.
+
+**Résultat CI** : commit `4cc0ba2`, push confirmé (`15ffbd1..4cc0ba2 main -> main`), run
+`32711209239` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : ouvrir Réglages → Compte → Informations
+personnelles ET Réglages → Informations personnelles (raccourci racine), confirmer que les 10
+champs affichent les vraies valeurs du compte connecté, notamment téléphone/email (jamais visibles
+nulle part avant ce correctif).

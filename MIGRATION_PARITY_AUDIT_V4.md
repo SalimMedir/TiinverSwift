@@ -441,6 +441,27 @@ DIFFÉRENCE : L'unique endroit où voir son propre téléphone/email enregistré
 IMPACT : Un utilisateur ne peut voir son téléphone/email enregistré nulle part dans l'app.
 RECOMMANDATION : Ajouter un écran résumé lecture-seule (au moins téléphone/email) accessible depuis
 Réglages → Compte, avant/à côté du formulaire d'édition.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-2) — Vérifié contre `setting/
+FragmentProfile.java` (247, entier) : écran lecture seule affichant nickname/localisation/travail/
+qualification/école/username/genre/date de naissance/téléphone/email. Chaîne de navigation réelle
+tracée par lecture croisée : `SettingAccountFragment.java:97-105` (`pref_personnel_info` →
+`onFragmentInteraction(9)`) → `SettingsActivity.java:164-172` (case 9 → `FragmentProfile`) →
+`FragmentProfile.java:73-80` (bouton `editbtn` → `onFragmentInteraction(10)`) →
+`SettingsActivity.java:173-181` (case 10 → `EditPersonalInformation`, déjà porté). `grep
+onFragmentInteraction\(10\)` dans tout le code Android → UN SEUL appelant (ce bouton précis) —
+confirmé qu'Android n'offre AUCUN accès direct au formulaire d'édition, contrairement à ce que
+faisait `SettingsView.swift` avant ce correctif. Correctif : nouvelle
+`PersonalInformationSummaryView` (port fidèle de `FragmentProfile`, 10 champs + bouton "Modifier"
+→ `EditPersonalInformationView` déjà existant) ; câblée dans `SettingAccountView` ("Compte",
+nouvelle entrée, fidèle à `pref_personnel_info`) ; le raccourci racine préexistant de
+`SettingsView` (qui allait DIRECTEMENT au formulaire d'édition, une déviation réelle vs Android)
+redirigé vers ce résumé au lieu d'être supprimé — préserve la commodité d'accès rapide tout en
+imposant le même passage par la vue lecture seule qu'Android. Commit `4cc0ba2`, push confirmé
+(`15ffbd1..4cc0ba2 main -> main`), CI run `32711209239` conclusion `success`.
+DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (ouvrir Réglages → Compte → Informations
+personnelles ET Réglages → Informations personnelles [raccourci], confirmer que les 10 champs
+s'affichent avec les vraies valeurs du compte, notamment téléphone/email).
 ```
 
 ```

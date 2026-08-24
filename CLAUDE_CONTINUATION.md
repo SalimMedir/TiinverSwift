@@ -10,8 +10,8 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 ---
 
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
-Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS
-[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030/056/064/059/068/073/021/027 traités])
+Phase B V4 : backlog P0 épuisé, **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE** [22 corrigés
+BUILD_VALIDATED + V4-F-003 documenté BLOQUÉ hors dépôt] — backlog P2/P3 V4 PAS ENCORE ATTAQUÉ)
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -461,20 +461,46 @@ corrigée une fois. Détail complet dans `PROGRESS_V4.md`, Lot P1-21. **Commit `
 confirmée (run `32686191058`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel
 requis : suivre un utilisateur depuis la liste, confirmer le changement d'état et la persistance).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-21 terminé (vérifié/corrigé/documenté/commité/CI verte).
-Enchaîner **automatiquement** sur **V4-F-019** (Groups — action "Envoyer un message" absente de la
-gestion des membres de groupe : `Messagerie/GroupDetailView.swift:176-182,205-211` — le dialogue de
-confirmation n'offre que 2 actions [rôle admin, retirer], aucune option "Message" ; pour un
-non-admin, `guard isCurrentUserAdmin ... else { return }` rend le tap totalement mort [aucun
-dialogue, aucun feedback] ; Android — `messagerie/group/SettingGroupMessageFragmant.java:417-478`,
-`Adapter.java:119-144` [`sendMessage`, ouvre un chat 1:1 avec le membre], `res/values/
-strings.xml:443-455` — taper un membre propose TOUJOURS "Message" [+ promouvoir/rétrograder +
-retirer si admin] ; un non-admin a exactement 1 option : Message — impossible de démarrer une
-conversation privée avec un membre du groupe depuis cette liste ; les non-admins n'ont AUCUNE
-interaction du tout sur les lignes de membres — recommandation : ajouter "Message" au dialogue
-admin ; donner aux non-admins un moyen [à option unique] d'ouvrir un chat 1:1 avec le membre tapé),
-puis V4-F-003 (le dernier item de la liste P1 mandatée, voir `MIGRATION_PARITY_AUDIT_V4.md` pour le
-texte complet). Repo Android source de vérité :
+**Lot P1-22 traité (V4-F-019)** — Groups, action "Envoyer un message" absente de la gestion des
+membres. Vérifié dans `SettingGroupMessageFragmant.java:162-172,417-447` +
+`strings.xml:443-455` (3 tableaux, "Message" TOUJOURS en premier) + `Adapter.java:119-144`
+(`sendMessage`, construit un `RosterModel` `type=CHAT`). Côté iOS, le dialogue admin n'avait que 2
+actions (rôle/retrait), et un non-admin tapant un membre ne déclenchait STRICTEMENT rien. Corrigé :
+"Message" ajouté en premier au dialogue admin ; nouveau dialogue à 1 action pour un non-admin ;
+`chatTarget(for:)` (port fidèle de `Adapter.sendMessage`) + `.navigationDestination` vers
+`ChatView`, réutilisant le motif déjà établi par `ProfileView.messageTarget`/
+`NewMessageView.rosterTarget`. Détail complet dans `PROGRESS_V4.md`, Lot P1-22. **Commit
+`bda7955`, CI verte confirmée (run `32686822701`)** — `BUILD_VALIDATED`, PAS
+`COMPLETE_PARITY_VALIDATED` (test réel requis : Message en tête pour un admin, dialogue à 1 action
+pour un non-admin, conversation 1:1 ouverte dans les deux cas).
+
+**Lot P1-23 traité (V4-F-003, DERNIER de la liste P1 imposée) — DOCUMENTÉ `BLOQUÉ`, AUCUN CODE
+MODIFIÉ.** Navigation-DeepLinks, aucun vrai Universal Link (`project.yml` ne déclare que les
+schémas privés `myapp`/`tiinver`, `grep applinks:` = 0, aucun `.entitlements`). Finding CONFIRMÉ
+réel — et redécouverte indépendante de `V3-F-078` (cycle V3, déjà `BLOCKED` à l'époque, signal de
+fiabilité fort). La correction réelle nécessite, dans l'ordre : (1) entitlement Associated Domains
+— SANS EFFET seul, et RISQUE RÉEL de casser la signature/CI si la capability n'est pas d'abord
+activée côté portail développeur Apple ; (2) activer cette capability pour l'App ID — décision de
+compte développeur, hors accès de cette session ; (3) héberger un `apple-app-site-association` sur
+`tiinver.com` — décision infra serveur, hors dépôt iOS, hors accès de cette session. Faire (1) seul
+risquerait de casser la CI verte des 22 lots précédents pour un gain fonctionnel nul tant que (2)
+et (3) ne sont pas faits — conformément à la règle Phase B ("si hors périmètre atteignable, ne pas
+modifier le code — documenter pourquoi"), **aucun code n'a été touché, aucun commit, aucune CI**.
+Détail complet dans `PROGRESS_V4.md`, Lot P1-23.
+
+**LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE (2026-08-24)** — 23 lots dans l'ordre exact imposé : V4-F-020,
+032, 033, 042, 038, 017, 046, 048, 049, 050, 001, 002, 029, 030, 056, 064, 059, 068, 073, 021, 027,
+019, 003. 22 corrigés avec CI verte, 1 (V4-F-003) documenté `BLOQUÉ` hors dépôt. Aucune régression
+introduite à aucun lot. Aucun finding marqué `COMPLETE_PARITY_VALIDATED` (aucun test réel sur
+device disponible dans cet environnement, conformément à la règle du projet).
+
+**PROCHAINE TÂCHE** : la liste P1 imposée par l'utilisateur pour ce cycle V4 est maintenant
+ENTIÈREMENT traitée. `MIGRATION_PARITY_AUDIT_V4.md` §0 liste encore 32 findings P2 et 15 findings
+P3 non attaqués. **Ne PAS enchaîner automatiquement sur le backlog P2/P3** — contrairement à
+l'ordre P1 (explicitement dicté finding par finding par l'utilisateur), aucun ordre P2/P3 n'a été
+donné : attendre une instruction explicite de l'utilisateur avant de démarrer le backlog P2/P3 (ou
+toute autre tâche), conformément à la consigne d'origine de la Phase B ("un lot à la fois,
+strictement dans l'ordre donné" — cet ordre s'arrête ici). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---

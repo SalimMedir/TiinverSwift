@@ -140,6 +140,36 @@ PREUVE : `project.yml:219-223` ; aucune entitlement `applinks:` trouvée ; `Deep
 documente déjà cette limitation comme connue.
 RECOMMANDATION : Nécessite un travail hors dépôt (héberger `apple-app-site-association`) + ajout de
 l'entitlement Associated Domains — décision produit/serveur, le code de routage est prêt.
+
+STATUT : BLOQUÉ — hors dépôt, AUCUNE action de code possible dans cet environnement (2026-08-24).
+Finding confirmé réel (pas une hypothèse) : `project.yml:206-223` ne déclare que les schémas privés
+`myapp`/`tiinver` ; `grep applinks:` dans tout le dépôt → 0 résultat ; aucun fichier
+`.entitlements` n'existe. `DeepLinkRouter.swift:4-9` documente déjà cette limitation comme connue.
+**Ce finding est en réalité une REDÉCOUVERTE indépendante de `V3-F-078` (DEEPLINK-01,
+`MIGRATION_PARITY_AUDIT_V3.md`)** — même cause racine identifiée par le cycle V3, déjà documentée
+`BLOCKED` à l'époque, jamais corrigée depuis car la correction elle-même nécessite, dans cet ordre :
+1. Ajouter l'entitlement `com.apple.developer.associated-domains` (`applinks:tiinver.com`) au
+   projet — SANS EFFET tant que (2) n'est pas fait, et RISQUE RÉEL de faire ÉCHOUER la
+   signature/CI si la capability "Associated Domains" n'est pas d'abord activée pour cet App ID
+   dans le portail développeur Apple (le profil de provisioning rejette un entitlement non couvert
+   par la capability correspondante — erreur de signature, pas un avertissement silencieux).
+2. Activer la capability "Associated Domains" pour l'App ID `com.tiinver...` dans le portail
+   développeur Apple — décision de compte développeur, hors accès de cet environnement.
+3. Héberger un fichier `apple-app-site-association` (AASA) signé/servi correctement (Content-Type
+   `application/json`, SANS extension de fichier, HTTPS valide) à
+   `https://tiinver.com/.well-known/apple-app-site-association` — décision serveur/infra, hors
+   dépôt iOS, hors accès de cet environnement.
+Ajouter l'entitlement SEUL (étape 1 sans 2 et 3) créerait un risque réel de casser la CI actuelle
+(verte sur tous les lots précédents) pour un gain fonctionnel NUL tant que les étapes serveur ne
+sont pas faites — contraire à la consigne de ne jamais introduire de régression. Conformément à la
+règle de Phase B ("si un finding s'avère... nécessiter une action hors du périmètre atteignable,
+ne pas modifier le code — documenter pourquoi"), AUCUN code n'a été modifié pour ce finding. Le
+code de routage lui-même (`DeepLinkRouter`/`DeepLinkCenter`) est déjà prêt et fonctionnel pour les
+schémas privés `myapp://`/`tiinver://`, confirmé par les lots V4-F-002 (Phase B P1, ce même cycle)
+qui l'ont déjà exercé et corrigé pour son propre gap (consommation au montage). Aucun commit de
+code, aucune CI dispatchée pour ce finding (rien à builder). DEVICE_TEST_REQUIRED sans objet — ce
+finding restera `BLOQUÉ` jusqu'à ce que l'utilisateur/l'équipe serveur réalise les 3 étapes
+ci-dessus hors de ce dépôt et de cette session.
 ```
 
 ```
@@ -457,6 +487,29 @@ IMPACT : Impossible de démarrer une conversation privée avec un membre du grou
 les non-admins n'ont aucune interaction du tout sur les lignes de membres.
 RECOMMANDATION : Ajouter "Message" au dialogue admin ; donner aux non-admins un moyen (à option
 unique) d'ouvrir un chat 1:1 avec le membre tapé.
+
+STATUT : BUILD_VALIDATED (2026-08-24) — Vérifié contre `SettingGroupMessageFragmant.java:162-172`
+(`onItemClick` : `if (IAM_ADMIN) showMemberDialog(...) else showMemberIsNotAdminDialog(...)`),
+`:417-447` (les 2 fonctions, entières) et `strings.xml:443-455` (3 tableaux :
+`action_on_members_group`/`action_on_members_group_admin` = [Message, rôle, Retirer] — "Message"
+TOUJOURS EN PREMIER ; `action_on_members_group_no_admin` = [Message] seul) ; ET `Adapter.
+java:119-144` (`sendMessage(pos)`, construit un `RosterModel` `type=CHAT` avec
+`nikname`/`username`/`userId`/`profile`/`from`/`to`). Confirmé côté iOS que le dialogue admin
+n'avait que 2 actions (rôle/retirer, "Message" absent) et qu'un non-admin tapant un membre ne
+déclenchait STRICTEMENT rien (`guard isCurrentUserAdmin ... else { return }`). Correctif : "Message"
+ajouté EN PREMIER dans le dialogue admin existant ; nouveau dialogue à 1 action pour un non-admin
+tapant un AUTRE membre (`messageOnlyTarget`) ; nouvelle `chatTarget(for:)` (port fidèle de
+`Adapter.sendMessage`) + `.navigationDestination(isPresented:)` vers `ChatView`, même motif déjà
+établi par `ProfileView.messageTarget`/`NewMessageView.rosterTarget` (pas une 3ᵉ implémentation
+divergente). Le garde-fou `member.userId != currentUserId` (empêcher de se cibler soi-même) est
+préservé pour les DEUX rôles — comportement pré-existant côté iOS, non demandé par ce finding, non
+modifié. Flux frères vérifiés : `grep memberActionTarget\|showMemberDialog\|GroupMember\b` → une
+seule vue concernée, `GroupDetailView.swift`. Commit `bda7955`, push confirmé
+(`39be9b9..bda7955 main -> main`), CI run `32686822701` conclusion `success`.
+DEVICE_TEST_REQUIRED pour passer en COMPLETE_PARITY_VALIDATED (aucun accès Xcode/simulateur dans
+cet environnement — test réel requis : en tant qu'admin, taper un membre → confirmer "Message" en
+tête du dialogue, taper "Message" → conversation 1:1 ouverte ; en tant que non-admin, taper un
+membre → confirmer le dialogue à 1 action, taper "Message" → même résultat).
 ```
 
 ```

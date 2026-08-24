@@ -5,7 +5,8 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 **État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
 V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064,
-V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027 clos. Prochain : V4-F-019.**
+V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027, V4-F-019 clos. V4-F-003 documenté `BLOQUÉ` (hors
+dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -1933,3 +1934,158 @@ deux écrans.
 compte, suivre un utilisateur non encore suivi, confirmer le changement d'état visuel ET la
 persistance après réouverture de l'écran ; couper le réseau et retenter pour confirmer le rollback
 visuel.
+
+## 2026-08-24 — Phase B V4 — Lot P1-22 : V4-F-019 (Groups — action "Envoyer un message" absente de la gestion des membres de groupe)
+
+### Vérification Android
+
+`SettingGroupMessageFragmant.java:162-172` (`onItemClick`) :
+```java
+if (IAM_ADMIN){
+    HE_IS_ADMIN = adapter.getmData().get(position).getRole().equals("admin");
+    showMemberDialog(position, HE_IS_ADMIN);
+}else {
+    showMemberIsNotAdminDialog(position);
+}
+```
+`:417-447` (les 2 fonctions, entières) : `showMemberDialog` choisit entre 2 tableaux de 3 items
+selon le rôle du membre CIBLÉ (`action_on_members_group_admin` si la cible est déjà admin,
+`action_on_members_group` sinon) ; `showMemberIsNotAdminDialog` utilise TOUJOURS
+`action_on_members_group_no_admin` (1 item). `strings.xml:443-455` :
+```xml
+<string-array name="action_on_members_group">
+    <item>Message</item><item>Make group admin</item><item>Remove</item>
+</string-array>
+<string-array name="action_on_members_group_admin">
+    <item>Message</item><item>remove group admin</item><item>Remove</item>
+</string-array>
+<string-array name="action_on_members_group_no_admin">
+    <item>Message</item>
+</string-array>
+```
+"Message" est TOUJOURS le premier item, dans les 3 cas. `onDialogPositiveClick` (case 2, résultat
+"0") et (case 3) appellent tous deux `adapter.sendMessage(model.getSelectedIndex())` —
+`Adapter.java:119-144` :
+```java
+public void sendMessage(int pos){
+    RosterModel message = new RosterModel();
+    message.setTitle(mData.get(pos).getNikname());
+    message.setSubTitle(mData.get(pos).getUsername());
+    message.setUserId(String.valueOf(mData.get(pos).getUserId()));
+    message.setCurrentUsername(mData.get(pos).getCurrentUsername());
+    message.setCurrentUserId(mData.get(pos).getCurrentUserId());
+    message.setType(ChatType.getChatType(ChatType.CHAT));
+    message.setNikname(mData.get(pos).getNikname());
+    message.setFrom(username);
+    message.setUsername(mData.get(pos).getUsername());
+    message.setTo(mData.get(pos).getUsername());
+    message.setProfile(mData.get(pos).getProfile());
+    ... startActivity(i); // ouvre ActivityMsg = conversation 1:1
+}
+```
+
+### État iOS avant correctif
+
+`GroupDetailView.memberRow.onTapGesture` : `guard isCurrentUserAdmin, member.userId !=
+currentUserId else { return }` — pour un NON-admin, cette garde échoue TOUJOURS (`isCurrentUserAdmin
+== false`), donc le tap ne fait STRICTEMENT rien, aucun dialogue, aucun feedback. Le dialogue admin
+(`memberActionTarget`) n'avait que 2 actions (rôle, retrait), "Message" absent — déjà documenté
+explicitement en tête de fichier comme un gap connu.
+
+### Correctif appliqué
+
+1. `chatTarget(for:)` (nouveau) — port fidèle de `Adapter.sendMessage(pos)` : construit un
+   `RosterModel` `type=CHAT` (PAS `group`) avec `nikname`/`username`/`userId`/`profile` du membre
+   ciblé et `from`/`currentUsername`/`currentUserId` de l'utilisateur courant — même motif déjà
+   établi par `ProfileView.messageTarget`/`NewMessageView.rosterTarget`, pas une 3ᵉ implémentation
+   divergente.
+2. `openChatWithMember(_:)` (nouveau) — arme `chatDestination`/`openChat`, consommé par un nouveau
+   `.navigationDestination(isPresented: $openChat) { ChatView(target: chatDestination) }`.
+3. Dialogue admin existant (`memberActionTarget`) : bouton "Message" ajouté EN PREMIER (avant
+   rôle/retrait), fidèle à l'ordre des 2 tableaux Android.
+4. Nouveau dialogue à 1 action (`messageOnlyTarget`) pour un non-admin tapant un AUTRE membre —
+   fidèle à `action_on_members_group_no_admin`.
+5. `memberRow.onTapGesture` : le garde-fou anti-self-tap (`member.userId != currentUserId`) est
+   PRÉSERVÉ pour les deux rôles (comportement pré-existant côté iOS, non demandé par ce finding,
+   non modifié) ; en dessous, bascule vers `memberActionTarget` (admin) ou `messageOnlyTarget`
+   (non-admin) au lieu du `return` inconditionnel précédent pour un non-admin.
+
+### Flux frères vérifiés
+
+`grep "memberActionTarget\|showMemberDialog\|GroupMember\b"` dans tout le projet → une seule vue
+concernée, `GroupDetailView.swift` — aucune autre liste de membres de groupe dans le projet.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/GroupDetailView.swift`.
+
+**Résultat CI** : commit `bda7955`, push confirmé (`39be9b9..bda7955 main -> main`), run
+`32686822701` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : en tant qu'admin, taper un membre → confirmer
+"Message" en tête du dialogue, taper "Message" → conversation 1:1 ouverte avec les bons
+nom/avatar ; en tant que non-admin, taper un membre → confirmer le dialogue à 1 action, taper
+"Message" → même résultat ; confirmer qu'aucun dialogue n'apparaît en tapant sa PROPRE ligne.
+
+## 2026-08-24 — Phase B V4 — Lot P1-23 (DERNIER de la liste P1 imposée) : V4-F-003 (Navigation-DeepLinks — aucun vrai Universal Link)
+
+### Vérification
+
+`project.yml:206-223` : seuls les schémas privés `myapp`/`tiinver` sont déclarés
+(`CFBundleURLTypes`). `grep "applinks:"` dans tout le dépôt → **0 résultat**. Aucun fichier
+`.entitlements` n'existe dans le projet. `DeepLinkRouter.swift:4-9` documente déjà cette limitation
+comme connue. Finding CONFIRMÉ réel — pas une hypothèse, pas un doublon déjà corrigé.
+
+**Redécouverte indépendante confirmée** : ce finding est la MÊME cause racine que `V3-F-078`
+(DEEPLINK-01), déjà identifiée par le cycle d'audit V3 et documentée `BLOCKED` à l'époque — signal
+de fiabilité fort (2 cycles d'audit indépendants convergent sur le même gap), mais aussi
+confirmation que ce gap est structurellement bloqué depuis le cycle précédent, pas oublié.
+
+### Pourquoi AUCUN code n'a été modifié
+
+La correction réelle nécessite, dans cet ordre STRICT :
+1. **Ajouter l'entitlement `com.apple.developer.associated-domains`** (`applinks:tiinver.com`) —
+   SANS EFFET tant que l'étape 2 n'est pas faite, et avec un RISQUE RÉEL de casser la signature/CI
+   si la capability correspondante n'est pas d'abord activée côté portail développeur (un profil
+   de provisioning rejette un entitlement non couvert par sa capability — erreur de build, pas un
+   avertissement silencieux).
+2. **Activer la capability "Associated Domains"** pour l'App ID du projet dans le portail
+   développeur Apple — décision de compte développeur, hors accès de cet environnement (nécessite
+   les identifiants du compte Apple Developer du projet).
+3. **Héberger un fichier `apple-app-site-association`** correctement servi (HTTPS,
+   `Content-Type: application/json`, sans extension) à
+   `https://tiinver.com/.well-known/apple-app-site-association` — décision infra serveur, hors
+   dépôt iOS, hors accès de cet environnement.
+
+Faire l'étape 1 seule (la seule chose techniquement possible depuis ce dépôt) créerait un risque
+réel de régression CI (verte sur les 22 lots précédents de ce cycle) pour un gain fonctionnel NUL
+tant que les étapes 2 et 3 ne sont pas réalisées côté compte développeur/serveur — contraire à la
+consigne de ne jamais introduire de régression pour corriger un finding. Conformément à la règle de
+Phase B ("si un finding s'avère nécessiter une action hors du périmètre atteignable, ne pas
+modifier le code — documenter pourquoi"), ce finding est documenté `BLOQUÉ` sans aucune
+modification de code.
+
+Le code de routage lui-même (`DeepLinkRouter`/`DeepLinkCenter`/`HomeShellView.handleDeepLink`) est
+déjà prêt et fonctionnel pour les schémas privés `myapp://`/`tiinver://` — exercé et corrigé pour
+son propre gap de consommation au montage lors du Lot P1-12 (V4-F-002) de ce même cycle. Aucun
+changement requis là.
+
+**Fichiers modifiés** : AUCUN.
+
+**Résultat CI** : AUCUNE dispatch — rien à builder pour ce finding.
+
+**Statut honnête** : `BLOQUÉ` (hors dépôt) — ni `BUILD_VALIDATED` ni `COMPLETE_PARITY_VALIDATED` ne
+s'appliquent ; ce finding nécessite une action utilisateur/équipe serveur hors de ce dépôt et de
+cette session (portail développeur Apple + hébergement AASA) avant de pouvoir être rouvert pour un
+correctif de code réel.
+
+---
+
+## LISTE P1 IMPOSÉE — ENTIÈREMENT TRAITÉE (2026-08-24)
+
+23 lots traités dans l'ordre exact imposé par l'utilisateur : V4-F-020, V4-F-032, V4-F-033,
+V4-F-042, V4-F-038, V4-F-017, V4-F-046, V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002,
+V4-F-029, V4-F-030, V4-F-056, V4-F-064, V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027,
+V4-F-019, V4-F-003. 22 corrigés avec CI verte (`BUILD_VALIDATED`), 1 documenté `BLOQUÉ` (hors
+dépôt, V4-F-003). Aucune régression introduite (CI verte à chaque lot, jamais de commit sans
+validation CI). Aucun finding marqué `COMPLETE_PARITY_VALIDATED` (test réel sur device jamais
+disponible dans cet environnement, conformément à la règle du projet).

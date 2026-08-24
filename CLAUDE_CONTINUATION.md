@@ -11,7 +11,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 # CURRENT HANDOFF (2026-08-23 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
 Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS
-[V4-F-020/032/033/042/038/017/046/048 traités])
+[V4-F-020/032/033/042/038/017/046/048/049 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -235,20 +235,36 @@ encodage. Détail complet dans `PROGRESS_V4.md`, Lot P1-8. **Commit `da0e744`, C
 vérifiable empiriquement sans Xcode/simulateur — test réel IMPÉRATIF : confirmer l'effet visuel ET
 qu'un geste sur un objet à `currentScale != 1.0` reste cohérent avec le doigt, sans dérive).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-8 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur **V4-F-049** (Animems — marqueurs de keyframe sur la timeline sans cible
-tactile, sélection/suppression inatteignables : `TimelineViewModel.hitTestKeyframeMarker`
-[`swift:333-350`] et `KeyframeTrack.removeKeyframe(id:)` [`swift:70-72`] tous deux PORTÉS mais avec
-ZÉRO appelant — `TimelineView.combinedDragGesture` [`swift:149-221`] ne les référence jamais ; Android
-— `TimelineView.java:168-170,833-850,1054-1078` + `AnimemesCompound.java:1356-1372` — 1er tap =
-sélection, 2e tap sur le MÊME keyframe = suppression — appeler `hitTestKeyframeMarker` avant le repli
-vers `resolveMode` dans `combinedDragGesture`, second tap sur le même keyframe → `removeKeyframe`).
-**MÊME RIGUEUR REQUISE** : tracer la chaîne complète (UI/état/sélection/suppression/rendu timeline)
-avant de câbler, vérifier chaque interaction séparément contre Android, ne pas se limiter à brancher
-un appel de fonction sans vérifier le comportement de bascule sélection↔suppression au 2e tap. Puis
-V4-F-050 (lock/visibility absents, MÊME rigueur) →001→002→029→030→056→064→059→068→073→021→027→019→
-003 (Session/DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→Social→Groups→Navigation,
-voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de vérité :
+**Lot P1-9 traité (V4-F-049)** — Animems, marqueurs de keyframe sans cible tactile. Chaîne complète
+tracée (geste Android→état Android→callback Android→rendu Android, puis les 4 mêmes côté iOS AVANT
+câblage) conformément à la rigueur renforcée. `hitTestKeyframeMarker`/`KeyframeTrack.removeKeyframe`
+DÉJÀ portés fidèlement mais ZÉRO appelant. Câblé : `hitTestKeyframeMarker` testé EN PREMIER dans
+`combinedDragGesture` (avant `resolveMode`), nouveau `DragMode.keyframeTap` (port du `return true`
+d'`onDown`, consomme toute la touche). 1er tap = sélection (`TimelineViewModel.selectedKeyframeId`,
+nouveau) ; 2e tap sur le MÊME keyframe = suppression (`AnimemesEditorState.deleteKeyframe`, nouveau,
+`version += 1` — structurel, pas `renderVersion` — via `AnimationObjectData.removeKeyframe`,
+nouveau). Ajouté AU-DELÀ du strict texte de l'audit : le contour blanc de sélection
+(`kfSelectPaint`) dans `drawKeyframeMarkers`, sans quoi l'utilisateur n'aurait aucun moyen visuel de
+savoir quel keyframe est armé pour suppression. Détail complet dans `PROGRESS_V4.md`, Lot P1-9.
+**Commit `fc60738`, CI verte confirmée (run `32677846820`)** — `BUILD_VALIDATED`, PAS
+`COMPLETE_PARITY_VALIDATED` (test réel requis : tap→contour blanc, tap à nouveau→suppression +
+canevas mis à jour, tap sur un AUTRE keyframe→simple changement de sélection).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-9 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur **V4-F-050** (Animems — icônes verrou/visibilité par calque totalement
+absentes, aucune protection au niveau geste : AUCUNE UI côté iOS [`TimelineView.drawItem` ne dessine
+que clip/label/poignées], `obj.locked` jamais basculé par une action utilisateur [lu seulement par
+import/export de template], `AnimemesGestureController` ne teste JAMAIS `.locked` — Android,
+`AnimemesCompound.java:1639-1681` [icônes verrou+œil par ligne de timeline] +
+`MemesView2.java:1577-1608` [gestes tap/scroll/scale IGNORENT explicitement un calque verrouillé] —
+ajouter les icônes verrou/visibilité par ligne de `TimelineView`, câblées à de vraies actions, ET
+faire tester `.locked` par CHAQUE point d'entrée de geste pertinent, pas seulement ajouter les
+icônes). **MÊME RIGUEUR REQUISE, PARTICULIÈREMENT CRITIQUE ICI** : ce finding touche potentiellement
+PLUSIEURS points d'entrée de geste distincts (tap/scroll/scale/drag) — vérifier CHACUN séparément
+contre `MemesView2.java:1577-1608`, ne pas supposer qu'un seul garde suffit à tous les protéger. Puis
+V4-F-001→002→029→030→056→064→059→068→073→021→027→019→003 (Session/DeepLinks→Feed-publish→Gallery→
+BunnyCDN→Wallet→Performance→Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque
+finding complet). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---

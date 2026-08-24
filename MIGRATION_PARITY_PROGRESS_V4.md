@@ -4,7 +4,7 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
 **État actuel (2026-08-23) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
-V4-F-048 clos. Prochain : V4-F-049 (Animems keyframe delete — même rigueur requise).**
+V4-F-048, V4-F-049 clos. Prochain : V4-F-050 (Animems lock/visibility — même rigueur requise).**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -928,3 +928,73 @@ Test réel IMPÉRATIF avant de considérer ce finding réellement clos : zoomer 
 l'effet visuel réel sur le canevas ; PUIS, à `currentScale != 1.0`, effectuer un glissement/
 pincement/rotation sur un objet et confirmer qu'il suit le doigt SANS dérive de coordonnées — ce
 second point est le risque technique précis que ce correctif ne peut pas garantir sans device réel.
+
+## 2026-08-23 — Phase B V4 — Lot P1-9 : V4-F-049 (Animems-Interaction — marqueurs de keyframe sans
+cible tactile, sélection/suppression inatteignables)
+
+**Commit** : `fc60738` — CI **run 32677846820, conclusion: success**.
+
+### Rigueur renforcée appliquée
+
+Chaîne complète tracée AVANT tout câblage :
+1. **Geste Android** : `TimelineView.onDown` (`TimelineView.java:826-877`) — `hitTestKeyframeMarker`
+   testé EN PREMIER, avant icône/scrub/hit-test d'item. Un hit CONSOMME ENTIÈREMENT la touche
+   (`return true`), sans jamais atteindre le reste de `onDown`.
+2. **État Android** : `selectedKeyframe`/`selectedKeyframeLayerId`/`selectedKeyframeTrackName`
+   (champs privés de `TimelineView`). Toggle : `tappedKf == selectedKeyframe` → suppression + clear ;
+   sinon → (ré)sélection.
+3. **Callback Android** : `AnimemesCompound.setOnKeyframeListener` — `onKeyframeSelected` NE FAIT
+   RIEN (`{}` vide, sélection déjà mémorisée par `TimelineView` lui-même) ; `onKeyframeDeleteRequested`
+   → `track.removeKeyframe(id)`, puis `obj.removeTrack(propertyName)` SI la piste devient vide,
+   `timelineView.setLayers(...)` + `invalidate()` + `mView.postInvalidate()` (rafraîchit AUSSI le
+   canevas principal).
+4. **Rendu Android** : `drawKeyframeMarkers` (`TimelineView.java:687-708`) — losange plein
+   (`kfFillPaint`, couleur par propriété) PUIS, si `kf == selectedKeyframe`, un losange CONTOUR blanc
+   par-dessus (`kfSelectPaint`, `STROKE`, 2dp).
+5. **État/geste/rendu iOS AVANT câblage** : `hitTestKeyframeMarker` (`TimelineViewModel.swift:333-350`)
+   et `KeyframeTrack.removeKeyframe(id:)` (`KeyframeTrack.swift:70-72`) DÉJÀ portés fidèlement
+   (vérifiés ligne par ligne) mais avec ZÉRO appelant — `combinedDragGesture`
+   (`TimelineView.swift:149-221`) ne les référençait jamais. Aucun état de sélection de keyframe
+   n'existait côté iOS.
+
+### Correctif appliqué (4 fichiers)
+
+1. `TimelineViewModel.swift` — nouvelle propriété `var selectedKeyframeId: String?`.
+2. `AnimationObjectData.swift` — nouvelle méthode `removeKeyframe(propertyName:keyframeId:) -> Bool`
+   (port de `KeyframeTrack.removeKeyframe(id)` + `if (track.isEmpty()) obj.removeTrack(...)`).
+3. `AnimemesEditorState.swift` — nouvelle méthode `deleteKeyframe(layerId:propertyName:keyframeId:)`
+   (port de `onKeyframeDeleteRequested`), incrémente `version` (PAS `renderVersion`) — changement
+   structurel réel (les valeurs interpolées à la frame courante peuvent changer), fidèle au double
+   `invalidate()`+`postInvalidate()` Android qui redessine AUSSI le canevas principal.
+4. `TimelineView.swift` :
+   - Nouveau cas `DragMode.keyframeTap` (port du `return true` d'`onDown` — consomme la touche
+     entière, empêche tout scrub/pan/drag/resize pour le reste de ce flux tactile).
+   - `hitTestKeyframeMarker` appelé EN PREMIER dans `combinedDragGesture`, avant `resolveMode` —
+     toggle sélection/suppression fidèle au point 2 ci-dessus.
+   - `drawKeyframeMarkers` : contour blanc (`stroke`, `.white`, largeur 2) ajouté PAR-DESSUS le
+     losange plein quand `kf.id == model.selectedKeyframeId` — port de `kfSelectPaint`. Sans cet
+     ajout (au-delà du strict texte de l'audit, qui ne mentionnait que hit-test+suppression),
+     l'utilisateur n'aurait eu AUCUN moyen visuel de savoir quel keyframe est armé pour suppression
+     au tap suivant — jugé nécessaire à la fidélité fonctionnelle réelle, pas une extension gratuite.
+
+### Flux frères vérifiés
+
+`grep -n "hitTestKeyframeMarker\|removeKeyframe\|selectedKeyframeId"` → exactement UN site d'appel
+réel pour chacun des 2 anciens orphelins, cohérent avec les nouvelles déclarations — aucun autre
+appelant à mettre à jour. `.onEnded` de `combinedDragGesture` vérifié : `.keyframeTap` ne correspond
+à aucun `if case .dragItem/.resizeLeft/.resizeRight`, donc ne déclenche jamais
+`applyTimelineItemsToLayers()` par erreur.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/TimelineViewModel.swift`,
+`Sources/TiinverSwift/Animems/AnimationObjectData.swift`,
+`Sources/TiinverSwift/Animems/AnimemesEditorState.swift`,
+`Sources/TiinverSwift/Animems/TimelineView.swift`.
+
+**Résultat CI** : run `32677846820` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : taper sur un keyframe (confirmer le contour blanc
+de sélection) ; taper à nouveau DESSUS (confirmer la suppression ET que le canevas principal reflète
+la valeur interpolée mise à jour) ; sélectionner un keyframe puis taper sur un AUTRE (confirmer un
+simple changement de sélection, PAS de suppression accidentelle) ; vérifier qu'un glissement/
+redimensionnement d'item de timeline reste inchangé (aucune régression sur les modes existants).

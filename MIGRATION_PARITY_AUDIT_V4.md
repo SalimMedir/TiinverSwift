@@ -1036,6 +1036,22 @@ IMPACT : Aucun moyen de supprimer un keyframe précis par erreur — seul recour
 TOUTE l'animation du calque, une sur-correction destructrice qu'Android n'impose pas.
 RECOMMANDATION : Appeler `model.hitTestKeyframeMarker` avant le repli vers `resolveMode` dans
 `combinedDragGesture` ; un second tap sur le même keyframe appelle `KeyframeTrack.removeKeyframe`.
+STATUT : BUILD_VALIDATED (2026-08-23, commit fc60738, CI run 32677846820 succès). Chaîne complète
+tracée avant câblage (UI/geste Android → état Android → UI/geste Swift → état Swift → rendu),
+conformément à la rigueur renforcée demandée pour Animems. `hitTestKeyframeMarker` appelé en PREMIER
+dans `combinedDragGesture`, avant `resolveMode` — fidèle à `onDown` qui teste le hit keyframe avant
+tout repli icône/scrub/item et consomme ENTIÈREMENT la touche en cas de succès (nouveau cas
+`DragMode.keyframeTap` reproduisant ce `return true`). 1er tap = sélection (`selectedKeyframeId`,
+nouveau sur `TimelineViewModel`) ; 2e tap sur le MÊME keyframe = suppression
+(`AnimemesEditorState.deleteKeyframe`, nouveau, port de `onKeyframeDeleteRequested`) via
+`AnimationObjectData.removeKeyframe` (nouveau, port de `KeyframeTrack.removeKeyframe` +
+`obj.removeTrack` si la piste devient vide). Détail supplémentaire porté au-delà du strict texte de
+l'audit : le contour blanc de sélection (`kfSelectPaint`, `TimelineView.java:704`) ajouté à
+`drawKeyframeMarkers`, sans quoi l'utilisateur n'aurait aucun moyen visuel de savoir quel keyframe
+est armé pour suppression au prochain tap. DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED :
+tap sur un keyframe (confirmer le contour blanc), tap à nouveau dessus (confirmer la suppression ET
+que le canevas principal reflète la valeur interpolée mise à jour), tap sur un AUTRE keyframe après
+sélection (confirmer un simple changement de sélection, PAS de suppression).
 ```
 
 ```

@@ -103,8 +103,12 @@ final class APIClient {
     /// vers le backend Tiinver (PAS BunnyCDN, voir `Chat/MediaUploadService` pour les pièces jointes
     /// chat qui suivent un protocole entièrement différent) avec des champs texte + un unique champ
     /// fichier, même convention de réponse (`error`/`message`) que le reste de l'API. Utilisé par
-    /// `ProfileRepository.uploadProfilePicture` (endpoint `user`, champ `object_url`) et la
-    /// soumission de certification (endpoint `certification/request`, champ `documentUrl`).
+    /// la soumission de certification (endpoint `certification/request`, champ `documentUrl`) et
+    /// `GroupRepository.updatePhoto` (endpoint `updategroup`, champ `object_url`, port de
+    /// `HttpFileUploader.uploadRequestBodyGroupPerfil`, V4-F-025). **N'est PLUS utilisé par
+    /// `ProfileRepository.uploadProfilePicture`** depuis sa réécriture (V4-F-008) vers le VRAI
+    /// protocole Android de ce flux précis (PUT direct BunnyCDN Storage + POST `user/avatar/add`),
+    /// distinct du multipart-vers-backend ici — voir `ProfileRepository.swift`.
     func uploadMultipart(
         endpoint: String,
         fields: [String: String],

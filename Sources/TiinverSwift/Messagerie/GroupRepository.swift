@@ -263,10 +263,33 @@ final class GroupRepository {
         }
     }
 
+    /// Port de `SettingGroupMessageFragmant.sendFotoPerfilToServer` (lignes 628-738, entier) —
+    /// **ajouté le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-025, Phase B P2)**, précédemment
+    /// noté "pas porté ici" sur `updateDescription` ci-dessous. Protocole ENTIÈREMENT différent des
+    /// autres méthodes `updategroup` (JSON `column`/`value`) : multipart DIRECT vers le backend
+    /// (`HttpFileUploader.uploadRequestBodyGroupPerfil`), PAS BunnyCDN — le backend gère lui-même le
+    /// stockage et renvoie l'URL CDN finale (`object_url` dans la réponse). Champs fidèles à
+    /// l'original : `creator`/`id`/`apiKey`/`column="profile_picture"` (littéral copié-collé côté
+    /// Android depuis le flux photo de profil PERSONNEL — pas une faute de frappe de ce portage,
+    /// reproduit tel quel)/`format="json"`, fichier sous `object_url` en `image/jpeg`.
+    func updatePhoto(groupId: String, creatorId: String, apiKey: String, imageData: Data) async throws -> String {
+        let value = try await APIClient.shared.uploadMultipart(
+            endpoint: "updategroup",
+            fields: ["creator": creatorId, "id": groupId, "apiKey": apiKey, "column": "profile_picture", "format": "json"],
+            fileFieldName: "object_url",
+            filename: "wn_image.jpeg",
+            mimeType: "image/jpeg",
+            fileData: imageData
+        )
+        guard value.isBackendSuccess, let photoUrl = value.optionalString("object_url") else {
+            throw JSONError.typeMismatch(value.backendErrorMessage ?? "updategroup")
+        }
+        return photoUrl
+    }
+
     /// Port de `AddGroupDescriptionActivity.updateGroup` (lignes 95-105) — endpoint générique
-    /// `updategroup` par colonne, réutilisé aussi par le changement de photo côté Android
-    /// (`sendFotoPerfilToServer`, type=4 multipart — pas porté ici, périmètre texte uniquement pour
-    /// ce gap, voir avertissement `GroupDetailView.swift`). Voir V4-F-020 ci-dessus.
+    /// `updategroup` par colonne (JSON `column`/`value`, protocole DIFFÉRENT du changement de photo
+    /// ci-dessus, qui est multipart). Voir V4-F-020 ci-dessus.
     func updateDescription(_ description: String, groupId: String, creatorId: String, apiKey: String) async throws {
         let params: [String: String] = [
             "creator": creatorId, "id": groupId, "value": description, "column": "description", "apiKey": apiKey,

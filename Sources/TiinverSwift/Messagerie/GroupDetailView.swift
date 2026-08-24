@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// Port de `messagerie/group/SettingGroupMessageFragmant.java` (740 lignes, entier) +
@@ -13,10 +14,11 @@ import SwiftUI
 /// voir `GroupRepository.swift`), reconstruire toute une couche de synchronisation locale pour ce
 /// seul écran aurait été hors de proportion avec le gap réel à combler.
 ///
-/// **Non porté ici, gap restant documenté** : changement de photo de groupe (Android :
-/// `CustomGalleryView`+`CroperView`+upload multipart type=4 vers `updategroup`) — secondaire par
-/// rapport au cœur du gap (membres/rôles/description/lien d'invitation). L'action "Message" du menu
-/// contextuel membre a été portée (V4-F-019, voir `memberRow`/`chatTarget`).
+/// L'action "Message" du menu contextuel membre a été portée (V4-F-019, voir `memberRow`/
+/// `chatTarget`). Le changement de photo de groupe a été porté (V4-F-025, voir `photoPickerItem`/
+/// `uploadPhoto`) — `PhotosPicker` natif plutôt que `CustomGalleryView`+`CroperView`, même écart
+/// d'architecture déjà assumé et documenté pour la photo de profil PERSONNELLE
+/// (`ProfileView.swift` : Android recadre AVANT l'envoi, ici l'image est envoyée telle quelle).
 struct GroupDetailView: View {
     let groupId: String
     /// Port de `ChangeGroupTopicActivity` (168 lignes, entier, 2026-08-18 P2) — `@State` plutôt
@@ -31,7 +33,11 @@ struct GroupDetailView: View {
     /// cet écran) — même classe de bug que `groupName` (voir sa doc ci-dessus), trouvée en
     /// appliquant le même motif de correction aux deux champs.
     @State private var groupDescription: String?
-    let groupProfile: String?
+    /// **CORRIGÉ le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-025, Phase B P2)** — était `let`,
+    /// même classe de bug déjà corrigée pour `groupName`/`groupDescription` (voir leur doc
+    /// ci-dessus) : l'en-tête resterait figé sur l'ANCIENNE photo après un changement réussi sans
+    /// cette mutabilité.
+    @State private var groupProfile: String?
 
     @Environment(\.dismiss) private var dismiss
     @State private var members: [GroupMember] = []
@@ -59,6 +65,11 @@ struct GroupDetailView: View {
     @State private var messageOnlyTarget: GroupMember?
     @State private var chatDestination: RosterModel?
     @State private var openChat = false
+    /// **Ajouté le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-025, Phase B P2)** — port de
+    /// `profileContainer.setOnClickListener` (`SettingGroupMessageFragmant.java:197-247`, gardé
+    /// `IAM_ADMIN`).
+    @State private var photoPickerItem: PhotosPickerItem?
+    @State private var isUploadingPhoto = false
 
     init(groupId: String, groupName: String, groupToken: String, groupType: String, groupDescription: String?, groupProfile: String?) {
         self.groupId = groupId
@@ -66,7 +77,7 @@ struct GroupDetailView: View {
         self.groupToken = groupToken
         self.groupType = groupType
         _groupDescription = State(initialValue: groupDescription)
-        self.groupProfile = groupProfile
+        _groupProfile = State(initialValue: groupProfile)
     }
 
     /// Port de `FilterGroupMemberList`'s `SearchView`/`filterMember` (410 lignes, entier — même
@@ -91,10 +102,7 @@ struct GroupDetailView: View {
         List {
             Section {
                 HStack(spacing: 12) {
-                    CDNAsyncImage(url: groupProfile.flatMap(URL.init), targetSize: CGSize(width: 56, height: 56)) { image in
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    } placeholder: { Color(.tertiarySystemFill) }
-                        .frame(width: 56, height: 56).clipShape(Circle())
+                    groupAvatar
                     VStack(alignment: .leading, spacing: 4) {
                         Text(groupName).font(.headline)
                         Text(groupDescription?.isEmpty == false ? groupDescription! : "Aucune description") // R.string equivalent non identifié
@@ -217,6 +225,61 @@ struct GroupDetailView: View {
             Button("Annuler", role: .cancel) {}
         } message: {
             Text("Quitter \"\(groupName)\" ?") // port du libellé `GroupDetailActivity.onOptionsItemSelected` (R.id.exit)
+        }
+        .onChange(of: photoPickerItem) { item in
+            guard let item else { return }
+            Task {
+                guard let raw = try? await item.loadTransferable(type: Data.self),
+                    let jpegData = UIImage(data: raw)?.jpegData(compressionQuality: 0.9)
+                else { return }
+                await uploadPhoto(jpegData)
+                photoPickerItem = nil
+            }
+        }
+    }
+
+    /// Port de `profileContainer` (avatar de groupe, `SettingGroupMessageFragmant.java:197-247`) —
+    /// tapable UNIQUEMENT pour un admin (`if (IAM_ADMIN) { ...galerie+crop... }`), même garde côté
+    /// iOS. `PhotosPicker` enveloppe directement l'avatar (comme `ProfileView.avatar`) plutôt qu'un
+    /// bouton séparé superposé.
+    @ViewBuilder
+    private var groupAvatar: some View {
+        let image = CDNAsyncImage(url: groupProfile.flatMap(URL.init), targetSize: CGSize(width: 56, height: 56)) { image in
+            image.resizable().aspectRatio(contentMode: .fill)
+        } placeholder: {
+            if isUploadingPhoto {
+                ProgressView()
+            } else {
+                Color(.tertiarySystemFill)
+            }
+        }
+        .frame(width: 56, height: 56).clipShape(Circle())
+
+        if isCurrentUserAdmin {
+            PhotosPicker(selection: $photoPickerItem, matching: .images) { image }
+                .disabled(isUploadingPhoto)
+        } else {
+            image
+        }
+    }
+
+    /// Port de `sendFotoPerfilToServer` (`SettingGroupMessageFragmant.java:628-738`, entier) —
+    /// upload multipart direct vers `updategroup` (PAS BunnyCDN, voir `GroupRepository.updatePhoto`),
+    /// puis même motif "écho local immédiat" déjà établi par `submitName`/`submitDescription`
+    /// ci-dessous : `groupProfile` mis à jour EN PREMIER (l'en-tête reflète le changement
+    /// immédiatement, comme Android `ChargerImages.glidLoadAvatar` dans le callback `Onresponse`),
+    /// puis message système `groupPictureChanged` inséré localement (`mlib.setProfile(fotoPath)`
+    /// côté Android — reproduit via `groupProfile` déjà à jour au moment de l'appel).
+    private func uploadPhoto(_ imageData: Data) async {
+        guard let myId = UserSession.shared.myId, let apiKey = UserSession.shared.apiKey else { return }
+        isUploadingPhoto = true
+        defer { isUploadingPhoto = false }
+        do {
+            let url = try await GroupRepository.shared.updatePhoto(groupId: groupId, creatorId: myId, apiKey: apiKey, imageData: imageData)
+            groupProfile = url
+            await insertSystemMessage(verb: "groupPictureChanged", text: UserSession.shared.username ?? "")
+        } catch {
+            errorMessage = "Échec du changement de photo."
         }
     }
 

@@ -233,7 +233,22 @@ final class CallCoordinator: ObservableObject {
         // VoIP reçu sans `reportNewIncomingCall` immédiat expose l'app à des pénalités système) —
         // la vérification de permission micro vient APRÈS, avant `fetchTurnAndStart` (le point réel
         // d'engagement du micro), pas avant le report lui-même.
-        try? await callKit.reportIncomingCall(uuid: uuid, callerName: profile.nikname ?? profile.username ?? "")
+        //
+        // **Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-043, Phase B P2 — aucun
+        // équivalent Android, CallKit n'a pas d'équivalent côté Android)** : `try?` avalait
+        // silencieusement un rejet CallKit (Ne pas déranger, liste de blocage, trop d'appels
+        // simultanés...) et poursuivait quand même vers WebRTC/le micro — consommation de
+        // ressources réseau/audio pour un appel que l'utilisateur ne peut ni voir ni décrocher.
+        // `onReported?()` appelé dans LES DEUX branches (succès et échec) — même motif que la
+        // garde `state != .idle` ci-dessus : le callback PushKit `completion` DOIT être honoré
+        // quelle que soit l'issue du report, contrat Apple indépendant du résultat.
+        do {
+            try await callKit.reportIncomingCall(uuid: uuid, callerName: profile.nikname ?? profile.username ?? "")
+        } catch {
+            onReported?()
+            teardown()
+            return
+        }
         onReported?()
         // Port de `CallService.onStartCommand`'s branche `INCOMINGCALL` (lignes 620-622,
         // `fetchTurnAndStart(false); onRinging();`) — **ajouté le 2026-08-24

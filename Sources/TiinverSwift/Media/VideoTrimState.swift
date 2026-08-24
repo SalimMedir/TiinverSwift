@@ -54,5 +54,9 @@ struct VideoTrimState: Equatable {
         ("9:16", .ratio(w: 9, h: 16)),
         ("1:1", .ratio(w: 1, h: 1)),
         ("4:3", .ratio(w: 4, h: 3)),
+        // **Ajouté (V4-F-062, 2026-08-24)** — `menu_crop_ratio.xml`/`showRatioMenu`
+        // (`VideoTrimmerView.java:265-288`) propose 6 ratios (Libre/16:9/9:16/1:1/4:3/3:4) ;
+        // "3:4" manquait, seul preset absent des 5 déjà portés (Libre géré à l'appelant).
+        ("3:4", .ratio(w: 3, h: 4)),
     ]
 }

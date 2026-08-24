@@ -12,8 +12,8 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
 Phase B V4 : backlog P0 épuisé, LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE [22 corrigés BUILD_VALIDATED
 + V4-F-003 BLOQUÉ], **backlog P2 EN COURS** [Lot P2-1 : V4-F-004 BLOQUÉ, V4-F-006 différé,
-V4-F-009/010/011 BUILD_VALIDATED ; Lot P2-2 : V4-F-012 BUILD_VALIDATED] — backlog P3 PAS ENCORE
-ATTAQUÉ)
+V4-F-009/010/011 BUILD_VALIDATED ; Lot P2-2 : V4-F-012 BUILD_VALIDATED ; Lot P2-3 : V4-F-014
+BUILD_VALIDATED] — backlog P3 PAS ENCORE ATTAQUÉ)
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -544,20 +544,33 @@ P2-2. **Commit `4cc0ba2`, CI verte confirmée (run `32711209239`)** — `BUILD_V
 `COMPLETE_PARITY_VALIDATED` (test réel requis : confirmer l'affichage des 10 champs, notamment
 téléphone/email, depuis les deux points d'entrée).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P2-2 terminé (vérifié/corrigé/documenté/commité/CI verte).
-Enchaîner **automatiquement** sur le prochain P2 dans l'ordre du document : **V4-F-014** (Profile —
-les posts d'un profil sont récupérés même si l'utilisateur visionné est bloqué :
-`Profile/ProfileViewModel.swift:118-142`, aucune garde `isBlocked` avant `loadInitialPosts`/
-`loadMorePosts` ; Android — `uploadPerfilPhoto/UserProfile.java:723-727`,
-`if (!isBlocked) { ... }` — écart mineur de confidentialité/cohérence, requête réseau émise malgré
-le blocage — recommandation : ajouter `guard !isBlocked else { return }` avant
-`loadInitialPosts`/`loadMorePosts`), puis continuer AUTOMATIQUEMENT le backlog P2 restant dans
-l'ordre du document (V4-F-022, V4-F-025, V4-F-028, V4-F-031, V4-F-035, V4-F-039, V4-F-041,
-V4-F-043, V4-F-047, V4-F-051, V4-F-052, V4-F-057, V4-F-058, V4-F-060, V4-F-061, V4-F-066, V4-F-067,
-V4-F-069, V4-F-070, V4-F-074 — 20 findings restants après V4-F-014), puis le backlog P3 (21
-findings) une fois P2 entièrement clos, SANS attendre de nouvelle confirmation utilisateur pour
-chaque lot (instruction explicite : continuer automatiquement). Repo Android source de vérité :
-`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lot P2-3 traité (V4-F-014)** — Profile, les posts d'un profil bloqué étaient quand même
+récupérés. Vérifié dans `UserProfile.java:723-727` (`executeTask`, `if (!isBlocked) { ...fetch... }`
+— garde posée AU POINT D'ENTRÉE réseau). Côté iOS, `loadMorePosts()` (seul point d'entrée réseau
+des posts, utilisé par le chargement initial ET la pagination) n'avait aucune garde `isBlocked`.
+Corrigé : `guard ... !isBlocked ...` ajouté, `isBlocked` déjà peuplé avant ce point
+(`loadProfile()`, appelé avant `loadInitialPosts()`). Détail complet dans `PROGRESS_V4.md`, Lot
+P2-3. **Commit `60c5b63`, CI verte confirmée (run `32712064664`)** — `BUILD_VALIDATED`, PAS
+`COMPLETE_PARITY_VALIDATED` (test réel requis : bloquer un utilisateur, rouvrir son profil,
+confirmer via inspection réseau qu'aucune requête `feedtimeline` n'est émise).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P2-3 terminé (vérifié/corrigé/documenté/commité/CI verte).
+Enchaîner **automatiquement** sur le prochain P2 dans l'ordre du document : **V4-F-022** (Groups /
+Social — action "Signaler le groupe" entièrement absente, doublon confirmé trouvé indépendamment
+par 2 agents Phase A : `Messagerie/GroupDetailView.swift` — aucune référence à `ReportView`/
+signalement ; Android — `messagerie/group/GroupDetailActivity.java:204-215`, `res/menu/
+menu_group.xml:12-15` — le menu d'un groupe [accessible à tout membre] propose "Signaler", qui
+lance `Report` avec `type="group"` — `ReportView.swift` supporte DÉJÀ `reportType: "group"` en
+interne [composant générique prêt, déjà utilisé pour les profils] mais n'est JAMAIS instancié
+depuis `GroupDetailView` — gap de câblage pur, pas de composant à construire — recommandation :
+ajouter une action "Signaler le groupe" dans `GroupDetailView` qui présente
+`ReportView(targetId: groupId, username: groupName, reportType: "group")`), puis continuer
+AUTOMATIQUEMENT le backlog P2 restant dans l'ordre du document (V4-F-025, V4-F-028, V4-F-031,
+V4-F-035, V4-F-039, V4-F-041, V4-F-043, V4-F-047, V4-F-051, V4-F-052, V4-F-057, V4-F-058, V4-F-060,
+V4-F-061, V4-F-066, V4-F-067, V4-F-069, V4-F-070, V4-F-074 — 19 findings restants après V4-F-022),
+puis le backlog P3 (21 findings) une fois P2 entièrement clos, SANS attendre de nouvelle
+confirmation utilisateur pour chaque lot (instruction explicite : continuer automatiquement). Repo
+Android source de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

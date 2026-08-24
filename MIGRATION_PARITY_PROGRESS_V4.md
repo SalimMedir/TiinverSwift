@@ -7,8 +7,8 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064,
 V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027, V4-F-019 clos. V4-F-003 documenté `BLOQUÉ` (hors
 dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE.** Backlog P2 EN
-COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012
-(`BUILD_VALIDATED`) clos. Prochain : V4-F-014.**
+COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014
+(`BUILD_VALIDATED`) clos. Prochain : V4-F-022.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -2274,3 +2274,48 @@ directement vers `EditPersonalInformationView`, le bouton "Modifier" lui-même, 
 personnelles ET Réglages → Informations personnelles (raccourci racine), confirmer que les 10
 champs affichent les vraies valeurs du compte connecté, notamment téléphone/email (jamais visibles
 nulle part avant ce correctif).
+
+## 2026-08-24 — Phase B V4 — Lot P2-3 : V4-F-014 (Profile — posts récupérés même si l'utilisateur visionné est bloqué)
+
+### Vérification Android
+
+`UserProfile.java:723-727` (`executeTask`, entier) :
+```java
+private void executeTask(){
+    if (!isBlocked) {
+        profileViewModel.executeBackTask(userId, myId, LIMIT, OFFSET);
+    }
+}
+```
+Android n'émet AUCUNE requête réseau de posts pour un profil bloqué — la garde est posée AU POINT
+D'ENTRÉE réseau, pas après réception.
+
+### État iOS avant correctif
+
+`ProfileViewModel.loadMorePosts()` — seul point d'entrée réseau des posts (utilisé par
+`loadInitialPosts()` ET la pagination au scroll), AUCUNE garde `isBlocked` — la requête
+`feedtimeline` partait inconditionnellement, y compris pour un profil déjà bloqué.
+
+### Correctif appliqué
+
+`guard !isLoadingPosts, !reachedEnd, !isBlocked, let viewerId = ... else { return }` — un seul
+point de garde couvre les 2 appelants (chargement initial + pagination). `isBlocked` est déjà
+peuplé AVANT ce point : `loadProfile()` (qui lit le cache local `UserDefaults` du blocage) est
+appelé avant `loadInitialPosts()` dans le `.task` de `ProfileView` — pas de risque d'ordre.
+
+### Flux frères vérifiés
+
+`grep loadMorePosts\|loadInitialPosts` → tous les appelants passent par `ProfileViewModel`, un seul
+point de garde suffit. Le cas "bloquer un profil DÉJÀ en cours de consultation" reste couvert par
+le comportement déjà existant de `toggleBlock()` (`posts = []` sur blocage réussi, non touché par
+ce lot) — la garde empêche seulement un RECHARGEMENT ultérieur, pas un nettoyage immédiat (déjà en
+place).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Profile/ProfileViewModel.swift`.
+
+**Résultat CI** : commit `60c5b63`, push confirmé (`104ec90..60c5b63 main -> main`), run
+`32712064664` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : bloquer un utilisateur, rouvrir son profil,
+confirmer via inspection réseau (proxy/Instruments) qu'aucune requête `feedtimeline` n'est émise.

@@ -484,6 +484,18 @@ ANDROID SOURCE : uploadPerfilPhoto/UserProfile.java:723-727 (`if (!isBlocked) { 
 IOS FILES : Profile/ProfileViewModel.swift:118-142 (aucune garde `isBlocked`)
 IMPACT : Écart mineur de confidentialité/cohérence — requête réseau émise malgré le blocage.
 RECOMMANDATION : Ajouter `guard !isBlocked else { return }` avant `loadInitialPosts`/`loadMorePosts`.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-3) — Vérifié contre
+`UserProfile.java:723-727` (`executeTask`, `if (!isBlocked) { profileViewModel.executeBackTask(...) }`)
+— Android n'émet aucune requête réseau de posts pour un profil bloqué. Confirmé côté iOS que
+`loadMorePosts` (seul point d'entrée réseau des posts, utilisé par `loadInitialPosts` ET la
+pagination au scroll) n'avait aucune garde `isBlocked`. Correctif : `guard ... !isBlocked ...`
+ajouté à `loadMorePosts` — couvre les 2 appelants d'un coup, un seul point de garde nécessaire.
+`isBlocked` déjà peuplé AVANT ce point (`loadProfile()`, appelé avant `loadInitialPosts()` dans
+`.task` de `ProfileView`). Commit `60c5b63`, push confirmé (`104ec90..60c5b63 main -> main`), CI
+run `32712064664` conclusion `success`. DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED
+(bloquer un utilisateur, rouvrir son profil, confirmer via inspection réseau qu'aucune requête
+`feedtimeline` n'est émise).
 ```
 
 ```

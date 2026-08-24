@@ -16,8 +16,8 @@ V4-F-009/010/011 BUILD_VALIDATED ; Lot P2-2 : V4-F-012 BUILD_VALIDATED ; Lot P2-
 BUILD_VALIDATED ; Lot P2-4 : V4-F-022 BUILD_VALIDATED ; Lot P2-5 : V4-F-025 BUILD_VALIDATED ;
 Lot P2-6 : V4-F-028 BUILD_VALIDATED ; Lot P2-7 : V4-F-031 différé (hors périmètre) ; Lot P2-8 :
 V4-F-035 BUILD_VALIDATED ; Lot P2-9 : V4-F-039 BUILD_VALIDATED ; Lot P2-10 : V4-F-041
-BUILD_VALIDATED ; Lot P2-11 : V4-F-043 BUILD_VALIDATED ; Lot P2-12 : V4-F-047 BUILD_VALIDATED] —
-backlog P3 PAS ENCORE ATTAQUÉ)
+BUILD_VALIDATED ; Lot P2-11 : V4-F-043 BUILD_VALIDATED ; Lot P2-12 : V4-F-047 BUILD_VALIDATED ;
+Lot P2-13 : V4-F-051 BUILD_VALIDATED] — backlog P3 PAS ENCORE ATTAQUÉ)
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -648,21 +648,29 @@ fidèlement Android y compris ses défauts" appliquée sur tout ce cycle. Chaîn
 `af517b2`, CI verte (run `32720254449`)** — `BUILD_VALIDATED`. Détail complet des 3 lots dans
 `PROGRESS_V4.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Lots P2-10/11/12 terminés. Enchaîner **automatiquement** sur le
-prochain P2 dans l'ordre du document : **V4-F-051** (Animems-Interaction — faire défiler [pan] la
-timeline ne resynchronise jamais le moteur de lecture, Play peut reprendre depuis une frame
-obsolète : `Animems/TimelineView.swift:163-190` [seul `.scrub` appelle `state.scrub(toFrame:)` ; le
-cas `.pan` met à jour uniquement `TimelineViewModel.playheadFrame`, jamais `engine.totalFrame`] ;
-Android — `engine/.../views/TimelineView.java:938-954`, `AnimemesCompound.java:1417-1426` [PAN ET
-scrub appellent tous deux `mView.seek(frame)`] — après un pan pour revoir une section, l'aperçu
-canevas montre la bonne frame, mais Play peut visiblement sauter en arrière vers une frame
-différente de celle affichée — recommandation : appeler `state.scrub(toFrame: model.playheadFrame)`
-dans le cas `.pan` également — **consigne de rigueur Animems : vérifier toute la chaîne
-UI→geste→état→transformation→renderer→timeline→export avant de considérer le point terminé**), puis
-continuer AUTOMATIQUEMENT le backlog P2 restant dans l'ordre du document (V4-F-052, V4-F-057,
-V4-F-058, V4-F-060, V4-F-061, V4-F-066, V4-F-067, V4-F-069, V4-F-070, V4-F-074 — 10 findings
-restants après V4-F-051), puis le backlog P3 (21 findings) une fois P2 entièrement clos, SANS
-attendre de nouvelle confirmation utilisateur pour chaque lot (instruction explicite : continuer
+**Lot P2-13 traité (V4-F-051)** — Animems-Interaction, le pan de la timeline ne resynchronisait
+jamais le moteur de lecture. Vérifié dans `TimelineView.java:938-954` (branche PAN horizontale) +
+`AnimemesCompound.java:1417-1426` (`onPlayheadMoved`, entier, appelé pour LE PAN ET le scrub —
+`mView.seek(frame)` toujours exécuté). Corrigé : `state.scrub(toFrame: model.playheadFrame)`
+ajouté dans le cas `.pan`, réutilisant la fonction déjà correcte du cas `.scrub`. Chaîne complète
+vérifiée (UI→geste→état→moteur→renderer→timeline ; export confirmé indépendant, lit seulement
+`totalFramesMinus1`). **Commit `b3291be`, CI verte (run `32721332296`)** — `BUILD_VALIDATED`.
+Détail complet dans `PROGRESS_V4.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Lot P2-13 terminé. Enchaîner **automatiquement** sur le prochain P2
+dans l'ordre du document : **V4-F-052** (Animems-Interaction — aucun appui long pour ramener un
+calque au premier plan : `Animems/AnimemesGestureController.swift:74-82` [`bringLayerToFront`,
+PORTÉ, zéro appelant] ; aucun `LongPressGesture` nulle part dans `AnimemesEditorView.swift` [930
+lignes, lecture complète] ; Android — `engine/.../memes/MemesView2.java:1571-1574,1613-1616`
+[appui long sur le canevas → calque le plus haut sous le doigt → premier plan] — aucun moyen direct
+de faire remonter un calque enfoui sous d'autres par manipulation directe — recommandation :
+ajouter un `LongPressGesture` [avec vérification sur device, historique de régressions de
+composition de gestes documenté dans ce fichier] résolvant le calque le plus haut et appelant
+`bringLayerToFront`, déjà prêt — **consigne de rigueur Animems applicable**), puis continuer
+AUTOMATIQUEMENT le backlog P2 restant dans l'ordre du document (V4-F-057, V4-F-058, V4-F-060,
+V4-F-061, V4-F-066, V4-F-067, V4-F-069, V4-F-070, V4-F-074 — 9 findings restants après V4-F-052),
+puis le backlog P3 (21 findings) une fois P2 entièrement clos, SANS attendre de nouvelle
+confirmation utilisateur pour chaque lot (instruction explicite : continuer
 automatiquement). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 

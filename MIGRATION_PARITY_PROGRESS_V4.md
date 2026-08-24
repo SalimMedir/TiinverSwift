@@ -8,8 +8,8 @@ V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, 
 V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027, V4-F-019 clos. V4-F-003 documenté `BLOQUÉ` (hors
 dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE.** Backlog P2 EN
 COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014/022/025/028/
-035/039/041/043/047 (`BUILD_VALIDATED`) clos, V4-F-031 (différé, hors périmètre d'un petit lot).
-Prochain : V4-F-051.**
+035/039/041/043/047/051 (`BUILD_VALIDATED`) clos, V4-F-031 (différé, hors périmètre d'un petit lot).
+Prochain : V4-F-052.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -2837,3 +2837,73 @@ Animems.
 `COMPLETE_PARITY_VALIDATED` — test réel requis : capturer un template sur un canevas d'une taille,
 l'appliquer sur un calque avec un canevas cible de taille DIFFÉRENTE, comparer le positionnement
 résultant pixel pour pixel avec un appareil Android de référence.
+
+## 2026-08-24 — Phase B V4 — Lot P2-13 : V4-F-051 (Animems-Interaction — faire défiler [pan] la timeline ne resynchronise jamais le moteur de lecture)
+
+### Vérification Android
+
+`TimelineView.java:938-954` (mode `PAN`, branche horizontale, `dx >= dy`) :
+```java
+float deltaPx   = x - downX;
+int   newScroll = clamp(Math.round(scrollFramesAtDown - deltaPx / pxPerFrame), scrollMin(), maxScrollFrames());
+scrollFrames  = newScroll;
+playheadFrame = clamp(scrollFrames + contentHalfFrames(), 0, totalFrames - 1);
+if (listener != null) listener.onPlayheadMoved(playheadFrame, playheadFrame / (float) frameRate);
+```
+`AnimemesCompound.java:1417-1426` (`onPlayheadMoved`, entier) :
+```java
+public void onPlayheadMoved(int frame, float seconds) {
+    mView.isTimelineScrubbing = true;
+    mView.seek(frame);
+    mView.postInvalidate();
+    if (!isPlaying) pause();
+    if (mAudio != null) mAudio.seekTo((int) seconds);
+}
+```
+`onPlayheadMoved` est appelé pour LE PAN ET le scrub (même écouteur) — le moteur de lecture Android
+(`mView.seek`) est TOUJOURS resynchronisé sur un déplacement du playhead, quelle que soit la source
+du déplacement (pan horizontal OU scrub direct sur la règle).
+
+### État iOS avant correctif
+
+`combinedDragGesture`'s cas `.scrub` : `model.scrub(toX:)` PUIS `state.scrub(toFrame:
+model.playheadFrame)` — moteur resynchronisé. Cas `.pan` : `model.pan(scrollFramesAtDown:deltaPx:)`
+SEUL — met à jour `TimelineViewModel.playheadFrame` (affichage/scroll) mais n'appelle JAMAIS
+`state.scrub(toFrame:)` — le moteur de lecture (`AnimemesEditorState`/`engine`) reste sur son
+ancienne position de seek.
+
+### Correctif appliqué
+
+`state.scrub(toFrame: model.playheadFrame)` ajouté juste après `model.pan(...)` dans le cas `.pan`
+— `model.pan(...)` a déjà recalculé `playheadFrame` (même logique `scrollFrames`/`contentHalfFrames`
+qu'Android), lu ici à jour. RÉUTILISE `AnimemesEditorState.scrub(toFrame:)`, déjà correcte et déjà
+utilisée par `.scrub` (pause-si-en-lecture, `engine.seek(to:)`, resynchro `timeline.playheadFrame`,
+`renderVersion += 1`) — pas une 2ᵉ implémentation du seek.
+
+### Vérification de la chaîne complète (consigne de rigueur Animems)
+
+UI (geste de drag sur la timeline) → `DragMode.pan` (déterminé par `resolveMode`, zone hors item —
+confirmé : iOS ne mélange pas scroll vertical de pistes dans ce même mode, contrairement à la
+branche verticale d'Android qui n'a pas d'équivalent direct ici) → `TimelineViewModel.pan` (état
+visuel : `scrollFrames`/`playheadFrame`) → `AnimemesEditorState.scrub` (transformation/seek moteur
+réel, maintenant réellement invoqué) → renderer (redessine sur le bump `renderVersion`) → timeline
+(playhead resynchronisé via `setPlayheadFrame(frame, external: true)`, appelé À L'INTÉRIEUR de
+`scrub`). Export vérifié SÉPARÉMENT : `grep "engine.seek\|engine.totalFrame\|currentFrame"` dans
+`AnimemesExporter.swift` → seul `engine.totalFramesMinus1` (longueur totale, constante) est lu —
+l'export itère ses propres frames indépendamment de toute position de seek interactive courante,
+aucun changement requis côté export.
+
+### Flux frères vérifiés
+
+`grep "state.scrub(toFrame:"` → 2 sites après correctif (`.scrub` préexistant, `.pan` ajouté) —
+pas de 3ᵉ site de déplacement de playhead à corriger dans ce fichier.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/TimelineView.swift`.
+
+**Résultat CI** : commit `b3291be`, push confirmé (`53ccb94..b3291be main -> main`), run
+`32721332296` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : faire défiler la timeline vers une section,
+appuyer sur Play, confirmer que la lecture reprend depuis la frame affichée à l'écran (pas une
+frame antérieure périmée).

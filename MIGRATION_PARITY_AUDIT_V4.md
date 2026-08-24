@@ -1516,6 +1516,27 @@ cas `.pan` met à jour uniquement `TimelineViewModel.playheadFrame`, jamais `eng
 IMPACT : Après un pan pour revoir une section, l'aperçu canevas montre la bonne frame, mais `Play`
 peut visiblement sauter en arrière vers une frame différente de celle affichée à l'écran.
 RECOMMANDATION : Appeler `state.scrub(toFrame: model.playheadFrame)` dans le cas `.pan` également.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-13) — Vérifié contre
+`TimelineView.java:938-954` (mode `PAN`, branche horizontale : `scrollFrames`/`playheadFrame`
+recalculés, `listener.onPlayheadMoved(playheadFrame, ...)`) et
+`AnimemesCompound.java:1417-1426` (`onPlayheadMoved`, entier : `mView.seek(frame)` +
+pause-si-nécessaire + resynchro audio) — appelé pour LE PAN ET le scrub, confirmant que le moteur
+de lecture Android est TOUJOURS resynchronisé sur un déplacement du playhead, quelle que soit la
+source du déplacement. Confirmé côté iOS que `.pan` mettait à jour uniquement
+`TimelineViewModel.playheadFrame` (affichage), jamais `AnimemesEditorState.scrub(toFrame:)` (seek
+réel du moteur). Correctif : `state.scrub(toFrame: model.playheadFrame)` ajouté après
+`model.pan(...)` — RÉUTILISE la fonction déjà correcte du cas `.scrub` (pas une 2ᵉ implémentation).
+Chaîne complète vérifiée (consigne de rigueur Animems) : UI (geste)→`DragMode.pan`→
+`TimelineViewModel.pan` (état visuel)→`AnimemesEditorState.scrub` (seek moteur +
+`renderVersion += 1`, maintenant réellement invoqué)→renderer (redessine sur le bump)→timeline
+(playhead resynchronisé via `setPlayheadFrame(external: true)`) ; export vérifié INDÉPENDANT de cet
+état (`AnimemesExporter` ne lit que `engine.totalFramesMinus1`, jamais une position de seek
+courante) — aucun changement requis côté export. Commit `b3291be`, push confirmé
+(`53ccb94..b3291be main -> main`), CI run `32721332296` conclusion `success`.
+DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (faire défiler la timeline vers une section,
+appuyer sur Play, confirmer que la lecture reprend depuis la frame affichée à l'écran, pas une
+frame antérieure périmée).
 ```
 
 ```

@@ -21,11 +21,14 @@ Lot P2-13 : V4-F-051 BUILD_VALIDATED ; Lot P2-14 : V4-F-052 BUILD_VALIDATED ; Lo
 V4-F-057 BUILD_VALIDATED ; Lot P2-16 : V4-F-058 BUILD_VALIDATED ; Lot P2-17 : V4-F-060 différé +
 V4-F-061 BUILD_VALIDATED ; Lot P2-18 : V4-F-067 BUILD_VALIDATED ; Lot P2-19 : V4-F-069 +
 V4-F-074 BUILD_VALIDATED ; Lot P2-20 : V4-F-070 différé] — **BACKLOG P2 ENTIÈREMENT TRAITÉ
-(27/27)**, backlog P3 EN COURS [21 findings ; Lot P3-1 : V4-F-005 BUILD_VALIDATED ; Lot P3-2 :
-V4-F-016 IOS_INTENTIONAL_DIFFERENCE ; Lot P3-3 : V4-F-013 + V4-F-015 BUILD_VALIDATED ; Lot P3-4 :
-V4-F-018 différé ; Lot P3-5 : V4-F-026 différé ; Lot P3-6 : V4-F-023 + V4-F-024 + V4-F-034
+(27/27)**, **BACKLOG P3 ENTIÈREMENT TRAITÉ (21/21)** [Lot P3-1 : V4-F-005 BUILD_VALIDATED ; Lot
+P3-2 : V4-F-016 IOS_INTENTIONAL_DIFFERENCE ; Lot P3-3 : V4-F-013 + V4-F-015 BUILD_VALIDATED ; Lot
+P3-4 : V4-F-018 différé ; Lot P3-5 : V4-F-026 différé ; Lot P3-6 : V4-F-023 + V4-F-024 + V4-F-034
 BUILD_VALIDATED ; Lot P3-7 : V4-F-036 BUILD_VALIDATED + V4-F-037 différé ; Lot P3-8 : V4-F-044 +
-V4-F-045 différés])
+V4-F-045 différés ; Lot P3-9 : V4-F-053 + V4-F-055 BUILD_VALIDATED + V4-F-054
+IOS_INTENTIONAL_DIFFERENCE ; Lot P3-10 : V4-F-062 BUILD_VALIDATED + V4-F-063 différé ; Lot P3-11 :
+V4-F-071 + V4-F-072 BUILD_VALIDATED ; Lot P3-12 : V4-F-075 IOS_INTENTIONAL_DIFFERENCE] —
+**AUDIT V4 ENTIER (P0+P1+P2+P3, 75/75 findings) ENTIÈREMENT TRAITÉ**)
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -747,18 +750,47 @@ simple hors ViewBuilder — **retenir ce piège Swift pour tout futur `@ViewBuil
 portage**. Commits `60d4045`, `2ded523` (ÉCHEC), `c7b182a` (correctif), `ad5a0dc`, `74bbfa1`,
 `bb3029e` — tous CI verte sauf `2ded523`. Détail complet dans `PROGRESS_V4.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V4-F-053** (Animems-Interaction —
-taper une zone vide de la timeline ne désélectionne pas le calque courant ; Android `engine/.../
-views/TimelineView.java:879-887` + `AnimemesCompound.java:1406-1414` [sélection explicitement mise
-à `null`, cascade sur le panneau/boutons dépendants] ; iOS `Animems/TimelineView.swift:149-161`
-[`.pan` → `break` explicite, ne touche jamais `state.selectedId`] — recommandation :
-`state.selectedId = nil` dans le repli `.pan` sans item touché), puis continuer AUTOMATIQUEMENT le
-reste du backlog P3 dans l'ordre du document (V4-F-054, V4-F-055, V4-F-062, V4-F-063, V4-F-071,
-V4-F-072, V4-F-075 — 7 findings restants après V4-F-053), SANS attendre de nouvelle confirmation
-utilisateur pour chaque lot (instruction explicite : continuer automatiquement). Une fois le
-backlog P3 entièrement épuisé, **l'audit V4 sera ENTIÈREMENT TRAITÉ** (P0+P1+P2+P3) — vérifier à ce
-moment s'il reste des findings non enumérés/oubliés avant de conclure le cycle. Repo Android source
-de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lots P3-9 à P3-12 traités (derniers du backlog P3)** — V4-F-053 (Animems, désélection sur tap
+timeline vide, port de `onDown`'s `hitTestItem == null`) + V4-F-054 (`IOS_INTENTIONAL_DIFFERENCE`,
+"aucune action requise" selon l'audit) ; V4-F-055 (HUD de diagnostic de gestes gaté `#if DEBUG`) ;
+V4-F-062 (preset de recadrage vidéo "3:4" manquant, ajouté) + V4-F-063 (`DIFFÉRÉ`, recadrage
+interactif — feature UI substantielle explicitement optionnelle) ; V4-F-071 (emoji/nom de cadeau
+résolus dans les notifications via `GiftCatalog.swift`, déjà porté pour `GiftBadgeView` mais jamais
+câblé ici) + V4-F-072 (notifications système perdues après purge — `triggerSystemNotifications`
+déplacé AVANT `pruneOld()`, root cause = re-requête Core Data par ID après purge au lieu d'une
+résolution en mémoire comme Android) ; V4-F-075 (`IOS_INTENTIONAL_DIFFERENCE`, croissance mémoire
+non bornée confirmée identique côté Android). Commits `2c82940`, `d74ba79`, `24ccd0d`, `893d65c` —
+tous CI verte. Détail complet dans `PROGRESS_V4.md`.
+
+## **AUDIT V4 (P0+P1+P2+P3) ENTIÈREMENT TRAITÉ — 75/75 FINDINGS**
+
+Vérifié par recomptage exhaustif (`grep -c "^ID : V4-F-"` = 75, `grep "^PRIORITÉ :"` = 4 P0 + 23 P1
++ 27 P2 + 21 P3 = 75, chaque ID individuellement confirmé porteur d'un bloc `STATUT`) :
+- **P0** : 4/4, tous `BUILD_VALIDATED`.
+- **P1** : 23/23 — 22 `BUILD_VALIDATED` + V4-F-003 `BLOQUÉ` (dépendance externe hors dépôt).
+- **P2** : 27/27 — 22 `BUILD_VALIDATED` + 1 `BLOQUÉ` (V4-F-004) + 4 `DIFFÉRÉ`
+  (V4-F-006/031/060/070).
+- **P3** : 21/21 — 12 `BUILD_VALIDATED` + 9 `DIFFÉRÉ`/`IOS_INTENTIONAL_DIFFERENCE`
+  (V4-F-016/018/026/037/044/045/054/063/075).
+
+**Aucun finding marqué `COMPLETE_PARITY_VALIDATED`** sur l'ensemble du cycle — conforme à la règle
+stricte : ce statut nécessite un test réel sur device, indisponible dans cet environnement. Chaque
+correctif `BUILD_VALIDATED` documente son propre point `DEVICE_TEST_REQUIRED` dans
+`PROGRESS_V4.md`/`MIGRATION_PARITY_AUDIT_V4.md` — recommandé pour une prochaine session avec accès
+Xcode/simulateur/device réel : passer en revue systématiquement chaque lot fermé et exécuter le
+test réel décrit, en particulier les changements à risque visuel/gestuel élevé (V4-F-013 badges
+programme, V4-F-034 pager vidéo plein écran, V4-F-052/053 gestes Animems, V4-F-071/072
+notifications).
+
+**PROCHAINE TÂCHE EXACTE** : Le backlog complet de l'audit V4 (P0/P1/P2/P3) est épuisé. Aucune
+tâche automatique restante de ce cycle. Options pour une prochaine session : (1) démarrer un
+nouveau cycle d'audit V5 si l'utilisateur le demande explicitement (jamais de sa propre initiative
+— consigne P1/P2/P3 de ce cycle : "Ne refais pas un nouvel audit V5" sans instruction contraire) ;
+(2) exécuter les tests réels sur device pour les correctifs `BUILD_VALIDATED` accumulés et les
+faire passer en `COMPLETE_PARITY_VALIDATED` un par un ; (3) traiter les items `BLOQUÉ` si leurs
+dépendances externes (Apple Developer Portal/App Groups pour V4-F-003/004) deviennent disponibles.
+Repo Android source de vérité :
+`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

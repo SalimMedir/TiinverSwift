@@ -1752,6 +1752,12 @@ IMPACT : Bande de texte de debug (IDs internes, trace de gestes) visible par TOU
 en TOUTE configuration de build, occupant de l'espace vertical au-dessus du canevas.
 RECOMMANDATION : Gater `gestureDiagnosticsHUD` derrière `#if DEBUG` maintenant que le pipeline de
 gestes a été éprouvé sur plusieurs cycles de correction.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P3, Lot P3-9) — Vérifié : `gestureDiagnosticsHUD`
+rendu sans garde, son propre commentaire de tête le confirmant "TEMPORAIRE, à retirer". Correctif :
+appel enveloppé dans `#if DEBUG`/`#endif`, conservé pour le développement plutôt que supprimé. Un
+seul site d'appel dans tout le fichier. Commit `d74ba79`, push confirmé
+(`2c82940..d74ba79 main -> main`), CI run `32734643697` conclusion `success`.
 ```
 
 ---
@@ -1988,6 +1994,13 @@ FEATURE : Preset de ratio de recadrage "3:4" manquant
 ANDROID SOURCE : view/trimmer/VideoTrimmerView.java:265-288 (6 ratios : Libre/16:9/9:16/1:1/4:3/3:4)
 IOS FILES : Media/VideoTrimState.swift:52-57 (seulement 5 : manque 3:4)
 RECOMMANDATION : Ajouter `("3:4", .ratio(w: 3, h: 4))` aux presets.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P3, Lot P3-10) — Vérifié contre `showRatioMenu`/
+`menu_crop_ratio.xml` (`VideoTrimmerView.java:265-288`) : ordre exact Libre/16:9/9:16/1:1/4:3/3:4.
+Correctif : `("3:4", .ratio(w: 3, h: 4))` ajouté en fin de `VideoTrimState.presets`, même ordre
+relatif qu'Android. `ratioOptions` d'`AnimemesEditorView.swift` (qui contient déjà un "3:4")
+concerne le ratio de CANEVAS Animems, une fonctionnalité distincte sans rapport avec le recadrage
+vidéo — pas un doublon. Commit `24ccd0d`, push confirmé (`d74ba79..24ccd0d main -> main`).
 ```
 
 ```
@@ -2003,6 +2016,12 @@ SUGGESTED_STATUS : VISUALLY_DIFFERENT
 IMPACT : Perte de contrôle du cadrage pour un sujet non centré — aucun moyen d'ajuster.
 RECOMMANDATION : Optionnel — ajouter un geste de glissement sur une boîte de recadrage si la parité
 exacte est désirée ; sinon documenter comme simplification intentionnelle.
+
+STATUT : DIFFÉRÉ / IOS_INTENTIONAL_DIFFERENCE (2026-08-24, Phase B P3, Lot P3-10) — L'audit
+lui-même qualifie ceci de `VISUALLY_DIFFERENT` et propose explicitement l'alternative "documenter
+comme simplification intentionnelle" en RECOMMANDATION. Construire une boîte de recadrage glissable
+avec bornage aux limites de la vidéo serait une nouvelle fonctionnalité d'interaction UI
+substantielle, pas un correctif ponctuel — disproportionné pour un petit lot. Aucun code modifié.
 ```
 
 ---
@@ -2237,6 +2256,17 @@ sans emoji ni nom (gap auto-documenté dans le code : "catalogue de cadeaux pas 
 IMPACT : Identité du cadeau envoyé illisible depuis la seule notification.
 RECOMMANDATION : Porter un équivalent `GiftCatalogHelper` (résolution emoji+nom par id) et le câbler
 dans les deux branches concernées.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P3, Lot P3-11) — L'équivalent `GiftCatalogHelper`
+existait DÉJÀ (`Models/GiftCatalog.swift`, porté lors d'un cycle antérieur pour `GiftBadgeView`/
+`CommentModel`), seul le câblage dans les 2 branches notification manquait. Correctif : les 2
+branches (`activityNotificationContent` commentaire-cadeau, `chatMessageNotificationContent`
+message-cadeau) résolvent maintenant `emoji`/`name` via `GiftCatalog.emoji(for:)`/`resolve(_:)`,
+avec repli indépendant emoji/nom (fidèle à `getEmojiForStringId` → 🎁 et `nameRes == 0` →
+`R.string.gift` = "cadeau", jamais un repli "tout ou rien"). Textes EXACTS reconstruits depuis
+`String.format` Android (`NotificationUtils.java:123-129,311-319`), y compris la tournure "en tant
+que commenter" un peu étrange du texte Android d'origine, reproduite telle quelle. Commit
+`893d65c`, push confirmé (`24ccd0d..893d65c main -> main`).
 ```
 
 ```
@@ -2254,6 +2284,20 @@ absence) peut silencieusement manquer les notifications système pour les plus a
 purgés, alors qu'Android les déclencherait toutes.
 RECOMMANDATION : Construire le contenu de notification directement depuis les résultats venant d'être
 parsés/upsertés, avant la purge, plutôt que de re-requêter après.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P3, Lot P3-11) — Vérifié contre
+`NotificationRepository.fetchNotifications` (lignes 106-113) : Android résout `isRead` par ID EN
+MÉMOIRE (`parseNotificationsOptimized`, une seule requête batch AVANT l'upsert), donc
+`triggerSystemNotifications` — bien qu'appelé après `pruneOld()` côté Android aussi — ne re-requête
+jamais la base une fois la purge passée. Côté iOS, `triggerSystemNotifications` re-requêtait PAR ID
+(`repository.getById`) mais était appelé APRÈS `pruneOld()` : un id purgé était silencieusement
+ignoré. Correctif MINIMAL : `triggerSystemNotifications(for: array)` déplacé AVANT
+`repository.pruneOld()` (au lieu de restructurer `upsert`/`NotiRepository` pour exposer une liste
+en mémoire comme Android) — `upsert` ne touche jamais `isRead` d'une ligne existante (confirmé,
+commentaire déjà présent dans le code), donc la valeur lue à ce nouveau point reste identique à ce
+que l'approche en mémoire d'Android calculerait, sans risque de purge entre-temps. Un seul
+appelant/site de dispatch dans tout le projet. Commit `893d65c`, push confirmé
+(`24ccd0d..893d65c main -> main`).
 ```
 
 ---
@@ -2349,6 +2393,10 @@ IMPACT : Croissance mémoire graduelle possible dans une session de chat très l
 dessin élaborée — informatif, aucune parité à corriger.
 RECOMMANDATION : Optionnel — les deux plateformes pourraient bénéficier indépendamment d'un plafond,
 hors périmètre de la parité de portage.
+
+STATUT : IOS_INTENTIONAL_DIFFERENCE (2026-08-24, Phase B P3, Lot P3-12) — L'audit lui-même confirme
+que cette caractéristique existe AUSSI côté Android (pas une régression iOS) et conclut "aucune
+parité à corriger". Aucun code modifié.
 ```
 
 ---

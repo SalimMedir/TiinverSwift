@@ -10,10 +10,17 @@ dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAIT
 findings) : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014/022/025/
 028/035/039/041/043/047/051/052/057/058/061/066/067/069/074 (`BUILD_VALIDATED`) clos (V4-F-066 déjà
 clos comme effet de bord du Lot P0-1/V4-F-065, vérifié dans l'audit), V4-F-031/060/070 (différés,
-hors périmètre d'un petit lot). **BACKLOG P2 ENTIÈREMENT TRAITÉ (27/27).** Backlog P3 (21 findings)
-EN COURS : V4-F-005/013/015/023/024/034/036 (`BUILD_VALIDATED`) clos, V4-F-016/018/026/037/044/045
-(`DIFFÉRÉ`/`IOS_INTENTIONAL_DIFFERENCE`, décisions produit ou code Android mort, hors périmètre).
-Prochain : V4-F-053.**
+hors périmètre d'un petit lot). **BACKLOG P2 ENTIÈREMENT TRAITÉ (27/27).**
+
+**BACKLOG P3 ENTIÈREMENT TRAITÉ (21/21) — AUDIT V4 (P0+P1+P2+P3, 75/75 findings) ENTIÈREMENT
+TRAITÉ.** P3 : V4-F-005/013/015/023/024/034/036/053/055/062/071/072 (`BUILD_VALIDATED`) clos,
+V4-F-016/018/026/037/044/045/054/063/075 (`DIFFÉRÉ`/`IOS_INTENTIONAL_DIFFERENCE`, décisions produit,
+code Android mort, ou caractéristiques déjà présentes côté Android) clos. Répartition finale des 75
+findings : 4 P0 + 23 P1 (tous `BUILD_VALIDATED` sauf V4-F-003 `BLOQUÉ`) + 27 P2 (22
+`BUILD_VALIDATED`, 1 `BLOQUÉ`, 4 `DIFFÉRÉ`) + 21 P3 (12 `BUILD_VALIDATED`, 9
+`DIFFÉRÉ`/`IOS_INTENTIONAL_DIFFERENCE`). Aucun `COMPLETE_PARITY_VALIDATED` — règle du cycle
+respectée intégralement, ce statut nécessite un test réel sur device, indisponible dans cet
+environnement.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -3530,3 +3537,167 @@ Aucun code modifié.
 
 **Fichiers modifiés** : `MIGRATION_PARITY_AUDIT_V4.md` (STATUT uniquement, aucun fichier de code
 pour ce lot).
+
+## 2026-08-24 — Phase B V4 — Lot P3-9 : V4-F-053 (BUILD_VALIDATED), V4-F-054 (IOS_INTENTIONAL_DIFFERENCE), V4-F-055 (BUILD_VALIDATED)
+
+### V4-F-053 — Animems-Interaction : taper une zone vide de la timeline ne désélectionne pas le calque courant
+
+**Vérification Android** : `onDown` (`TimelineView.java:879-887`) — `hitTestItem == null` →
+`selected = null` IMMÉDIATEMENT au touch-down, avant même que `mode` bascule vers `PAN`.
+
+**État iOS avant correctif** : le repli `.pan` de `resolveMode` (aucun item/keyframe/icône touché)
+ne touchait jamais `state.selectedId`.
+
+**Correctif appliqué** : `state.selectedId = nil` ET `model.selectedId = nil` (même symétrie que
+`.dragItem`, qui écrit les deux) ajoutés au dispatch initial `.pan`, PAS dans la boucle
+`.onChanged` par frame — un seul déclenchement par geste, fidèle à l'`onDown` Android.
+
+### V4-F-054 — Animems-Interaction : appui long remplacé par un bouton dédié
+
+**Décision** : `IOS_INTENTIONAL_DIFFERENCE` — l'audit conclut lui-même "aucune action requise",
+substitution déjà raisonnée compte tenu de l'historique de fragilité de composition de gestes
+documenté dans ce même fichier (2 échecs de build antérieurs). Aucun code modifié.
+
+### V4-F-055 — Animems-UI : HUD de diagnostic de gestes en permanence à l'écran en production
+
+**Vérification** : `gestureDiagnosticsHUD` rendu sans garde, son propre commentaire de tête le
+qualifiant "TEMPORAIRE, à retirer".
+
+**Correctif appliqué** : appel enveloppé dans `#if DEBUG`/`#endif` — conservé pour le
+développement plutôt que supprimé, le pipeline de gestes qu'il diagnostiquait ayant depuis été
+éprouvé sur plusieurs cycles de correction.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/TimelineView.swift` (053) ;
+`MIGRATION_PARITY_AUDIT_V4.md` (054, STATUT uniquement) ;
+`Sources/TiinverSwift/Animems/AnimemesEditorView.swift` (055).
+
+**Résultat CI** : commit `2c82940` (053), push confirmé (`ad00e51..2c82940 main -> main`), run
+`32733889492` → **`conclusion: success`** ; commit `d74ba79` (054 docs + 055), push confirmé
+(`2c82940..d74ba79 main -> main`), run `32734643697` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (053, 055). PAS
+`COMPLETE_PARITY_VALIDATED` — tests réels requis : (053) taper une zone vide de la timeline avec un
+calque sélectionné, confirmer la désélection immédiate ; (055) confirmer en configuration Release
+que le HUD n'apparaît plus.
+
+## 2026-08-24 — Phase B V4 — Lot P3-10 : V4-F-062 (BUILD_VALIDATED), V4-F-063 (DIFFÉRÉ)
+
+### V4-F-062 — VideoEditor : preset de ratio de recadrage "3:4" manquant
+
+**Vérification Android** : `showRatioMenu`/`menu_crop_ratio.xml` (`VideoTrimmerView.java:265-288`)
+— 6 ratios dans l'ordre Libre/16:9/9:16/1:1/4:3/3:4.
+
+**État iOS avant correctif** : `VideoTrimState.presets` n'en avait que 5, "3:4" manquant.
+
+**Correctif appliqué** : `("3:4", .ratio(w: 3, h: 4))` ajouté en fin de liste, même ordre relatif
+qu'Android. `ratioOptions` d'`AnimemesEditorView.swift` (qui contient déjà un "3:4") concerne le
+ratio de CANEVAS Animems, une fonctionnalité distincte sans rapport avec le recadrage vidéo — pas
+un doublon à corriger.
+
+### V4-F-063 — VideoEditor : recadrage toujours centré, pas de repositionnement interactif
+
+**Décision** : `DIFFÉRÉ` / `IOS_INTENTIONAL_DIFFERENCE` — `SUGGESTED_STATUS: VISUALLY_DIFFERENT`
+dans l'audit, qui propose lui-même l'alternative "documenter comme simplification intentionnelle"
+en RECOMMANDATION. Construire une boîte de recadrage glissable avec bornage aux limites de la
+vidéo serait une nouvelle fonctionnalité d'interaction UI substantielle. Aucun code modifié.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Media/VideoTrimState.swift` (062) ;
+`MIGRATION_PARITY_AUDIT_V4.md` (063, STATUT uniquement).
+
+**Résultat CI** : commit `24ccd0d`, push confirmé (`d74ba79..24ccd0d main -> main`), run
+`32735458316` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (062, CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : ouvrir l'écran de recadrage vidéo, confirmer que
+le preset "3:4" apparaît et produit bien un cadrage 3:4.
+
+## 2026-08-24 — Phase B V4 — Lot P3-11 : V4-F-071, V4-F-072 (BUILD_VALIDATED)
+
+### V4-F-071 — Notifications : emoji/nom du cadeau non résolus dans les corps de notification
+
+**Vérification Android** : `NotificationUtils.java:123-129` (message chat cadeau,
+`String.format("%s %s ", emoji, giftName)`) et `:311-319` (commentaire cadeau,
+`String.format("%s %s %s %s %s ", send_you_a_gift, emoji, giftName, as, comment)`), les deux via
+`GiftCatalogHelper`.
+
+**État iOS avant correctif** : `LocalNotificationBuilder`'s 2 branches "gift" affichaient un texte
+générique statique, sans emoji ni nom — alors qu'un équivalent `GiftCatalogHelper` EXISTAIT DÉJÀ
+(`Models/GiftCatalog.swift`, porté lors d'un cycle antérieur pour `GiftBadgeView`/`CommentModel`),
+seul le câblage dans ces 2 branches notification manquait.
+
+**Correctif appliqué** : les 2 branches résolvent maintenant `emoji`/`name` via
+`GiftCatalog.emoji(for:)`/`resolve(_:)`, avec repli INDÉPENDANT emoji/nom (fidèle à
+`getEmojiForStringId` → 🎁 et `nameRes == 0` → "cadeau", jamais un repli "tout ou rien"). Textes
+EXACTS reconstruits depuis les `String.format` Android, y compris la tournure "en tant que
+commenter" un peu étrange du texte Android d'origine, reproduite telle quelle.
+
+### V4-F-072 — Notifications : notifications système perdues après la purge locale
+
+**Vérification Android** : `NotificationRepository.fetchNotifications` (lignes 106-113) — `isRead`
+résolu par ID EN MÉMOIRE (`parseNotificationsOptimized`, une seule requête batch AVANT même
+l'upsert), donc `triggerSystemNotifications` — bien qu'appelé après `pruneOld()` côté Android
+aussi — ne re-requête jamais la base une fois la purge passée.
+
+**État iOS avant correctif** : `triggerSystemNotifications` re-requêtait PAR ID
+(`repository.getById`) mais était appelé APRÈS `pruneOld()` : un id purgé (utilisateur avec plus
+de 30 notifications non lues d'un coup) était silencieusement ignoré.
+
+**Correctif appliqué** : `triggerSystemNotifications(for: array)` déplacé AVANT
+`repository.pruneOld()` — correctif MINIMAL (pas de restructuration de `upsert`/`NotiRepository`
+pour exposer une liste en mémoire comme Android) : `upsert` ne touche jamais `isRead` d'une ligne
+existante, donc la valeur lue à ce nouveau point reste identique à ce que l'approche en mémoire
+d'Android calculerait, sans risque de purge entre-temps.
+
+### Flux frères vérifiés
+
+Un seul site d'appel dans tout le projet pour chacun des 2 findings.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/LocalNotificationBuilder.swift` (071) ;
+`Sources/TiinverSwift/Notifications/NotificationCenterViewModel.swift` (072).
+
+**Résultat CI** : commit `893d65c`, push confirmé (`24ccd0d..893d65c main -> main`), run
+`32736416612` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` pour les deux (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — tests réels requis : (071) recevoir une notification de cadeau
+[chat et commentaire], confirmer emoji+nom lisibles ; (072) accumuler plus de 30 notifications non
+lues d'un coup [longue absence], confirmer que les plus anciennes déclenchent quand même leur
+notification système avant d'être purgées.
+
+## 2026-08-24 — Phase B V4 — Lot P3-12 : V4-F-075 (IOS_INTENTIONAL_DIFFERENCE)
+
+### Vérification
+
+`ChatViewModel.items`/`PaintCaptureController.frames` croissent sans plafond ni éviction — l'audit
+confirme que cette caractéristique existe AUSSI côté Android pour les deux (pas une régression
+iOS).
+
+### Décision
+
+`IOS_INTENTIONAL_DIFFERENCE` — l'audit conclut lui-même "aucune parité à corriger", l'ajout d'un
+plafond bénéficierait aux deux plateformes indépendamment mais est hors périmètre de la parité de
+portage. Aucun code modifié.
+
+**Fichiers modifiés** : `MIGRATION_PARITY_AUDIT_V4.md` (STATUT uniquement).
+
+---
+
+# BACKLOG P3 ENTIÈREMENT TRAITÉ (21/21 findings)
+
+Répartition finale : 12 `BUILD_VALIDATED` (V4-F-005/013/015/023/024/034/036/053/055/062/071/072),
+9 `DIFFÉRÉ`/`IOS_INTENTIONAL_DIFFERENCE` (V4-F-016/018/026/037/044/045/054/063/075 — décisions
+produit explicitement laissées ouvertes par l'audit, code Android mort confirmé indépendamment, ou
+caractéristiques déjà présentes côté Android). Aucun `COMPLETE_PARITY_VALIDATED`.
+
+# AUDIT V4 (P0+P1+P2+P3) ENTIÈREMENT TRAITÉ — 75/75 FINDINGS
+
+- P0 : 4/4 (tous `BUILD_VALIDATED`)
+- P1 : 23/23 (22 `BUILD_VALIDATED` + V4-F-003 `BLOQUÉ`, dépendance externe hors dépôt)
+- P2 : 27/27 (22 `BUILD_VALIDATED` + 1 `BLOQUÉ` + 4 `DIFFÉRÉ`)
+- P3 : 21/21 (12 `BUILD_VALIDATED` + 9 `DIFFÉRÉ`/`IOS_INTENTIONAL_DIFFERENCE`)
+
+Aucun finding marqué `COMPLETE_PARITY_VALIDATED` sur l'ensemble du cycle — conforme à la règle
+stricte du cycle : ce statut nécessite un test réel sur device, indisponible dans cet
+environnement. Chaque correctif `BUILD_VALIDATED` documente explicitement le test réel qui
+resterait à faire pour passer ce cap. Voir `CLAUDE_CONTINUATION.md` pour le récapitulatif final et
+la liste des points `DEVICE_TEST_REQUIRED` accumulés sur l'ensemble du cycle V4.

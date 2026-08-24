@@ -1710,6 +1710,15 @@ IOS FILES : Animems/TimelineView.swift:149-161 (`.pan` → `break` explicite, ne
 IMPACT : Mineur — incohérence entre canevas (qui gère bien la désélection sur tap vide) et timeline
 (qui ne le fait pas) au sein du même écran.
 RECOMMANDATION : `state.selectedId = nil` dans le repli `.pan` sans item touché.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P3, Lot P3-9) — Vérifié contre `onDown`
+(`TimelineView.java:879-887`) : `hitTestItem == null` → `selected = null` IMMÉDIATEMENT au
+touch-down (pas seulement au relâchement), avant même que `mode` bascule vers `PAN`. Correctif :
+`state.selectedId = nil` (ET `model.selectedId = nil`, même symétrie que `.dragItem` qui écrit les
+deux, pour effacer aussi le surlignage du bloc dans la timeline elle-même) ajouté au dispatch
+initial `.pan` de `resolveMode`, PAS dans la boucle `.onChanged` par frame — un seul site de
+dispatch dans tout le fichier, pas de site frère. Commit `2c82940`, push confirmé
+(`ad00e51..2c82940 main -> main`), CI run `32733889492` conclusion `success`.
 ```
 
 ```
@@ -1726,6 +1735,9 @@ IMPACT : Faible — résultat final équivalent, geste déclencheur différent (
 long non indiqué).
 RECOMMANDATION : Aucune action requise — substitution déjà raisonnée compte tenu de l'historique de
 fragilité de composition de gestes documenté dans ce même fichier.
+
+STATUT : IOS_INTENTIONAL_DIFFERENCE (2026-08-24, Phase B P3, Lot P3-9) — L'audit lui-même conclut
+"aucune action requise". Aucun code modifié.
 ```
 
 ```

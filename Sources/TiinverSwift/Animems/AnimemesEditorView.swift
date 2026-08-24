@@ -135,7 +135,14 @@ struct AnimemesEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
+            #if DEBUG
+            // **Corrigé (V4-F-055, 2026-08-24)** — HUD de diagnostic temporaire (voir commentaire
+            // de tête de `gestureDiagnosticsHUD`) affiché SANS garde jusqu'ici, visible par tous
+            // les utilisateurs en toute configuration de build. Gaté derrière `#if DEBUG` : le
+            // pipeline de gestes qu'il diagnostiquait a depuis été éprouvé sur plusieurs cycles de
+            // correction, mais reste utile en développement plutôt que d'être supprimé.
             gestureDiagnosticsHUD
+            #endif
             canvasArea
             playbackBar
             if state.isMaskEditMode, let selectedId = state.selectedId, let obj = state.layers.first(where: { $0.id == selectedId }) {

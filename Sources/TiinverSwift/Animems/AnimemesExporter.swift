@@ -199,7 +199,17 @@ final class AnimemesExporter {
                 }
                 self.render(frame: renderFrame, into: pixelBuffer)
 
-                let ptsNs = max(Self.frameDurationNs, Int64(f) * Self.frameDurationNs)
+                // **Corrigé le 2026-08-23 (MIGRATION_PARITY_AUDIT_V4.md V4-F-046, Phase B P1)** —
+                // le `max(Self.frameDurationNs, ...)` faisait collision entre `f=0` et `f=1`
+                // (les deux évaluaient à `frameDurationNs`) : aucun échantillon n'était jamais
+                // écrit à pts=0, alors que `writer.startSession(atSourceTime: .zero)` (ligne 150)
+                // fixe explicitement le début de session à t=0. Vérifié côté Android
+                // (`MP4Encoder.java:1753`, `getPresentationTimeUsec(frameIndex)`) : `frameIndex *
+                // FRAME_NS`, strictement croissant depuis 0, SANS clamp équivalent — reproduit
+                // fidèlement ici. Seul `f=0` change de valeur (0 au lieu de `frameDurationNs`) ;
+                // `f>=1` était déjà correct (`f * frameDurationNs >= frameDurationNs`, le `max`
+                // n'avait jamais d'effet au-delà de la 1ʳᵉ frame).
+                let ptsNs = Int64(f) * Self.frameDurationNs
                 let pts = CMTime(value: ptsNs, timescale: 1_000_000_000)
                 // `append` retourne `false` en cas d'échec d'écriture — pas vérifié dans ce
                 // premier passage (voir note de tête de fichier sur les limites connues de cette

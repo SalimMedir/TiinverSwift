@@ -57,7 +57,18 @@ struct GalleryPickerView: UIViewControllerRepresentable {
                     // `loadFileRepresentation` supprime le fichier temporaire dès que ce handler
                     // retourne — copie SYNCHRONE obligatoire avant de repasser sur le main thread
                     // (piège connu de cette API, pas un oubli).
-                    guard let url else { return }
+                    //
+                    // Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-058, Phase B P2) —
+                    // `guard let url else { return }` laissait la feuille de sélection bloquée sans
+                    // AUCUN callback en cas d'échec de chargement (asset iCloud non téléchargé,
+                    // permission révoquée en cours de sélection, erreur I/O transitoire) — ni
+                    // `onVideoPicked`, ni `onCancel`. Aligné sur le repli déjà en place pour un
+                    // échec de COPIE locale (`localCopy == nil` → `onCancel()`, quelques lignes plus
+                    // bas) et sur la garde `results.first == nil` ci-dessus.
+                    guard let url else {
+                        DispatchQueue.main.async { self.parent.onCancel() }
+                        return
+                    }
                     let localCopy = Self.copyToTemporaryFile(url)
                     DispatchQueue.main.async {
                         if let localCopy { self.parent.onVideoPicked(localCopy) } else { self.parent.onCancel() }
@@ -65,7 +76,11 @@ struct GalleryPickerView: UIViewControllerRepresentable {
                 }
             } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
                 provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, _ in
-                    guard let url else { return }
+                    // V4-F-058 — même correctif que la branche vidéo ci-dessus.
+                    guard let url else {
+                        DispatchQueue.main.async { self.parent.onCancel() }
+                        return
+                    }
                     let localCopy = Self.copyToTemporaryFile(url)
                     DispatchQueue.main.async {
                         if let localCopy { self.parent.onImagePicked(localCopy) } else { self.parent.onCancel() }

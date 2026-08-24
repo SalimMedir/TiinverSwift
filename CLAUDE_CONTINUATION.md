@@ -11,7 +11,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
 Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS
-[V4-F-020/032/033/042/038/017/046/048/049/050/001/002 traités])
+[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -299,19 +299,33 @@ pending = nil }` existant rend les deux appels sûrs sans double traitement. Dé
 cold start/écran de login, avant authentification, confirmer qu'il est honoré une fois `HomeShellView`
 monté après connexion).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-12 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur **V4-F-029** (Feed — la publication n'envoie JAMAIS le consentement IA ni les
-métadonnées enrichies au backend, divergence LÉGALE/conformité réelle, pas seulement qualité de
-données : `FeedRepository.swift:187-209` envoie `"metadata": ""`/`"consentAi": "0"` hardcodés,
-`PublishComposeView.swift` n'a AUCUN contrôle de consentement IA dans l'UI — les utilisateurs iOS ne
-peuvent jamais donner ni refuser explicitement leur consentement à l'entraînement IA ; Android —
-`ActivityService.java:182-201`, `PublishFragment.java:274-283,367-390,544-643` — case à cocher
-`acceptAi` réelle, JSON `metadata` construit avec langue/locale/pays/dimensions/fps/durée/licence —
-ajouter un toggle de consentement IA à l'écran de légende + construire un vrai JSON de métadonnées
-dans `FeedRepository.publish`), puis V4-F-030→056→064→059→068→073→021→027→019→003 (Gallery→
-BunnyCDN→Wallet→Performance→Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque
-finding complet). Repo Android source de vérité :
-`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lot P1-13 traité (V4-F-029)** — Feed, publication n'envoyait jamais le consentement IA ni les
+métadonnées enrichies (divergence légale/conformité réelle). Gap déjà explicitement documenté par le
+cycle V3 (V3-F-017) comme non construit à l'époque — retrouvé indépendamment par l'audit V4 (2
+cycles concordants). Vérifié `PublishFragment.java:544-639` + `models/MediaMetaData.java` (entier) :
+`acceptAi` (`CheckBox` réelle, `fragment_publish.xml:86-92`) alimente `consentAi`/`license` réels ;
+`style`/`content_type`/`bitRate` confirmés TOUJOURS `null`/`0` (jamais assignés dans
+`PublishFragment.java`, grep exhaustif) ; `format` uniquement pour une photo (`getVideoMetadata` ne
+l'appelle jamais). Corrigé : `Toggle` de consentement IA ajouté à `PublishComposeView` (décoché par
+défaut, libellé exact `@string/allow_my_content_for_ai_training`), extraction fps/piste audio pour
+la vidéo (à côté de l'extraction width/height/duration déjà existante), nouveau
+`FeedRepository.MediaMetaData` (struct Swift, champs Gson exacts) sérialisé en JSON dans `metadata`,
+`consentAi` envoyé fidèlement selon l'état réel du toggle. `grep publish(` → 2 seuls sites d'appel
+(photo/vidéo), tous deux corrigés. Détail complet dans `PROGRESS_V4.md`, Lot P1-13. **Commit
+`ec7dd68`, CI verte confirmée (run `32681106944`)** — `BUILD_VALIDATED`, PAS
+`COMPLETE_PARITY_VALIDATED` (test réel requis : publier avec le toggle activé ET désactivé, inspecter
+le payload réseau `activity/add` pour confirmer `consentAi`/`metadata` corrects dans les deux cas).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-13 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur **V4-F-030** (Feed — like/partage/commentaire ne déclenchent JAMAIS l'appel
+push vers l'auteur du post : `FeedViewModel.swift:113-140` [`toggleLike`/`toggleShare`], aucun appel
+équivalent nulle part — les auteurs de post ne sont jamais notifiés d'un like/partage venant d'iOS,
+ni de l'ouverture des commentaires ; Android — `MainFragment.java:1150-1174,1190,1238` — `notifyUser`
+→ `POST push` SÉPARÉ de l'appel `reaction`/`comment` lui-même — ajouter un appel `POST push
+{"userId": <auteur>}` dans `toggleLike`, `toggleShare`, et à l'ouverture des commentaires), puis
+V4-F-056→064→059→068→073→021→027→019→003 (Gallery→BunnyCDN→Wallet→Performance→Social→Groups→
+Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de
+vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

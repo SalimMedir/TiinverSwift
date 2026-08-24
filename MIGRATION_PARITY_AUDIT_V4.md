@@ -633,6 +633,21 @@ IMPACT : Divergence légale/conformité réelle, pas seulement de qualité de do
 iOS ne peuvent jamais donner (ni refuser explicitement) leur consentement à l'entraînement IA.
 RECOMMANDATION : Ajouter un toggle de consentement IA à l'écran de légende + construire un vrai JSON
 de métadonnées dans `FeedRepository.publish`.
+STATUT : BUILD_VALIDATED (2026-08-24, commit ec7dd68, CI run 32681106944 succès). Confirmé : ce gap
+était déjà explicitement documenté (pas silencieusement) par le cycle V3 (V3-F-017) comme non
+construit dans ce lot-là — retrouvé indépendamment par l'audit V4, signal de fiabilité fort. Vérifié
+`PublishFragment.java:544-639` (`getImageMetadata`/`getVideoMetadata`) + `models/MediaMetaData.java`
+en entier : `style`/`content_type`/`bitRate` sont déclarés côté Android mais JAMAIS assignés dans
+`PublishFragment.java` (confirmé par grep exhaustif) — restent `null`/`0` dans CHAQUE publication
+Android réelle, reproduits fidèlement tels quels plutôt qu'inventés. `format` n'est fixé QUE pour une
+photo côté Android (`getVideoMetadata` n'appelle jamais `setFormat`) — même asymétrie reproduite.
+Corrigé : `Toggle` de consentement IA ajouté à `PublishComposeView` (libellé exact
+`@string/allow_my_content_for_ai_training`, décoché par défaut), `fps`/piste audio extraits en plus
+de width/height/duration déjà présents pour la vidéo, `MediaMetaData` (struct Swift, champs Gson
+EXACTS) sérialisée en JSON dans `metadata`, `consentAi` envoyé fidèlement. `grep publish(` → 2 seuls
+sites d'appel dans tout le projet (photo/vidéo), tous deux corrigés. DEVICE_TEST_REQUIRED pour
+COMPLETE_PARITY_VALIDATED (publier avec le toggle activé ET désactivé, inspecter le payload réseau
+`activity/add` pour confirmer `consentAi`/`metadata` corrects dans les deux cas).
 ```
 
 ```

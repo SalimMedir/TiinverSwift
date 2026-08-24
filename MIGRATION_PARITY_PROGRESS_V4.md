@@ -4,7 +4,7 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
 **État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
-V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002 clos. Prochain : V4-F-029.**
+V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029 clos. Prochain : V4-F-030.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -1215,3 +1215,74 @@ PENDANT la fenêtre précise du cold start/écran de login, avant authentificati
 ; suggéré : déclencher un lien profond juste après le lancement de l'app sur un compte non connecté,
 se connecter, confirmer que le lien est bien honoré une fois `HomeShellView` monté plutôt que
 silencieusement ignoré.
+
+## 2026-08-24 — Phase B V4 — Lot P1-13 : V4-F-029 (Feed — publication n'envoie jamais le
+consentement IA ni les métadonnées enrichies, divergence légale/conformité réelle)
+
+**Commit** : `ec7dd68` — CI **run 32681106944, conclusion: success**.
+
+### Contexte : gap déjà documenté explicitement par un cycle précédent
+
+`FeedRepository.swift`, commentaire de tête de `publish` (cycle V3, V3-F-017, 2026-08-19) :
+"`metadata`/`template_id` envoyés vides, `consentAi` envoyé à `"0"`... aucun bascule de consentement
+IA n'existe dans `PublishComposeView` actuellement — gap distinct, non construit ici." Ce lot COMBLE
+ce gap déjà identifié, retrouvé indépendamment par l'audit V4 (signal de fiabilité fort — 2 cycles
+d'audit indépendants arrivent à la même conclusion).
+
+### Vérification Android (avant tout changement)
+
+`editor/PublishFragment.java:544-639` (`getMetadata`/`getImageMetadata`/`getVideoMetadata`, lu en
+entier) + `models/MediaMetaData.java` (entier) :
+```java
+meta.setLanguage(language);           // Locale.getDefault().getLanguage()
+meta.setLocale(locale.toString());    // Locale.getDefault().toString()
+meta.setCountry(country);             // Locale.getDefault().getCountry()
+meta.setWidth(width); meta.setHeight(height);
+meta.setConsentAi(consentAi);         // acceptAi.isChecked() — CheckBox RÉELLE, R.id.acceptAi
+meta.setLicense(consentAi ? "ai_training_non_exclusive" : "no_ai");
+// PHOTO uniquement : meta.setFormat(mimeType)
+// VIDÉO uniquement : meta.setFps(...), meta.setDuration(KEY_DURATION/1_000_000f — SECONDES),
+//                     meta.setHasAudio(...)
+```
+`style`/`content_type`/`bitRate` : déclarés dans `MediaMetaData.java` mais AUCUN `setStyle`/
+`setContent_type`/`setBitRate` trouvé nulle part dans `PublishFragment.java` (grep exhaustif) —
+restent `null`/`0` dans CHAQUE publication Android réelle. `acceptAi` (`fragment_publish.xml:86-92`)
+confirmée réelle : `<CheckBox android:text="@string/allow_my_content_for_ai_training" .../>`, libellé
+FR exact `"Autoriser l'utilisation de mon contenu pour l'entraînement de l'IA"`.
+
+### Écart iOS constaté (avant correctif)
+
+`FeedRepository.publish` : `"metadata": ""`, `"consentAi": "0"` — littéraux hardcodés, jamais
+calculés. `PublishComposeView` : aucun contrôle de consentement IA nulle part dans l'UI — impossible
+pour un utilisateur iOS de donner OU refuser explicitement son consentement à l'entraînement IA.
+
+### Correctif appliqué
+
+1. `PublishComposeView` : nouveau `@State private var acceptAiConsent = false` (décoché par défaut,
+   fidèle à l'état initial Android) + `Toggle("Autoriser l'utilisation de mon contenu pour
+   l'entraînement de l'IA", isOn: $acceptAiConsent)` ajouté juste avant l'action de publication
+   (position relative fidèle à `layout_above="@+id/share"`).
+2. `PublishComposeView.publish()` (branche vidéo) : extraction `fps`/piste audio ajoutée À CÔTÉ de
+   l'extraction width/height/duration déjà existante (même `AVAssetTrack` déjà chargé,
+   `nominalFrameRate` = équivalent AVFoundation de `MediaFormat.KEY_FRAME_RATE`).
+3. `FeedRepository.MediaMetaData` (nouveau `struct Encodable`) — noms de champs Gson EXACTS
+   (`content_type` en snake_case inclus, pas de transformation de clé). Construit dans `publish`,
+   sérialisé en JSON via `JSONEncoder`, injecté dans `params["metadata"]`. `consentAi` envoyé comme
+   `"1"`/`"0"` selon la valeur réelle du toggle (plus jamais hardcodé).
+
+### Flux frères vérifiés
+
+`grep -n "FeedRepository().publish("` → exactement 2 sites d'appel dans tout le projet (branches
+photo et vidéo de `PublishComposeView.publish()`), tous deux mis à jour avec `consentAi:` (et
+`videoFps:`/`videoHasAudio:` pour la vidéo).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedRepository.swift`,
+`Sources/TiinverSwift/Feed/PublishComposeView.swift`.
+
+**Résultat CI** : run `32681106944` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : publier une photo ET une vidéo, une fois avec le
+toggle activé et une fois désactivé, inspecter le payload réseau `activity/add` (outil d'inspection
+réseau) pour confirmer que `consentAi`/`metadata.consentAi`/`metadata.license` reflètent bien l'état
+réel du toggle, et que `metadata.fps`/`.hasAudio`/`.duration` sont cohérents pour une vidéo réelle.

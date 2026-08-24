@@ -53,6 +53,11 @@ struct PublishComposeView: View {
     /// n'appelle `proceedToPublish` qu'après un choix confirmé (retour avec `categoryId` non vide).
     @State private var showCategoryPicker = false
     @State private var resolvedCategory: String?
+    /// Port de la `CheckBox` `R.id.acceptAi` (`fragment_publish.xml:86-92`,
+    /// `@string/allow_my_content_for_ai_training`) — **ajouté le 2026-08-24
+    /// (MIGRATION_PARITY_AUDIT_V4.md V4-F-029, Phase B P1)** : décoché par défaut, fidèle à l'état
+    /// initial d'une `CheckBox` Android sans `android:checked="true"` explicite dans le layout.
+    @State private var acceptAiConsent = false
 
     private static let captionLimit = 80
 
@@ -155,6 +160,12 @@ struct PublishComposeView: View {
                         Text("\(caption.count)/\(Self.captionLimit)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+                    // Port de `R.id.acceptAi` — positionné juste au-dessus du bouton de partage
+                    // côté Android (`layout_above="@+id/share"`), reproduit ici juste avant
+                    // l'action de publication (V4-F-029).
+                    Section {
+                        Toggle("Autoriser l'utilisation de mon contenu pour l'entraînement de l'IA", isOn: $acceptAiConsent)
                     }
                     if let errorText {
                         Text(errorText).foregroundStyle(.red)
@@ -301,7 +312,8 @@ struct PublishComposeView: View {
                 let pixelSize = CGSize(width: image.size.width * image.scale, height: image.size.height * image.scale)
                 try await FeedRepository().publish(
                     actorId: actorId, object: "photos", message: caption, hashtags: hashtags,
-                    fileData: jpegData, category: resolvedCategory, width: Int(pixelSize.width), height: Int(pixelSize.height)
+                    fileData: jpegData, category: resolvedCategory, width: Int(pixelSize.width), height: Int(pixelSize.height),
+                    consentAi: acceptAiConsent
                 )
             case .video(let url):
                 // Corrigé (V3-F-019, BUNNY-03) : ne charge plus toute la vidéo en `Data` avant
@@ -320,6 +332,11 @@ struct PublishComposeView: View {
                 var videoWidth: Int?
                 var videoHeight: Int?
                 var videoDurationMs: Int?
+                // Port de `getVideoMetadata`'s extraction fps/piste audio (`PublishFragment.java:
+                // 597-639`, V4-F-029) — MÊME piste vidéo déjà chargée ci-dessous pour width/height,
+                // `nominalFrameRate` étant l'équivalent AVFoundation de `MediaFormat.KEY_FRAME_RATE`.
+                var videoFps: Int?
+                var videoHasAudio: Bool?
                 if let track = try? await asset.loadTracks(withMediaType: .video).first,
                     let naturalSize = try? await track.load(.naturalSize),
                     let transform = try? await track.load(.preferredTransform)
@@ -327,14 +344,19 @@ struct PublishComposeView: View {
                     let oriented = naturalSize.applying(transform)
                     videoWidth = Int(abs(oriented.width))
                     videoHeight = Int(abs(oriented.height))
+                    if let frameRate = try? await track.load(.nominalFrameRate), frameRate > 0 {
+                        videoFps = Int(frameRate.rounded())
+                    }
                 }
+                videoHasAudio = !((try? await asset.loadTracks(withMediaType: .audio)) ?? []).isEmpty
                 if let seconds = try? await asset.load(.duration).seconds, seconds.isFinite, seconds > 0 {
                     videoDurationMs = Int(seconds * 1000)
                 }
                 try await FeedRepository().publish(
                     actorId: actorId, object: "videos", message: caption, hashtags: hashtags,
                     videoFileURL: url, category: resolvedCategory, width: videoWidth, height: videoHeight,
-                    videoDurationMs: videoDurationMs,
+                    videoDurationMs: videoDurationMs, consentAi: acceptAiConsent,
+                    videoFps: videoFps, videoHasAudio: videoHasAudio,
                     uploadProgress: { fraction in
                         Task { @MainActor in videoUploadProgress = fraction }
                     }

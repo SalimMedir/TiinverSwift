@@ -126,16 +126,46 @@ final class FeedRepository {
     /// `category` est OBLIGATOIRE et BLOQUE la publication tant que l'utilisateur n'a pas défini de
     /// catégorie de compte (`CategoryActivity`, écran forcé si `ACCOUNT_URI.category` est vide).
     ///
-    /// **Portée de ce correctif** : `category` (best-effort, lu depuis le profil courant), `width`/
-    /// `height` (dimensions réelles du média) envoyés. `metadata`/`template_id` envoyés vides,
-    /// `consentAi` envoyé à `"0"` — valeurs par défaut fidèles à un post Galerie standard sans
-    /// gabarit Animems ni consentement IA explicite (aucun bascule de consentement IA n'existe dans
-    /// `PublishComposeView` actuellement — gap distinct, non construit ici). **NE reproduit PAS** le
-    /// blocage de publication tant qu'aucune catégorie n'est définie (`CategoryActivity` n'a pas
-    /// d'équivalent iOS — MIGRATION_PARITY_AUDIT_V3.md V3-F-058 PROFILE-03, écran distinct non
-    /// construit dans ce lot) : si `category` est vide, la publication continue quand même côté
-    /// iOS, contrairement à Android — gap documenté, pas silencieusement fermé.
+    /// **Portée du correctif V3-F-017** : `category` (best-effort, lu depuis le profil courant),
+    /// `width`/`height` (dimensions réelles du média) envoyés. `metadata`/`template_id` envoyés
+    /// vides, `consentAi` envoyé à `"0"` — le gap "aucun bascule de consentement IA n'existe dans
+    /// `PublishComposeView`" était explicitement documenté ici comme NON construit dans ce lot.
+    ///
+    /// **Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-029, Phase B P1)** — ce gap est
+    /// maintenant comblé : `PublishComposeView` porte un vrai bascule de consentement IA (port de
+    /// la `CheckBox` `R.id.acceptAi`, `fragment_publish.xml:86-92`, libellé exact
+    /// `@string/allow_my_content_for_ai_training`), `consentAi` envoyé fidèlement, et `metadata`
+    /// construit comme un vrai JSON reproduisant `models/MediaMetaData.java` (`getImageMetadata`/
+    /// `getVideoMetadata`, `PublishFragment.java:544-639`, lus en entier) — voir `MediaMetaData`
+    /// ci-dessous pour le détail champ par champ, y compris les 2 champs Android confirmés TOUJOURS
+    /// `null`/`0` (`style`/`content_type`/`bitRate` : déclarés dans `MediaMetaData.java` mais AUCUN
+    /// `setStyle`/`setContent_type`/`setBitRate` trouvé nulle part dans `PublishFragment.java` —
+    /// reproduit fidèlement tel quel, PAS une omission de ce portage). `template_id` reste vide :
+    /// aucun gabarit Animems n'est sélectionnable depuis ce flux Galerie standard côté Android non
+    /// plus (`template_id` n'a de valeur réelle que pour un post exporté depuis l'éditeur Animems,
+    /// flux séparé). **NE reproduit toujours PAS** le blocage de publication tant qu'aucune
+    /// catégorie n'est définie (V3-F-058, gap distinct déjà documenté, hors périmètre de CE lot).
     enum PublishError: Error { case missingMedia }
+
+    /// Port de `models/MediaMetaData.java` — noms de champs Gson EXACTS (aucune `@SerializedName`
+    /// côté Android, donc aucun renommage ici non plus). Sérialisé dans le champ texte `metadata`
+    /// d'`activity/add` (`ActivityService.sendMetaDate`).
+    struct MediaMetaData: Encodable {
+        var width: Int
+        var height: Int
+        var duration: Double
+        var fps: Int
+        var bitRate: Int = 0
+        var hasAudio: Bool
+        var consentAi: Bool
+        var license: String
+        var format: String?
+        var content_type: String?
+        var style: String?
+        var language: String?
+        var country: String?
+        var locale: String?
+    }
 
     /// `fileData` (photo, déjà en mémoire post-recadrage/ré-encodage JPEG) et `videoFileURL`
     /// (vidéo, streamée depuis le disque — voir `FeedMediaUploader.uploadVideo`, V3-F-019) sont
@@ -147,6 +177,7 @@ final class FeedRepository {
         actorId: String, object: String, message: String, hashtags: [String],
         fileData: Data? = nil, videoFileURL: URL? = nil,
         category: String? = nil, width: Int? = nil, height: Int? = nil, videoDurationMs: Int? = nil,
+        consentAi: Bool = false, videoFps: Int? = nil, videoHasAudio: Bool? = nil,
         uploadProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws {
         // `category` : **corrigé le 2026-08-19 (V3-F-058 PROFILE-03)** — désormais transmis par
@@ -184,6 +215,37 @@ final class FeedRepository {
         }
         print("FEED PUBLISH: step=1/2 BunnyCDN upload OK cdn_content_url=\(cdnContentUrl)")
 
+        // Port de `getImageMetadata`/`getVideoMetadata` (`PublishFragment.java:555-639`, lu en
+        // entier) — voir `MediaMetaData` et le commentaire de tête pour le détail champ par champ
+        // (V4-F-029). `duration` en SECONDES (`Double`) — distinct du `video_duration` en
+        // millisecondes envoyé comme paramètre TOP-NIVEAU juste en dessous, les deux coexistent
+        // réellement côté Android (`KEY_DURATION / 1_000_000f` vs `data.getDuration()`, 2 champs
+        // séparés dans 2 endroits différents du payload, pas un doublon à fusionner).
+        let deviceLocale = Locale.current
+        let metadata = MediaMetaData(
+            width: width ?? 0,
+            height: height ?? 0,
+            duration: object == "videos" ? Double(videoDurationMs ?? 0) / 1000.0 : 0,
+            fps: object == "videos" ? (videoFps ?? 0) : 0,
+            hasAudio: object == "videos" ? (videoHasAudio ?? false) : false,
+            consentAi: consentAi,
+            license: consentAi ? "ai_training_non_exclusive" : "no_ai",
+            // Port de `getImageMetadata`'s `meta.setFormat(mimeType)` — SEULE la branche photo
+            // fixe ce champ côté Android (`getVideoMetadata` ne l'appelle jamais), reproduit tel
+            // quel : `format` reste `nil` pour une vidéo, fidèle au JSON Android réel.
+            format: object == "videos" ? nil : "image/jpeg",
+            // `style`/`content_type` : déclarés côté Android mais JAMAIS assignés dans
+            // `PublishFragment.java` (aucun `style = ...`/`contentType = ...` trouvé par grep
+            // exhaustif) — restent `null` dans CHAQUE publication Android réelle, reproduit à
+            // l'identique plutôt qu'une valeur inventée.
+            content_type: nil,
+            style: nil,
+            language: deviceLocale.language.languageCode?.identifier,
+            country: deviceLocale.region?.identifier,
+            locale: deviceLocale.identifier
+        )
+        let metadataJSON = (try? JSONEncoder().encode(metadata)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+
         var params: [String: String] = [
             "token": token,
             "actor": actorId,
@@ -196,11 +258,13 @@ final class FeedRepository {
             "cdn_content_id": cdnContentId,
             "cdn_content_url": cdnContentUrl,
             "object_url": cdnContentUrl,
-            // Port de `ActivityService.java:186-197` — voir le commentaire de tête pour la portée
-            // exacte de ce correctif (V3-F-017).
-            "metadata": "",
+            // Port de `ActivityService.java:186-197` — voir `MediaMetaData` ci-dessus (V4-F-029).
+            // `template_id` reste vide : aucun gabarit Animems n'est sélectionnable depuis ce flux
+            // Galerie standard côté Android non plus (valeur réelle seulement pour un export
+            // Animems, flux séparé, pas construit ici).
+            "metadata": metadataJSON,
             "template_id": "",
-            "consentAi": "0",
+            "consentAi": consentAi ? "1" : "0",
         ]
         if let cdnThumbnailUrl { params["cdn_thumbnail_url"] = cdnThumbnailUrl }
         if let category, !category.isEmpty { params["category"] = category }

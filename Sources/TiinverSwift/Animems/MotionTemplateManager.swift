@@ -141,6 +141,22 @@ enum MotionTemplateManager {
         guard trackIndex >= 0, trackIndex < template.tracks.count else { return }
         let track = template.tracks[trackIndex]
         let cW = targetCanvasWidth, cH = targetCanvasHeight
+        // Port de `MotionTemplateManager.apply` (`:225-226,240-241`) — **corrigé le 2026-08-24
+        // (MIGRATION_PARITY_AUDIT_V4.md V4-F-047, Phase B P2)**. Avant ce correctif, la
+        // dénormalisation de la translation était LINÉAIRE (`valeur × targetCanvasWidth` seul) ;
+        // Android multiplie EN PLUS par `scaleX = targetCanvasWidth / templateCanvasWidth` — une
+        // formule quadratique en `targetCanvasWidth` quand le canevas cible diffère du canevas de
+        // capture (`template.canvasWidth`/`canvasHeight`). Décision Phase B explicite : reproduire
+        // le comportement Android tel quel (même s'il se lit comme une erreur d'arithmétique —
+        // appliquer un facteur d'échelle DEUX FOIS, une fois par la multiplication directe et une
+        // fois par `scaleX`), fidèle à la politique appliquée sur tout ce cycle d'audit ("reproduire
+        // fidèlement le comportement Android réel, y compris ses défauts, sauf code mort/
+        // inatteignable" — CE chemin est le SEUL exécuté à chaque application de template, pas un
+        // cas rare). PAS documenté comme `IOS_INTENTIONAL_DIFFERENCE` — l'audit lui-même notait que
+        // l'écart se lisait comme un oubli plutôt qu'une décision consciente, confirmé par
+        // l'absence totale de commentaire sur ce point avant ce correctif.
+        let scaleX = Float(targetCanvasWidth) / Float(max(1, template.canvasWidth))
+        let scaleY = Float(targetCanvasHeight) / Float(max(1, template.canvasHeight))
 
         if track.isShape {
             applyShape(track, targetObj, cW, cH)
@@ -153,8 +169,8 @@ enum MotionTemplateManager {
         for saved in track.matrices {
             guard saved.count >= 6 else { continue }
             var values = saved
-            values[2] *= Float(cW)
-            values[5] *= Float(cH)
+            values[2] *= Float(cW) * scaleX
+            values[5] *= Float(cH) * scaleY
             newTransforms.append(Transform(matrixValues: values))
         }
         targetObj.transforms = newTransforms

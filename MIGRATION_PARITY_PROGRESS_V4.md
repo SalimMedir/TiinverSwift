@@ -3,7 +3,8 @@
 Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
 **État actuel (2026-08-23) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
-(P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042 clos. Prochain : V4-F-038.**
+(P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038 clos. Prochain :
+V4-F-017.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -654,3 +655,69 @@ raccrocher soi-même (confirmer le message "appel manqué" apparaît), puis rece
 le refuser sans décrocher (confirmer qu'AUCUN message "appel manqué" n'apparaît côté callee) —
 idéalement avec un pair Android réel des deux côtés pour vérifier l'absence de doublon en
 interopérabilité.
+
+## 2026-08-23 — Phase B V4 — Lot P1-5 : V4-F-038 (Chat-Socket — message live perdu s'il arrive
+pendant le chargement initial de l'historique, race condition)
+
+**Commit** : `d093438` — CI **run 32675426271, conclusion: success**.
+
+### Vérification Android (avant tout changement)
+
+`messagerie/ui/ChatFragmentTest.java:220` : `private final LinkedList<MessageLib> messages = new
+LinkedList<>();` — UNE SEULE instance de liste pour toute la durée de vie de l'écran, `final` (jamais
+réassignée). Confirmé par grep (`LinkedList<MessageLib>` apparaît uniquement en déclaration de champ
+et en paramètre de méthode utilitaire, jamais en `new LinkedList<>()` de remplacement en cours de
+vie) : chargement initial ET réception socket AJOUTENT toujours à cette même liste, aucun des deux
+ne la remplace jamais entièrement.
+
+### Écart iOS constaté (avant correctif)
+
+`ChatViewModel.loadInitial()` (avant correctif) :
+```swift
+let page = try? await messages.page(...)
+var built: [ChatListItem] = []
+for mlib in page ?? [] { appendWithDateSeparator(mlib, into: &built) }
+items = built   // ← remplacement INCONDITIONNEL
+```
+`onIncoming` (câblé via `subscribeToRealtimeEvents` dès `init`, donc actif AVANT même que
+`loadInitial()` ne soit appelée par `.task` côté `ChatView`) ajoute directement à `items` — capable
+de s'exécuter PENDANT le `await messages.page(...)` ci-dessus (Combine → `Task { @MainActor in await
+self.handle(event) }`, un nouveau `Task` indépendant, pas sérialisé avec `loadInitial()`). Si ça
+arrive dans cette fenêtre, `items = built` écrase ensuite silencieusement l'ajout.
+
+### Correctif appliqué
+
+```swift
+let page = (try? await messages.page(...)) ?? []
+let fetchedIds = Set(page.compactMap(\.messageId))
+let liveArrived = items.compactMap { item -> MessageLib? in
+    guard case .message(let mlib) = item, let id = mlib.messageId, !fetchedIds.contains(id) else { return nil }
+    return mlib
+}
+let merged = (page + liveArrived).sorted { (Double($0.stamp ?? "") ?? 0) < (Double($1.stamp ?? "") ?? 0) }
+var built: [ChatListItem] = []
+for mlib in merged { appendWithDateSeparator(mlib, into: &built) }
+items = built
+```
+`items` (post-`await`) est inspecté pour tout `.message` absent de la page fraîche — ces messages
+sont réinjectés dans le tri chronologique avant reconstruction des séparateurs de date.
+
+### Flux frères vérifiés
+
+`loadMore()` (pagination, `ChatViewModel.swift:167-178`) n'a PAS ce problème — elle fait
+`items.insert(contentsOf: prepended, at: 0)` (insertion, jamais de remplacement de `items`), donc
+aucune correction nécessaire là. `.task { await viewModel.loadInitial() }` (`ChatView.swift:64`) est
+le seul site d'appel de `loadInitial()` — s'exécute une fois par apparition d'écran, confirmant que
+`items` ne peut contenir QUE des messages arrivés via `onIncoming` pendant CETTE fenêtre précise au
+moment de la fusion (pas de données périmées d'une session précédente à risque de pollution).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatViewModel.swift`.
+
+**Résultat CI** : run `32675426271` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — scénario de course difficile à déclencher de façon fiable sans
+outillage (nécessite un message reçu depuis un pair dans une fenêtre de quelques dizaines de
+millisecondes) ; test réel suggéré : ralentir artificiellement `messages.page` en debug pour élargir
+la fenêtre, envoyer un message depuis un second appareil pendant ce délai, confirmer qu'il reste
+visible sans fermer/rouvrir la conversation.

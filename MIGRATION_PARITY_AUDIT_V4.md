@@ -756,6 +756,17 @@ fin du chargement de son historique disparaît visuellement (bien que persisté 
 fermeture/réouverture de la conversation.
 RECOMMANDATION : Faire de `loadInitial()` une fusion (dédup-append) plutôt qu'un remplacement complet
 de `items`.
+STATUT : BUILD_VALIDATED (2026-08-23, commit d093438, CI run 32675426271 succès). Reconfirmé côté
+Android : `messages` (`ChatFragmentTest.java:220`) est un `LinkedList<MessageLib>` UNIQUE, jamais
+réassigné en bloc. Corrigé : `loadInitial()` fusionne désormais la page fraîchement chargée avec tout
+message encore présent dans `items` après l'`await` (donc arrivé via `onIncoming` pendant la fenêtre
+de course) et absent de cette page, trie l'ensemble par `stamp`, puis reconstruit les séparateurs de
+date sur la liste fusionnée — remplace le remplacement inconditionnel par une fusion dédup, fidèle au
+principe append-only Android. DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (scénario difficile
+à provoquer de façon fiable sans outillage — envoyer un message depuis un second appareil/pair dans la
+fenêtre très brève entre l'ouverture d'une conversation et la fin de `messages.page(...)` ; ralentir
+artificiellement `messages.page` en debug pour élargir la fenêtre et confirmer que le message envoyé
+pendant ce délai reste visible sans fermer/rouvrir la conversation).
 ```
 
 ```

@@ -10,7 +10,8 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 ---
 
 # CURRENT HANDOFF (2026-08-23 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
-Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS [V4-F-020/032/033/042/038/017/046 traités])
+Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS
+[V4-F-020/032/033/042/038/017/046/048 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -217,19 +218,37 @@ audio indépendante (timestamps natifs). Détail complet dans `PROGRESS_V4.md`, 
 `COMPLETE_PARITY_VALIDATED` (test réel requis : exporter une vidéo, `ffprobe -show_frames` pour
 confirmer pts=0 sur la 1ʳᵉ frame sans doublon).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-7 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur **V4-F-048** (Animems — le zoom est inerte : logique de transform portée mais
-jamais câblée à un geste). **RAPPEL EXPLICITE DE L'UTILISATEUR, PARTICULIÈREMENT APPLICABLE ICI**
-(contrairement à V4-F-046, un bug numérique auto-contenu) : "sois particulièrement rigoureux [sur
-Animems]... ne te contente pas de brancher rapidement un bouton" — tracer la chaîne COMPLÈTE avant de
-corriger : UI Android → événement Android → état Android → renderer Android → geste Android → état
-Swift → UI Swift → geste Swift → renderer Swift, en vérifiant séparément sélection/déplacement/
-transformation/rendu/timeline/export, PAS seulement brancher un `MagnificationGesture` sur le premier
-état trouvé. Voir `MIGRATION_PARITY_AUDIT_V4.md` pour le texte complet du finding avant de commencer.
-Puis V4-F-049 (keyframe delete inatteignable) →050 (lock/visibility absents, MÊME rigueur requise)
-→001→002→029→030→056→064→059→068→073→021→027→019→003 (Session/DeepLinks→Feed-publish→Gallery→
-BunnyCDN→Wallet→Performance→Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque
-finding complet). Repo Android source de vérité :
+**Lot P1-8 traité (V4-F-048)** — Animems, zoom du canevas inerte visuellement. Chaîne complète tracée
+(UI→état→renderer→geste→export, sur les DEUX plateformes) avant correction, conformément à la
+consigne de rigueur renforcée. `CanvasZoomState` (algorithme) déjà fidèle avant ce lot — seul le
+RENDU manquait (`currentScale` jamais appliqué au `Canvas` SwiftUI). Le risque documenté par une
+session précédente (désynchronisation de coordonnées de geste si `.scaleEffect` cohabite avec
+`combinedGesture` sur la même vue) analysé et résolu par construction : `.scaleEffect(zoomState.
+currentScale)` placé APRÈS `.gesture(combinedGesture)` dans la chaîne de modificateurs —
+`.scaleEffect` étant un `GeometryEffect` SwiftUI de premier ordre, les coordonnées tactiles
+continuent d'être rapportées dans l'espace LOCAL non-transformé du `Canvas`, donc AUCUNE correction
+n'était nécessaire dans `AnimemesEditorState`. Vérifié en plus (au-delà du strict périmètre) :
+`AnimemesExporter.render(frame:into:)` dessine dans un `CVPixelBuffer` totalement indépendant du
+pipeline interactif — pas d'équivalent requis aux 2 `zoomController.reset()` qu'Android fait avant
+encodage. Détail complet dans `PROGRESS_V4.md`, Lot P1-8. **Commit `da0e744`, CI verte confirmée (run
+`32677174090`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (raisonnement SwiftUI non
+vérifiable empiriquement sans Xcode/simulateur — test réel IMPÉRATIF : confirmer l'effet visuel ET
+qu'un geste sur un objet à `currentScale != 1.0` reste cohérent avec le doigt, sans dérive).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-8 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur **V4-F-049** (Animems — marqueurs de keyframe sur la timeline sans cible
+tactile, sélection/suppression inatteignables : `TimelineViewModel.hitTestKeyframeMarker`
+[`swift:333-350`] et `KeyframeTrack.removeKeyframe(id:)` [`swift:70-72`] tous deux PORTÉS mais avec
+ZÉRO appelant — `TimelineView.combinedDragGesture` [`swift:149-221`] ne les référence jamais ; Android
+— `TimelineView.java:168-170,833-850,1054-1078` + `AnimemesCompound.java:1356-1372` — 1er tap =
+sélection, 2e tap sur le MÊME keyframe = suppression — appeler `hitTestKeyframeMarker` avant le repli
+vers `resolveMode` dans `combinedDragGesture`, second tap sur le même keyframe → `removeKeyframe`).
+**MÊME RIGUEUR REQUISE** : tracer la chaîne complète (UI/état/sélection/suppression/rendu timeline)
+avant de câbler, vérifier chaque interaction séparément contre Android, ne pas se limiter à brancher
+un appel de fonction sans vérifier le comportement de bascule sélection↔suppression au 2e tap. Puis
+V4-F-050 (lock/visibility absents, MÊME rigueur) →001→002→029→030→056→064→059→068→073→021→027→019→
+003 (Session/DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→Social→Groups→Navigation,
+voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---

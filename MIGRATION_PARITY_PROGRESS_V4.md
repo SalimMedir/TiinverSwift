@@ -3,8 +3,8 @@
 Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
 **État actuel (2026-08-23) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
-(P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046
-clos. Prochain : V4-F-048 (Animems zoom — rigueur renforcée demandée par l'utilisateur).**
+(P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
+V4-F-048 clos. Prochain : V4-F-049 (Animems keyframe delete — même rigueur requise).**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -851,3 +851,80 @@ timestamps natifs lus depuis `copyNextSampleBuffer()`, sans dépendance à ce ca
 métadonnées de la piste vidéo résultante (ex. `ffprobe -show_frames`) pour confirmer que la 1ʳᵉ frame
 est bien à pts=0 sans doublon de timestamp, et vérifier visuellement qu'aucune frame n'est perdue en
 tout début de lecture.
+
+## 2026-08-23 — Phase B V4 — Lot P1-8 : V4-F-048 (Animems-Interaction — zoom du canevas inerte
+visuellement)
+
+**Commit** : `da0e744` — CI **run 32677174090, conclusion: success**.
+
+### Rigueur renforcée appliquée (consigne explicite de l'utilisateur pour Animems)
+
+Chaîne complète tracée AVANT toute modification :
+1. **UI Android** : `CanvasZoomController.java` — 2 boutons (+/−) + libellé + bouton "fit", `LinearLayout` autonome.
+2. **Événement Android** : `setOnClickListener` → `zoom(delta)`/`reset()`.
+3. **État Android** : `currentScale` (champ privé), clampé `[ZOOM_MIN dynamique, ZOOM_MAX=4.0]`.
+4. **Renderer Android** : `applyZoom()` → `targetView.setPivotX/Y(centre)` + `setScaleX/Y(currentScale)`
+   — transform VISUEL natif Android sur la vue `mView` (`MemesView2`) elle-même, DIRECTEMENT.
+5. **Geste Android** : AUCUNE correction de coordonnées nécessaire côté Android — `View.setScaleX/Y`
+   est un transform système que le dispatch tactile Android traduit automatiquement pour les gestes
+   internes à la vue (comportement plateforme standard, pas de code applicatif dédié).
+6. **UI/état/renderer/geste iOS AVANT correctif** : `CanvasZoomState`/`CanvasZoomControls`
+   (`CanvasZoomController.swift`) — algorithme (1-3) DÉJÀ fidèlement porté (vérifié ligne par ligne
+   contre Android : `updateMinZoom`≡`computeMinZoom`, `zoom(by:)`≡`zoom(delta)`, `reset()`≡`reset()`).
+   Étape 4 (renderer) MANQUANTE : `currentScale` jamais appliqué au `Canvas` SwiftUI réellement rendu
+   — confirmé par le commentaire de tête de `zoomControls` lui-même, laissé délibérément comme risque
+   documenté par une session précédente plutôt que corrigé à l'aveugle.
+7. **Export Android** : `zoomController.reset()` appelé AVANT `saveBitmapDrawed()`/
+   `fromBitmapsToVideo()` (`AnimemesCompound.java:2574-2584`) — remet le zoom à 1.0 avant capture.
+8. **Export iOS** : `AnimemesExporter.render(frame:into:)` — VÉRIFIÉ dessiner dans un `CVPixelBuffer`/
+   `CGContext` construit INDÉPENDAMMENT du `Canvas` SwiftUI interactif (résolution/coordonnées propres
+   à l'export, jamais partagées avec la vue éditée à l'écran). Aucun équivalent de l'étape 7 requis
+   côté iOS — architectures différentes, pas un gap de parité.
+
+### Pourquoi le risque documenté n'empêchait PAS une correction sûre
+
+Le commentaire existant redoutait qu'un `.scaleEffect` sur le `Canvas` portant aussi `combinedGesture`
+(glissement/pincement/rotation D'OBJETS, PAS de la vue) désynchronise les coordonnées de geste.
+Analyse : `.scaleEffect` est un `GeometryEffect` SwiftUI de premier ordre — placé APRÈS `.gesture()`
+dans la chaîne de modificateurs (donc englobant la vue porteuse du geste), SwiftUI continue de
+convertir les coordonnées tactiles PHYSIQUES vers l'espace LOCAL non-transformé de la vue porteuse
+AVANT de les reporter dans les callbacks du geste — motif standard pour du contenu zoomable qui gère
+aussi ses propres gestes internes (analogue au `View.setScaleX/Y` + dispatch tactile automatique
+d'Android, étape 5 ci-dessus).
+
+### Correctif appliqué
+
+`AnimemesEditorView.canvasArea` :
+```swift
+Canvas { ... }
+    .frame(width: fitSize.width, height: fitSize.height)
+    .background(Color(white: 0.08))
+    .gesture(combinedGesture)
+    .onAppear { ... }
+    .onChange(of: fitSize) { ... }
+    .onChange(of: state.version) { ... }
+    .scaleEffect(zoomState.currentScale)   // ← ajouté, APRÈS .gesture()
+```
+`anchor` par défaut de `.scaleEffect` = `.center`, correspondant déjà au pivot centré qu'Android fixe
+explicitement (`setPivotX/Y`). Commentaire de tête de `zoomControls` mis à jour pour refléter la
+résolution (plus de mention "risque non résolu").
+
+### Flux frères vérifiés
+
+`zoomControls`/`rightToolbar` restent des SIBLINGS du `Canvas` dans le même `ZStack`, PAS affectés
+par le `.scaleEffect` (appliqué uniquement à la sous-vue `Canvas`) — fidèle à Android où le contrôleur
+de zoom et la barre d'outils sont des vues séparées dans le même `FrameLayout` parent, non affectées
+par `mView.setScaleX/Y`. `AnimemesExporter` confirmé architecturalement isolé (voir étape 8 ci-dessus)
+— aucun appel `reset()` équivalent à ajouter avant export.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorView.swift`.
+
+**Résultat CI** : run `32677174090` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — le raisonnement sur le comportement de conversion de coordonnées
+SwiftUI n'est PAS vérifiable empiriquement dans cet environnement (aucun accès Xcode/simulateur).
+Test réel IMPÉRATIF avant de considérer ce finding réellement clos : zoomer via +/−, confirmer
+l'effet visuel réel sur le canevas ; PUIS, à `currentScale != 1.0`, effectuer un glissement/
+pincement/rotation sur un objet et confirmer qu'il suit le doigt SANS dérive de coordonnées — ce
+second point est le risque technique précis que ce correctif ne peut pas garantir sans device réel.

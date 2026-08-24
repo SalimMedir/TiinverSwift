@@ -999,6 +999,24 @@ PREUVE : Le commentaire de tête de `zoomControls` documente déjà ce risque co
 zoom ne zoome toujours pas visuellement le canevas après ce lot").
 RECOMMANDATION : Envelopper le `Canvas` de rendu dans un conteneur zoom/pan appliquant réellement
 `currentScale`, en corrigeant explicitement l'espace de coordonnées des gestes en conséquence.
+STATUT : BUILD_VALIDATED (2026-08-23, commit da0e744, CI run 32677174090 succès). Chaîne complète
+tracée avant correction (UI boutons → `CanvasZoomState` → rendu `Canvas` → `combinedGesture` →
+`AnimemesExporter`), conformément à la consigne explicite de rigueur de l'utilisateur pour Animems.
+`CanvasZoomState` (algorithme `computeMinZoom`/`zoom(delta)`/`reset`) déjà fidèle avant ce lot — seul
+le RENDU manquait. Corrigé SANS la correction de coordonnées de geste que redoutait le commentaire
+existant : `.scaleEffect(zoomState.currentScale)` appliqué APRÈS `.gesture(combinedGesture)` dans la
+chaîne de modificateurs — `.scaleEffect` étant un `GeometryEffect` SwiftUI de premier ordre, les
+coordonnées tactiles continuent d'être rapportées dans l'espace local NON transformé du `Canvas`,
+donc `AnimemesEditorState.dragMoved`/`selectObject`/etc. n'ont nécessité AUCUNE modification. Vérifié
+en plus (au-delà du strict périmètre du finding) : `AnimemesExporter.render(frame:into:)` dessine
+dans un `CVPixelBuffer`/`CGContext` totalement indépendant du pipeline `Canvas`/`.scaleEffect`
+interactif — confirmant qu'iOS n'a PAS besoin de l'équivalent des 2 appels `zoomController.reset()`
+qu'Android fait avant encodage (architectures différentes ici, pas un gap). Raisonnement sur le
+comportement SwiftUI documenté mais NON vérifiable empiriquement dans cet environnement (pas de
+Xcode/simulateur) — DEVICE_TEST_REQUIRED IMPÉRATIF pour COMPLETE_PARITY_VALIDATED : zoomer via +/−,
+confirmer l'effet visuel réel, ET vérifier qu'un geste de glissement/pincement/rotation sur un objet
+à `currentScale != 1.0` reste cohérent avec le doigt (aucune dérive de coordonnées) — ce SECOND point
+est le risque technique réel que ce correctif ne peut pas garantir sans test sur device.
 ```
 
 ```

@@ -137,6 +137,26 @@ final class AnimemesEditorState: ObservableObject {
         version += 1
     }
 
+    /// Port de `onTrackIconClicked` (branche verrou, `AnimemesCompound.java:1645-1656`) —
+    /// **ajouté le 2026-08-23 (MIGRATION_PARITY_AUDIT_V4.md V4-F-050, Phase B P1)**. Bascule
+    /// toujours un résultat observable (jamais de no-op silencieux, fidèle au commentaire Android
+    /// explicite sur ce point). `version` (pas `renderVersion`) : Android appelle `mView.prepare()`
+    /// + `applyInterpolation()` + `postInvalidate()` après CE clic — changement structurel, pas un
+    /// geste continu.
+    func toggleLocked(layerId: String) {
+        guard let obj = layers.first(where: { $0.id == layerId }) else { return }
+        obj.locked.toggle()
+        version += 1
+    }
+
+    /// Port de `onTrackIconClicked` (branche visibilité, lignes 1657-1666) — même remarque que
+    /// `toggleLocked` ci-dessus.
+    func toggleVisible(layerId: String) {
+        guard let obj = layers.first(where: { $0.id == layerId }) else { return }
+        obj.visible.toggle()
+        version += 1
+    }
+
     // MARK: - Timeline (port de `testTimeLine()`/`refreshTimelineItems`)
 
     /// Reconstruit les items de la timeline à partir des calques — appelé après chaque ajout/
@@ -304,6 +324,15 @@ final class AnimemesEditorState: ObservableObject {
             gestureDiagnostics = "DRAG at \(point) → IGNORÉ, aucun calque sélectionné (selectedId=\(selectedId ?? "nil"))"
             return
         }
+        // Port du garde `!composer.getLayers().get(objectInAction).isLocked()`
+        // (`GestureListener.onScroll`, `MemesView2.java:1577-1579`) — **ajouté le 2026-08-23
+        // (V4-F-050, Phase B P1)**. Vérifié : Android n'applique PAS ce garde dans `touchDown`
+        // (`selectObject` reste donc volontairement non gardé, sélectionner un calque verrouillé
+        // reste possible) — seule la TRANSLATION réelle est bloquée.
+        guard !layers[idx].locked else {
+            gestureDiagnostics = "DRAG at \(point) → IGNORÉ, calque #\(idx) verrouillé"
+            return
+        }
         gestureController.touchMoveTranslate(to: point, objectIndex: idx, composer: composer)
         renderVersion += 1
         let values = layers[idx].transforms.last?.matrixValues ?? []
@@ -343,6 +372,11 @@ final class AnimemesEditorState: ObservableObject {
     /// pas besoin de le calculer ici.
     func rotationChanged(to newDegrees: CGFloat) {
         guard let id = selectedId, let idx = index(of: id) else { return }
+        // Port du garde de verrouillage — voir note de `dragMoved` ci-dessus. Vérifié dans
+        // `MemesView2.java` : `rotate(...)` n'est appelée QUE depuis `executeTouchEvent`, elle-même
+        // sautée pour tout calque verrouillé par la boucle de `onTouchEvent` (ligne 1604-1609) —
+        // **ajouté le 2026-08-23 (V4-F-050, Phase B P1)**.
+        guard !layers[idx].locked else { return }
         gestureController.rotate(to: newDegrees, objectIndex: idx, composer: composer)
         renderVersion += 1
         gestureDiagnostics = "ROTATE calque #\(idx) → \(String(format: "%.1f", newDegrees))°"
@@ -355,6 +389,13 @@ final class AnimemesEditorState: ObservableObject {
     func scaleChanged(incrementalFactor: CGFloat) {
         guard let id = selectedId, let idx = index(of: id), let bound = layers[idx].bound else {
             gestureDiagnostics = "SCALE ignoré — selectedId=\(selectedId ?? "nil"), bound présent=\(selectedId.flatMap { index(of: $0) }.flatMap { layers[$0].bound } != nil)"
+            return
+        }
+        // Port du garde `!composer.getLayers().get(objectInAction).isLocked()`
+        // (`ScaleListener.onScale`, `MemesView2.java:1587`) — **ajouté le 2026-08-23 (V4-F-050,
+        // Phase B P1)**.
+        guard !layers[idx].locked else {
+            gestureDiagnostics = "SCALE ignoré — calque #\(idx) verrouillé"
             return
         }
         let clamped = AnimemesGestureController.clampPerEventScaleFactor(incrementalFactor)

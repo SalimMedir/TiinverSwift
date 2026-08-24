@@ -41,6 +41,10 @@ struct TimelineView: View {
         /// (`minimumDistance: 0` rappelle `onChanged` à chaque frame, y compris si l'utilisateur
         /// bouge le doigt après le tap initial) — **ajouté le 2026-08-23 (V4-F-049, Phase B P1)**.
         case keyframeTap
+        /// Port du même `return true` d'`onDown`, cette fois après un tap sur l'icône verrou/
+        /// visibilité d'une piste (`e.getX() < leftPanelWidthPx`, `TimelineView.java:852-870`) —
+        /// **ajouté le 2026-08-23 (V4-F-050, Phase B P1)**.
+        case iconTap
     }
 
     var body: some View {
@@ -53,6 +57,7 @@ struct TimelineView: View {
                     drawItem(item, &context, model: model)
                 }
                 drawKeyframeMarkers(&context, model: model)
+                drawTrackIcons(&context, model: model)
                 drawPlayhead(&context, model: model, size: size)
             }
             .background(Color(white: 0.1))
@@ -140,6 +145,25 @@ struct TimelineView: View {
         }
     }
 
+    /// Port de `drawTrackIcons` (`TimelineView.java:589-612`) — icônes verrou/visibilité par
+    /// piste, dans le panneau gauche (jusqu'ici entièrement vide côté iOS) — **ajouté le
+    /// 2026-08-23 (MIGRATION_PARITY_AUDIT_V4.md V4-F-050, Phase B P1)**.
+    private func drawTrackIcons(_ context: inout GraphicsContext, model: TimelineViewModel) {
+        for item in model.items {
+            guard let obj = model.layers.first(where: { $0.id == item.id }) else { continue }
+            for kind: TimelineViewModel.TrackIconKind in [.lock, .visibility] {
+                let rect = model.iconScreenRect(trackIndex: item.track, kind: kind)
+                let symbolName: String
+                switch kind {
+                case .lock: symbolName = obj.locked ? "lock.fill" : "lock.open"
+                case .visibility: symbolName = obj.visible ? "eye.fill" : "eye.slash.fill"
+                }
+                let resolved = context.resolve(Image(systemName: symbolName).foregroundColor(.white.opacity(0.85)))
+                context.draw(resolved, in: rect)
+            }
+        }
+    }
+
     private func drawPlayhead(_ context: inout GraphicsContext, model: TimelineViewModel, size: CGSize) {
         let x = model.playheadX()
         context.stroke(
@@ -182,13 +206,23 @@ struct TimelineView: View {
                             // fait rien côté Android au-delà de mémoriser la sélection).
                             model.selectedKeyframeId = hit.keyframe.id
                         }
+                    } else if let iconHit = model.hitTestTrackIcon(x: value.startLocation.x, y: value.startLocation.y) {
+                        // Port du bloc icône de `onDown` (`e.getX() < leftPanelWidthPx`,
+                        // `TimelineView.java:852-870`) → `onTrackIconClicked`
+                        // (`AnimemesCompound.java:1639-1681`) — **ajouté le 2026-08-23 (V4-F-050,
+                        // Phase B P1)**.
+                        dragMode = .iconTap
+                        switch iconHit.kind {
+                        case .lock: state.toggleLocked(layerId: iconHit.itemId)
+                        case .visibility: state.toggleVisible(layerId: iconHit.itemId)
+                        }
                     } else {
                         let mode = Self.resolveMode(at: value.startLocation, model: model)
                         dragMode = mode
                         switch mode {
                         case .dragItem(let id, _, _, _, _), .resizeLeft(let id, _, _, _), .resizeRight(let id, _):
                             state.selectedId = id
-                        case .scrub, .pan, .keyframeTap:
+                        case .scrub, .pan, .keyframeTap, .iconTap:
                             break
                         }
                     }
@@ -211,17 +245,19 @@ struct TimelineView: View {
                     model.resizeLeft(id: id, startDown: startDown, endDown: endDown, dxFrame: dxFrame)
                 case .resizeRight(let id, let anchorX):
                     model.resizeRight(id: id, resizeRightAnchorX: anchorX, deltaPixels: value.location.x - anchorX)
-                case .keyframeTap:
-                    // Touche entièrement consommée par le tap initial (sélection/suppression déjà
-                    // appliquée ci-dessus) — tout mouvement ultérieur du doigt pendant CE geste est
-                    // ignoré, fidèle au `return true` d'`onDown` qui empêche `mode` de basculer vers
+                case .keyframeTap, .iconTap:
+                    // Touche entièrement consommée par le tap initial (sélection/suppression de
+                    // keyframe, ou bascule verrou/visibilité, déjà appliquées ci-dessus) — tout
+                    // mouvement ultérieur du doigt pendant CE geste est ignoré, fidèle au
+                    // `return true` d'`onDown` qui empêche `mode` de basculer vers
                     // PAN/DRAG/RESIZE/SCRUB pour la suite de ce flux tactile.
                     break
                 }
                 // `renderVersion`, PAS `bumpVersion()` — voir note de tête de fichier (P0-5) :
                 // ceci s'exécute à CHAQUE frame de ce geste continu. Redondant mais inoffensif pour
-                // `.keyframeTap` après une suppression (qui a déjà appelé `bumpVersion()` via
-                // `state.deleteKeyframe`) — `renderVersion` déclenche un simple redessin en plus.
+                // `.keyframeTap`/`.iconTap` (qui ont déjà appelé `bumpVersion()` via
+                // `state.deleteKeyframe`/`toggleLocked`/`toggleVisible`) — `renderVersion` déclenche
+                // un simple redessin en plus.
                 state.bumpRenderVersion()
             }
             .onEnded { _ in

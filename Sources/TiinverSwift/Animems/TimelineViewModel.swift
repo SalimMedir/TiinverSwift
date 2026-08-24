@@ -162,6 +162,56 @@ final class TimelineViewModel {
         return items.first { $0.track == track }
     }
 
+    // MARK: - Icônes verrou/visibilité (port de `AnimemesCompound.addTimeline`'s `addTrackIcon(...,
+    // id2, visibility_24px, ...)`/`addTrackIcon(..., id1, check_box_outline_blank_24px, ...)` +
+    // `drawTrackIcons`, `TimelineView.java:589-612`) — **ajouté le 2026-08-23
+    // (MIGRATION_PARITY_AUDIT_V4.md V4-F-050, Phase B P1)**. Chemin DIRECT via `items`/`layers`
+    // (déjà porteurs de `.locked`/`.visibility`/`AnimationObjectData.locked/.visible`) plutôt que le
+    // registre générique `trackIcons`/`addTrackIcon` ci-dessus — celui-ci reste dédié à la 3ᵉ icône
+    // Android (`id3`, "compose group"), fonctionnalité SÉPARÉE et déjà documentée comme différée
+    // ailleurs dans ce portage (voir `AnimemesEditorView.swift`, "Compose"/"Load compose").
+
+    enum TrackIconKind { case lock, visibility }
+
+    private let iconSize: CGFloat = 20
+    private let iconSpacing: CGFloat = 8
+    private let iconTouchPadH: CGFloat = 4
+    private let iconTouchPadV: CGFloat = 8
+
+    /// Position en ESPACE MODÈLE (indépendant du scroll) — port du calcul de bounds de
+    /// `drawTrackIcons` (`iconSize=20dp, padding=8dp`, 2 icônes dessinées de gauche à droite depuis
+    /// le bord gauche du panneau).
+    private func iconModelRect(trackIndex: Int, kind: TrackIconKind) -> CGRect {
+        let centerY = rulerHeight + CGFloat(trackIndex) * (trackHeight + trackGap) + trackHeight / 2
+        let slot: CGFloat = (kind == .lock) ? 0 : 1
+        let x = iconSpacing + slot * (iconSize + iconSpacing)
+        return CGRect(x: x, y: centerY - iconSize / 2, width: iconSize, height: iconSize)
+    }
+
+    /// Repère ÉCRAN pour le dessin — même convention que `drawKeyframeMarkers`
+    /// (`- scrollTracksPx`).
+    func iconScreenRect(trackIndex: Int, kind: TrackIconKind) -> CGRect {
+        iconModelRect(trackIndex: trackIndex, kind: kind).offsetBy(dx: 0, dy: -scrollTracksPx)
+    }
+
+    /// Port du hit-test icônes de `onDown` (`TimelineView.java:852-870`,
+    /// `e.getX() < leftPanelWidthPx` + `icon.bounds.contains(...)`) — zone tactile élargie
+    /// (`iconTouchPadH`/`V`) sans agrandir le dessin, même motif qu'Android.
+    func hitTestTrackIcon(x: CGFloat, y: CGFloat) -> (itemId: String, kind: TrackIconKind)? {
+        guard x < leftPanelWidth else { return nil }
+        let yWithScroll = y + scrollTracksPx
+        for item in items {
+            for kind: TrackIconKind in [.lock, .visibility] {
+                let touchRect = iconModelRect(trackIndex: item.track, kind: kind)
+                    .insetBy(dx: -iconTouchPadH, dy: -iconTouchPadV)
+                if touchRect.contains(CGPoint(x: x, y: yWithScroll)) {
+                    return (item.id, kind)
+                }
+            }
+        }
+        return nil
+    }
+
     /// Port de `hasActiveGroupSources` — voir commentaire Android reproduit : on scanne `layers`
     /// (liste complète, non filtrée), PAS `items` (liste déjà filtrée pour l'affichage), seule
     /// source fiable pour savoir si un groupe recompose a encore des sources réelles.

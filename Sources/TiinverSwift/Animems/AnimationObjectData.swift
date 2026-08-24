@@ -116,6 +116,22 @@ final class AnimationObjectData {
     func keyframeTrack(_ propertyName: String) -> KeyframeTrack? { keyframeTracks[propertyName] }
     func removeTrack(_ propertyName: String) { keyframeTracks.removeValue(forKey: propertyName) }
     var hasKeyframes: Bool { keyframeTracks.values.contains { !$0.isEmpty } }
+
+    /// Port de `KeyframeTrack.removeKeyframe(id)` + `if (track.isEmpty()) obj.removeTrack(
+    /// propertyName)` (`AnimemesCompound.onKeyframeDeleteRequested`, `AnimemesCompound.java:
+    /// 1360-1371`) — **ajouté le 2026-08-23 (MIGRATION_PARITY_AUDIT_V4.md V4-F-049, Phase B P1)**.
+    @discardableResult
+    func removeKeyframe(propertyName: String, keyframeId: String) -> Bool {
+        guard var track = keyframeTracks[propertyName] else { return false }
+        guard track.removeKeyframe(id: keyframeId) else { return false }
+        if track.isEmpty {
+            keyframeTracks.removeValue(forKey: propertyName)
+        } else {
+            keyframeTracks[propertyName] = track
+        }
+        return true
+    }
+
     /// Port de `getKeyframeTracks().clear()` (appelé par `MotionTemplateManager.apply` avant de
     /// réappliquer les keyframes d'un modèle) — pas un besoin apparu ailleurs jusqu'ici.
     func clearAllKeyframes() { keyframeTracks.removeAll() }

@@ -124,6 +124,19 @@ final class AnimemesEditorState: ObservableObject {
     /// d'utiliser `version` via `bumpVersion()`/l'incrément direct existant.
     func bumpRenderVersion() { renderVersion += 1 }
 
+    /// Port de `AnimemesCompound.onKeyframeDeleteRequested` (`AnimemesCompound.java:1360-1371`) —
+    /// **ajouté le 2026-08-23 (MIGRATION_PARITY_AUDIT_V4.md V4-F-049, Phase B P1)**. `version`
+    /// (pas `renderVersion`) : suppression = changement STRUCTUREL réel (le calque perd un
+    /// keyframe, ses valeurs interpolées à la frame courante peuvent changer), fidèle au double
+    /// `timelineView.invalidate()` + `mView.postInvalidate()` d'Android (redessine AUSSI le
+    /// canevas principal, pas seulement la timeline) — `bumpVersion()` relance `preparePlayback()`
+    /// via `.onChange(of: state.version)`, `bumpRenderVersion()` ne le ferait pas.
+    func deleteKeyframe(layerId: String, propertyName: String, keyframeId: String) {
+        guard let obj = layers.first(where: { $0.id == layerId }) else { return }
+        guard obj.removeKeyframe(propertyName: propertyName, keyframeId: keyframeId) else { return }
+        version += 1
+    }
+
     // MARK: - Timeline (port de `testTimeLine()`/`refreshTimelineItems`)
 
     /// Reconstruit les items de la timeline à partir des calques — appelé après chaque ajout/

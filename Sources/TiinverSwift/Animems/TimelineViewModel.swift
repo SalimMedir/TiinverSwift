@@ -43,6 +43,10 @@ final class TimelineViewModel {
 
     var items: [TimelineItem] = []
     var selectedId: String?
+    /// Port de `selectedKeyframe` (`TimelineView.java:126`) — id du keyframe actuellement
+    /// sélectionné (`Keyframe.id`, armé pour suppression au prochain tap dessus, `nil` si aucun) —
+    /// **ajouté le 2026-08-23 (MIGRATION_PARITY_AUDIT_V4.md V4-F-049, Phase B P1)**.
+    var selectedKeyframeId: String?
     var groupIconId: Int = -1
     /// `layers` sert uniquement à `hasActiveGroupSources`/keyframes — liste NON filtrée (voir note
     /// Android reproduite dans `hasActiveGroupSources`).

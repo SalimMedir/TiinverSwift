@@ -35,6 +35,12 @@ struct TimelineView: View {
         case dragItem(id: String, startDown: Int, endDown: Int, track: Int, startX: CGFloat)
         case resizeLeft(id: String, startDown: Int, endDown: Int, startX: CGFloat)
         case resizeRight(id: String, anchorX: CGFloat)
+        /// Port du `return true` de `onDown` après un hit-test keyframe réussi (`TimelineView.java:
+        /// 833-850`) — la touche est ENTIÈREMENT consommée par la sélection/suppression du
+        /// keyframe, aucun scrub/pan/drag/resize ne doit démarrer pour le reste de ce geste
+        /// (`minimumDistance: 0` rappelle `onChanged` à chaque frame, y compris si l'utilisateur
+        /// bouge le doigt après le tap initial) — **ajouté le 2026-08-23 (V4-F-049, Phase B P1)**.
+        case keyframeTap
     }
 
     var body: some View {
@@ -122,6 +128,13 @@ struct TimelineView: View {
                     diamond.addLine(to: CGPoint(x: x - size, y: y))
                     diamond.closeSubpath()
                     context.fill(diamond, with: .color(color))
+                    // Port de `kfSelectPaint` (contour blanc, 2dp) — dessiné PAR-DESSUS le losange
+                    // plein quand ce keyframe est sélectionné (`TimelineView.java:704`,
+                    // `if (kf == selectedKeyframe) drawDiamond(c, ..., kfSelectPaint)`) — **ajouté
+                    // le 2026-08-23 (V4-F-049, Phase B P1)**.
+                    if kf.id == model.selectedKeyframeId {
+                        context.stroke(diamond, with: .color(.white), lineWidth: 2)
+                    }
                 }
             }
         }
@@ -150,13 +163,34 @@ struct TimelineView: View {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 if dragMode == nil {
-                    let mode = Self.resolveMode(at: value.startLocation, model: model)
-                    dragMode = mode
-                    switch mode {
-                    case .dragItem(let id, _, _, _, _), .resizeLeft(let id, _, _, _), .resizeRight(let id, _):
-                        state.selectedId = id
-                    case .scrub, .pan:
-                        break
+                    // Port de `onDown`'s hit-test keyframe PRIORITAIRE (`TimelineView.java:833-850`)
+                    // — vérifié AVANT `resolveMode`/le repli scrub-pan-item, exactement comme
+                    // Android teste `hitTestKeyframeMarker` en premier et consomme entièrement la
+                    // touche (`return true`) en cas de succès, sans jamais atteindre le reste de
+                    // `onDown`. **Ajouté le 2026-08-23 (V4-F-049, Phase B P1)** — `hitTestKeyframeMarker`/
+                    // `AnimationObjectData.removeKeyframe` existaient déjà (portés, zéro appelant).
+                    if let hit = model.hitTestKeyframeMarker(x: value.startLocation.x, y: value.startLocation.y) {
+                        dragMode = .keyframeTap
+                        if hit.keyframe.id == model.selectedKeyframeId {
+                            // 2ᵉ tap sur le keyframe déjà sélectionné → suppression (port de
+                            // `tappedKf == selectedKeyframe` → `onKeyframeDeleteRequested`).
+                            state.deleteKeyframe(layerId: hit.layerId, propertyName: hit.propertyName, keyframeId: hit.keyframe.id)
+                            model.selectedKeyframeId = nil
+                        } else {
+                            // 1er tap (ou tap sur un AUTRE keyframe) → (ré)sélection, PAS de
+                            // suppression (port de la branche `else` → `onKeyframeSelected`, qui ne
+                            // fait rien côté Android au-delà de mémoriser la sélection).
+                            model.selectedKeyframeId = hit.keyframe.id
+                        }
+                    } else {
+                        let mode = Self.resolveMode(at: value.startLocation, model: model)
+                        dragMode = mode
+                        switch mode {
+                        case .dragItem(let id, _, _, _, _), .resizeLeft(let id, _, _, _), .resizeRight(let id, _):
+                            state.selectedId = id
+                        case .scrub, .pan, .keyframeTap:
+                            break
+                        }
                     }
                 }
                 guard let mode = dragMode else { return }
@@ -177,9 +211,17 @@ struct TimelineView: View {
                     model.resizeLeft(id: id, startDown: startDown, endDown: endDown, dxFrame: dxFrame)
                 case .resizeRight(let id, let anchorX):
                     model.resizeRight(id: id, resizeRightAnchorX: anchorX, deltaPixels: value.location.x - anchorX)
+                case .keyframeTap:
+                    // Touche entièrement consommée par le tap initial (sélection/suppression déjà
+                    // appliquée ci-dessus) — tout mouvement ultérieur du doigt pendant CE geste est
+                    // ignoré, fidèle au `return true` d'`onDown` qui empêche `mode` de basculer vers
+                    // PAN/DRAG/RESIZE/SCRUB pour la suite de ce flux tactile.
+                    break
                 }
                 // `renderVersion`, PAS `bumpVersion()` — voir note de tête de fichier (P0-5) :
-                // ceci s'exécute à CHAQUE frame de ce geste continu.
+                // ceci s'exécute à CHAQUE frame de ce geste continu. Redondant mais inoffensif pour
+                // `.keyframeTap` après une suppression (qui a déjà appelé `bumpVersion()` via
+                // `state.deleteKeyframe`) — `renderVersion` déclenche un simple redessin en plus.
                 state.bumpRenderVersion()
             }
             .onEnded { _ in

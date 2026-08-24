@@ -17,7 +17,7 @@ struct ReferralView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                AdBannerView(adUnitID: AdMobIdentifiers.resolvedBanner(AdMobIdentifiers.bannerSecondary))
+                AdBannerView(adUnitID: AdMobIdentifiers.resolvedBanner(AdMobIdentifiers.bannerWallet))
                     .frame(height: 50)
 
                 Text("Regardez des publicités dans votre fil et gagnez entre 1 et 2 pièces") // R.string.watch_ads_in_your_news_feed_and_earn_between_x_to_y_coins

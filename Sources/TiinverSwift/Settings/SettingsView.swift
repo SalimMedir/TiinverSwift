@@ -19,7 +19,11 @@ struct SettingsView: View {
         List {
             Section {
                 NavigationLink("Compte") { SettingAccountView() } // case 7, SettingAccountFragment
-                NavigationLink("Informations personnelles") { EditPersonalInformationView() } // case 10
+                // Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-012, Phase B P2) — menait
+                // DIRECTEMENT au formulaire d'édition (case 10) ; Android n'a AUCUN accès direct à
+                // ce formulaire (`grep onFragmentInteraction(10)` = 1 seul appelant, le bouton
+                // "Modifier" de l'écran lecture seule ci-dessous) — redirigé vers ce résumé (case 9).
+                NavigationLink("Informations personnelles") { PersonalInformationSummaryView() }
                 NavigationLink("Certification") { CertificationView() } // module 18, ui/certification
             }
             Section {

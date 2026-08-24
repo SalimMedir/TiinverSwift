@@ -9,6 +9,12 @@ struct SettingAccountView: View {
 
     var body: some View {
         List {
+            // Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-012, Phase B P2) — port de
+            // `SettingAccountFragment.java:97-105` (`pref_personnel_info`, `onFragmentInteraction(9)`
+            // → `FragmentProfile`) — entrée manquante ici avant ce correctif.
+            Section {
+                NavigationLink("Informations personnelles") { PersonalInformationSummaryView() }
+            }
             Section {
                 Button("Se déconnecter") { showLogoutConfirm = true } // pref_logout
             }

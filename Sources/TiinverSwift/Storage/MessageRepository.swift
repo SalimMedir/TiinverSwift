@@ -134,12 +134,16 @@ final class MessageRepository {
     /// colonne reste intacte, reproduit en laissant `entity.thumbnailUri` non touché plutôt que mis
     /// à `nil`).
     ///
-    /// **Non reproduit ici, gap documenté** : les branches `verb == "deleteMember"`/`"addMember"`
-    /// (lignes 1263-1281 — suppression locale d'un membre, flags `USER_ROOM_MEMBER`, émission
-    /// `leaveRoom`) sont des effets de bord de GESTION DE GROUPE, hors périmètre de la couche
-    /// persistance des messages ; à porter avec le module Groupes (pas encore atteint). La
-    /// notification push locale (`MyFirebaseMessagingService.notificationShow`, branche
-    /// `verb == "post"`) est également hors périmètre (module notifications).
+    /// **Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-039, Phase B P2)** — les branches
+    /// `verb == "deleteMember"`/`"addMember"` (`ChatManager.java:1330-1348`) sont des effets de bord
+    /// socket/préférences (émission `leaveRoom`, flag `USER_ROOM_MEMBER`), hors du périmètre de
+    /// CETTE couche persistance pure — câblées côté `ChatRepository.handleNewMessage` (couche
+    /// Realtime, seule à posséder l'accès socket), voir ce fichier pour le détail complet
+    /// (émission `leaveRoom` reproduite, suppression de ligne "USER_URI" locale et flag
+    /// `USER_ROOM_MEMBER` délibérément NON portés — aucun équivalent local/code mort à effet nul,
+    /// justifié en détail là-bas). La notification push locale
+    /// (`MyFirebaseMessagingService.notificationShow`, branche `verb == "post"`) reste hors
+    /// périmètre (module notifications).
     @discardableResult
     func addGroupMessage(_ meta: MessageLib) async throws -> MessagePacket? {
         let messageId = meta.messageId ?? "error"

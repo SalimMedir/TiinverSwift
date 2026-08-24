@@ -275,6 +275,35 @@ final class ChatRepository {
                     }
                     chatEvents.send(.message(meta))
                     notifyIfNeeded(meta)
+                    // Port de `ChatManager.addGroupMessage` (`verb.equals("deleteMember")`,
+                    // `ChatManager.java:1330-1343`) — **ajouté le 2026-08-24
+                    // (MIGRATION_PARITY_AUDIT_V4.md V4-F-039, Phase B P2)**. Placé ici (couche
+                    // Realtime, qui possède déjà l'accès socket) plutôt que dans
+                    // `MessageRepository.addGroupMessage` (couche Storage pure, cité par l'audit
+                    // mais qui n'a aucun accès socket — layering délibérément séparé dans ce
+                    // portage). `leaveRoom` est émis INCONDITIONNELLEMENT pour TOUT message
+                    // `deleteMember` de groupe — vérifié ligne par ligne : contrairement à ce que
+                    // suggère le texte de l'audit ("si l'utilisateur courant est retiré"), Android
+                    // n'entoure PAS cet appel précis d'un `if (meta.getTo().equals(myUsername))`
+                    // (ce `if` ne gate QUE le flag `USER_ROOM_MEMBER`, PAS l'émission `leaveRoom`
+                    // juste en dessous) — reproduit fidèlement tel quel, même si cela ressemble à
+                    // un bug Android (quitter la room socket même quand c'est un AUTRE membre qui a
+                    // été retiré), sans le "corriger" silencieusement.
+                    //
+                    // **Non reproduits, gap documenté** : (1) la suppression de la ligne "USER_URI"
+                    // en cache local (`ChatManager.java:1331-1332`) — pas d'équivalent dans ce
+                    // portage, la liste des membres est TOUJOURS relue en direct depuis le réseau
+                    // (`GroupRepository.fetchMembers`, voir tête de `GroupDetailView.swift`), aucune
+                    // ligne locale ne peut rester périmée à purger ; (2) le flag persistant
+                    // `USER_ROOM_MEMBER+token` (`Settings.setBooleanPreference`, `ChatManager.java:
+                    // 1334,1346`) — vérifié que son SEUL site de lecture (`ActivityMsg.java:200`,
+                    // `isGroupMember = Settings.getBooleanPreference(...)`) est IMMÉDIATEMENT
+                    // écrasé par `isGroupMember = data.isGroupMember()` à la ligne 209 suivante, sans
+                    // branche intermédiaire qui l'utiliserait — code mort à effet nul, non porté
+                    // (voir consigne Phase B : ne pas porter du code Android mort/inutilisé).
+                    if meta.verb == "deleteMember" {
+                        leaveRoom(["receiver": meta.token ?? "", "packet": ""], chatType: ChatType.group.wireValue)
+                    }
                 } catch {
                     print("❌ ChatRepository.handleNewMessage (groupe):", error)
                 }

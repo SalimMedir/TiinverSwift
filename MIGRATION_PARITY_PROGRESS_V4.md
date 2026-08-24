@@ -8,8 +8,8 @@ V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, 
 V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027, V4-F-019 clos. V4-F-003 documenté `BLOQUÉ` (hors
 dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE.** Backlog P2 EN
 COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014/022/025/028/
-035/039 (`BUILD_VALIDATED`) clos, V4-F-031 (différé, hors périmètre d'un petit lot). Prochain :
-V4-F-041.**
+035/039/041/043/047 (`BUILD_VALIDATED`) clos, V4-F-031 (différé, hors périmètre d'un petit lot).
+Prochain : V4-F-051.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -2668,3 +2668,172 @@ groupe entrants, celui corrigé.
 `COMPLETE_PARITY_VALIDATED` — test réel requis : retirer un membre d'un groupe, confirmer
 l'émission `LEAVE_ROOM` (inspection réseau/logs serveur nécessaire, pas observable depuis
 l'interface seule).
+
+## 2026-08-24 — Phase B V4 — Lot P2-10 : V4-F-041 (WebRTC-Calls — l'accusé "sonnerie" n'est jamais renvoyé à l'appelant)
+
+### Vérification Android
+
+`CallService.java:591-623` (branche `INCOMINGCALL` de `onStartCommand`) :
+```java
+} else if (callType == CallModel.INCOMINGCALL) {
+    RECEIVER = caller.getUsername();
+    ...
+    fetchTurnAndStart(false);
+    onRinging();
+}
+```
+`:663-674` (`onRinging()`, entier) :
+```java
+private void onRinging() {
+    String dt = gson.toJson(caller);
+    JSONObject json = new JSONObject();
+    json.put("messageId", messageId);
+    json.put("receiver", RECEIVER);
+    json.put("packet", dt);
+    callViewModel.onRinging(json, CHATTYPE);
+}
+```
+Appelé INCONDITIONNELLEMENT, juste après avoir déclenché `fetchTurnAndStart(false)` — pas de garde
+permission micro à cet endroit côté Android.
+
+### État iOS avant correctif
+
+`ChatRepository.onRinging(_:chatType:)` était déjà porté (émission socket `ROOM.RINGING`), mais
+`grep` exhaustif confirmait ZÉRO site d'appel dans tout le projet. `CallCoordinator.
+handleIncomingCall` reportait l'appel à CallKit sans jamais accuser réception au serveur.
+
+### Correctif appliqué
+
+`chatRepository.onRinging(["messageId": profile.messageId ?? "", "receiver": profile.username ??
+"", "packet": (try? Self.encodeJSONString(profile)) ?? ""], chatType: chatType)` — ajouté juste
+après `reportIncomingCall` réussi/`onReported?()`, AVANT la garde permission micro (fidèle à
+l'absence de cette garde à cet endroit côté Android — `onRinging()` ne doit pas dépendre d'une
+étape ultérieure qu'Android ne lui fait pas dépendre). Réutilise `encodeJSONString(_:)`, helper
+déjà existant et déjà utilisé par les sites d'appel `accepCall`/`onCallEnd` voisins — pas une
+sérialisation JSON dupliquée. `profile.username` = le champ déjà peuplé avec `meta.from` (la
+personne appelante) lors de la construction du `ChatProfile` dans `ChatRepository.handleNewMessage`
+— correspond exactement à `RECEIVER = caller.getUsername()`.
+
+### Flux frères vérifiés
+
+`handleIncomingCall` est LA SEULE fonction gérant un appel entrant, appelée par les DEUX chemins
+réels (socket normal app-active, ET push VoIP app-tuée via `VoIPPushManagerDelegate` qui reconstruit
+un `ChatProfile` puis appelle cette même fonction) — un seul point de correction couvre les deux
+chemins, pas de site supplémentaire à modifier.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Calls/CallCoordinator.swift`.
+
+**Résultat CI** : commit `c5088e6`, push confirmé (`aa80a42..c5088e6 main -> main`), run
+`32718528236` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : appeler depuis un appareil Android réel vers un
+callee iOS, confirmer que l'écran d'appel Android bascule vers "Sonnerie…" et que le
+redéclenchement de push toutes les 5s s'arrête (nécessite un pair Android réel, non testable
+depuis iOS seul).
+
+## 2026-08-24 — Phase B V4 — Lot P2-11 : V4-F-043 (WebRTC-Calls — un échec de report CallKit est silencieusement avalé, WebRTC démarre quand même)
+
+### Vérification
+
+`ANDROID SOURCE : Aucun équivalent` — CallKit est une API spécifique iOS (l'équivalent Android le
+plus proche, `IncomingCallActivity`/notification système, n'a pas de mécanisme de "rejet" du même
+type). Pas de comparaison Android à faire — correctif de robustesse pur sur du code déjà réellement
+divergent du contrat Apple attendu.
+
+### État iOS avant correctif
+
+`CallCoordinator.handleIncomingCall` : `try? await callKit.reportIncomingCall(uuid:callerName:)` —
+tout rejet CallKit (Ne pas déranger, liste de blocage, trop d'appels simultanés) était avalé
+silencieusement, l'exécution continuait inconditionnellement vers `onRinging`/la vérification
+permission micro/`fetchTurnAndStart` — consommation de ressources réseau/audio pour un appel que
+l'utilisateur ne peut ni voir ni décrocher.
+
+### Correctif appliqué
+
+`do/catch` réel autour de `reportIncomingCall`. Sur échec : `onReported?()` appelé QUAND MÊME
+(même raisonnement déjà appliqué à la garde `state != .idle` du même fichier, quelques lignes
+au-dessus : le contrat PushKit `completion` doit être honoré indépendamment de l'issue du report,
+pas seulement en cas de succès), puis `teardown()` immédiat et `return` — n'atteint JAMAIS
+`onRinging`/la vérification micro/`fetchTurnAndStart`.
+
+### Flux frères vérifiés
+
+`grep "reportIncomingCall"` → un seul site d'appel dans tout le projet, celui corrigé.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Calls/CallCoordinator.swift`.
+
+**Résultat CI** : commit `4e22aa9`, push confirmé (`c5088e6..4e22aa9 main -> main`), run
+`32719315729` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : provoquer un rejet CallKit réel (Ne pas déranger
+activé, ou liste de blocage), confirmer qu'aucune ressource réseau/audio n'est engagée et que le
+callback PushKit `completion` est bien appelé pour le chemin push VoIP.
+
+## 2026-08-24 — Phase B V4 — Lot P2-12 : V4-F-047 (Animems-ImportExport — mise à l'échelle de translation d'un template de mouvement divergente de la formule [buggée] d'Android)
+
+### Décision Phase B explicite
+
+L'audit demandait explicitement un choix entre répliquer le bug Android (parité octet-à-octet) ou
+documenter formellement la formule iOS comme `IOS_INTENTIONAL_DIFFERENCE`. Décision : **répliquer
+Android**, cohérente avec la politique appliquée sur l'ensemble de ce cycle ("reproduire fidèlement
+le comportement Android réel, y compris ses défauts, sauf code mort/inatteignable" — appliquée sans
+exception sur les ~20 lots précédents, notamment V4-F-039/leaveRoom inconditionnel).
+
+### Vérification Android
+
+`MotionTemplateManager.java:225-226` :
+```java
+float scaleX = (float) targetCanvasWidth  / Math.max(1, template.getCanvasWidth());
+float scaleY = (float) targetCanvasHeight / Math.max(1, template.getCanvasHeight());
+```
+`:240-241` :
+```java
+values[MTRANS_X] = values[MTRANS_X] * targetCanvasWidth  * scaleX;
+values[MTRANS_Y] = values[MTRANS_Y] * targetCanvasHeight * scaleY;
+```
+Le facteur d'échelle est appliqué DEUX FOIS : une fois par la multiplication directe par
+`targetCanvasWidth`, une fois de plus par `scaleX` (lui-même dérivé de `targetCanvasWidth`) —
+formule quadratique en `targetCanvasWidth` dès que le canevas cible diffère du canevas de capture
+(`template.canvasWidth`/`canvasHeight`, déjà porté côté iOS, capturé à l'extraction). CE chemin
+(`apply()`) est le SEUL exécuté à chaque application de template — pas un cas rare ou mort.
+
+### État iOS avant correctif
+
+`MotionTemplateManager.apply` : `values[2] *= Float(cW)` — dénormalisation LINÉAIRE seule, sans le
+second facteur `scaleX`/`scaleY`. Identique au résultat Android UNIQUEMENT quand `targetCanvasWidth
+== template.canvasWidth` (cas le plus courant, d'où le bug passé inaperçu) ; diverge dès que les
+tailles de canevas diffèrent.
+
+### Correctif appliqué
+
+`scaleX`/`scaleY` calculés (`targetCanvasWidth / template.canvasWidth`, `targetCanvasHeight /
+template.canvasHeight`) et appliqués EN PLUS de la multiplication linéaire existante
+(`values[2] *= Float(cW) * scaleX`), reproduisant fidèlement la formule Android à deux facteurs.
+
+### Vérification de la chaîne complète (consigne de rigueur Animems)
+
+`grep "MotionTemplateManager.apply"` → un seul site d'appel, `AnimemesEditorState.swift:901`
+(dans la boucle qui applique un template à chaque calque cible), suivi IMMÉDIATEMENT de `version +=
+1` — bump structurel qui déclenche `preparePlayback()`/un re-rendu complet (distinction
+`version`/`renderVersion` déjà établie dans un lot antérieur du cycle V4, respectée ici). État
+(`targetObj.transforms`) → transformation (ce correctif) → renderer (consomme `Transform` de façon
+générique, indifférent à la formule qui l'a produit) → timeline (re-synchronisée via
+`syncTimeline()`, appelé juste avant `version += 1`) : chaîne intacte, aucune propagation
+supplémentaire nécessaire au-delà du point de calcul lui-même.
+
+### Flux frères vérifiés
+
+Un seul site d'appel confirmé — pas de duplication de cette formule ailleurs dans le module
+Animems.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/MotionTemplateManager.swift`.
+
+**Résultat CI** : commit `af517b2`, push confirmé (`4e22aa9..af517b2 main -> main`), run
+`32720254449` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : capturer un template sur un canevas d'une taille,
+l'appliquer sur un calque avec un canevas cible de taille DIFFÉRENTE, comparer le positionnement
+résultant pixel pour pixel avec un appareil Android de référence.

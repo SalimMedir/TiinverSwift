@@ -1197,6 +1197,26 @@ son re-déclenchement de push toutes les 5s ne s'arrête jamais tant que l'appel
 terminé.
 RECOMMANDATION : Appeler `chatRepository.onRinging(...)` depuis `handleIncomingCall`, juste après un
 `reportIncomingCall` réussi.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-10) — Vérifié contre
+`CallService.java:591-623` (branche `INCOMINGCALL` de `onStartCommand`, `fetchTurnAndStart(false);
+onRinging();`, appelé INCONDITIONNELLEMENT) et `:663-674` (`onRinging()`, entier — construit
+`{messageId, receiver: RECEIVER [= caller.getUsername(), déjà assigné ligne 592], packet:
+gson.toJson(caller)}`, puis `callViewModel.onRinging(json, CHATTYPE)`). Confirmé côté iOS que
+`ChatRepository.onRinging` était bien porté (`socket?.emit(callEventName(SocketEvent.ringing,
+chatType:), packet)`) mais AUCUN site d'appel n'existait (`grep` exhaustif confirmé) ;
+`CallCoordinator.handleIncomingCall` reportait à CallKit sans jamais accuser réception au serveur.
+Correctif : `chatRepository.onRinging(...)` ajouté juste après `reportIncomingCall`
+réussi/`onReported?()`, AVANT la garde permission micro (Android n'a pas cette garde à cet endroit,
+`onRinging()` reste inconditionnel) — réutilise `encodeJSONString(_:)` (helper déjà existant,
+mêmes sites d'appel `accepCall`/`onCallEnd`) pour sérialiser `profile` en `packet`. Couvre les DEUX
+chemins d'entrée réels (socket app-active ET push VoIP app-tuée), qui partagent la MÊME fonction
+`handleIncomingCall` — un seul point de correction suffit. Commit `c5088e6`, push confirmé
+(`aa80a42..c5088e6 main -> main`), CI run `32718528236` conclusion `success`.
+DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (appeler depuis un appareil Android réel vers
+un callee iOS, confirmer que l'écran d'appel Android bascule vers "Sonnerie…" et que le
+redéclenchement de push toutes les 5s s'arrête — nécessite un pair Android réel, pas testable
+depuis iOS seul).
 ```
 
 ```
@@ -1243,6 +1263,19 @@ IMPACT : Dans le cas (rare mais réel) où CallKit rejette le report (Ne pas dé
 etc.), l'app consomme quand même des ressources réseau/audio pour un appel que l'utilisateur ne peut
 ni voir ni décrocher.
 RECOMMANDATION : `do/catch` réel ; sur échec, `teardown()` immédiat au lieu de poursuivre.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-11) — Pas de parité Android à vérifier
+(`ANDROID SOURCE: Aucun équivalent`, CallKit est spécifique iOS) — correctif de robustesse pur.
+Confirmé côté iOS que `try? await callKit.reportIncomingCall(...)` avalait tout rejet CallKit,
+poursuivant inconditionnellement vers `onRinging`/la vérification permission micro/
+`fetchTurnAndStart`. Correctif : `do/catch` réel — sur échec, `onReported?()` est TOUJOURS appelé
+(même motif que la garde `state != .idle` juste au-dessus dans le même fichier : le contrat
+PushKit `completion` doit être honoré indépendamment de l'issue du report), puis `teardown()`
+immédiat et `return`, sans poursuivre vers WebRTC/le micro. Commit `4e22aa9`, push confirmé
+(`c5088e6..4e22aa9 main -> main`), CI run `32719315729` conclusion `success`.
+DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (provoquer un rejet CallKit réel — Ne pas
+déranger activé, ou liste de blocage — confirmer qu'aucune ressource réseau/audio n'est engagée et
+que le callback PushKit `completion` est bien appelé pour le chemin push VoIP).
 ```
 
 ```
@@ -1328,6 +1361,24 @@ SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Décision Phase B explicite requise — répliquer le bug Android pour une parité octet-
 à-octet, ou documenter formellement la correction iOS comme `IOS_INTENTIONAL_DIFFERENCE` (le code
 actuel n'a aucun commentaire expliquant cet écart, il se lit comme un oubli plutôt qu'une décision).
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-12) — Décision explicite prise :
+répliquer le comportement Android tel quel, cohérente avec la politique appliquée sur l'ensemble de
+ce cycle d'audit ("reproduire fidèlement le comportement Android réel, y compris ses défauts, sauf
+code mort/inatteignable"). Vérifié contre `MotionTemplateManager.java:225-226,240-241` : `scaleX =
+targetCanvasWidth / template.getCanvasWidth()` puis `values[MTRANS_X] = values[MTRANS_X] *
+targetCanvasWidth * scaleX` — un facteur d'échelle appliqué DEUX FOIS (formule quadratique en
+`targetCanvasWidth`), sur le SEUL chemin `apply()` exécuté à chaque application de template (pas un
+cas rare/mort). Correctif : `scaleX`/`scaleY` calculés depuis `template.canvasWidth`/`canvasHeight`
+(déjà porté, capturé à l'extraction) et appliqués en plus de la multiplication linéaire existante.
+Chaîne complète vérifiée (consigne de rigueur Animems) : `grep MotionTemplateManager.apply` → un
+seul site d'appel (`AnimemesEditorState.swift:901`), suivi immédiatement de `version += 1` (bump
+structurel déclenchant `preparePlayback()`/re-rendu complet, distinction `version`/`renderVersion`
+déjà établie) — état→transformation→renderer intacts, aucune propagation supplémentaire requise.
+Commit `af517b2`, push confirmé (`4e22aa9..af517b2 main -> main`), CI run `32720254449` conclusion
+`success`. DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (capturer un template sur un
+canevas, l'appliquer sur un calque avec un canevas cible de taille DIFFÉRENTE, confirmer que le
+positionnement résultant correspond pixel pour pixel à un appareil Android de référence).
 ```
 
 *(Note architecturale informative, pas un bug)* : le moteur iOS est entièrement Core Graphics (pas de

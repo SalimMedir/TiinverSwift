@@ -15,7 +15,9 @@ Phase B V4 : backlog P0 épuisé, LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE [22 co
 V4-F-009/010/011 BUILD_VALIDATED ; Lot P2-2 : V4-F-012 BUILD_VALIDATED ; Lot P2-3 : V4-F-014
 BUILD_VALIDATED ; Lot P2-4 : V4-F-022 BUILD_VALIDATED ; Lot P2-5 : V4-F-025 BUILD_VALIDATED ;
 Lot P2-6 : V4-F-028 BUILD_VALIDATED ; Lot P2-7 : V4-F-031 différé (hors périmètre) ; Lot P2-8 :
-V4-F-035 BUILD_VALIDATED ; Lot P2-9 : V4-F-039 BUILD_VALIDATED] — backlog P3 PAS ENCORE ATTAQUÉ)
+V4-F-035 BUILD_VALIDATED ; Lot P2-9 : V4-F-039 BUILD_VALIDATED ; Lot P2-10 : V4-F-041
+BUILD_VALIDATED ; Lot P2-11 : V4-F-043 BUILD_VALIDATED ; Lot P2-12 : V4-F-047 BUILD_VALIDATED] —
+backlog P3 PAS ENCORE ATTAQUÉ)
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -625,21 +627,43 @@ relus en direct) et le flag `USER_ROOM_MEMBER` (son seul site de lecture Android
 écrasé par une autre valeur, code mort à effet nul). **Commit `1eaf19b`, CI verte (run
 `32717527713`)** — `BUILD_VALIDATED`.
 
-**PROCHAINE TÂCHE EXACTE** : Lot P2-9 terminé. Enchaîner **automatiquement** sur le prochain P2
-dans l'ordre du document : **V4-F-041** (WebRTC-Calls — l'accusé "sonnerie" [ringing] n'est jamais
-renvoyé à l'appelant : `Realtime/ChatRepository.swift:456` [`onRinging` défini, ZÉRO site d'appel
-confirmé par grep] ; `Calls/CallCoordinator.swift:198-228` [`handleIncomingCall`, aucun appel
-équivalent] ; Android — `messagerie/service/CallService.java:591-623,663-674` [`onRinging()` appelé
-inconditionnellement dès le début du traitement d'un appel entrant, émet `ROOM.RINGING`] — un
-appelant Android vers un callee iOS ne voit jamais son état basculer vers "Sonnerie…" et son
-re-déclenchement de push toutes les 5s ne s'arrête jamais tant que l'appel n'est pas répondu/
-terminé — recommandation : appeler `chatRepository.onRinging(...)` depuis `handleIncomingCall`,
-juste après un `reportIncomingCall` réussi), puis continuer AUTOMATIQUEMENT le backlog P2 restant
-dans l'ordre du document (V4-F-043, V4-F-047, V4-F-051, V4-F-052, V4-F-057, V4-F-058, V4-F-060,
-V4-F-061, V4-F-066, V4-F-067, V4-F-069, V4-F-070, V4-F-074 — 13 findings restants après V4-F-041),
-puis le backlog P3 (21 findings) une fois P2 entièrement clos, SANS attendre de nouvelle
-confirmation utilisateur pour chaque lot (instruction explicite : continuer automatiquement). Repo
-Android source de vérité :
+**Lot P2-10 traité (V4-F-041)** — WebRTC-Calls, accusé "sonnerie" jamais renvoyé à l'appelant.
+`ChatRepository.onRinging` était porté mais zéro appelant. Corrigé : appel ajouté dans
+`handleIncomingCall`, juste après `reportIncomingCall` réussi, AVANT la garde permission micro
+(fidèle à l'inconditionnalité Android). **Commit `c5088e6`, CI verte (run `32718528236`)** —
+`BUILD_VALIDATED`.
+
+**Lot P2-11 traité (V4-F-043)** — WebRTC-Calls, échec de report CallKit silencieusement avalé
+(aucun équivalent Android, CallKit est iOS-only — correctif de robustesse pur). Corrigé : `do/catch`
+réel, `onReported?()` appelé dans les 2 branches (contrat PushKit), `teardown()` immédiat sur échec
+au lieu de poursuivre vers WebRTC/le micro. **Commit `4e22aa9`, CI verte (run `32719315729`)** —
+`BUILD_VALIDATED`.
+
+**Lot P2-12 traité (V4-F-047)** — Animems-ImportExport, mise à l'échelle de translation d'un
+template divergente de la formule (buggée) d'Android. Décision Phase B explicite : répliquer
+Android (`scaleX = targetCanvasWidth/templateCanvasWidth` appliqué EN PLUS de la multiplication
+linéaire — un facteur appliqué deux fois, quadratique), cohérente avec la politique "reproduire
+fidèlement Android y compris ses défauts" appliquée sur tout ce cycle. Chaîne complète vérifiée
+(état→transformation→renderer→timeline, un seul site d'appel suivi de `version += 1`). **Commit
+`af517b2`, CI verte (run `32720254449`)** — `BUILD_VALIDATED`. Détail complet des 3 lots dans
+`PROGRESS_V4.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Lots P2-10/11/12 terminés. Enchaîner **automatiquement** sur le
+prochain P2 dans l'ordre du document : **V4-F-051** (Animems-Interaction — faire défiler [pan] la
+timeline ne resynchronise jamais le moteur de lecture, Play peut reprendre depuis une frame
+obsolète : `Animems/TimelineView.swift:163-190` [seul `.scrub` appelle `state.scrub(toFrame:)` ; le
+cas `.pan` met à jour uniquement `TimelineViewModel.playheadFrame`, jamais `engine.totalFrame`] ;
+Android — `engine/.../views/TimelineView.java:938-954`, `AnimemesCompound.java:1417-1426` [PAN ET
+scrub appellent tous deux `mView.seek(frame)`] — après un pan pour revoir une section, l'aperçu
+canevas montre la bonne frame, mais Play peut visiblement sauter en arrière vers une frame
+différente de celle affichée — recommandation : appeler `state.scrub(toFrame: model.playheadFrame)`
+dans le cas `.pan` également — **consigne de rigueur Animems : vérifier toute la chaîne
+UI→geste→état→transformation→renderer→timeline→export avant de considérer le point terminé**), puis
+continuer AUTOMATIQUEMENT le backlog P2 restant dans l'ordre du document (V4-F-052, V4-F-057,
+V4-F-058, V4-F-060, V4-F-061, V4-F-066, V4-F-067, V4-F-069, V4-F-070, V4-F-074 — 10 findings
+restants après V4-F-051), puis le backlog P3 (21 findings) une fois P2 entièrement clos, SANS
+attendre de nouvelle confirmation utilisateur pour chaque lot (instruction explicite : continuer
+automatiquement). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---

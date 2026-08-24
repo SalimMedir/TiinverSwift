@@ -75,7 +75,8 @@ struct HashtagFeedView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .fullScreenCover(isPresented: $showDetail) {
-            FeedDetailPagerView(posts: posts, startIndex: detailStartIndex, onClose: { showDetail = false })
+            // notifiesAuthor: true — port de `HashtagProfile.notifyUser` (V4-F-030).
+            FeedDetailPagerView(posts: posts, startIndex: detailStartIndex, notifiesAuthor: true, onClose: { showDetail = false })
         }
     }
 

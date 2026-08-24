@@ -25,6 +25,28 @@ final class FeedViewModel: ObservableObject {
     private let pageSize = 10
     private var offset = 0
 
+    /// Port de `notifyUser` (`POST push {"userId": ...}`) — **ajouté le 2026-08-24
+    /// (MIGRATION_PARITY_AUDIT_V4.md V4-F-030, Phase B P1)**. Vérifié Android : câblé dans
+    /// `MainFragment` (Feed), `ProfileFeedFragment` (Profile), `HashtagProfile` (résultats hashtag)
+    /// — les 3 sources Android du pager plein écran qui appellent réellement `notifyUser` — mais
+    /// PAS dans `FullScreenMedia` (source Android de `SearchView`/`NotificationsListView`, `grep
+    /// notifyUser` = 0 résultat dans ce fichier). Un lien profond `/post/{token}` (`HomeShellView`)
+    /// route côté Android par `ShareActivity.getActivities` → `SplashActivity` → contexte
+    /// `MainFragment` normal, donc notifie aussi. Positionné à l'INIT (pas une constante globale)
+    /// car chaque écran instancie son propre `FeedViewModel` jetable (voir `FeedDetailPagerView`).
+    private let notifiesAuthorOnInteraction: Bool
+
+    init(notifiesAuthorOnInteraction: Bool = false) {
+        self.notifiesAuthorOnInteraction = notifiesAuthorOnInteraction
+    }
+
+    /// Port de `notifyUser(id)` lui-même — fire-and-forget, aucune erreur remontée à l'appelant
+    /// (fidèle à `data.Post(map, "push", null)`, callback Android nul).
+    private func notifyPostAuthorIfNeeded(_ post: FeedActivity) {
+        guard notifiesAuthorOnInteraction, let actorId = post.actor else { return }
+        Task { try? await repository.notifyPostAuthor(userId: actorId) }
+    }
+
     /// Port de `Settings.setBooleanPreference(id+infoContract.DELETE_POST, true)` — masquage LOCAL
     /// d'une publication d'autrui (`ActivityAdapter.deletePostById`, PAS un vrai appel serveur, voir
     /// `hideOthersPost`). Persisté via `UserDefaults` plutôt que le système `ContentProvider`
@@ -120,6 +142,10 @@ final class FeedViewModel: ObservableObject {
         posts[index].likes = max(0, (posts[index].likes ?? 0) + (wasLiked ? -1 : 1))
         let object = post.object ?? ""
         Task { try? await repository.reaction(activityId: post.id, userId: myId, verb: "like", object: object, status: "LIKE") }
+        // Port de `notifyUser(mediaObject.getActor())` (`MainFragment.java:1174`) — appelé
+        // INCONDITIONNELLEMENT après le like ET l'unlike (en dehors du `if/else` de bascule côté
+        // Android), sans attendre la réponse de `reaction` (V4-F-030).
+        notifyPostAuthorIfNeeded(post)
     }
 
     /// Port de `OnclickPrtg` — envoie TOUJOURS `verb: "share"`/`status: "SHARE"` (même remarque que
@@ -140,6 +166,21 @@ final class FeedViewModel: ObservableObject {
         } else if message == "Unshare successfully" {
             posts[index].share = max(0, (posts[index].share ?? 0) - 1)
         }
+        // Port de `notifyUser(mediaObject.getActor())` (`MainFragment.java:1238`) — placé au MÊME
+        // niveau que le `if/else if` de message ci-dessus (pas imbriqué dedans) : se déclenche sur
+        // TOUT succès réseau du `reaction`, que le message retourné soit SHARE, UNSHARE, ou autre
+        // chose (V4-F-030).
+        notifyPostAuthorIfNeeded(post)
+    }
+
+    /// Port de `notifyUser(mediaObject.getActor())` dans `OnclickCommentaire`
+    /// (`MainFragment.java:1190`) — déclenché à l'OUVERTURE du panneau de commentaires, PAS à
+    /// l'envoi d'un commentaire (vérifié : `notifyUser` est appelé immédiatement après
+    /// `mySheetDialog.show(...)`, avant même que l'utilisateur ait pu écrire quoi que ce soit) —
+    /// **ajouté le 2026-08-24 (V4-F-030, Phase B P1)**. Appelé par la vue au moment où elle arme
+    /// `commentsPost`, pas depuis `CommentsView` elle-même.
+    func notifyCommentOpened(_ post: FeedActivity) {
+        notifyPostAuthorIfNeeded(post)
     }
 
     /// Port de `ActivityAdapter.deleteMyPost` — UNIQUEMENT pour ses propres publications (garde déjà

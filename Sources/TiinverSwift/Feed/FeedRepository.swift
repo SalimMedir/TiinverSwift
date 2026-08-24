@@ -302,6 +302,16 @@ final class FeedRepository {
         return value.optionalString("message")
     }
 
+    /// Port de `notifyUser(id)` (`MainFragment.java:1193-1198` et ses équivalents
+    /// `ProfileFeedFragment`/`HashtagProfile`) — `POST push {"userId": id}`, fire-and-forget, aucun
+    /// callback côté Android (`data.Post(map, "push", null)`) — **ajouté le 2026-08-24
+    /// (MIGRATION_PARITY_AUDIT_V4.md V4-F-030, Phase B P1)**. MÊME endpoint déjà porté séparément
+    /// pour le Wallet (`WalletRepository.notifyTransferReceived`, nom Android identique
+    /// `notifyUser` mais méthode PRIVÉE distincte côté Android — pas de code partagé à réutiliser).
+    func notifyPostAuthor(userId: String) async throws {
+        _ = try await APIClient.shared.post(["userId": userId], endpoint: "push")
+    }
+
     /// Port de `ActivityAdapter.deleteMyPost` — `POST deleteactivity {id, actor}`, réservé aux
     /// publications propres (garde faite côté appelant, `FeedViewModel.deleteOwnPost`).
     func deleteActivity(id: Int, actorId: String) async throws {

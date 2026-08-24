@@ -27,7 +27,9 @@ private let feedReportReasons = [
 ]
 
 struct FeedView: View {
-    @StateObject private var viewModel = FeedViewModel()
+    // Port de `MainFragment.OnLikeClicked`/`OnclickCommentaire`/`OnclickPrtg` → `notifyUser` —
+    // câblé pour ce contexte (V4-F-030).
+    @StateObject private var viewModel = FeedViewModel(notifiesAuthorOnInteraction: true)
     @State private var showCamera = false
     @State private var showDetail = false
     @State private var detailStartIndex = 0
@@ -89,7 +91,7 @@ struct FeedView: View {
                             FeedGridCell(
                                 post: post,
                                 onLike: { viewModel.toggleLike(post) },
-                                onComment: { commentsPost = post },
+                                onComment: { commentsPost = post; viewModel.notifyCommentOpened(post) },
                                 onShare: { Task { await viewModel.toggleShare(post) } },
                                 onMore: { moreActionsPost = post }
                             )
@@ -485,8 +487,8 @@ struct FeedDetailPagerView: View {
     /// recherche, hashtag) plutôt que sur le fil principal, un `FeedViewModel` jetable suffit — les
     /// actions (like/commentaire/partage/suppression/blocage/signalement) restent fonctionnelles
     /// même hors contexte fil.
-    init(posts: [FeedActivity], startIndex: Int, includesDownload: Bool = false, onClose: @escaping () -> Void) {
-        let vm = FeedViewModel()
+    init(posts: [FeedActivity], startIndex: Int, includesDownload: Bool = false, notifiesAuthor: Bool = false, onClose: @escaping () -> Void) {
+        let vm = FeedViewModel(notifiesAuthorOnInteraction: notifiesAuthor)
         vm.posts = posts
         _viewModel = StateObject(wrappedValue: vm)
         self.startIndex = startIndex
@@ -518,7 +520,7 @@ struct FeedDetailPagerView: View {
                                 FeedDetailCell(
                                     post: post, isActive: index == currentIndex,
                                     onLike: { viewModel.toggleLike(post) },
-                                    onComment: { commentsPost = post },
+                                    onComment: { commentsPost = post; viewModel.notifyCommentOpened(post) },
                                     onShare: { Task { await viewModel.toggleShare(post) } },
                                     onMore: { moreActionsPost = post },
                                     onOpenProfile: { if let actor = post.actor { openProfileUserId = actor } },

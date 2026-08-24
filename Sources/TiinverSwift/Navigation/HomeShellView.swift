@@ -142,7 +142,10 @@ struct HomeShellView: View {
         }
         .fullScreenCover(isPresented: Binding(get: { deepLinkPost != nil }, set: { if !$0 { deepLinkPost = nil } })) {
             if let post = deepLinkPost {
-                FeedDetailPagerView(posts: [post], startIndex: 0, onClose: { deepLinkPost = nil })
+                // notifiesAuthor: true — un lien profond `/post/{token}` route côté Android par
+                // `ShareActivity.getActivities` → `SplashActivity` → contexte `MainFragment` normal
+                // (`notifyUser` câblé là aussi), pas un viewer dédié séparé (V4-F-030).
+                FeedDetailPagerView(posts: [post], startIndex: 0, notifiesAuthor: true, onClose: { deepLinkPost = nil })
             }
         }
         .fullScreenCover(isPresented: Binding(get: { deepLinkRoster != nil }, set: { if !$0 { deepLinkRoster = nil } })) {

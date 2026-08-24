@@ -50,6 +50,8 @@ struct NotificationsListView: View {
                 Task { await viewModel.markAllRead() }
             }
             .fullScreenCover(item: $detailPost) { post in
+                // notifiesAuthor: PAS câblé (défaut `false`) — MÊME source Android que SearchView
+                // (`FullScreenMedia`, `notifyUser` jamais appelé, V4-F-030).
                 FeedDetailPagerView(posts: [post], startIndex: 0, onClose: { detailPost = nil })
             }
         }

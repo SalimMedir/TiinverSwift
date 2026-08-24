@@ -143,6 +143,9 @@ struct SearchView: View {
             }
         }
         .fullScreenCover(item: $detailPost) { post in
+            // notifiesAuthor: PAS câblé (défaut `false`) — source Android de ce viewer,
+            // `FullScreenMedia`, n'appelle jamais `notifyUser` (`grep` confirmé, 0 occurrence
+            // dans ce fichier, V4-F-030) — fidèle, pas un oubli.
             FeedDetailPagerView(posts: [post], startIndex: 0, onClose: { detailPost = nil })
         }
         .task {

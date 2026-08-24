@@ -940,6 +940,16 @@ PREUVE : Substitution directe — `f=0` et `f=1` produisent la même constante.
 RECOMMANDATION : Retirer le `max(...)` — le PTS doit être simplement `Int64(f) * frameDurationNs`,
 comme Android. Vérifier d'abord qu'aucune raison historique (ex. un crash passé) ne justifiait ce
 garde-fou avant de le retirer.
+STATUT : BUILD_VALIDATED (2026-08-23, commit b0b61ea, CI run 32676432499 succès). Aucune raison
+historique trouvée justifiant le `max(...)` (aucun commentaire, aucune trace dans l'historique local
+du fichier) — retiré tel que recommandé. Reconfirmé côté Android : `MP4Encoder.java:1753`
+(`getPresentationTimeUsec(frameIndex) { return frameIndex * FRAME_NS; }`) sans clamp équivalent.
+Seul `f=0` change de valeur (0 au lieu de `frameDurationNs`) ; `f>=1` calculait déjà la même valeur
+avec ou sans le `max`, aucun risque de régression sur les frames suivantes. Aucun autre site de calcul
+de PTS trouvé dans le module Animems (`grep frameDurationNs`/`ptsNs`). DEVICE_TEST_REQUIRED pour
+COMPLETE_PARITY_VALIDATED (exporter une vidéo réelle, inspecter les métadonnées de la piste vidéo
+[ex. `ffprobe`] pour confirmer la 1ʳᵉ frame à pts=0 et l'absence de doublon de timestamp ; vérifier
+visuellement qu'aucune frame n'est perdue en tout début de lecture).
 ```
 
 ```

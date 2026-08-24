@@ -3,8 +3,8 @@
 Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
 **État actuel (2026-08-23) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
-(P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017 clos.
-Prochain : V4-F-046.**
+(P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046
+clos. Prochain : V4-F-048 (Animems zoom — rigueur renforcée demandée par l'utilisateur).**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -790,3 +790,64 @@ désormais réellement `errorText`, comme prévu par son code existant).
 backend), basculer le toggle "Compte privé", confirmer qu'il revient visuellement à son état précédent
 SANS second appel réseau observable (outil d'inspection réseau), et confirmer qu'un changement réussi
 persiste bien après rechargement de l'écran.
+
+## 2026-08-23 — Phase B V4 — Lot P1-7 : V4-F-046 (Animems-ImportExport — collision PTS frame 0/frame 1
+à l'export vidéo)
+
+**Commit** : `b0b61ea` — CI **run 32676432499, conclusion: success**.
+
+### Vérification Android (avant tout changement)
+
+`engine/src/main/java/com/animems/engine/android/codec/MP4Encoder.java:1752-1753` :
+```java
+private long getPresentationTimeUsec(int frameIndex, int c) { return (((long) frameIndex * FRAME_DURATION) / FRAME_RATE) * getFrameDelay(c); }
+private long getPresentationTimeUsec(int frameIndex)        { return frameIndex * FRAME_NS; }
+```
+La seconde surcharge (utilisée par `onAddBitmap`, ligne 1727, le chemin d'encodage par bitmap
+pertinent pour Animems) : `frameIndex * FRAME_NS`, STRICTEMENT proportionnel, `frameIndex=0` →
+`0`. Aucun `max(...)` ni clamp équivalent trouvé dans tout le fichier pour cette fonction.
+
+### Écart iOS constaté (avant correctif)
+
+`AnimemesExporter.swift:202` (avant correctif) :
+```swift
+let ptsNs = max(Self.frameDurationNs, Int64(f) * Self.frameDurationNs)
+```
+Pour `f=0` : `Int64(0) * frameDurationNs = 0`, puis `max(frameDurationNs, 0) = frameDurationNs`.
+Pour `f=1` : `Int64(1) * frameDurationNs = frameDurationNs`, puis `max(frameDurationNs,
+frameDurationNs) = frameDurationNs`. **Même résultat pour les deux frames** — collision confirmée
+par calcul direct, pas seulement par lecture du code. `writer.startSession(atSourceTime: .zero)`
+(ligne 150) fixe pourtant le début de session à t=0, jamais atteint par aucun échantillon écrit.
+
+### Recherche de justification historique (avant suppression du `max`)
+
+Aucun commentaire, aucune trace dans l'historique de ce fichier (`git log -p` sur les lignes
+concernées, aucune mention de crash/contournement) ne justifie ce `max(...)` — absence de raison
+documentée de le conserver, conformément à la demande explicite de l'utilisateur de vérifier ce point
+avant suppression.
+
+### Correctif appliqué
+
+```swift
+let ptsNs = Int64(f) * Self.frameDurationNs
+```
+Suppression pure et simple du `max(...)`, fidèle à `getPresentationTimeUsec(frameIndex)` côté
+Android. Seul `f=0` change de valeur produite (0 au lieu de `frameDurationNs`) — `f>=1` produisait
+déjà exactement la même valeur avec ou sans le `max` (`f * frameDurationNs >= frameDurationNs` est
+toujours vrai pour `f>=1`), donc aucun risque de régression au-delà de la toute première frame.
+
+### Flux frères vérifiés
+
+`grep -n "frameDurationNs\|ptsNs" Sources/TiinverSwift/Animems/*.swift` → un seul site de calcul de
+PTS dans tout le module (celui corrigé ici) ; la piste audio (`beginAudioPass`) utilise ses propres
+timestamps natifs lus depuis `copyNextSampleBuffer()`, sans dépendance à ce calcul.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesExporter.swift`.
+
+**Résultat CI** : run `32676432499` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — nécessite un test réel : exporter une vidéo Animems, inspecter les
+métadonnées de la piste vidéo résultante (ex. `ffprobe -show_frames`) pour confirmer que la 1ʳᵉ frame
+est bien à pts=0 sans doublon de timestamp, et vérifier visuellement qu'aucune frame n'est perdue en
+tout début de lecture.

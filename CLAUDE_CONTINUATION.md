@@ -10,7 +10,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 ---
 
 # CURRENT HANDOFF (2026-08-23 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
-Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS [V4-F-020/032/033/042/038/017 traités])
+Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS [V4-F-020/032/033/042/038/017/046 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -202,20 +202,34 @@ complet dans `PROGRESS_V4.md`, Lot P1-6. **Commit `d63c2f6`, CI verte confirmée
 — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : couper le réseau, basculer
 le toggle, confirmer le revert visuel SANS second appel réseau observable).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-6 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur **V4-F-046** (Animems-ImportExport — collision de timestamp PTS entre frame 0
-et frame 1 de la vidéo exportée : `AnimemesExporter.swift:202`,
-`ptsNs = max(frameDurationNs, f * frameDurationNs)` donne EXACTEMENT la même valeur pour `f=0` ET
-`f=1` — aucun échantillon écrit à pts=0 alors que `startSession(atSourceTime: .zero)` fixe le début
-de session à t=0, risque de perte/corruption de la 1ʳᵉ frame ; Android — `MP4Encoder.java:1727,1753`
-— utilise `frameIndex * FRAME_NS`, strictement croissant depuis 0, sans ce `max(...)` — retirer le
-`max(...)`, PTS = simplement `Int64(f) * frameDurationNs`). **RAPPEL EXPLICITE DE L'UTILISATEUR** :
-"sois particulièrement rigoureux [sur Animems]... ne te contente pas de brancher rapidement un
-bouton" — tracer la chaîne complète (état/rendu/export) avant de corriger, ne pas se limiter à la
-seule ligne citée par l'audit. Puis V4-F-048→049→050→001→002→029→030→056→064→059→068→073→021→027→
-019→003 (Animems [zoom/keyframe/lock-visibility]→Session/DeepLinks→Feed-publish→Gallery→BunnyCDN→
-Wallet→Performance→Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding
-complet). Repo Android source de vérité :
+**Lot P1-7 traité (V4-F-046)** — Animems-ImportExport, collision PTS frame 0/frame 1 à l'export
+vidéo. `AnimemesExporter.swift:202` : `max(frameDurationNs, Int64(f) * frameDurationNs)` donnait
+EXACTEMENT `frameDurationNs` pour `f=0` ET `f=1` (calcul direct vérifié) — aucun échantillon jamais
+écrit à pts=0 malgré `startSession(atSourceTime: .zero)`. Vérifié côté Android
+(`MP4Encoder.java:1752-1753`, `getPresentationTimeUsec(frameIndex) { return frameIndex * FRAME_NS;
+}`) : aucun clamp équivalent. Recherche de justification historique du `max(...)` (demandée
+explicitement avant suppression) : aucun commentaire, aucune trace `git log -p` ne l'explique.
+Corrigé : `max(...)` retiré, `ptsNs = Int64(f) * frameDurationNs`. Seul `f=0` change de valeur
+(`f>=1` produisait déjà le même résultat avec ou sans clamp) — aucun risque de régression au-delà de
+la 1ʳᵉ frame. `grep frameDurationNs/ptsNs` → un seul site de calcul PTS dans tout le module, piste
+audio indépendante (timestamps natifs). Détail complet dans `PROGRESS_V4.md`, Lot P1-7. **Commit
+`b0b61ea`, CI verte confirmée (run `32676432499`)** — `BUILD_VALIDATED`, PAS
+`COMPLETE_PARITY_VALIDATED` (test réel requis : exporter une vidéo, `ffprobe -show_frames` pour
+confirmer pts=0 sur la 1ʳᵉ frame sans doublon).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-7 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur **V4-F-048** (Animems — le zoom est inerte : logique de transform portée mais
+jamais câblée à un geste). **RAPPEL EXPLICITE DE L'UTILISATEUR, PARTICULIÈREMENT APPLICABLE ICI**
+(contrairement à V4-F-046, un bug numérique auto-contenu) : "sois particulièrement rigoureux [sur
+Animems]... ne te contente pas de brancher rapidement un bouton" — tracer la chaîne COMPLÈTE avant de
+corriger : UI Android → événement Android → état Android → renderer Android → geste Android → état
+Swift → UI Swift → geste Swift → renderer Swift, en vérifiant séparément sélection/déplacement/
+transformation/rendu/timeline/export, PAS seulement brancher un `MagnificationGesture` sur le premier
+état trouvé. Voir `MIGRATION_PARITY_AUDIT_V4.md` pour le texte complet du finding avant de commencer.
+Puis V4-F-049 (keyframe delete inatteignable) →050 (lock/visibility absents, MÊME rigueur requise)
+→001→002→029→030→056→064→059→068→073→021→027→019→003 (Session/DeepLinks→Feed-publish→Gallery→
+BunnyCDN→Wallet→Performance→Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque
+finding complet). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---

@@ -18,7 +18,8 @@ Lot P2-6 : V4-F-028 BUILD_VALIDATED ; Lot P2-7 : V4-F-031 différé (hors périm
 V4-F-035 BUILD_VALIDATED ; Lot P2-9 : V4-F-039 BUILD_VALIDATED ; Lot P2-10 : V4-F-041
 BUILD_VALIDATED ; Lot P2-11 : V4-F-043 BUILD_VALIDATED ; Lot P2-12 : V4-F-047 BUILD_VALIDATED ;
 Lot P2-13 : V4-F-051 BUILD_VALIDATED ; Lot P2-14 : V4-F-052 BUILD_VALIDATED ; Lot P2-15 :
-V4-F-057 BUILD_VALIDATED] — backlog P3 PAS ENCORE ATTAQUÉ)
+V4-F-057 BUILD_VALIDATED ; Lot P2-16 : V4-F-058 BUILD_VALIDATED ; Lot P2-17 : V4-F-060 différé +
+V4-F-061 BUILD_VALIDATED] — backlog P3 PAS ENCORE ATTAQUÉ)
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -677,20 +678,39 @@ n'existe pour ces calques dans ce portage — ajouter cette fonctionnalité aura
 correction de sémantique demandée). **Commit `0654f17`, CI verte (run `32723488039`)** —
 `BUILD_VALIDATED`. Détail complet des 2 lots dans `PROGRESS_V4.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Lots P2-14/15 terminés. Enchaîner **automatiquement** sur le prochain
-P2 dans l'ordre du document : **V4-F-058** (Gallery-PhotoEditor — le picker de galerie avale
-silencieusement les échecs de chargement, feuille bloquée :
-`Camera/GalleryPickerView.swift:55-76` [`loadFileRepresentation` : `{ url, _ in guard let url else
-{ return } ... }` ignore l'erreur, ni `onImagePicked`/`onVideoPicked` ni `onCancel` ne se
-déclenchent sur échec] ; Android — `editor/camera/BaseCameraFragment.java:218-227` [le picker
-système ne peut pas atterrir sur un état "sélectionné mais échoué"] — sur un échec réel [asset
-iCloud non téléchargé, permission révoquée en cours de sélection, erreur I/O transitoire],
-l'utilisateur reste bloqué derrière/sur la feuille de sélection, sans message d'erreur, sans
-fermeture automatique — recommandation : appeler `onCancel()` [avec éventuellement l'erreur
-affichée] quand `url == nil`, comme le fait déjà le garde `results.first == nil` juste au-dessus),
-puis continuer AUTOMATIQUEMENT le backlog P2 restant dans l'ordre du document (V4-F-060, V4-F-061,
-V4-F-066, V4-F-067, V4-F-069, V4-F-070, V4-F-074 — 7 findings restants après V4-F-058), puis le
-backlog P3 (21 findings) une fois P2 entièrement clos, SANS attendre de nouvelle confirmation
+**Lot P2-16 traité (V4-F-058)** — Gallery-PhotoEditor, le picker de galerie avale silencieusement
+les échecs de chargement. `GalleryPickerView.Coordinator` : `guard let url else { return }` dans
+les deux branches `loadFileRepresentation` (vidéo/image) — sur un échec réel (asset iCloud non
+téléchargé, permission révoquée en cours de sélection, erreur I/O transitoire), ni
+`onImagePicked`/`onVideoPicked` ni `onCancel` ne se déclenchaient, feuille bloquée sans retour
+utilisateur. Corrigé : `DispatchQueue.main.async { self.parent.onCancel() }` appelé dans les deux
+branches sur `url == nil`, cohérent avec le repli déjà en place pour `localCopy == nil`. **Commit
+`f9547ba`, CI verte (run `32724496102`)** — `BUILD_VALIDATED`.
+
+**Lot P2-17 traité (V4-F-060 différé + V4-F-061)** — VideoEditor. V4-F-060 (flux "partager en
+externe avec outro promotionnel + filigrane animé") : `IOS FILES : AUCUN` confirmé — aucune
+infrastructure de composition outro/filigrane n'existe dans le port (le TODO explicite dans
+l'en-tête de `AnimemesExporter.swift` le confirme) ; **`DIFFÉRÉ` (hors périmètre d'un petit lot,
+nouvelle pipeline vidéo requise), aucun code modifié**. V4-F-061 (export/rognage non "fast-start",
+atome `moov` non relocalisé, vérifié dans `VideoTrimmerView.java:710-729`
+`Mp4Faststart.process(...)`) : `MediaTrimView.swift` ne positionnait jamais
+`shouldOptimizeForNetworkUse` sur son `AVAssetExportSession` (seul site du projet, `grep
+AVAssetExportSession\(` confirmé). Corrigé : `exportSession.shouldOptimizeForNetworkUse = true` —
+équivalent AVFoundation natif de la relocalisation `moov`, pas de post-passe séparée nécessaire
+côté iOS contrairement à Android. **Commit `dcdb72a`, CI verte (run `32725344933`)** —
+`BUILD_VALIDATED`. Détail complet des 3 lots dans `PROGRESS_V4.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Lots P2-16/17 terminés. Vérification faite : **V4-F-066** est DÉJÀ
+`BUILD_VALIDATED` (fermé comme effet de bord nécessaire du Lot P0-1/V4-F-065 — même 3 fichiers,
+même fonction Android de référence `updateToServer`, CI verte confirmée run `32663823532` —
+documenté directement dans `MIGRATION_PARITY_AUDIT_V4.md` à son propre ID) et **V4-F-073** est en
+réalité P1 (déjà clos dans la liste P1). Le vrai prochain P2 non traité est **V4-F-067**
+(Wallet-Monetization — `ReferralView` utilise le mauvais identifiant de bannière AdMob : Android
+`res/layout/activity_referral.xml:19-25` utilise la même bannière que tous les autres écrans Wallet
+[`5840810574`] ; iOS `Wallet/ReferralView.swift:20` utilise `AdMobIdentifiers.bannerSecondary`
+[`4225372854`] au lieu de `bannerWallet`), puis continuer AUTOMATIQUEMENT le backlog P2 restant
+dans l'ordre du document (V4-F-069, V4-F-070, V4-F-074 — 3 findings restants après V4-F-067), puis
+le backlog P3 (21 findings) une fois P2 entièrement clos, SANS attendre de nouvelle confirmation
 utilisateur pour chaque lot (instruction explicite : continuer automatiquement). Repo Android
 source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.

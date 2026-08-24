@@ -1720,6 +1720,23 @@ erreur I/O transitoire), l'utilisateur reste bloqué derrière/sur la feuille de
 message d'erreur, sans fermeture automatique.
 RECOMMANDATION : Appeler `onCancel()` (avec éventuellement l'erreur affichée) quand `url == nil`,
 comme le fait déjà le garde `results.first == nil` juste au-dessus.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-16) — Pas de comparaison Android
+ligne-à-ligne possible (`ANDROID SOURCE` cité documente seulement que le picker système Android ne
+PEUT PAS atterrir sur cet état, pas un comportement à porter précisément) — correctif de robustesse
+sur une régression réelle confirmée par lecture directe. Confirmé côté iOS que
+`guard let url else { return }` (branches vidéo ET image) ne déclenchait NI `onImagePicked`/
+`onVideoPicked` NI `onCancel` en cas d'échec de `loadFileRepresentation` — la feuille de sélection
+restait bloquée sans retour utilisateur. Correctif : `onCancel()` appelé dans les deux branches
+(`DispatchQueue.main.async`, cohérent avec le reste de la méthode — le callback n'est pas garanti
+sur le thread principal), alignant ce cas sur le repli déjà en place pour un échec de copie locale
+(`localCopy == nil`) et sur la garde `results.first == nil`. Flux frères vérifiés :
+`grep loadFileRepresentation` → un seul fichier concerné, les deux branches (vidéo/image) du même
+fichier corrigées ensemble. Commit `f9547ba`, push confirmé (`883b3e4..f9547ba main -> main`), CI
+run `32724496102` conclusion `success`. DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED
+(scénario difficile à provoquer sans outillage — révoquer l'accès Photos ou sélectionner un asset
+iCloud non téléchargé pendant la sélection, confirmer que la feuille se ferme via `onCancel`
+plutôt que de rester bloquée).
 ```
 
 ---
@@ -1778,6 +1795,24 @@ Android (outro+filigrane) ; TOUS les utilisateurs iOS perdent la capacité de pa
 vidéo édité vers une autre app sans d'abord le publier sur Tiinver.
 RECOMMANDATION : Décider si c'est une simplification produit intentionnelle (documenter comme telle)
 ou implémenter un flux équivalent si le mécanisme de croissance reste désiré.
+
+STATUT : DIFFÉRÉ (hors périmètre d'un petit lot, 2026-08-24, Phase B P2, Lot P2-17) — PAS `BLOQUÉ`
+(aucune dépendance backend/Apple Developer/serveur/test physique), mais une fonctionnalité produit
+à part entière, comme la RECOMMANDATION elle-même le formule ("décider... ou implémenter"), pas une
+correction ponctuelle. Vérifié avant de conclure : `AnimemesExporter.swift` (module Animems, export
+vidéo DÉJÀ porté et fonctionnel dans ce cycle) documente LUI-MÊME dans son commentaire de tête
+qu'un mécanisme "outro" (`OUTRO_DURATION_SEC`/`outreVideo`) existe côté Android mais reste
+"TODO explicite... mécanisme séparé pas encore lu" — confirmant qu'AUCUNE infrastructure
+réutilisable (composition d'outro, filigrane animé keyframé, distinction premium/non-premium)
+n'existe nulle part dans ce portage, ni pour Animems ni pour l'éditeur vidéo standard
+(`PublishComposeView`/`MediaTrimView`) visé par ce finding précis. Implémenter correctement
+nécessiterait : (1) composition AVFoundation d'un clip outro pré-enregistré à la suite de la vidéo
+éditée, (2) rendu d'un filigrane ANIMÉ (pas statique) avec keyframes, gated par le statut premium
+de l'utilisateur (mécanisme d'abonnement/statut à vérifier séparément), (3) un partage du fichier
+vidéo brut vers une app externe AVANT toute publication Tiinver (chemin de partage actuellement
+inexistant, le seul partage actuel étant un texte de légende APRÈS publication). Aucun code
+modifié, aucun commit, aucune CI. Recommandé comme décision produit + item de travail dédié
+séparé, pas un correctif de petit lot.
 ```
 
 ```
@@ -1794,6 +1829,20 @@ uploadées depuis iOS (pertinent puisque certains chemins de lecture Bunny utili
 repli, pas seulement HLS).
 RECOMMANDATION : Ajouter une passe de relocalisation d'atome moov après `AVAssetExportSession`, ou au
 minimum positionner `shouldOptimizeForNetworkUse = true`.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-18) — Vérifié contre
+`VideoTrimmerView.java:710-729` (`Mp4Faststart.process(...)`, appelé après chaque ré-encodage, avec
+repli sur le fichier non-optimisé si cette passe échoue). Confirmé côté iOS que
+`MediaTrimView.trim()` n'appelait jamais l'équivalent — `shouldOptimizeForNetworkUse` jamais
+positionné sur `exportSession`. Correctif : `exportSession.shouldOptimizeForNetworkUse = true`
+(option "minimum" explicitement proposée par la RECOMMANDATION) — équivalent AVFoundation NATIF
+d'une relocalisation d'atome `moov`, pas de post-passe séparée nécessaire contrairement à Android.
+Flux frères vérifiés : `grep AVAssetExportSession\(` → un seul site dans tout le projet, celui
+corrigé (`AnimemesExporter` utilise `AVAssetWriter` bas niveau, une API différente non concernée).
+Commit `dcdb72a`, push confirmé (`f9547ba..dcdb72a main -> main`), CI run `32725344933`
+conclusion `success`. DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (exporter une vidéo
+rognée, inspecter la structure du fichier [`ffprobe`/outil équivalent] pour confirmer que l'atome
+`moov` précède `mdat`, et/ou mesurer un démarrage de lecture progressive plus rapide).
 ```
 
 ```

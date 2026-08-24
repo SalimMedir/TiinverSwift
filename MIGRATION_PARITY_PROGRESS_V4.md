@@ -8,8 +8,9 @@ V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, 
 V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027, V4-F-019 clos. V4-F-003 documenté `BLOQUÉ` (hors
 dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE.** Backlog P2 EN
 COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014/022/025/028/
-035/039/041/043/047/051/052/057 (`BUILD_VALIDATED`) clos, V4-F-031 (différé, hors périmètre d'un
-petit lot). Prochain : V4-F-058.**
+035/039/041/043/047/051/052/057/058/061/066 (`BUILD_VALIDATED`) clos (V4-F-066 déjà clos comme
+effet de bord du Lot P0-1/V4-F-065, vérifié dans l'audit), V4-F-031 et V4-F-060 (différés, hors
+périmètre d'un petit lot). Prochain : V4-F-067.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -3032,3 +3033,105 @@ ce bug — celui-ci était isolé à `PhotoToolsView.swift`.
 **Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
 `COMPLETE_PARITY_VALIDATED` — test réel requis : placer trait→texte→trait, appuyer "Annuler",
 confirmer que c'est le DERNIER TRAIT (pas le texte) qui disparaît, fidèle à Android.
+
+## 2026-08-24 — Phase B V4 — Lot P2-16 : V4-F-058 (Gallery-PhotoEditor — le picker de galerie avale silencieusement les échecs de chargement)
+
+### Vérification
+
+`ANDROID SOURCE : editor/camera/BaseCameraFragment.java:218-227` — cité par l'audit comme preuve
+qu'Android, via le picker SYSTÈME (`ActivityResultContracts.PickVisualMedia`), ne peut structurellement
+pas atterrir sur un état "sélectionné mais échoué" (le contrat renvoie soit une URI valide, soit
+`null`/annulation — pas de 3ᵉ état). Pas une comparaison ligne-à-ligne à porter : correctif de
+robustesse sur une régression RÉELLE côté iOS, confirmée par lecture directe.
+
+### État iOS avant correctif
+
+`GalleryPickerView.Coordinator.picker(_:didFinishPicking:)` : `guard let url else { return }` dans
+LES DEUX branches (`UTType.movie`/`UTType.image`) — sur un échec de `loadFileRepresentation` (asset
+iCloud non téléchargé, permission révoquée en cours de sélection, erreur I/O transitoire), NI
+`onImagePicked`/`onVideoPicked` NI `onCancel` n'étaient appelés — la feuille de sélection restait
+affichée/bloquée sans aucun retour à l'utilisateur.
+
+### Correctif appliqué
+
+`onCancel()` appelé (`DispatchQueue.main.async`, cohérent avec le reste de la méthode — le
+callback `loadFileRepresentation` n'est pas garanti sur le thread principal) dans les deux branches
+en cas de `url == nil` — aligne ce cas sur le repli déjà en place pour un échec de COPIE locale
+(`localCopy == nil` → `onCancel()`, quelques lignes plus bas dans la même méthode) et sur la garde
+`results.first == nil` juste au-dessus.
+
+### Flux frères vérifiés
+
+`grep loadFileRepresentation` dans tout le projet → un seul fichier concerné
+(`GalleryPickerView.swift`) — les deux branches (vidéo/image) du même fichier corrigées ensemble,
+pas de site supplémentaire.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Camera/GalleryPickerView.swift`.
+
+**Résultat CI** : commit `f9547ba`, push confirmé (`883b3e4..f9547ba main -> main`), run
+`32724496102` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis (scénario difficile à provoquer sans outillage) :
+révoquer l'accès Photos ou sélectionner un asset iCloud non téléchargé pendant la sélection,
+confirmer que la feuille se ferme via `onCancel` plutôt que de rester bloquée.
+
+## 2026-08-24 — Phase B V4 — Lot P2-17 : V4-F-060 (DIFFÉRÉ) et V4-F-061 (BUILD_VALIDATED)
+
+### V4-F-060 — VideoEditor : flux "partager en externe avec outro promotionnel + filigrane animé"
+
+**Vérification Android** : `editor/PublishFragment.java:306-312,448-461,499-511` et
+`editor/service/ExportVideoService.java` — un flux complet où, lors du partage externe (hors
+publication interne Tiinver) d'une vidéo éditée, Android ajoute une séquence outro promotionnelle
+et un filigrane animé avant l'export final.
+
+**État iOS** : `IOS FILES : AUCUN` (confirmé par l'audit lui-même). Vérification indépendante :
+`AnimemesExporter.swift` — le seul exporteur vidéo substantiel du port — contient dans son propre
+en-tête de commentaire un TODO explicite signalant qu'un mécanisme Android d'"outro" existe mais
+n'a "pas encore été lu" et reste hors périmètre de ce fichier. Aucune infrastructure de composition
+outro/filigrane n'existe nulle part ailleurs dans le port (pas de service d'export dédié équivalent
+à `ExportVideoService`, pas d'écran de partage externe distinct de la publication interne).
+
+**Décision** : `DIFFÉRÉ (hors périmètre d'un petit lot)` — pas un bug ponctuel corrigible par une
+petite modification ; construire ce flux exigerait une nouvelle pipeline de composition vidéo
+(overlay filigrane animé + concaténation outro + ré-encodage) et probablement un nouvel écran de
+partage externe, ce qui dépasse largement le format "lot" de ce cycle de correction. Aucun code
+modifié pour ce finding.
+
+### V4-F-061 — VideoEditor : export/rognage non optimisé "fast-start" (atome moov non relocalisé)
+
+**Vérification Android** : `view/trimmer/VideoTrimmerView.java:710-729` — après chaque
+ré-encodage, Android exécute une passe `Mp4Faststart.process(...)` qui relocalise l'atome `moov`
+en tête de fichier (nécessaire pour permettre la lecture progressive/streaming avant téléchargement
+complet), avec repli sur le fichier non-optimisé si cette passe échoue elle-même.
+
+**État iOS avant correctif** : `Sources/TiinverSwift/Feed/MediaTrimView.swift:319-335` —
+`AVAssetExportSession` configuré (`outputFileType = .mp4`, preset, ranges) mais sans jamais
+positionner `shouldOptimizeForNetworkUse`, qui vaut `false` par défaut sur `AVAssetExportSession`.
+Résultat : la vidéo exportée/rognée n'était pas structurée pour la lecture progressive.
+
+**Correctif appliqué** : ajout de `exportSession.shouldOptimizeForNetworkUse = true` immédiatement
+après `exportSession.outputFileType = .mp4`, avec commentaire citant la source Android. C'est
+l'option "minimum" explicitement proposée par la RECOMMANDATION de l'audit — l'équivalent NATIF
+AVFoundation d'une relocalisation d'atome `moov` (AVFoundation gère cette passe en interne pendant
+l'export lui-même ; contrairement à Android, aucune passe de post-traitement séparée avec repli
+n'est nécessaire côté iOS).
+
+### Flux frères vérifiés
+
+`grep "AVAssetExportSession("` dans tout le projet → un seul site (`MediaTrimView.swift`), déjà
+corrigé. `AnimemesExporter.swift` utilise `AVAssetWriter` bas niveau (API distincte, non concernée
+par ce paramètre).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/MediaTrimView.swift` (V4-F-061) ;
+`MIGRATION_PARITY_AUDIT_V4.md` (STATUT pour V4-F-060 et V4-F-061, aucun fichier de code pour
+V4-F-060).
+
+**Résultat CI** : commit `dcdb72a`, push confirmé (`f9547ba..dcdb72a main -> main`), run
+`32725344933` → **`conclusion: success`**.
+
+**Statut honnête après correction** : V4-F-060 `DIFFÉRÉ` (aucune modification de code, périmètre
+trop large pour un lot). V4-F-061 `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` pour V4-F-061 — test réel requis : exporter une vidéo rognée, inspecter
+la structure binaire du fichier (`ffprobe` ou équivalent) pour confirmer que l'atome `moov` précède
+`mdat`, et/ou mesurer un démarrage de lecture progressive plus rapide qu'avant le correctif.

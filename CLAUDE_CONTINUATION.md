@@ -15,7 +15,7 @@ Phase B V4 : backlog P0 épuisé, LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE [22 co
 V4-F-009/010/011 BUILD_VALIDATED ; Lot P2-2 : V4-F-012 BUILD_VALIDATED ; Lot P2-3 : V4-F-014
 BUILD_VALIDATED ; Lot P2-4 : V4-F-022 BUILD_VALIDATED ; Lot P2-5 : V4-F-025 BUILD_VALIDATED ;
 Lot P2-6 : V4-F-028 BUILD_VALIDATED ; Lot P2-7 : V4-F-031 différé (hors périmètre) ; Lot P2-8 :
-V4-F-035 BUILD_VALIDATED] — backlog P3 PAS ENCORE ATTAQUÉ)
+V4-F-035 BUILD_VALIDATED ; Lot P2-9 : V4-F-039 BUILD_VALIDATED] — backlog P3 PAS ENCORE ATTAQUÉ)
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -611,21 +611,35 @@ brute. Corrigé : nouvelle `displayEntry(query:tab:)`, utilisée au seul site d'
 `0b30bfe`, CI verte (run `32716508786`)** — `BUILD_VALIDATED`. Détail complet des 3 lots dans
 `PROGRESS_V4.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Lots P2-6/7/8 terminés. Enchaîner **automatiquement** sur le prochain
-P2 dans l'ordre du document : **V4-F-039** (Chat-Socket / Groups — les messages système
-"deleteMember"/"addMember" ne mettent jamais à jour l'état d'appartenance local ni ne quittent la
-room socket : `Storage/MessageRepository.swift:128-173` [`addGroupMessage` — gap AUTO-DOCUMENTÉ
-dans le code lui-même comme non traité] ; Android — `messagerie/ui/ChatManager.java:1190-1282,
-1263-1281` [retire la ligne membre locale, bascule un flag d'appartenance, ÉMET `leaveRoom` si
-l'utilisateur courant est retiré] — un utilisateur retiré d'un groupe voit le bon message système,
-mais l'app ne signale jamais au serveur avoir quitté la room, aucun état local d'appartenance mis à
-jour — recommandation : ajouter la gestion des verbes `deleteMember`/`addMember` avec mise à jour
-d'état local + `leaveRoom` émis quand l'utilisateur courant est retiré), puis continuer
-AUTOMATIQUEMENT le backlog P2 restant dans l'ordre du document (V4-F-041, V4-F-043, V4-F-047,
-V4-F-051, V4-F-052, V4-F-057, V4-F-058, V4-F-060, V4-F-061, V4-F-066, V4-F-067, V4-F-069, V4-F-070,
-V4-F-074 — 14 findings restants après V4-F-039), puis le backlog P3 (21 findings) une fois P2
-entièrement clos, SANS attendre de nouvelle confirmation utilisateur pour chaque lot (instruction
-explicite : continuer automatiquement). Repo Android source de vérité :
+**Lot P2-9 traité (V4-F-039)** — Chat-Socket/Groups, "deleteMember" ne mettait jamais à jour l'état
+ni ne quittait la room socket. Vérifié dans `ChatManager.java:1330-1348` — **texte de l'audit
+corrigé par lecture directe** : `leaveRoom` est INCONDITIONNEL pour tout `deleteMember` (le `if
+(meta.getTo().equals(myUsername))` ne gate QUE le flag `USER_ROOM_MEMBER`, pas l'émission
+`leaveRoom` juste en dessous) — reproduit fidèlement tel quel, pas "corrigé" en un garde que
+Android lui-même n'a pas. Corrigé : émission `leaveRoom` ajoutée dans
+`ChatRepository.handleNewMessage` (couche Realtime, accès socket ; PAS `MessageRepository`, couche
+Storage pure citée par l'audit mais sans cet accès par construction de ce portage). 2 effets de
+bord Android NON portés (code mort/sans équivalent, justifiés en détail dans `PROGRESS_V4.md`) :
+suppression d'une ligne cache local "USER_URI" (aucun cache local équivalent, membres toujours
+relus en direct) et le flag `USER_ROOM_MEMBER` (son seul site de lecture Android est immédiatement
+écrasé par une autre valeur, code mort à effet nul). **Commit `1eaf19b`, CI verte (run
+`32717527713`)** — `BUILD_VALIDATED`.
+
+**PROCHAINE TÂCHE EXACTE** : Lot P2-9 terminé. Enchaîner **automatiquement** sur le prochain P2
+dans l'ordre du document : **V4-F-041** (WebRTC-Calls — l'accusé "sonnerie" [ringing] n'est jamais
+renvoyé à l'appelant : `Realtime/ChatRepository.swift:456` [`onRinging` défini, ZÉRO site d'appel
+confirmé par grep] ; `Calls/CallCoordinator.swift:198-228` [`handleIncomingCall`, aucun appel
+équivalent] ; Android — `messagerie/service/CallService.java:591-623,663-674` [`onRinging()` appelé
+inconditionnellement dès le début du traitement d'un appel entrant, émet `ROOM.RINGING`] — un
+appelant Android vers un callee iOS ne voit jamais son état basculer vers "Sonnerie…" et son
+re-déclenchement de push toutes les 5s ne s'arrête jamais tant que l'appel n'est pas répondu/
+terminé — recommandation : appeler `chatRepository.onRinging(...)` depuis `handleIncomingCall`,
+juste après un `reportIncomingCall` réussi), puis continuer AUTOMATIQUEMENT le backlog P2 restant
+dans l'ordre du document (V4-F-043, V4-F-047, V4-F-051, V4-F-052, V4-F-057, V4-F-058, V4-F-060,
+V4-F-061, V4-F-066, V4-F-067, V4-F-069, V4-F-070, V4-F-074 — 13 findings restants après V4-F-041),
+puis le backlog P3 (21 findings) une fois P2 entièrement clos, SANS attendre de nouvelle
+confirmation utilisateur pour chaque lot (instruction explicite : continuer automatiquement). Repo
+Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---

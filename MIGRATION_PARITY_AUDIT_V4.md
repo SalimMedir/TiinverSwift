@@ -1133,6 +1133,27 @@ IMPACT : Un utilisateur retiré d'un groupe voit le bon message système, mais l
 au serveur avoir quitté la room, et aucun état local d'appartenance n'est mis à jour.
 RECOMMANDATION : Ajouter la gestion des verbes `deleteMember`/`addMember` avec mise à jour d'état
 local + `leaveRoom` émis quand l'utilisateur courant est retiré.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-9) — Vérifié contre
+`ChatManager.java:1330-1348` (entier) : pour `verb=="deleteMember"`, l'appel `leaveRoom(json,
+meta.getType())` est INCONDITIONNEL — le `if (meta.getTo().equals(myUsername))` juste au-dessus ne
+gate QUE le flag `USER_ROOM_MEMBER`, pas l'émission `leaveRoom` en dessous — **texte de la
+RECOMMANDATION corrigé par cette lecture directe** : Android quitte la room socket pour TOUT
+`deleteMember`, pas seulement quand l'utilisateur courant est celui retiré (comportement qui
+ressemble à un bug Android, reproduit fidèlement tel quel, pas "corrigé" silencieusement).
+Correctif : émission `leaveRoom` ajoutée dans `ChatRepository.handleNewMessage` (couche Realtime,
+qui possède l'accès socket — pas `MessageRepository`, couche Storage pure citée par l'audit mais
+sans cet accès par construction de ce portage) via `leaveRoom(_:chatType:)` déjà existant. 2 effets
+de bord Android délibérément NON portés, code mort/sans équivalent : (1) suppression d'une ligne
+"USER_URI" en cache local — ce portage relit TOUJOURS la liste des membres en direct
+(`GroupRepository.fetchMembers`), aucune ligne locale périmée à purger ; (2) le flag persistant
+`USER_ROOM_MEMBER+token` — vérifié que son SEUL site de lecture Android (`ActivityMsg.java:200`)
+est IMMÉDIATEMENT écrasé par `data.isGroupMember()` à la ligne suivante, sans branche
+intermédiaire qui l'utiliserait — code mort à effet nul, non migré (règle Phase B explicite). Commit
+`1eaf19b`, push confirmé (`b0f970a..1eaf19b main -> main`), CI run `32717527713` conclusion
+`success`. DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (retirer un membre d'un groupe,
+confirmer côté device retiré ET côté device restant qu'un événement `LEAVE_ROOM` est émis —
+inspection réseau/logs serveur nécessaire pour observer directement l'émission socket).
 ```
 
 ---

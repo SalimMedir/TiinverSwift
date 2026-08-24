@@ -7,8 +7,9 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064,
 V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027, V4-F-019 clos. V4-F-003 documenté `BLOQUÉ` (hors
 dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE.** Backlog P2 EN
-COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014/022/025/028/035
-(`BUILD_VALIDATED`) clos, V4-F-031 (différé, hors périmètre d'un petit lot). Prochain : V4-F-039.**
+COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014/022/025/028/
+035/039 (`BUILD_VALIDATED`) clos, V4-F-031 (différé, hors périmètre d'un petit lot). Prochain :
+V4-F-041.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -2581,3 +2582,89 @@ de la logique de sauvegarde ailleurs dans `SearchView.swift`.
 `COMPLETE_PARITY_VALIDATED` — test réel requis : rechercher sous l'onglet Hashtags, retaper
 l'entrée sauvegardée depuis l'historique, confirmer que l'onglet Hashtags (pas Tous) est restauré ;
 répéter pour l'onglet Utilisateurs.
+
+## 2026-08-24 — Phase B V4 — Lot P2-9 : V4-F-039 (Chat-Socket / Groups — messages système "deleteMember"/"addMember" ne mettent jamais à jour l'état d'appartenance ni ne quittent la room socket)
+
+### Vérification Android
+
+`ChatManager.java:1330-1348` (entier, dans `addGroupMessage`) :
+```java
+} else if (verb.equals("deleteMember")) {
+    context.getContentResolver().delete(USER_URI, "username= ?", new String[]{meta.getTo()});
+    if (meta.getTo().equals(myUsername)) {
+        Settings.setBooleanPreference(context, USER_ROOM_MEMBER + meta.getToken(), false);
+    }
+    JSONObject json = new JSONObject();
+    json.put("receiver", meta.getToken());
+    json.put("packet", "");
+    leaveRoom(json, meta.getType());
+} else if (verb.equals("addMember")) {
+    if (meta.getTo().equals(myUsername)) {
+        Settings.setBooleanPreference(context, USER_ROOM_MEMBER + meta.getToken(), true);
+    }
+}
+```
+Point clé vérifié ligne par ligne (le texte de l'audit lui-même dit "leaveRoom ÉMIS SI
+l'utilisateur courant est retiré", ce qui est INEXACT) : le `if` protège UNIQUEMENT le flag
+`USER_ROOM_MEMBER`, PAS l'appel `leaveRoom` juste en dessous, hors de ce `if` — `leaveRoom` est
+INCONDITIONNEL pour tout `deleteMember`, quel que soit le membre retiré.
+
+`leaveRoom(Object, String)` (`ChatManager.java:1561-1574`) émet `ROOM.LEAVE_ROOM` sur le socket
+(variante groupe, sans suffixe `PrivateAction`) — déjà porté fidèlement côté iOS
+(`ChatRepository.leaveRoom(_:chatType:)`, `callEventName` reproduit le même `group ? base :
+base+PrivateAction`).
+
+`USER_ROOM_MEMBER` (préférence persistante) : `grep -rn "USER_ROOM_MEMBER"` → 2 sites d'ÉCRITURE
+(`ChatManager.java:1334,1346`, ci-dessus) et exactement 2 sites de LECTURE :
+`ChatFragmentTest.java:3215` (écriture, pas lecture — faux positif du grep) et
+`ActivityMsg.java:200` :
+```java
+isGroupMember = Settings.getBooleanPreference(this, infoContract.USER_ROOM_MEMBER+token, true);
+...
+isGroupMember = data.isGroupMember();   // ligne 209, ÉCRASE la valeur ci-dessus IMMÉDIATEMENT
+```
+Aucune branche entre les 2 lignes n'utilise la valeur lue — code mort à effet nul.
+
+### État iOS avant correctif
+
+`MessageRepository.addGroupMessage` documentait explicitement ce gap ("Non reproduit ici") sans
+aucun câblage des verbes `deleteMember`/`addMember`.
+
+### Correctif appliqué
+
+`ChatRepository.handleNewMessage` (branche groupe, APRÈS la persistance via
+`messages.addGroupMessage`) : `if meta.verb == "deleteMember" { leaveRoom(["receiver":
+meta.token ?? "", "packet": ""], chatType: ChatType.group.wireValue) }` — émission
+INCONDITIONNELLE, fidèle à Android (PAS de garde `meta.to == myUsername`, qui gaterait à tort ce
+qu'Android lui-même ne gate pas). Placé dans `ChatRepository` (couche Realtime, accès socket
+déjà présent) plutôt que `MessageRepository` (couche Storage pure, citée par l'audit mais sans
+accès socket par construction de ce portage — layering délibérément séparé). Commentaire de
+`MessageRepository.addGroupMessage` mis à jour pour pointer vers ce nouveau câblage plutôt que de
+laisser un gap document désormais partiellement obsolète.
+
+**2 effets de bord Android délibérément NON portés** :
+1. Suppression d'une ligne "USER_URI" en cache local — aucun équivalent dans ce portage, la liste
+   des membres est TOUJOURS relue en direct (`GroupRepository.fetchMembers`), jamais de ligne
+   locale périmée à purger.
+2. Flag persistant `USER_ROOM_MEMBER+token` — code mort à effet nul côté Android lui-même (voir
+   vérification ci-dessus), non migré conformément à la règle Phase B ("ne pas porter du code
+   Android mort/inutilisé").
+
+`addMember` : seul effet Android réel est le flag `USER_ROOM_MEMBER` (même code mort à effet nul
+que ci-dessus) — rien de plus à câbler côté iOS.
+
+### Flux frères vérifiés
+
+`grep "addGroupMessage\|handleNewMessage"` → un seul point d'entrée pour les messages système de
+groupe entrants, celui corrigé.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Realtime/ChatRepository.swift`,
+`Sources/TiinverSwift/Storage/MessageRepository.swift` (commentaire).
+
+**Résultat CI** : commit `1eaf19b`, push confirmé (`b0f970a..1eaf19b main -> main`), run
+`32717527713` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : retirer un membre d'un groupe, confirmer
+l'émission `LEAVE_ROOM` (inspection réseau/logs serveur nécessaire, pas observable depuis
+l'interface seule).

@@ -5,7 +5,7 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 **État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
 V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064,
-V4-F-059, V4-F-068, V4-F-073 clos. Prochain : V4-F-021.**
+V4-F-059, V4-F-068, V4-F-073, V4-F-021 clos. Prochain : V4-F-027.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -1799,3 +1799,72 @@ ce cycle P1 (17 fichiers, 25 sites d'appel) : confirmer sur chacun des 16 écran
 images restent nettes à leur taille d'affichage (pas de flou perceptible dû à un `targetSize` trop
 petit ni de recadrage inattendu), et profiler Feed/grilles à défilement rapide via
 Instruments/Memory Graph pour confirmer la baisse de pic mémoire attendue.
+
+## 2026-08-24 — Phase B V4 — Lot P1-20 : V4-F-021 (Groups / Social — motifs de signalement affichés depuis Profile ne correspondent pas à la vraie liste Android)
+
+### Vérification Android
+
+`strings.xml:516-525` (`report_setting_array`, entier) :
+```xml
+<string-array name="report_setting_array">
+    <item>Nudity</item>
+    <item>Violence</item>
+    <item>Harassment</item>
+    <item>False Information</item>
+    <item>Unauthorised_sales</item>
+    <item>Hate speech</item>
+    <item>Terrorisme</item>
+    <item>Under 13 years old</item>
+</string-array>
+```
+`report/Report.java:67` : `list = getResources().getStringArray(R.array.report_setting_array);` —
+UNE SEULE liste, utilisée identiquement quel que soit le type de cible signalée (utilisateur ou
+groupe, `Report.java` gère les deux avec la même Activity et la même ressource).
+
+### État iOS avant correctif
+
+`ReportView.reasons` : `["Spam", "Contenu inapproprié", "Harcèlement", "Usurpation d'identité",
+"Fausses informations", "Autre"]` — liste RECONSTRUITE (le commentaire de tête l'admettait
+explicitement : "PAS lus... à faire valider/ajuster"), ne correspondant à AUCUN sous-ensemble de la
+vraie liste Android : "Spam"/"Autre" n'existent pas côté Android, et Nudité/Vente non
+autorisée/Discours de haine/Moins de 13 ans manquaient entièrement. `ReportView` est le SEUL point
+d'entrée réel du signalement depuis Profile (`grep ReportView(` confirmé). Or la BONNE liste à 8
+items existait déjà, mot pour mot, ailleurs dans le MÊME projet iOS :
+`FeedView.swift:24-27` (`feedReportReasons`, `private`) :
+```swift
+private let feedReportReasons = [
+    "Nudité", "Violence", "Harcèlement", "Fausse information",
+    "Vente non autorisée", "Discours de haine", "Terrorisme", "Moins de 13 ans",
+]
+```
+Déjà utilisée par le menu "..." du Feed (un flux de signalement Android SÉPARÉ —
+`MainFragment.OnclickMoreExpand`/`ProfileFeedFragment`+`FullScreenMedia`+
+`HashtagProfile.OnclickMoreExpand` — mais qui lit la MÊME ressource `report_setting_array`) —
+jamais réutilisée pour `ReportView`.
+
+### Correctif appliqué
+
+1. `feedReportReasons` (`FeedView.swift`) rendue interne (retrait de `private`) — même motif de
+   partage de constante que `UploadProgressDelegate` (V4-F-064) plutôt que dupliquer une 2ᵉ liste.
+2. `ReportView.reasons` (la liste divergente) supprimée ; `List(reasons, id: \.self)` remplacé par
+   `List(feedReportReasons, id: \.self)`.
+3. Aucun branchement `reportType`-spécifique ajouté — confirmé par lecture directe de `Report.java`
+   que la même ressource Android sert aux deux types ("user" et "group").
+
+### Flux frères vérifiés
+
+`grep "report_setting_array\|Contenu inapproprié\|Fausses informations"` dans tout le projet iOS →
+plus aucune liste divergente après le correctif (les seules occurrences restantes sont les
+commentaires documentant ce correctif lui-même).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/ReportView.swift`,
+`Sources/TiinverSwift/Feed/FeedView.swift`.
+
+**Résultat CI** : commit `4ff545b`, push confirmé (`c3812dd..4ff545b main -> main`), run
+`32685665777` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : signaler un profil ET un groupe depuis
+`ReportView`, confirmer que les 8 motifs affichés correspondent exactement à
+`report_setting_array`, et que le `message` envoyé au backend (`POST report`) reflète le motif
+choisi.

@@ -11,7 +11,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
 Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS
-[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030/056/064/059/068/073 traités])
+[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030/056/064/059/068/073/021 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -432,19 +432,32 @@ complet dans `PROGRESS_V4.md`, Lot P1-19. **Commit `63039ff`, CI verte confirmé
 changement le plus risqué visuellement de ce cycle P1 — 17 fichiers, 25 sites : confirmer la
 netteté sur chacun des 16 écrans touchés, profiler via Instruments/Memory Graph).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-19 terminé (vérifié/corrigé/documenté/commité/CI verte).
-Enchaîner **automatiquement** sur **V4-F-021** (Groups / Social — les motifs de signalement
-affichés depuis Profile ne correspondent pas à la vraie liste Android :
-`Discover/ReportView.swift:19` [liste de 6 items inventée, "Spam"/"Autre" absents d'Android] ;
-Android — `res/values/strings.xml:516-525` [`report_setting_array`, 8 items] — **la bonne liste à 8
-items existe DÉJÀ ailleurs dans le projet iOS**, `Feed/FeedView.swift:250-253` [utilisée pour un
-AUTRE flux de signalement] — `ReportView` [seul point d'entrée réel, depuis Profile] omet
-Nudité/Vente non autorisée/Discours de haine/Moins de 13 ans — les catégories envoyées au backend
-pour un signalement de profil ne correspondent pas à la taxonomie de modération attendue —
-recommandation : remplacer la liste de `ReportView.swift` par celle déjà correcte de
-`FeedView.swift:250-253`, idéalement factoriser en une seule constante partagée), puis
-V4-F-027→019→003 (Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding
-complet). Repo Android source de vérité :
+**Lot P1-20 traité (V4-F-021)** — Groups / Social, les motifs de signalement de `ReportView` ne
+correspondaient pas à la vraie liste Android. Vérifié dans `strings.xml:516-525`
+(`report_setting_array`, 8 items) + `Report.java:67`
+(`getResources().getStringArray(R.array.report_setting_array)`, UNE SEULE liste, réutilisée pour
+"user" ET "group"). Côté iOS, `ReportView.reasons` (6 items inventés, "Spam"/"Autre" absents
+d'Android, 4 vrais motifs manquants) — alors que la bonne liste à 8 items existait déjà, mot pour
+mot, dans `FeedView.swift` (`feedReportReasons`, `private`, utilisée par un flux de signalement
+Android séparé mais lisant la MÊME ressource). Corrigé : `feedReportReasons` rendue interne et
+RÉUTILISÉE dans `ReportView` (liste divergente supprimée), même motif de partage que
+`UploadProgressDelegate` (V4-F-064) — aucun branchement `reportType`-spécifique nécessaire, la
+ressource Android est unique pour les deux types. Détail complet dans `PROGRESS_V4.md`, Lot P1-20.
+**Commit `4ff545b`, CI verte confirmée (run `32685665777`)** — `BUILD_VALIDATED`, PAS
+`COMPLETE_PARITY_VALIDATED` (test réel requis : signaler un profil ET un groupe, confirmer les 8
+motifs et le payload envoyé).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-20 terminé (vérifié/corrigé/documenté/commité/CI verte).
+Enchaîner **automatiquement** sur **V4-F-027** (Following — la liste abonnés/abonnements n'a aucun
+bouton suivre/ne plus suivre par ligne : `Discover/FollowListView.swift:26-44` [avatar+nom
+seulement, `NavigationLink` vers le profil ; `SearchUserResult.isFollowed` déjà utilisé ailleurs
+dans l'app mais jamais lu ici] ; Android — `Recherche/ui/Adapter.java:85-164`
+[`labelSuivre`, câblé] — taps supplémentaires requis pour suivre quelqu'un trouvé dans une liste
+abonnés/abonnements ; écart de parité y compris vis-à-vis des propres écrans
+Recherche/Suggestions d'iOS, qui ont déjà ce motif exact — recommandation : ajouter un bouton
+suivre/ne plus suivre par ligne, en réutilisant le motif déjà implémenté dans
+`SearchView.swift`/`SuggestionsCarouselView.swift`), puis V4-F-019→003 (Navigation, voir
+`MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---

@@ -514,6 +514,26 @@ IMPACT : Les catégories envoyées au backend pour un signalement de profil ne c
 taxonomie de modération attendue.
 RECOMMANDATION : Remplacer la liste de `ReportView.swift` par celle déjà correcte de
 `FeedView.swift:250-253` (idéalement factoriser en une seule constante partagée).
+
+STATUT : BUILD_VALIDATED (2026-08-24) — Vérifié contre `strings.xml:516-525`
+(`report_setting_array`, 8 items : Nudity/Violence/Harassment/False Information/
+Unauthorised_sales/Hate speech/Terrorisme/Under 13 years old) et `report/Report.java:67`
+(`getResources().getStringArray(R.array.report_setting_array)`, UNE SEULE liste, réutilisée
+identiquement pour les signalements "user" ET "group" — pas de liste séparée par type). Confirmé
+côté iOS que `ReportView.reasons` (6 items : "Spam"/"Contenu inapproprié"/"Harcèlement"/
+"Usurpation d'identité"/"Fausses informations"/"Autre") ne correspondait à AUCUN sous-ensemble de
+la vraie liste — et que la bonne liste à 8 items existait déjà, mot pour mot, dans
+`FeedView.swift` (`feedReportReasons`, `private`, utilisée par le menu "..." du Feed — un flux de
+signalement Android SÉPARÉ mais utilisant la MÊME ressource). Correctif : `feedReportReasons`
+rendue interne (retrait de `private`) et RÉUTILISÉE telle quelle dans `ReportView` (suppression de
+la liste dupliquée divergente), même motif de partage de constante que `UploadProgressDelegate`
+(V4-F-064). Pas de branchement `reportType`-spécifique ajouté — confirmé par lecture directe de
+`Report.java` que la même ressource sert aux deux types. Commit `4ff545b`, push confirmé
+(`c3812dd..4ff545b main -> main`), CI run `32685665777` conclusion `success`.
+DEVICE_TEST_REQUIRED pour passer en COMPLETE_PARITY_VALIDATED (aucun accès Xcode/simulateur dans
+cet environnement — test réel requis : signaler un profil ET un groupe, confirmer que les 8 motifs
+affichés correspondent exactement à `report_setting_array`, et que le `message` envoyé au backend
+reflète le motif choisi).
 ```
 
 ```

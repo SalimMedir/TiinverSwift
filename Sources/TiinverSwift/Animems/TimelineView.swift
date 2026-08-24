@@ -230,7 +230,18 @@ struct TimelineView: View {
                         switch mode {
                         case .dragItem(let id, _, _, _, _), .resizeLeft(let id, _, _, _), .resizeRight(let id, _):
                             state.selectedId = id
-                        case .scrub, .pan, .keyframeTap, .iconTap:
+                        case .pan:
+                            // Port de `onDown`'s `hitTestItem == null` (`TimelineView.java:879-887`)
+                            // — Android désélectionne IMMÉDIATEMENT au touch-down sur une zone vide
+                            // (`selected = null`), pas seulement au relâchement. **Ajouté (V4-F-053,
+                            // 2026-08-24)** — le repli `.pan` ne touchait jusqu'ici jamais
+                            // `state.selectedId`. `model.selectedId` mis à jour EN PLUS (même
+                            // symétrie que `.dragItem`, qui écrit les deux) pour que le surlignage
+                            // du bloc dans la timeline elle-même (`isSelected`, ligne ~98) s'efface
+                            // aussi, pas seulement le panneau de propriétés.
+                            state.selectedId = nil
+                            model.selectedId = nil
+                        case .scrub, .keyframeTap, .iconTap:
                             break
                         }
                     }

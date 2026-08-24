@@ -136,7 +136,10 @@ struct PhotoToolsView: View {
                 Button { showTextPrompt = true } label: { Image(systemName: "textformat") }
                 // Port de `ic_smile`/`EmojiView` — clavier emoji système, voir tête de fichier.
                 Button { showStickerPrompt = true } label: { Image(systemName: "face.smiling") }
-                if !strokes.isEmpty || !texts.isEmpty {
+                // Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-057, Phase B P2) — voir
+                // `undo()` : ce bouton ne concerne QUE la peinture côté Android, plus de garde sur
+                // `texts`.
+                if !strokes.isEmpty {
                     Button { undo() } label: { Image(systemName: "arrow.uturn.backward") }
                 }
             }
@@ -168,12 +171,22 @@ struct PhotoToolsView: View {
         newSticker = ""
     }
 
+    /// **Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-057, Phase B P2)** — port de
+    /// `ImageViewCanvas.deletePrecedenteDraw` (`:317-326`, entier), déclenché par `R.id.undo`
+    /// (`ImageEditorCompound.java:458-460`) : ne retire QUE le dernier `strokes` (peinture,
+    /// `composer.getPaintLayers()` côté Android) — `texts` (texte/stickers, `PROP_MATRIX`/
+    /// `AnimationObjectData` distincts côté Android) n'est JAMAIS touché par ce bouton précis, ils
+    /// sont individuellement supprimables via une icône dédiée SÉPARÉE
+    /// (`ImageViewCanvas.deleteObjectById`) — délibérément PAS portée ici (RECOMMANDATION de
+    /// l'audit elle-même : "évaluer si la suppression individuelle par tap vaut la peine d'être
+    /// portée" — hors périmètre de cette correction, qui vise uniquement la sémantique erronée du
+    /// bouton "annuler" existant, pas une nouvelle fonctionnalité de sélection/suppression
+    /// individuelle de texte/sticker). Avant ce correctif, `undo()` retirait TOUJOURS le dernier
+    /// TEXTE en premier (peu importe l'ordre chronologique réel), ce qu'Android ne fait jamais
+    /// depuis ce bouton.
     private func undo() {
-        if !texts.isEmpty {
-            texts.removeLast()
-        } else if !strokes.isEmpty {
-            strokes.removeLast()
-        }
+        guard !strokes.isEmpty else { return }
+        strokes.removeLast()
     }
 
     private func flipHorizontal() {

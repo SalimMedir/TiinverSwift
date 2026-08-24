@@ -1661,6 +1661,35 @@ CDN complète, contrairement à Android où chaque site demande une cible de dé
 RECOMMANDATION : Ajouter un paramètre `targetSize` à `CDNAsyncImage`, décoder via
 `CGImageSourceCreateThumbnailAtIndex` dimensionné à la taille d'affichage réelle sur chacun des 18
 sites d'appel, à l'image des valeurs `.override()` par contexte d'Android.
+
+STATUT : BUILD_VALIDATED (2026-08-24) — Vérifié contre `ChargerImages.java` : chaque chargeur Glide
+(`displayThumbail`/`displayThumbailFromServeur` à `.override(200)`, `glid` à `.override(400)`,
+surtout `glidLoadImageRequireAuth(mContext, url, view, width, height)` — le chargeur AVEC le header
+`Referer` réel, donc l'équivalent Android direct de `CDNAsyncImage`, qui prend `width`/`height` en
+PARAMÈTRES fournis par CHAQUE appelant, pas une valeur fixe globale) décode systématiquement
+sous-échantillonné dès la source. `grep CDNAsyncImage(` recompté au moment de ce lot : **25
+occurrences dans 16 fichiers** (le texte d'audit en citait 18 — le nombre a crû avec les lots
+V4-F-007/V4-F-030 de ce même cycle qui ont étendu `FeedDetailPagerView`/ajouté des call sites entre
+la Phase A et ce lot ; toutes les 25 occurrences ACTUELLES ont été traitées, pas seulement les 18
+d'origine). Correctif : nouveau paramètre `targetSize: CGSize?` (points, `nil` par défaut) sur les
+2 signatures d'init de `CDNAsyncImage` ; `load()` décode via `CGImageSourceCreateThumbnailAtIndex`
+(`kCGImageSourceCreateThumbnailFromImageAlways`/`kCGImageSourceThumbnailMaxPixelSize` dérivé de
+`targetSize` × `displayScale`/`kCGImageSourceCreateThumbnailWithTransform`/
+`kCGImageSourceShouldCacheImmediately`) quand fourni, repli sur l'ancien `UIImage(data:)` pleine
+résolution sinon (comportement inchangé pour tout appel non encore migré). Les 25 sites migrés,
+chacun avec la taille réelle de son `.frame(width:height:)` voisin (avatars 32/36/40/44/50/56/64/72
+selon l'écran, `.frame(maxWidth:220,maxHeight:220)` des bulles média chat) ou, pour les grilles sans
+`.frame` fixe sur `CDNAsyncImage` elle-même, la largeur de colonne réelle dérivée du nombre de
+colonnes déclaré (`FeedGridCell` partagée Feed/Hashtag = 2 colonnes ; grilles Profile/Search post =
+3 colonnes) ; les 2 arrière-plans plein écran (viewer fullscreen Feed, sans borne plus petite
+disponible) bornés à `UIScreen.main.bounds.size` — toujours un gain mémoire réel vs. la résolution
+CDN source, généralement bien supérieure à l'écran. Commit `63039ff`, push confirmé
+(`cf542ca..63039ff main -> main`), CI run `32685087464` conclusion `success`.
+DEVICE_TEST_REQUIRED pour passer en COMPLETE_PARITY_VALIDATED (aucun accès Xcode/simulateur dans
+cet environnement — test réel IMPÉRATIF, changement le plus risqué visuellement de tout ce cycle
+P1 : confirmer sur chacun des 16 écrans touchés que les images restent nettes à leur taille
+d'affichage [pas de flou perceptible dû à un `targetSize` trop petit], et profiler Feed/grilles à
+défilement rapide via Instruments/Memory Graph pour confirmer la baisse de pic mémoire attendue).
 ```
 
 ```

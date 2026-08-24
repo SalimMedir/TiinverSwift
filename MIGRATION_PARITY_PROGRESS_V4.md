@@ -5,7 +5,7 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 **État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
 V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064,
-V4-F-059, V4-F-068 clos. Prochain : V4-F-073.**
+V4-F-059, V4-F-068, V4-F-073 clos. Prochain : V4-F-021.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -1705,3 +1705,97 @@ INCHANGÉS — fidèles à leur source Android respective, PAS un oubli.
 `COMPLETE_PARITY_VALIDATED` — test réel requis : modifier le solde serveur depuis un autre
 appareil/session pendant que l'écran Retrait est ouvert, confirmer que le solde affiché ET utilisé
 pour la validation/soumission se met à jour sans bloquer visuellement le formulaire.
+
+## 2026-08-24 — Phase B V4 — Lot P1-19 : V4-F-073 (Performance-Memory — CDNAsyncImage décode chaque image CDN à pleine résolution)
+
+### Vérification Android
+
+`ChargerImages.java` (lu en entier) — CHAQUE chargeur Glide sous-échantillonne dès la source :
+```java
+public static void displayThumbail(Context context, String uri, ImageView imageView){
+    RequestOptions requestOptions = new RequestOptions();
+    requestOptions.frame(10000);
+    requestOptions.override(200);
+    ...
+}
+public static void glid(Context mContext, String model, ImageView view){
+    Glide.with(mContext).asBitmap().load(model).fitCenter().override(400).into(view);
+}
+public static void glidLoadImageRequireAuth(Context mContext, GlideUrl model, ImageView view, int width, int height){
+    Glide.with(mContext).asBitmap().load(model)
+        .encodeFormat(Bitmap.CompressFormat.WEBP).encodeQuality(100)
+        .override(width, height).fitCenter().into(view);
+}
+```
+`glidLoadImageRequireAuth` (avec `LazyHeaders`/`Referer`, donc l'équivalent Android DIRECT de
+`CDNAsyncImage`, seul chargeur avec le même header) prend `width`/`height` en PARAMÈTRES — chaque
+site d'appel Android fournit sa propre taille d'affichage réelle, pas une constante globale. Les
+autres chargeurs (`displayThumbail`/`glid`) utilisent des constantes fixes (200/400px) pour des
+usages plus génériques.
+
+### État iOS avant correctif
+
+`CDNAsyncImage.load()` : `UIImage(data: data)` sur les octets bruts téléchargés, sans AUCUNE option
+`ImageIO`/`CGImageSource` de miniature — chaque image, quelle que soit sa taille d'affichage finale
+(un avatar à 32×32pt inclus), décodait à sa résolution CDN complète. `grep CDNAsyncImage(`
+recompté au moment de ce lot : **25 occurrences dans 16 fichiers** (le texte d'audit en citait 18 —
+écart expliqué par la croissance du projet entre la Phase A de l'audit et ce lot, notamment les
+lots V4-F-007/V4-F-030 de ce même cycle qui ont étendu `FeedDetailPagerView` et ajouté des
+call sites) — les 25 occurrences ACTUELLES ont toutes été traitées, pas seulement les 18 d'origine.
+
+### Correctif appliqué
+
+1. `CDNAsyncImage` : nouveau paramètre `targetSize: CGSize?` (points, `nil` par défaut) sur les 2
+   signatures d'`init` ; nouvelle méthode statique `decode(_:targetSize:scale:)` qui utilise
+   `CGImageSourceCreateThumbnailAtIndex` (`kCGImageSourceCreateThumbnailFromImageAlways` — force le
+   sous-échantillonnage même si l'image contient déjà une miniature embarquée EXIF potentiellement
+   trop petite/grande — `kCGImageSourceThumbnailMaxPixelSize` dérivé de `max(targetSize.width,
+   targetSize.height) * displayScale`, `ImageIO` respecte le ratio d'origine —
+   `kCGImageSourceCreateThumbnailWithTransform` applique l'orientation EXIF —
+   `kCGImageSourceShouldCacheImmediately` décode immédiatement plutôt que paresseusement) quand
+   `targetSize` est fourni ; repli sur l'ancien `UIImage(data:)` pleine résolution sinon
+   (comportement STRICTEMENT inchangé pour tout appel qui ne passerait pas encore `targetSize`).
+2. Les 25 sites d'appel migrés, chacun avec la taille réelle de son contexte d'affichage :
+   - Avatars à taille fixe (`.frame(width:height:)` voisin) : 32pt (`CommentsView`,
+     `GroupCreationView`), 36pt (`GroupDetailView` membre, `FeedView` fullscreen overlay), 40pt
+     (`SearchView` compte), 44pt (`NotificationsListView` ×2, `FollowListView`, `ChatSearchView`,
+     `ContactPickerView` ×2, `BoostDashboardView`, `CreatorOfWeekView` rang), 50pt
+     (`RosterListView`), 56pt (`GroupDetailView` groupe), 64pt (`SuggestionsCarouselView`), 72pt
+     (`CreatorOfWeekView` star), 84pt (`ProfileView` avatar), 160pt (`BoostDetailView`, borné par
+     `.frame(height: 160)`).
+   - Bulles média chat (`ChatBubbleViews`, photo + vidéo) : 220pt, fidèle à leur
+     `.frame(maxWidth: 220, maxHeight: 220)` commun.
+   - Grilles sans `.frame` fixe sur `CDNAsyncImage` elle-même — taille de colonne dérivée du nombre
+     de colonnes RÉELLEMENT déclaré dans chaque grille : `FeedGridCell` (2 colonnes, partagée par
+     `FeedView`/`HashtagFeedView` — corrigée une seule fois, couvre les deux écrans),
+     `ProfileView.postCell`/`SearchView.postGridCell` (3 colonnes chacune) →
+     `UIScreen.main.bounds.width / N`.
+   - 2 arrière-plans plein écran (`FeedView`, viewer fullscreen — pas de borne plus petite
+     disponible pour une image affichée en plein écran) → `UIScreen.main.bounds.size` — toujours un
+     gain mémoire réel vs. la résolution CDN source, généralement bien supérieure à l'écran.
+
+### Flux frères vérifiés
+
+`grep "AsyncImage("` (SwiftUI natif, pas `CDNAsyncImage`) → un seul autre site, `AIChatView.swift`
+— images générées par l'IA, hors CDN Tiinver, contexte totalement différent (pas de header
+`Referer`, pas le même backend) — hors périmètre de ce finding, non touché.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Media/CDNAsyncImage.swift` (mécanisme) +
+`Sources/TiinverSwift/Boost/BoostDashboardView.swift`, `BoostDetailView.swift`,
+`Sources/TiinverSwift/Creators/CreatorOfWeekView.swift`,
+`Sources/TiinverSwift/Discover/CommentsView.swift`, `FollowListView.swift`, `SearchView.swift`,
+`Sources/TiinverSwift/Feed/FeedView.swift`, `SuggestionsCarouselView.swift`,
+`Sources/TiinverSwift/Messagerie/ChatBubbleViews.swift`, `ChatSearchView.swift`,
+`ContactPickerView.swift`, `GroupCreationView.swift`, `GroupDetailView.swift`,
+`RosterListView.swift`, `Sources/TiinverSwift/Notifications/NotificationsListView.swift`,
+`Sources/TiinverSwift/Profile/ProfileView.swift` (16 fichiers d'appel + 1 fichier de mécanisme).
+
+**Résultat CI** : commit `63039ff`, push confirmé (`cf542ca..63039ff main -> main`), run
+`32685087464` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel IMPÉRATIF, changement le plus risqué visuellement de tout
+ce cycle P1 (17 fichiers, 25 sites d'appel) : confirmer sur chacun des 16 écrans touchés que les
+images restent nettes à leur taille d'affichage (pas de flou perceptible dû à un `targetSize` trop
+petit ni de recadrage inattendu), et profiler Feed/grilles à défilement rapide via
+Instruments/Memory Graph pour confirmer la baisse de pic mémoire attendue.

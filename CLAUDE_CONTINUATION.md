@@ -11,7 +11,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
 Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS
-[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030/056/064/059/068 traités])
+[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030/056/064/059/068/073 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -411,22 +411,40 @@ laissés inchangés, fidèles à leur source. Détail complet dans `PROGRESS_V4.
 appareil/session pendant que l'écran Retrait est ouvert, confirmer la mise à jour sans blocage
 visuel du formulaire).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-18 terminé (vérifié/corrigé/documenté/commité/CI verte).
-Enchaîner **automatiquement** sur **V4-F-073** (Performance-Memory — `CDNAsyncImage` décode chaque
-image CDN à pleine résolution, sans sous-échantillonnage : `Media/CDNAsyncImage.swift:54-82`,
-`UIImage(data: data)` sur les octets bruts téléchargés, aucune option `ImageIO`/`CGImageSource` de
-miniature, aucun paramètre de taille cible, sur les 18 sites d'appel confirmés [Feed/Profile/Chat/
-Notifications/Recherche/Commentaires] ; Android — `ChargerImages.java:92-134,201-292,325-552` —
-CHAQUE chargeur Glide utilise `.override(largeur,hauteur)`, décodage sous-échantillonné dès la
-source — mémoire/CPU pic élevés sur tout écran affichant plusieurs images à la fois [Feed, grilles,
-listes de commentaires/notifications], un avatar affiché à 32×32pt décode quand même à sa
-résolution CDN complète — recommandation : ajouter un paramètre `targetSize` à `CDNAsyncImage`,
-décoder via `CGImageSourceCreateThumbnailAtIndex` dimensionné à la taille d'affichage réelle sur
-chacun des 18 sites d'appel, à l'image des valeurs `.override()` par contexte d'Android — **lot
-plus large que les précédents, prévoir de lister les 18 sites d'appel exhaustivement par `grep
-CDNAsyncImage(` avant toute modification, et vérifier la taille d'affichage réelle de chacun avant
-de choisir son `targetSize`**), puis V4-F-021→027→019→003 (Social→Groups→Navigation, voir
-`MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de vérité :
+**Lot P1-19 traité (V4-F-073)** — Performance-Memory, `CDNAsyncImage` décodait chaque image CDN à
+pleine résolution. Vérifié dans `ChargerImages.java` (entier) : CHAQUE chargeur Glide
+sous-échantillonne dès la source (`.override(200)`/`.override(400)`/`.override(width,height)`) —
+`glidLoadImageRequireAuth` (avec le même header `Referer` que `CDNAsyncImage`, donc l'équivalent
+Android direct) prend `width`/`height` en PARAMÈTRES fournis par chaque appelant. Côté iOS,
+`grep CDNAsyncImage(` recompté au moment de ce lot → **25 occurrences dans 16 fichiers** (l'audit
+en citait 18 — écart dû à la croissance du projet entre la Phase A et ce lot, notamment
+V4-F-007/V4-F-030 de ce même cycle) — les 25 occurrences ACTUELLES ont toutes été traitées.
+Corrigé : nouveau paramètre `targetSize: CGSize?` sur les 2 signatures d'`init` de `CDNAsyncImage`,
+décodage via `CGImageSourceCreateThumbnailAtIndex` (sous-échantillonne dès la source, jamais un
+décodage complet suivi d'un redimensionnement) quand fourni, repli inchangé sur `UIImage(data:)`
+sinon. Les 25 sites migrés avec leur taille réelle : avatars fixes (32 à 84pt selon l'écran),
+bulles média chat (220pt), grilles Feed/Profile/Search (largeur de colonne dérivée du nombre de
+colonnes réel : 2 pour `FeedGridCell` partagée Feed/Hashtag, 3 pour Profile/Search), 2 arrière-plans
+plein écran (taille écran, pas de borne plus petite disponible). Flux frères vérifiés :
+`AIChatView.swift` (seul autre `AsyncImage(` du projet) hors CDN Tiinver, non touché. Détail
+complet dans `PROGRESS_V4.md`, Lot P1-19. **Commit `63039ff`, CI verte confirmée (run
+`32685087464`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel IMPÉRATIF,
+changement le plus risqué visuellement de ce cycle P1 — 17 fichiers, 25 sites : confirmer la
+netteté sur chacun des 16 écrans touchés, profiler via Instruments/Memory Graph).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-19 terminé (vérifié/corrigé/documenté/commité/CI verte).
+Enchaîner **automatiquement** sur **V4-F-021** (Groups / Social — les motifs de signalement
+affichés depuis Profile ne correspondent pas à la vraie liste Android :
+`Discover/ReportView.swift:19` [liste de 6 items inventée, "Spam"/"Autre" absents d'Android] ;
+Android — `res/values/strings.xml:516-525` [`report_setting_array`, 8 items] — **la bonne liste à 8
+items existe DÉJÀ ailleurs dans le projet iOS**, `Feed/FeedView.swift:250-253` [utilisée pour un
+AUTRE flux de signalement] — `ReportView` [seul point d'entrée réel, depuis Profile] omet
+Nudité/Vente non autorisée/Discours de haine/Moins de 13 ans — les catégories envoyées au backend
+pour un signalement de profil ne correspondent pas à la taxonomie de modération attendue —
+recommandation : remplacer la liste de `ReportView.swift` par celle déjà correcte de
+`FeedView.swift:250-253`, idéalement factoriser en une seule constante partagée), puis
+V4-F-027→019→003 (Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding
+complet). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---

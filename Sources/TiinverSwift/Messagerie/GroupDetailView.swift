@@ -46,6 +46,12 @@ struct GroupDetailView: View {
     @State private var showLeaveConfirm = false
     @State private var memberActionTarget: GroupMember?
     @State private var showInviteShare = false
+    /// **Ajouté le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-022, Phase B P2)** — port de
+    /// `GroupDetailActivity.onOptionsItemSelected` (`R.id.report`, `menu_group.xml:12-15`) :
+    /// visible à TOUT membre (pas de garde admin sur cet item précis de menu, contrairement à
+    /// `change_subject`). `ReportView` supportait déjà `reportType: "group"` mais n'était jamais
+    /// instanciée depuis cet écran — gap de câblage pur.
+    @State private var showReport = false
     /// **Ajouté le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-019, Phase B P1)** — port de
     /// `SettingGroupMessageFragmant.showMemberIsNotAdminDialog` (`action_on_members_group_no_admin`,
     /// `strings.xml:453-455`, un seul item "Message") : dialogue à option unique proposé à un
@@ -138,6 +144,16 @@ struct GroupDetailView: View {
         .searchable(text: $memberSearchText, prompt: "Rechercher un membre")
         .task { await loadMembers() }
         .refreshable { await loadMembers() }
+        // Port de `menu_group.xml`/`GroupDetailActivity.onOptionsItemSelected` (`R.id.report`) —
+        // V4-F-022.
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Signaler le groupe", systemImage: "flag") { showReport = true }
+            }
+        }
+        .navigationDestination(isPresented: $showReport) {
+            ReportView(targetId: groupId, username: groupName, reportType: "group")
+        }
         .sheet(isPresented: $showAddMember) {
             AddGroupMemberView(groupId: groupId, existingMemberIds: Set(members.map(\.userId))) {
                 Task { await loadMembers() }

@@ -242,6 +242,18 @@ struct TimelineView: View {
                     state.scrub(toFrame: model.playheadFrame)
                 case .pan(let scrollFramesAtDown):
                     model.pan(scrollFramesAtDown: scrollFramesAtDown, deltaPx: value.translation.width)
+                    // **Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-051, Phase B P2)**
+                    // — port de `onPlayheadMoved` (`AnimemesCompound.java:1417-1426`), appelé par
+                    // Android pour LE PAN ET le scrub (`TimelineView.java:938-954`, branche
+                    // horizontale du mode PAN) : `mView.seek(frame)` — le moteur de lecture n'est
+                    // PAS resynchronisé automatiquement par un simple déplacement du playhead visuel.
+                    // Avant ce correctif, seul `.scrub` appelait `state.scrub(toFrame:)` ; `.pan`
+                    // mettait à jour UNIQUEMENT `model.playheadFrame` (affichage), jamais
+                    // `engine.totalFrame` réel — `Play` pouvait reprendre depuis une frame périmée
+                    // après un pan. Même appel que `.scrub` ci-dessus, réutilisé tel quel (pas une
+                    // 2ᵉ implémentation) — `model.pan(...)` a déjà mis à jour `playheadFrame` juste
+                    // au-dessus, lu ici à jour.
+                    state.scrub(toFrame: model.playheadFrame)
                 case .dragItem(let id, let startDown, let endDown, let track, let startX):
                     let dxFrame = Int(((value.location.x - startX) / model.pxPerFrame).rounded())
                     let newTrack = model.trackAtY(value.location.y)

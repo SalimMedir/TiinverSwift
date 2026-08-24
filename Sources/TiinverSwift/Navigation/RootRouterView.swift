@@ -108,8 +108,22 @@ struct RootRouterView: View {
         }
     }
 
+    /// **Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-001, Phase B P1)** — cette
+    /// fonction faisait `_ = await TiinverFirebaseConfigManager.shared.fetchAndActivate()` (un
+    /// VRAI appel réseau, attendu) AVANT de lire `expireDay`/`expireMonth`/`expireYear` et de lever
+    /// `configChecked`, bloquant l'écran racine ENTIER (Home ET Login, `body` reste sur
+    /// `ProgressView()` tant que `!configChecked`) jusqu'à ~60s sur réseau lent/absent. Vérifié dans
+    /// `SplashActivity.navigateAfterConfig` (`SplashActivity.java:80-122`, lu en entier) : Android
+    /// décide Home/Login/UpdateApp de façon SYNCHRONE à partir de `FirebaseConfigManager.
+    /// getInstance()` — un wrapper dont `getExpireDay()`/etc. lisent le CACHE LOCAL du SDK Remote
+    /// Config (valeurs du dernier fetch réussi, ou les défauts XML au tout premier lancement via
+    /// `setDefaultsAsync`, appliqués SYNCHRONEMENT à l'init malgré le nom) — ZÉRO I/O réseau à cet
+    /// instant. `config.fetchAndActivate()` (SANS listener) n'est appelé qu'APRÈS la navigation,
+    /// pour la PROCHAINE ouverture, jamais attendu. `RemoteConfig.setDefaults(fromPlist:)`
+    /// (`FirebaseConfigManager.swift:24`) est le même mécanisme synchrone côté iOS — lire
+    /// `expireDay`/etc. ne nécessite donc PAS d'attendre `fetchAndActivate()` d'abord, exactement
+    /// comme Android.
     private func checkForceUpdate() async {
-        _ = await TiinverFirebaseConfigManager.shared.fetchAndActivate()
         let config = TiinverFirebaseConfigManager.shared
 
         var expiryComponents = DateComponents()
@@ -145,5 +159,10 @@ struct RootRouterView: View {
             forceUpdateRequired = Date() > expiryDate
         }
         configChecked = true
+
+        // Port de `config.fetchAndActivate()` (`SplashActivity.java:85`, sans listener, appelé
+        // APRÈS la navigation) — rafraîchit le cache local pour la PROCHAINE ouverture, jamais
+        // attendu par CETTE ouverture (voir doc de tête de fonction).
+        Task { _ = await config.fetchAndActivate() }
     }
 }

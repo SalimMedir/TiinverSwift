@@ -2,9 +2,10 @@
 
 Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
-**État actuel (2026-08-23) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
+**État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
-V4-F-048, V4-F-049 clos. Prochain : V4-F-050 (Animems lock/visibility — même rigueur requise).**
+V4-F-048, V4-F-049, V4-F-050 clos. Les 3 findings Animems à rigueur renforcée sont désormais tous
+clos. Prochain : V4-F-001.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -998,3 +999,96 @@ de sélection) ; taper à nouveau DESSUS (confirmer la suppression ET que le can
 la valeur interpolée mise à jour) ; sélectionner un keyframe puis taper sur un AUTRE (confirmer un
 simple changement de sélection, PAS de suppression accidentelle) ; vérifier qu'un glissement/
 redimensionnement d'item de timeline reste inchangé (aucune régression sur les modes existants).
+
+## 2026-08-23/24 — Phase B V4 — Lot P1-10 : V4-F-050 (Animems-UI — icônes verrou/visibilité par
+calque totalement absentes, aucune protection au niveau geste)
+
+**Commits** : `8ab3088` (correctif) + `1ff1032` (correctif CI, voir incident ci-dessous) — CI **run
+32679329863, conclusion: success**.
+
+### Rigueur renforcée appliquée — recommandation initiale de l'audit corrigée par relecture directe
+
+`MemesView2.java`, lu en entier pour ce lot — la RECOMMANDATION de l'audit citait
+`AnimemesGestureController.isPoint`/`touchDown`/`scale`/`rotate` comme sites de garde à ajouter.
+Vérification directe : SEULS 3 sites réels testent `.isLocked()` dans `MemesView2.java` :
+```java
+// GestureListener.onScroll (translation à un doigt) — ligne 1577-1579
+if (objectInAction >= 0 && !composer.getLayers().isEmpty()
+        && !composer.getLayers().get(objectInAction).isLocked())
+{ translation(-dx, -dy, objectInAction); invalidate(); }
+
+// ScaleListener.onScale — ligne 1587
+if (objectInAction >= 0 && !composer.getLayers().get(objectInAction).isLocked()) { ... }
+
+// onTouchEvent, boucle de dispatch par calque — lignes 1604-1609
+for (int i = 0; i < composer.getLayers().size(); i++)
+    if (!composer.getLayers().get(i).isLocked()
+            && composer.getLayers().get(i).getObjectType() != AnimationObjectData.Type.PATH)
+        executeTouchEvent(event, i);   // rotate() est appelée DEPUIS cette méthode
+```
+`touchDown`/`isPointInsideObject` (`onSingleTapUp`, `onLongPress`) NE TESTENT `.isLocked()` NULLE
+PART — confirmé par grep exhaustif du fichier. Un calque verrouillé reste donc TAPABLE/sélectionnable
+côté Android ; seule la manipulation réelle (translation/échelle/rotation) est bloquée. La
+recommandation de l'audit était donc imprécise sur ce point précis — corrigée par la vérification
+directe, conformément à la méthode ("l'audit est une hypothèse à vérifier, pas une vérité").
+
+Visibilité vérifiée séparément : `grep isVisible()/.visibility` dans `MemesView2.java` → toutes les
+occurrences sont dans le code de RENDU, aucune dans le code de geste — la visibilité ne gate JAMAIS
+le geste côté Android non plus (déjà correctement traité côté iOS pour le rendu,
+`guard obj.visible else { continue }` dans `AnimemesEditorView.canvasArea`).
+
+### Correctif appliqué
+
+1. `AnimemesEditorState.toggleLocked(layerId:)`/`toggleVisible(layerId:)` (nouveau) — port de
+   `onTrackIconClicked` (`AnimemesCompound.java:1645-1666`), `version += 1` (structurel, fidèle à
+   `mView.prepare()+applyInterpolation()+postInvalidate()`).
+2. Garde `!layers[idx].locked` ajoutée à `dragMoved`/`rotationChanged`/`scaleChanged` UNIQUEMENT
+   (PAS `selectObject`, fidèle à la vérification ci-dessus).
+3. `TimelineViewModel` : icônes verrou/œil lues DIRECTEMENT depuis `items`/`layers` (déjà porteurs
+   de `.locked`/`.visibility`/`AnimationObjectData.locked/.visible`) plutôt que le registre
+   générique `trackIcons`/`addTrackIcon` déjà présent mais orphelin — celui-ci réservé à la 3ᵉ icône
+   Android (`id3`, "compose group"), fonctionnalité SÉPARÉE déjà différée ailleurs dans ce portage.
+   Géométrie/hit-test port fidèle de `drawTrackIcons` (`iconSize=20dp, padding=8dp`,
+   `touchPadH=4dp/V=8dp`).
+4. `TimelineView` : nouveau `DragMode.iconTap` (port du `return true` d'`onDown` après un tap
+   d'icône), hit-test icône inséré dans `combinedDragGesture` ENTRE le hit-test keyframe (lot
+   précédent) et le repli `resolveMode` — même ordre que `onDown` Android
+   (keyframe → icône → ruler/scrub → item). Icônes dessinées dans le panneau gauche du `Canvas`
+   (jusqu'ici entièrement vide côté iOS).
+
+### Incident CI (corrigé dans la foulée)
+
+Le 1er commit (`8ab3088`) a échoué en CI : `TimelineView.swift:161:40: error: no exact matches in
+call to instance method 'resolve'` — `context.resolve(Image(systemName:).foregroundColor(...))` ne
+type-check pas sous le SDK Xcode 16.2 du runner (`Image.foregroundColor` n'y est pas garanti de
+type `Image` pour cette surcharge de `resolve`). Corrigé (`1ff1032`) en dessinant via
+`Text(Image(systemName:))` + `context.draw(_:at:)` directement — MÊME motif déjà éprouvé et
+compilant dans ce fichier (`drawRuler`, labels de secondes de la règle), sans passer par
+`resolve()`.
+
+### Flux frères vérifiés
+
+`grep -n "TrackIconKind\|iconScreenRect\|hitTestTrackIcon"` → un seul site d'appel pour chacun,
+cohérent. `.onEnded` de `combinedDragGesture` vérifié : `.iconTap` ne correspond à aucun
+`if case .dragItem/.resizeLeft/.resizeRight`. Registre `trackIcons`/`addTrackIcon` existant
+délibérément NON touché (réservé à la fonctionnalité "compose group" séparée).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/TimelineViewModel.swift`,
+`Sources/TiinverSwift/Animems/AnimemesEditorState.swift`,
+`Sources/TiinverSwift/Animems/TimelineView.swift`.
+
+**Résultat CI** : run `32678716272` → `failure` (voir incident ci-dessus) ; run `32679329863`
+(après correctif) → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée après correctif). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : taper l'icône verrou (confirmer la bascule visuelle
+ET qu'un glissement/pincement/rotation du calque est ensuite BLOQUÉ), taper l'icône œil (confirmer
+la bascule ET le masquage réel du rendu du calque), confirmer qu'un calque verrouillé reste
+TAPABLE/sélectionnable (pas totalement exclu de l'interaction, fidèle à Android).
+
+---
+
+**Backlog P1 Animems (3 findings à rigueur renforcée, V4-F-046/048/049/050 — 4 lots car 046+048 sont
+2 findings distincts malgré la numérotation proche) désormais ENTIÈREMENT clos**, chacun avec une
+chaîne complète tracée sur les deux plateformes avant correction, conformément à la consigne
+explicite de l'utilisateur pour ce domaine. Prochain : V4-F-001, retour à la liste P1 standard.

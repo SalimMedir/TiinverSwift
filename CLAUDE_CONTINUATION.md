@@ -9,9 +9,10 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-23 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
+# CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
 Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS
-[V4-F-020/032/033/042/038/017/046/048/049 traités])
+[V4-F-020/032/033/042/038/017/046/048/049/050 traités — les 3 findings Animems à rigueur renforcée
+sont désormais TOUS clos])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -250,19 +251,39 @@ savoir quel keyframe est armé pour suppression. Détail complet dans `PROGRESS_
 `COMPLETE_PARITY_VALIDATED` (test réel requis : tap→contour blanc, tap à nouveau→suppression +
 canevas mis à jour, tap sur un AUTRE keyframe→simple changement de sélection).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-9 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur **V4-F-050** (Animems — icônes verrou/visibilité par calque totalement
-absentes, aucune protection au niveau geste : AUCUNE UI côté iOS [`TimelineView.drawItem` ne dessine
-que clip/label/poignées], `obj.locked` jamais basculé par une action utilisateur [lu seulement par
-import/export de template], `AnimemesGestureController` ne teste JAMAIS `.locked` — Android,
-`AnimemesCompound.java:1639-1681` [icônes verrou+œil par ligne de timeline] +
-`MemesView2.java:1577-1608` [gestes tap/scroll/scale IGNORENT explicitement un calque verrouillé] —
-ajouter les icônes verrou/visibilité par ligne de `TimelineView`, câblées à de vraies actions, ET
-faire tester `.locked` par CHAQUE point d'entrée de geste pertinent, pas seulement ajouter les
-icônes). **MÊME RIGUEUR REQUISE, PARTICULIÈREMENT CRITIQUE ICI** : ce finding touche potentiellement
-PLUSIEURS points d'entrée de geste distincts (tap/scroll/scale/drag) — vérifier CHACUN séparément
-contre `MemesView2.java:1577-1608`, ne pas supposer qu'un seul garde suffit à tous les protéger. Puis
-V4-F-001→002→029→030→056→064→059→068→073→021→027→019→003 (Session/DeepLinks→Feed-publish→Gallery→
+**Lot P1-10 traité (V4-F-050)** — Animems, icônes verrou/visibilité par calque totalement absentes,
+aucune protection au niveau geste. **DERNIER des 3 findings Animems à rigueur renforcée — tous
+CLOS.** Recommandation initiale de l'audit CORRIGÉE par relecture directe de `MemesView2.java` : la
+garde `.isLocked()` n'existe QUE dans 3 sites réels (`onScroll`, `onScale`, la boucle de dispatch
+`onTouchEvent` dont `rotate()` dépend via `executeTouchEvent`) — JAMAIS dans `touchDown`/
+`isPointInsideObject` (sélectionner un calque verrouillé reste possible côté Android, seule la
+manipulation est bloquée). Visibilité confirmée séparément : ne gate JAMAIS le geste sur Android non
+plus (rendu uniquement, déjà correct côté iOS). Corrigé fidèlement : `toggleLocked`/`toggleVisible`
+(nouveau, `AnimemesEditorState`, `version += 1`) ; garde `!layers[idx].locked` ajoutée à
+`dragMoved`/`rotationChanged`/`scaleChanged` UNIQUEMENT (pas `selectObject`) ; icônes verrou/œil
+dessinées dans le panneau gauche de `TimelineView` (jusqu'ici vide), lues directement depuis
+`AnimationObjectData.locked/.visible` (pas le registre générique `trackIcons` déjà présent mais
+réservé à la 3ᵉ icône Android "compose group", séparée et déjà différée) ; nouveau `DragMode.iconTap`
+inséré dans `combinedDragGesture` entre le hit-test keyframe et le repli `resolveMode`, même ordre
+qu'Android. **Incident CI** : 1er commit (`8ab3088`) a échoué (`Image.foregroundColor`/`resolve`
+ambigu sous Xcode 16.2) — corrigé (`1ff1032`) via `Text(Image(systemName:))` +
+`context.draw(_:at:)`, motif déjà éprouvé dans ce même fichier (`drawRuler`). Détail complet dans
+`PROGRESS_V4.md`, Lot P1-10. **CI verte confirmée (run `32679329863`)** — `BUILD_VALIDATED`, PAS
+`COMPLETE_PARITY_VALIDATED` (test réel requis : icône verrou → bascule + blocage réel du geste ;
+icône œil → bascule + masquage réel ; calque verrouillé reste sélectionnable).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-10 terminé (vérifié/corrigé/documenté/commité/CI verte). Backlog
+P0 ET les 3 findings Animems à rigueur renforcée sont maintenant TOUS clos. Enchaîner
+**automatiquement** sur **V4-F-001** (Session-Auth — cold start bloqué derrière un fetch réseau
+Firebase Remote Config, contrairement à Android : `RootRouterView.swift:31-60,111-148` affiche un
+`ProgressView()` tant que `!configChecked`, mis à `true` seulement APRÈS un `await
+fetchAndActivate()` réel [réseau, jusqu'à ~60s de timeout SDK sur réseau lent/absent], sans repli sur
+cache ; Android [`SplashActivity.java:80-91,98-122`, `FirebaseConfigManager.java:37-56,145-154`]
+décide Home/Login de façon SYNCHRONE à partir du cache Remote Config local + `SessionManager.
+getUser()` [lecture SharedPreferences synchrone, zéro I/O réseau], `fetchAndActivate()` n'étant
+appelé qu'APRÈS la navigation, pour la PROCHAINE ouverture — faire décider `RootRouterView` à partir
+du cache/session locale immédiatement, lancer `fetchAndActivate()` en arrière-plan sans bloquer),
+puis V4-F-002→029→030→056→064→059→068→073→021→027→019→003 (Session/DeepLinks→Feed-publish→Gallery→
 BunnyCDN→Wallet→Performance→Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque
 finding complet). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.

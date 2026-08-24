@@ -1072,6 +1072,26 @@ travaille sur d'autres, ni de masquer temporairement un calque.
 RECOMMANDATION : Ajouter les icônes verrou/visibilité par ligne de `TimelineView`, câblées à de
 nouvelles méthodes `toggleLocked(id:)`/`toggleVisible(id:)`, et ajouter une garde `obj.locked` en
 sortie précoce dans `AnimemesGestureController.isPoint`/`touchDown`/`scale`/`rotate`.
+STATUT : BUILD_VALIDATED (2026-08-23/24, commits 8ab3088 + 1ff1032 [correctif CI], CI run 32679329863
+succès). Chaîne complète tracée sur les DEUX architectures Android AVANT câblage — la recommandation
+initiale de l'audit était imprécise (citait `touchDown`/`isPoint` comme sites de garde) : relecture
+directe de `MemesView2.java` confirme QUE 3 sites réels vérifient `.isLocked()`
+(`onScroll`/`onScale`/la boucle `onTouchEvent` dont `executeTouchEvent`→`rotate` dépend), AUCUN dans
+`touchDown`/`isPointInsideObject` — un calque verrouillé reste donc SÉLECTIONNABLE côté Android,
+seule la manipulation réelle est bloquée. Reproduit fidèlement : garde `!layers[idx].locked` ajoutée
+à `dragMoved`/`rotationChanged`/`scaleChanged` (PAS `selectObject`). Icônes verrou/œil dessinées dans
+le panneau gauche de `TimelineView` (jusqu'ici vide), lues directement depuis
+`AnimationObjectData.locked/.visible` (chemin plus simple que le registre générique
+`trackIcons`/`addTrackIcon` déjà présent mais orphelin, réservé à la 3ᵉ icône Android "compose
+group", fonctionnalité séparée déjà différée ailleurs). `toggleLocked`/`toggleVisible` (nouveau)
+bascule `version`, fidèle à `mView.prepare()+applyInterpolation()+postInvalidate()` Android après
+CHAQUE clic d'icône. **Incident CI** : 1er commit (8ab3088) a échoué en CI
+(`Image.foregroundColor`/`resolve` ambigu sous Xcode 16.2) — corrigé en 2ᵉ commit (1ff1032) en
+dessinant via `Text(Image(systemName:))` (motif déjà éprouvé dans ce fichier, `drawRuler`) plutôt
+que `context.resolve(Image(...))`. DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED : taper
+l'icône verrou (confirmer bascule visuelle + qu'un glissement/pincement/rotation du calque est
+ensuite BLOQUÉ), taper l'icône œil (confirmer bascule + masquage réel du rendu), confirmer qu'un
+calque verrouillé reste TAPABLE/sélectionnable (pas totalement exclu de l'interaction).
 ```
 
 ```

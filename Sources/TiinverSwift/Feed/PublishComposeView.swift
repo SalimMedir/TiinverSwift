@@ -114,20 +114,36 @@ struct PublishComposeView: View {
                 }
             }
         case .freeformCropping:
-            if case .photo(let image) = media, let cgImage = image.cgImage {
-                FreeformCropStepView(
-                    sourceImage: cgImage,
-                    path: $freeformPath,
-                    onValidate: { viewSize in
-                        if let cropped = FreeformCropView.croppedImage(source: cgImage, path: freeformPath, viewSize: viewSize) {
-                            croppedImage = UIImage(cgImage: cropped, scale: image.scale, orientation: image.imageOrientation)
-                        } else {
-                            croppedImage = image
-                        }
-                        stage = .tools
-                    },
-                    onCancel: { stage = .cropModeChoice }
-                )
+            // Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-056, Phase B P1) : le mode
+            // rect/oval (`.cropping`, ci-dessus) passe par `TOCropViewController`, qui respecte
+            // `imageOrientation` — seul CE mode opérait directement sur `image.cgImage` (buffer
+            // brut, pixels non tournés), dessiné ensuite via `Image(decorative:)` dans
+            // `FreeformCropView.body`, qui IGNORE `imageOrientation` (contrairement à
+            // `Image(uiImage:)`). Une photo portrait EXIF (`imageOrientation != .up`) apparaissait
+            // donc de côté/en miroir pendant le tracé ET dans le résultat composé. Normalise
+            // d'abord vers `.up` (mêmes pixels que verrait Android après `rotateBitmapByExif`,
+            // `BitmapLoadingWorkerTask.java:76`, appliqué en amont pour TOUS les sous-modes de
+            // recadrage) avant d'extraire le `cgImage` passé à `FreeformCropStepView`.
+            if case .photo(let image) = media {
+                let normalizedImage = image.normalizedToUpOrientation()
+                if let cgImage = normalizedImage.cgImage {
+                    FreeformCropStepView(
+                        sourceImage: cgImage,
+                        path: $freeformPath,
+                        onValidate: { viewSize in
+                            if let cropped = FreeformCropView.croppedImage(source: cgImage, path: freeformPath, viewSize: viewSize) {
+                                // Source déjà normalisée à `.up` : le résultat découpé l'est aussi,
+                                // pas besoin de réappliquer `image.imageOrientation` (qui
+                                // double-tournerait le résultat).
+                                croppedImage = UIImage(cgImage: cropped, scale: normalizedImage.scale, orientation: .up)
+                            } else {
+                                croppedImage = image
+                            }
+                            stage = .tools
+                        },
+                        onCancel: { stage = .cropModeChoice }
+                    )
+                }
             }
         case .tools:
             if let croppedImage {
@@ -449,6 +465,22 @@ private struct FreeformCropStepView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbarBackground(.black, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+        }
+    }
+}
+
+/// V4-F-056 — redessine le bitmap selon `imageOrientation` (`draw(in:)` la respecte, contrairement
+/// à un accès direct à `.cgImage`) pour obtenir un buffer dont les pixels sont déjà dans le bon
+/// sens. Nécessaire uniquement pour le chemin `FreeformCropView` (`Canvas`/`Image(decorative:)`,
+/// qui ignore `imageOrientation`) — le mode rect/oval (`TOCropViewController`) n'en a pas besoin,
+/// il respecte déjà l'orientation nativement.
+private extension UIImage {
+    func normalizedToUpOrientation() -> UIImage {
+        guard imageOrientation != .up else { return self }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = scale
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            draw(in: CGRect(origin: .zero, size: size))
         }
     }
 }

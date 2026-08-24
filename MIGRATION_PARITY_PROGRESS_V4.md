@@ -3,8 +3,8 @@
 Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
 **État actuel (2026-08-23) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
-(P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038 clos. Prochain :
-V4-F-017.**
+(P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017 clos.
+Prochain : V4-F-046.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -721,3 +721,72 @@ outillage (nécessite un message reçu depuis un pair dans une fenêtre de quelq
 millisecondes) ; test réel suggéré : ralentir artificiellement `messages.page` en debug pour élargir
 la fenêtre, envoyer un message depuis un second appareil pendant ce délai, confirmer qu'il reste
 visible sans fermer/rouvrir la conversation.
+
+## 2026-08-23 — Phase B V4 — Lot P1-6 : V4-F-017 (Settings — toggle confidentialité garde le mauvais
+état visuel en cas d'échec serveur)
+
+**Commit** : `d63c2f6` — CI **run 32675965460, conclusion: success**.
+
+### Vérification Android (avant tout changement)
+
+`setting/SettingPrivacityFragment.java:294-328` (`swichtToPrivate`), lu en entier :
+```java
+td.Post(param, "user", new Callback() {
+    public void onResonse(Context context, int action, JSONObject object) {
+        if (action == 0) {
+            Settings.setStringPreference(...);
+            account_type_switch.setChecked(isChecked);   // confirme la NOUVELLE position
+        }
+        dialog.dismiss();
+    }
+    public void onError(String message) {
+        account_type_switch.setChecked(!isChecked);       // revert à l'ANCIENNE position
+        dialog.dismiss();
+    }
+});
+```
+Point clé vérifié séparément : le listener réseau (`swichtToPrivate`) est câblé sur
+`setOnClickListener` (ligne 174-178), PAS sur `setOnCheckedChangeListener` — `setChecked()` appelé
+programmatiquement (succès ou échec) NE redéclenche PAS `swichtToPrivate`. Un revert Android est donc
+purement visuel, sans second appel réseau.
+
+### Écart iOS constaté (avant correctif) — cause racine plus profonde que prévu
+
+`SettingPrivacyView.save` faisait `try? await ProfileRepository.shared.updateProfileField(...)`,
+avalant toute erreur. Mais en creusant `updateProfileField` elle-même (`ProfileRepository.swift:105-
+107`), cause racine plus profonde : `_ = try await APIClient.shared.post(...)` — discardait la
+réponse SANS jamais vérifier `isBackendSuccess`, donc ne pouvait JAMAIS lever pour un rejet backend
+(HTTP 200, `error:"true"`), seulement pour un échec réseau. Même un `do/catch` correctement écrit
+dans `SettingPrivacyView.save` n'aurait donc PAS attrapé un rejet backend avant ce correctif plus en
+amont.
+
+### Correctif appliqué
+
+1. `ProfileRepository.updateProfileField` vérifie désormais `isBackendSuccess` et lève sinon (même
+   motif que `deleteActivity`/les 7 méthodes de `GroupRepository`, V4-F-020).
+2. `SettingPrivacyView.save` : `do/catch`, revert `isPrivate` sur échec.
+3. Un flag `isReverting` empêche le revert de redéclencher un second appel réseau via
+   `.onChange(of: isPrivate)` — SwiftUI ne distingue pas nativement "tap utilisateur" de "mutation
+   programmatique" comme le fait `setOnClickListener` côté Android ; sans ce flag, revertir
+   `isPrivate` aurait envoyé une requête supplémentaire non désirée (comportement qu'Android n'a
+   jamais).
+
+### Flux frères vérifiés
+
+`grep -n "updateProfileField"` → 9 sites d'appel au total : 8 en `try?`
+(`EditProfileView.swift` ×2, `EditPersonalInformationView.swift` ×7) — AUCUN changement de
+comportement observable, ils ignoraient déjà toute distinction succès/échec ; `CategoryPickerView.
+save` avait DÉJÀ un `do/catch` prêt pour un `throw` qui n'arrivait jamais — bénéficie du correctif
+sans modification de son propre code (un rejet backend sur le changement de catégorie affiche
+désormais réellement `errorText`, comme prévu par son code existant).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Profile/ProfileRepository.swift`,
+`Sources/TiinverSwift/Settings/SettingSubViews.swift`.
+
+**Résultat CI** : run `32675965460` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — nécessite un test réel : couper le réseau (ou provoquer un rejet
+backend), basculer le toggle "Compte privé", confirmer qu'il revient visuellement à son état précédent
+SANS second appel réseau observable (outil d'inspection réseau), et confirmer qu'un changement réussi
+persiste bien après rechargement de l'écran.

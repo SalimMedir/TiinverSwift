@@ -10,7 +10,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 ---
 
 # CURRENT HANDOFF (2026-08-23 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
-Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS [V4-F-020/032/033/042/038 traités])
+Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS [V4-F-020/032/033/042/038/017 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -186,16 +186,37 @@ problème (`items.insert(at: 0)`, jamais de remplacement) — non touché. Déta
 outillage — ralentir `messages.page` en debug pour élargir la fenêtre, envoyer un message depuis un
 second appareil pendant ce délai, confirmer qu'il reste visible sans fermer/rouvrir la conversation).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-5 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur **V4-F-017** (Settings — le toggle de confidentialité [compte privé] garde
-silencieusement le mauvais état visuel en cas d'échec de sauvegarde serveur :
-`SettingSubViews.swift:107-137`, `SettingPrivacyView.save`, `try?` avale l'erreur — Android
-[`SettingPrivacityFragment.java:294-328`, `swichtToPrivate`] remet explicitement le switch à son vrai
-état serveur sur `onError` — ajouter un `do/catch` explicite, revert `isPrivate` + message d'erreur
-sur échec), puis V4-F-046→048→049→050→001→002→029→030→056→064→059→068→073→021→027→019→003
-(Animems→Session/DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→Social→Groups→
-Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de
-vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lot P1-6 traité (V4-F-017)** — Settings, toggle confidentialité gardait le mauvais état visuel en
+cas d'échec serveur. Cause racine plus profonde que le seul `try?` de `SettingPrivacyView.save` :
+`ProfileRepository.updateProfileField` (méthode PARTAGÉE, 9 appelants) discardait la réponse sans
+jamais vérifier `isBackendSuccess` — ne pouvait donc JAMAIS lever sur un rejet backend, seulement sur
+échec réseau. Vérifié dans `SettingPrivacityFragment.swichtToPrivate` (lignes 294-328, entier) :
+`onError` fait `account_type_switch.setChecked(!isChecked)`, ET câblé sur `setOnClickListener` (pas
+`setOnCheckedChangeListener`) donc ce revert NE redéclenche PAS d'appel réseau. Corrigé :
+`updateProfileField` lève désormais correctement (0 changement observable pour les 8 appelants
+`try?` déjà indifférents ; `CategoryPickerView.save`, qui avait déjà un `do/catch` prêt, en bénéficie
+gratuitement) ; `SettingPrivacyView.save` fait `do/catch` + revert `isPrivate` sur échec, avec un
+flag `isReverting` pour empêcher `.onChange(of:)` de SwiftUI (qui, contrairement à `setChecked`
+Android, redéclenche TOUJOURS) d'envoyer un second appel réseau non désiré lors du revert. Détail
+complet dans `PROGRESS_V4.md`, Lot P1-6. **Commit `d63c2f6`, CI verte confirmée (run `32675965460`)**
+— `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : couper le réseau, basculer
+le toggle, confirmer le revert visuel SANS second appel réseau observable).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-6 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur **V4-F-046** (Animems-ImportExport — collision de timestamp PTS entre frame 0
+et frame 1 de la vidéo exportée : `AnimemesExporter.swift:202`,
+`ptsNs = max(frameDurationNs, f * frameDurationNs)` donne EXACTEMENT la même valeur pour `f=0` ET
+`f=1` — aucun échantillon écrit à pts=0 alors que `startSession(atSourceTime: .zero)` fixe le début
+de session à t=0, risque de perte/corruption de la 1ʳᵉ frame ; Android — `MP4Encoder.java:1727,1753`
+— utilise `frameIndex * FRAME_NS`, strictement croissant depuis 0, sans ce `max(...)` — retirer le
+`max(...)`, PTS = simplement `Int64(f) * frameDurationNs`). **RAPPEL EXPLICITE DE L'UTILISATEUR** :
+"sois particulièrement rigoureux [sur Animems]... ne te contente pas de brancher rapidement un
+bouton" — tracer la chaîne complète (état/rendu/export) avant de corriger, ne pas se limiter à la
+seule ligne citée par l'audit. Puis V4-F-048→049→050→001→002→029→030→056→064→059→068→073→021→027→
+019→003 (Animems [zoom/keyframe/lock-visibility]→Session/DeepLinks→Feed-publish→Gallery→BunnyCDN→
+Wallet→Performance→Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding
+complet). Repo Android source de vérité :
+`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

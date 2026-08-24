@@ -381,6 +381,19 @@ toggle sur la nouvelle position jamais persistée, sans aucune indication.
 IMPACT : L'utilisateur croit avoir changé sa confidentialité alors que le serveur n'a jamais reçu le
 changement — état trompeur jusqu'au rechargement de l'écran.
 RECOMMANDATION : `do/catch` explicite ; sur échec, revert `isPrivate` + message d'erreur, comme Android.
+STATUT : BUILD_VALIDATED (2026-08-23, commit d63c2f6, CI run 32675965460 succès). Cause racine réelle
+plus profonde que le seul `try?` de `save` : `ProfileRepository.updateProfileField` (méthode PARTAGÉE,
+9 appelants) discardait la réponse sans jamais vérifier `isBackendSuccess` — ne pouvait donc JAMAIS
+lever sur un rejet backend (HTTP 200, `error:"true"`), seulement sur échec réseau. Corrigée pour lever
+correctement (aucun changement observable pour les 8 appelants `try?` déjà indifférents au résultat ;
+`CategoryPickerView.save`, qui avait DÉJÀ un `do/catch` prêt, bénéficie du correctif au passage).
+`SettingPrivacyView.save` fait maintenant `do/catch` + revert de `isPrivate` sur échec, fidèle à
+`account_type_switch.setChecked(!isChecked)`. Écart iOS/Android identifié et géré : `setChecked`
+Android ne redéclenche PAS le listener de clic, mais `.onChange(of: isPrivate)` SwiftUI redéclenche
+TOUJOURS — un flag `isReverting` évite qu'un revert visuel envoie un second appel réseau non désiré
+(divergence Android absente, comportement observable final identique). DEVICE_TEST_REQUIRED pour
+COMPLETE_PARITY_VALIDATED (couper le réseau ou simuler un rejet serveur, basculer le toggle, confirmer
+qu'il revient à son état précédent SANS second appel réseau visible dans un outil d'inspection).
 ```
 
 ```

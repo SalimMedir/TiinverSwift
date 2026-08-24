@@ -33,9 +33,19 @@ final class NotificationCenterViewModel: ObservableObject {
             }
             let array = try json.jsonArray("notifications")
             try await upsert(array)
+            // **Corrigé (V4-F-072, 2026-08-24)** — port de `NotificationRepository.
+            // fetchNotifications` (lignes 106-113) : Android résout `isRead` par ID EN MÉMOIRE
+            // (`parseNotificationsOptimized`, une seule requête batch AVANT même l'upsert), donc
+            // `triggerSystemNotifications` — bien qu'appelé après `pruneOld()` côté Android aussi —
+            // ne re-requête jamais la base. `triggerSystemNotifications` ici re-requête PAR ID
+            // (`repository.getById`) : appelé APRÈS `pruneOld()`, un id purgé (utilisateur avec
+            // plus de 30 notifications non lues d'un coup) était silencieusement ignoré. Corrigé en
+            // appelant `triggerSystemNotifications` AVANT `pruneOld()` — `upsert` ne touche jamais
+            // `isRead` d'une ligne existante, donc la valeur lue reste identique à ce que
+            // l'approche en mémoire d'Android calculerait, sans risque de purge entre-temps.
+            await triggerSystemNotifications(for: array)
             try await repository.pruneOld()
             await refresh()
-            await triggerSystemNotifications(for: array)
         } catch {
             errorMessage = error.localizedDescription
         }

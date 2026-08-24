@@ -44,7 +44,17 @@ enum LocalNotificationBuilder {
             content.body = "a partagé votre publication" // R.string.share + R.string.yourPublication
         case "comment":
             if payload.payloadType == "gift" {
-                content.body = "vous a envoyé un cadeau en commentaire" // send_you_a_gift/as/comment (émoji/nom du cadeau non résolus ici, catalogue de cadeaux pas encore porté)
+                // **Corrigé (V4-F-071, 2026-08-24)** — port de `NotificationUtils.java:311-319` :
+                // `String.format("%s %s %s %s %s ", send_you_a_gift, emoji, giftName, as, comment)`,
+                // reproduit tel quel y compris la tournure "en tant que commenter" un peu étrange
+                // côté Android (`R.string.as` = "en tant que", `R.string.comment` = "commenter").
+                // `payload.message` porte l'id du cadeau, comme `notificationVO.getMessage()`.
+                // Emoji et nom résolus INDÉPENDAMMENT (comme Android : `getEmojiForStringId`
+                // retombe sur 🎁, `nameRes == 0` retombe sur `R.string.gift` = "cadeau"), jamais un
+                // repli "tout ou rien" — un id de cadeau inconnu affiche quand même 🎁 + "cadeau".
+                let emoji = GiftCatalog.emoji(for: payload.message)
+                let name = GiftCatalog.resolve(payload.message)?.name ?? "cadeau"
+                content.body = "vous a envoyé un cadeau \(emoji) \(name) en tant que commenter"
             } else {
                 content.body = "a commenté votre publication : « \(payload.message ?? "") »" // unCmt + yourPublication
             }
@@ -84,7 +94,13 @@ enum LocalNotificationBuilder {
         case "gif":
             content.body = "GIF" // R.string.gif
         case "gift":
-            content.body = "vous a envoyé un cadeau" // catalogue de cadeaux (emoji/nom) pas encore porté
+            // **Corrigé (V4-F-071, 2026-08-24)** — port de `NotificationUtils.java:123-129` :
+            // `String.format("%s %s ", emoji, giftName)`. `payload.message` porte l'id du cadeau,
+            // comme `notificationVO.getMessage()`. Même repli indépendant emoji/nom qu'en commentaire
+            // ci-dessus.
+            let emoji = GiftCatalog.emoji(for: payload.message)
+            let name = GiftCatalog.resolve(payload.message)?.name ?? "cadeau"
+            content.body = "\(emoji) \(name)"
         case "sticker":
             content.body = "Sticker" // R.string.sticker
         case "photo":

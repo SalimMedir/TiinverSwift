@@ -1,10 +1,15 @@
 import SwiftUI
 
 /// Port de `report/Report.java` (172, entier) + `models/report/ReportData.java` (95, entier) —
-/// signalement d'un utilisateur ou d'un groupe. **Motifs de signalement (`R.array.
-/// report_setting_array`, fichier ressource) PAS lus** — liste standard reconstruite (mêmes
-/// catégories que la plupart des réseaux sociaux), à faire valider/ajuster contre la vraie liste
-/// Android avant mise en production plutôt que supposée figée.
+/// signalement d'un utilisateur ou d'un groupe.
+///
+/// **Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-021, Phase B P1)** — les motifs
+/// affichés ici ("Spam"/"Contenu inapproprié"/.../"Autre", 6 items inventés) ne correspondaient
+/// PAS à `R.array.report_setting_array` (`strings.xml:516-525`, 8 motifs réels) : "Spam"/"Autre"
+/// n'existent pas côté Android, et Nudité/Vente non autorisée/Discours de haine/Moins de 13 ans en
+/// étaient absents — alors que cette même liste, correcte, existait DÉJÀ ailleurs dans le projet
+/// iOS (`feedReportReasons`, `FeedView.swift`, utilisée par le menu "..." du Feed) sans jamais
+/// avoir été réutilisée ici, le seul point d'entrée réel du signalement DEPUIS Profile.
 struct ReportView: View {
     let targetId: String
     let username: String
@@ -14,12 +19,8 @@ struct ReportView: View {
     @State private var isSubmitting = false
     @State private var didSend = false
 
-    /// Reconstruit faute d'avoir lu `R.array.report_setting_array` — motifs usuels, PAS vérifiés
-    /// mot pour mot contre la ressource Android réelle.
-    private let reasons = ["Spam", "Contenu inapproprié", "Harcèlement", "Usurpation d'identité", "Fausses informations", "Autre"]
-
     var body: some View {
-        List(reasons, id: \.self) { reason in
+        List(feedReportReasons, id: \.self) { reason in
             Button(reason) { confirmingReason = reason }
         }
         .navigationTitle("Signaler")

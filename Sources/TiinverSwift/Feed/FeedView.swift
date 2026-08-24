@@ -21,7 +21,14 @@ import UIKit
 /// "..." de la grille) et `FeedDetailPagerView` (menu "..." du plein écran), deux implémentations
 /// Android SÉPARÉES (`MainFragment.OnclickMoreExpand` / `ProfileFeedFragment`+`FullScreenMedia`+
 /// `HashtagProfile.OnclickMoreExpand`) qui utilisent néanmoins la MÊME liste de motifs.
-private let feedReportReasons = [
+///
+/// Accès interne (pas `private`) — **corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md
+/// V4-F-021, Phase B P1)** : réutilisée par `ReportView` (seul point d'entrée réel du
+/// signalement DEPUIS Profile), qui avait sa propre liste de 6 motifs inventés
+/// ("Spam"/"Autre" absents d'Android, 4 vrais motifs manquants) au lieu de cette liste déjà
+/// correcte — même motif de partage de constante que `UploadProgressDelegate` (V4-F-064) plutôt
+/// que dupliquer une 2ᵉ liste divergente.
+let feedReportReasons = [
     "Nudité", "Violence", "Harcèlement", "Fausse information",
     "Vente non autorisée", "Discours de haine", "Terrorisme", "Moins de 13 ans",
 ]

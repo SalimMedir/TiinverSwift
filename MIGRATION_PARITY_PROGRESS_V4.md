@@ -7,8 +7,8 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064,
 V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027, V4-F-019 clos. V4-F-003 documenté `BLOQUÉ` (hors
 dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE.** Backlog P2 EN
-COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014
-(`BUILD_VALIDATED`) clos. Prochain : V4-F-022.**
+COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014/022
+(`BUILD_VALIDATED`) clos. Prochain : V4-F-025.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -2319,3 +2319,55 @@ place).
 **Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
 `COMPLETE_PARITY_VALIDATED` — test réel requis : bloquer un utilisateur, rouvrir son profil,
 confirmer via inspection réseau (proxy/Instruments) qu'aucune requête `feedtimeline` n'est émise.
+
+## 2026-08-24 — Phase B V4 — Lot P2-4 : V4-F-022 (Groups / Social — action "Signaler le groupe" entièrement absente)
+
+### Vérification Android
+
+`GroupDetailActivity.onOptionsItemSelected` (lignes 204-215) :
+```java
+if (item.getItemId() == R.id.report) {
+    Intent r = new Intent(getApplicationContext(), Report.class);
+    r.putExtra("type", "group");
+    r.putExtra("groupId", groupId);
+    r.putExtra("token", groupToken);
+    r.putExtra("groupName", groupName);
+    r.putExtra("report_type", "group");
+    r.putExtra("target_id", String.valueOf(groupId));
+    startActivity(r);
+    return true;
+}
+```
+`menu_group.xml:6-20` (entier, 3 items) : `change_subject`/`report`/`exit`, TOUS visibles au
+niveau du menu (`report` n'a AUCUNE garde `IAM_ADMIN` au niveau du menu ni du handler — seul
+`change_subject` est gardé, en interne, après le clic).
+
+### État iOS avant correctif
+
+`grep ReportView\|report` dans `GroupDetailView.swift` → aucune référence. `ReportView` (composant
+déjà générique, `reportType: String` accepte `"user"`/`"group"` en paramètre) n'était instanciée
+nulle part avec `"group"` avant ce correctif — un pur gap de câblage, le composant lui-même était
+prêt (créé/corrigé lors de V4-F-021, ce même cycle).
+
+### Correctif appliqué
+
+Nouveau `@State private var showReport`, bouton toolbar "Signaler le groupe" (icône `flag`),
+`.navigationDestination(isPresented: $showReport) { ReportView(targetId: groupId,
+username: groupName, reportType: "group") }` — même motif exact déjà établi par
+`ProfileView.swift` (`showReport`/`.navigationDestination`, `reportType: "user"`), pas une
+2ᵉ implémentation divergente. Visible à TOUT membre (pas de garde `isCurrentUserAdmin`), fidèle à
+l'absence de garde sur cet item précis côté Android.
+
+### Flux frères vérifiés
+
+`grep "reportType: \"group\""` dans tout le projet → un seul site après correctif, celui ajouté ici
+— aucun autre écran de groupe (liste des groupes, création) n'a d'équivalent Android à ce menu.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/GroupDetailView.swift`.
+
+**Résultat CI** : commit `016d262`, push confirmé (`f855abc..016d262 main -> main`), run
+`32712937306` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : signaler un groupe depuis un compte admin ET un
+compte membre non-admin, confirmer que le payload `POST report` correspond au groupe ciblé.

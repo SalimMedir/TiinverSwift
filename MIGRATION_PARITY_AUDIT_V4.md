@@ -706,6 +706,20 @@ prêt) mais n'est JAMAIS instancié depuis `GroupDetailView` — gap de câblage
 construire.
 RECOMMANDATION : Ajouter une action "Signaler le groupe" dans `GroupDetailView` qui présente
 `ReportView(targetId: groupId, username: groupName, reportType: "group")`.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-4) — Vérifié contre
+`GroupDetailActivity.onOptionsItemSelected` (`R.id.report`, lignes 204-215 : `Intent(Report.class)`
+avec `type="group"`/`report_type="group"`/`target_id=groupId`) et `menu_group.xml:12-15` (item
+"report" visible à TOUT membre, AUCUNE garde admin sur cet item précis — contrairement à
+`change_subject`, gardé en interne par `IAM_ADMIN`). Confirmé côté iOS que `ReportView` supportait
+déjà `reportType: "group"` (déjà utilisé nulle part avec cette valeur avant ce correctif) mais
+n'était jamais instanciée depuis `GroupDetailView` — gap de câblage pur, aucun composant à
+construire. Correctif : nouveau bouton toolbar "Signaler le groupe" + `.navigationDestination
+(isPresented: $showReport) { ReportView(targetId: groupId, username: groupName,
+reportType: "group") }`, même motif déjà établi par `ProfileView` (`showReport`/
+`.navigationDestination`). Commit `016d262`, push confirmé (`f855abc..016d262 main -> main`), CI
+run `32712937306` conclusion `success`. DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED
+(signaler un groupe depuis chaque rôle [admin/membre], confirmer le payload `POST report`).
 ```
 
 ```

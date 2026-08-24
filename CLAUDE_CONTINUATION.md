@@ -13,7 +13,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 Phase B V4 : backlog P0 épuisé, LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE [22 corrigés BUILD_VALIDATED
 + V4-F-003 BLOQUÉ], **backlog P2 EN COURS** [Lot P2-1 : V4-F-004 BLOQUÉ, V4-F-006 différé,
 V4-F-009/010/011 BUILD_VALIDATED ; Lot P2-2 : V4-F-012 BUILD_VALIDATED ; Lot P2-3 : V4-F-014
-BUILD_VALIDATED] — backlog P3 PAS ENCORE ATTAQUÉ)
+BUILD_VALIDATED ; Lot P2-4 : V4-F-022 BUILD_VALIDATED] — backlog P3 PAS ENCORE ATTAQUÉ)
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -554,23 +554,33 @@ P2-3. **Commit `60c5b63`, CI verte confirmée (run `32712064664`)** — `BUILD_V
 `COMPLETE_PARITY_VALIDATED` (test réel requis : bloquer un utilisateur, rouvrir son profil,
 confirmer via inspection réseau qu'aucune requête `feedtimeline` n'est émise).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P2-3 terminé (vérifié/corrigé/documenté/commité/CI verte).
-Enchaîner **automatiquement** sur le prochain P2 dans l'ordre du document : **V4-F-022** (Groups /
-Social — action "Signaler le groupe" entièrement absente, doublon confirmé trouvé indépendamment
-par 2 agents Phase A : `Messagerie/GroupDetailView.swift` — aucune référence à `ReportView`/
-signalement ; Android — `messagerie/group/GroupDetailActivity.java:204-215`, `res/menu/
-menu_group.xml:12-15` — le menu d'un groupe [accessible à tout membre] propose "Signaler", qui
-lance `Report` avec `type="group"` — `ReportView.swift` supporte DÉJÀ `reportType: "group"` en
-interne [composant générique prêt, déjà utilisé pour les profils] mais n'est JAMAIS instancié
-depuis `GroupDetailView` — gap de câblage pur, pas de composant à construire — recommandation :
-ajouter une action "Signaler le groupe" dans `GroupDetailView` qui présente
-`ReportView(targetId: groupId, username: groupName, reportType: "group")`), puis continuer
-AUTOMATIQUEMENT le backlog P2 restant dans l'ordre du document (V4-F-025, V4-F-028, V4-F-031,
-V4-F-035, V4-F-039, V4-F-041, V4-F-043, V4-F-047, V4-F-051, V4-F-052, V4-F-057, V4-F-058, V4-F-060,
-V4-F-061, V4-F-066, V4-F-067, V4-F-069, V4-F-070, V4-F-074 — 19 findings restants après V4-F-022),
-puis le backlog P3 (21 findings) une fois P2 entièrement clos, SANS attendre de nouvelle
-confirmation utilisateur pour chaque lot (instruction explicite : continuer automatiquement). Repo
-Android source de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lot P2-4 traité (V4-F-022)** — Groups/Social, action "Signaler le groupe" entièrement absente.
+Vérifié dans `GroupDetailActivity.onOptionsItemSelected:204-215` (`Intent(Report.class)` avec
+`type="group"`/`report_type="group"`/`target_id=groupId`) + `menu_group.xml:6-20` (item "report"
+visible à TOUT membre, aucune garde admin sur cet item précis). Côté iOS, `ReportView` supportait
+déjà `reportType: "group"` mais n'était jamais instanciée depuis `GroupDetailView` — pur gap de
+câblage. Corrigé : bouton toolbar "Signaler le groupe" +
+`.navigationDestination(isPresented: $showReport) { ReportView(...) }`, même motif que
+`ProfileView` (`reportType: "user"`), pas une 2ᵉ implémentation. Détail complet dans
+`PROGRESS_V4.md`, Lot P2-4. **Commit `016d262`, CI verte confirmée (run `32712937306`)** —
+`BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : signaler un groupe depuis un
+compte admin ET non-admin, confirmer le payload).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P2-4 terminé (vérifié/corrigé/documenté/commité/CI verte).
+Enchaîner **automatiquement** sur le prochain P2 dans l'ordre du document : **V4-F-025** (Groups —
+changement de photo/avatar de groupe non porté : `Messagerie/GroupDetailView.swift` [photo affichée
+en lecture seule, aucun geste ni état d'édition ; gap déjà documenté dans le fichier lui-même] ;
+Android — `messagerie/group/SettingGroupMessageFragmant.java:197-247,628-738` [galerie → crop →
+upload multipart `updategroup` type=4 → message système "groupPictureChanged"] — aucun admin ne
+peut changer la photo d'un groupe depuis iOS — recommandation : ajouter picker+recadrage [gated
+admin] + `GroupRepository.updatePhoto(...)` [multipart `updategroup` type=4], en réutilisant
+l'infrastructure d'upload de photo de profil), puis continuer AUTOMATIQUEMENT le backlog P2 restant
+dans l'ordre du document (V4-F-028, V4-F-031, V4-F-035, V4-F-039, V4-F-041, V4-F-043, V4-F-047,
+V4-F-051, V4-F-052, V4-F-057, V4-F-058, V4-F-060, V4-F-061, V4-F-066, V4-F-067, V4-F-069, V4-F-070,
+V4-F-074 — 18 findings restants après V4-F-025), puis le backlog P3 (21 findings) une fois P2
+entièrement clos, SANS attendre de nouvelle confirmation utilisateur pour chaque lot (instruction
+explicite : continuer automatiquement). Repo Android source de vérité :
+`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

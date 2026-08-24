@@ -713,17 +713,23 @@ private struct FeedDetailCell: View {
 
     var body: some View {
         ZStack {
-            if post.isVideo, let url = post.playbackURL {
+            // **Ajouté (V4-F-034, 2026-08-24)** — port de `ExoPlayerManager.java:198-330`, qui
+            // détache explicitement le player de la vue précédente avant de l'attacher à la
+            // nouvelle : `VideoPlayer(player:)` liait TOUJOURS le même `AVPlayer` PARTAGÉ, y
+            // compris pour les cellules voisines que `TabView` garde potentiellement instanciées
+            // pendant un swipe — un `AVPlayer` unique attaché à 2 `VideoPlayer` simultanés rend
+            // ses images sur LES DEUX à la fois (comportement AVFoundation documenté, pas une
+            // supposition). Le binding lui-même est maintenant gated sur `isActive`, pas
+            // seulement le déclenchement de la lecture — la cellule inactive retombe sur la
+            // vignette juste en dessous.
+            if post.isVideo, let url = post.playbackURL, isActive {
                 VideoPlayer(player: VideoPlayerManager.shared.player)
                     .disabled(true) // les contrôles natifs sont désactivés — l'appui joue/pause comme le tap Android d'origine
-                    .onChange(of: isActive) { active in
-                        if active {
-                            // Port de `VideoPlaybackCoordinator.tryPlayAt` — `fallbackURL` était
-                            // jamais transmis avant ce correctif malgré le mécanisme de repli déjà
-                            // présent dans `VideoPlayerManager` (`handlePlaybackFailure`), le
-                            // rendant inopérant en pratique.
-                            VideoPlayerManager.shared.playVideo(url: url, fallbackURL: post.fallbackPlaybackURL)
-                        }
+                    .onAppear {
+                        // Port de `VideoPlaybackCoordinator.tryPlayAt` — `fallbackURL` était
+                        // jamais transmis avant le correctif V4 précédent malgré le mécanisme de
+                        // repli déjà présent dans `VideoPlayerManager` (`handlePlaybackFailure`).
+                        VideoPlayerManager.shared.playVideo(url: url, fallbackURL: post.fallbackPlaybackURL)
                     }
             } else if let thumb = post.thumbnailURL {
                 // V4-F-073 — arrière-plan plein écran (viewer fullscreen) : décodage borné à la

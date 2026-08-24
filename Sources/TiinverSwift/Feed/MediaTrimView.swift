@@ -185,6 +185,16 @@ struct MediaTrimView: View {
     /// Poignées pilotées par DELTA (`value.translation`), PAS par `value.location` — `location`
     /// serait relative au petit rectangle de la poignée (14pt de large), pas à la largeur totale du
     /// filmstrip, une erreur de repère facile à commettre avec `DragGesture` sur une vue étroite.
+    ///
+    /// **Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-059, Phase B P1)** — seule une
+    /// borne MINIMALE (`minHandleSpacing`) était appliquée ; le cadrage initial (`load()`) limite
+    /// bien la sélection par défaut à `maxDurationSeconds` si la vidéo est plus longue, mais rien
+    /// n'empêchait ensuite d'ÉTENDRE la sélection au-delà par glissement. Port de
+    /// `ProTimelineView.handleMove` (`DRAG_LEFT_PX`/`DRAG_RIGHT_PX`, lignes 685-713) : `selMaxWidthPx`
+    /// (dérivé de `setTrimeLimitMax(60000)`, `MediaTrim.java:175`) est reclampé à CHAQUE déplacement
+    /// de poignée, dans les DEUX directions — si la nouvelle largeur dépasserait la limite, c'est la
+    /// poignée en cours de déplacement qui est ramenée à la largeur maximale (pas un blocage dur du
+    /// geste), exactement le même comportement reproduit ici via `maxWidthFraction`.
     private func dragGesture(isStart: Bool, width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
@@ -193,12 +203,19 @@ struct MediaTrimView: View {
                     endFractionAtDragBegin = endFraction
                 }
                 let delta = Double(value.translation.width / width)
+                let maxWidthFraction = duration > 0 ? min(1, Self.maxDurationSeconds / duration) : 1
                 if isStart {
                     let maxAllowed = endFraction - Self.minHandleSpacing
                     startFraction = min(max(0, startFractionAtDragBegin + delta), max(0, maxAllowed))
+                    if endFraction - startFraction > maxWidthFraction {
+                        startFraction = endFraction - maxWidthFraction
+                    }
                 } else {
                     let minAllowed = startFraction + Self.minHandleSpacing
                     endFraction = max(min(1, endFractionAtDragBegin + delta), min(1, minAllowed))
+                    if endFraction - startFraction > maxWidthFraction {
+                        endFraction = startFraction + maxWidthFraction
+                    }
                 }
             }
     }

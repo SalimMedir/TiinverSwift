@@ -79,7 +79,10 @@ struct HomeShellView: View {
                 .badge(chatUnreadCount)
                 .tag(1)
 
-            NavigationStack { CreatorOfWeekView() }
+            // isActive: V4-F-028 — signale à `CreatorOfWeekView` chaque retour sur cet onglet
+            // (`TabView` garde ses onglets vivants entre deux sélections, `.task` ne se
+            // redéclenche jamais tout seul), port de `CreatorFragment.onResume`.
+            NavigationStack { CreatorOfWeekView(isActive: selectedTab == 2) }
                 .tabItem { Label("Créateurs", systemImage: "trophy.fill") }
                 .tag(2)
 

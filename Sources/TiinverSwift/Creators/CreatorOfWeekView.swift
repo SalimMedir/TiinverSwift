@@ -28,6 +28,16 @@ import SwiftUI
 /// et anneau/dégradé de marque plutôt qu'une simple icône étoile superposée.
 struct CreatorOfWeekView: View {
     @StateObject private var viewModel = CreatorOfWeekViewModel()
+    /// **Ajouté le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-028, Phase B P2)** — port de
+    /// `CreatorFragment.onResume` (`:160-164`, `viewModel.getTrophy()` à CHAQUE fois que le
+    /// fragment redevient visible, pas seulement au premier affichage). `HomeShellView` héberge cet
+    /// écran dans un onglet `TabView` PERSISTANT (jamais recréé entre deux sélections d'onglet,
+    /// contrairement à une navigation push/pop) — `.task`/`.onAppear` ne se redéclenchent donc
+    /// JAMAIS après le tout premier affichage, aucun équivalent SwiftUI direct d'`onResume` pour un
+    /// onglet `TabView`. `isActive` (calculé par l'appelant à partir de son `selectedTab`) donne le
+    /// même signal "cet onglet redevient visible" sans coupler cet écran au numéro de son propre
+    /// onglet.
+    var isActive: Bool = true
 
     var body: some View {
         Group {
@@ -50,6 +60,9 @@ struct CreatorOfWeekView: View {
         .navigationTitle("Classement")
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task { await viewModel.load() }
+        .onChange(of: isActive) { active in
+            if active { Task { await viewModel.load() } }
+        }
     }
 
     private var errorState: some View {

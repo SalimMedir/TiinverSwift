@@ -1544,6 +1544,35 @@ conséquence directe du bug V4-F-065) ; ce solde client potentiellement obsolèt
 serveur dans le payload de la demande de retrait elle-même — un montant d'argent réel.
 RECOMMANDATION : Câbler `refreshBalance(userId:)` dans le `.task`/`.onAppear` de `WithdrawView` avant
 que le formulaire ne devienne interactif, comme `getRealAmount()` côté Android.
+
+STATUT : BUILD_VALIDATED (2026-08-24) — Vérifié contre `WithdrawActivity.java:221`
+(`getRealAmount()` appelé INCONDITIONNELLEMENT dans `onCreate`, avant même que `submitButton` ne
+soit câblé) et `:415-448` (`getRealAmount`, entier) : le champ d'instance `currentBalance` (initialisé
+depuis l'écran précédent) est écrasé par la réponse `getuserbyid/{myId}` — et c'est CE MÊME champ
+qui sert ensuite à la fois à la validation (`requestedAmount < currentBalance`, ligne 249) ET à la
+valeur envoyée telle quelle au serveur dans le payload (`submitWithdrawalRequest(myId,
+currentBalance, ...)`, ligne 272). Confirmé côté iOS que `WalletRepository.refreshBalance(userId:)`
+existait déjà (port fidèle de `getRealAmount`) mais avait ZÉRO appelant (`grep refreshBalance` = 1
+seul résultat, sa propre définition) — `WithdrawView` utilisait uniquement `coinsAmount`, le
+paramètre statique reçu à l'instanciation (`WalletView.swift:29`,
+`WithdrawView(coinsAmount: viewModel.coinsAmount)`, le cache local `WalletViewModel`/
+`UserSession.shared.coinsAmount`), jamais rafraîchi. Correctif : nouveau `@State private var
+currentBalance: Double` initialisé depuis `coinsAmount` (via un `init` explicite désormais requis),
+rafraîchi par un `.task { await refreshBalance() }` NON BLOQUANT (fidèle au caractère
+fire-and-forget de l'appel Android) ; tous les usages internes à `submit()` (validation solde
+insuffisant + `currentBalance:` envoyé aux 2 méthodes de soumission crypto/mobile money) et
+l'affichage ("Solde disponible") basculés de `coinsAmount` vers `currentBalance`. Flux frères
+vérifiés PAR LECTURE DIRECTE du code Android : `grep getRealAmount\|getuserbyid` dans
+`TransfertCoinsActivity.java` ET `ConversionActivity.java` → 0 résultat dans les deux — Android
+lui-même NE rafraîchit PAS le solde serveur pour Transfert/Conversion (seul Retrait, l'écran de
+cash-out réel visé par la guideline App Store 3.1.5, le fait) — `TransferCoinsView`/`ConversionView`
+(qui lisent `UserSession.shared.coinsAmount` en direct) laissés INCHANGÉS, fidèles à leur source
+Android respective, pas un oubli. Commit `4e6c2f1`, push confirmé (`5a9904e..4e6c2f1 main -> main`),
+CI run `32684195949` conclusion `success`. DEVICE_TEST_REQUIRED pour passer en
+COMPLETE_PARITY_VALIDATED (aucun accès Xcode/simulateur dans cet environnement — test réel requis :
+modifier le solde serveur depuis un AUTRE appareil/session pendant que l'écran Retrait est ouvert
+sur le premier, confirmer que le solde affiché ET utilisé pour la validation/soumission se met à
+jour, sans bloquer visuellement le formulaire pendant le rafraîchissement).
 ```
 
 ---

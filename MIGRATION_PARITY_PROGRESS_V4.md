@@ -5,7 +5,7 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 **État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
 V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064,
-V4-F-059 clos. Prochain : V4-F-068.**
+V4-F-059, V4-F-068 clos. Prochain : V4-F-073.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -1620,3 +1620,88 @@ poignées de trim avec bornes min/max.
 `COMPLETE_PARITY_VALIDATED` — test réel requis : charger une vidéo de plus de 60s, glisser chaque
 poignée (gauche puis droite) pour tenter d'étendre la sélection au-delà de 60s, confirmer que la
 largeur reste plafonnée en continu (pas seulement au chargement initial).
+
+## 2026-08-24 — Phase B V4 — Lot P1-18 : V4-F-068 (Wallet-Monetization — WithdrawView ne rafraîchit jamais le solde serveur avant un retrait)
+
+### Vérification Android
+
+`WithdrawActivity.java:221` (`onCreate`) :
+```java
+getRealAmount();
+setupSpinners();
+submitButton.setOnClickListener(v -> { ... });
+```
+`getRealAmount()` est appelé INCONDITIONNELLEMENT, avant même que `submitButton` ne soit câblé.
+`getRealAmount()` (lignes 415-448, entier) :
+```java
+public void getRealAmount(){
+    TransportData data = new TransportData(this);
+    data.get("getuserbyid/" + myId, new Callback() {
+        public void onResonse(Context context, int action, JSONObject object) {
+            ...
+            if (error.equals("false")) {
+                String users = "[" + object.getString("userData") + "]";
+                User[] metas = gson.fromJson(users, User[].class);
+                for (User meta : metas) {
+                    currentBalance = meta.getCoinsAmount();
+                    ...
+                    availablePieces.setText(...);
+                }
+            }
+        }
+    });
+}
+```
+`currentBalance` est un CHAMP D'INSTANCE (pas une variable locale) — écrasé par la réponse serveur,
+puis réutilisé PLUS LOIN dans le même fichier, à la fois pour la validation (ligne 249,
+`if (requestedAmount < currentBalance)`) ET comme valeur envoyée telle quelle au serveur dans le
+payload de la demande de retrait (ligne 272,
+`submitWithdrawalRequest(myId, currentBalance, requestedAmount, calculatedMoney, ...)`). Appel
+asynchrone fire-and-forget — ne bloque pas l'interactivité du formulaire, mais garantit que
+`currentBalance` reflète le solde serveur dès que la requête revient (quasi immédiatement après
+l'ouverture de l'écran).
+
+### État iOS avant correctif
+
+`WalletRepository.refreshBalance(userId:)` (port fidèle de `getRealAmount`) existait déjà mais
+`grep refreshBalance` dans tout le projet ne remontait QUE sa propre définition — zéro appelant.
+`WithdrawView(coinsAmount: viewModel.coinsAmount)` (`WalletView.swift:29`) recevait le solde en
+cache local (`WalletViewModel`/`UserSession.shared.coinsAmount`) à l'instanciation, et l'utilisait
+tel quel partout dans `submit()` (validation solde insuffisant, valeur `currentBalance:` envoyée
+aux 2 méthodes de soumission) — jamais rafraîchi depuis le serveur, potentiellement obsolète (dérive
+multi-session, ou conséquence directe du bug V4-F-065 déjà corrigé dans ce cycle).
+
+### Correctif appliqué
+
+1. Nouveau `@State private var currentBalance: Double`, initialisé depuis `coinsAmount` via un
+   `init(coinsAmount:)` explicite (désormais requis, `@State` ne peut pas être alimenté par l'init
+   memberwise implicite).
+2. `.task { await refreshBalance() }` ajouté au montage de la vue — NON BLOQUANT pour le formulaire
+   (le geste peut être rempli/soumis pendant que la requête est en vol), fidèle au caractère
+   fire-and-forget de `getRealAmount()`.
+3. `refreshBalance()` (nouvelle méthode privée) appelle `WalletRepository.shared.refreshBalance
+   (userId:)` et met à jour `currentBalance` sur succès ; conserve la valeur précédente sur échec
+   (`try?`), fidèle au callback `onError` Android qui ne fait rien.
+4. TOUS les usages internes basculés de `coinsAmount` vers `currentBalance` : affichage ("Solde
+   disponible"), validation (`requestedAmount < currentBalance`), et paramètre `currentBalance:`
+   envoyé aux 2 méthodes de soumission (`submitWithdrawalRequest`/`submitWithdrawalByCrypto`).
+
+### Flux frères vérifiés
+
+Vérification PAR LECTURE DIRECTE du code Android (pas une supposition) : `grep
+"getRealAmount\|getuserbyid"` dans `TransfertCoinsActivity.java` ET `ConversionActivity.java` → 0
+résultat dans LES DEUX fichiers — Android lui-même ne rafraîchit PAS le solde serveur pour les écrans
+Transfert/Conversion, seul Retrait (le cash-out réel, zone d'audit conformité App Store 3.1.5
+explicitement signalée en tête de `WithdrawActivity.java`) le fait. `TransferCoinsView.swift`/
+`ConversionView.swift` (qui lisent `UserSession.shared.coinsAmount` directement) laissés
+INCHANGÉS — fidèles à leur source Android respective, PAS un oubli.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Wallet/WithdrawView.swift`.
+
+**Résultat CI** : commit `4e6c2f1`, push confirmé (`5a9904e..4e6c2f1 main -> main`), run
+`32684195949` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : modifier le solde serveur depuis un autre
+appareil/session pendant que l'écran Retrait est ouvert, confirmer que le solde affiché ET utilisé
+pour la validation/soumission se met à jour sans bloquer visuellement le formulaire.

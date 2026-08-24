@@ -11,7 +11,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
 Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS
-[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030/056/064/059 traités])
+[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030/056/064/059/068 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -391,18 +391,41 @@ Détail complet dans `PROGRESS_V4.md`, Lot P1-17. **Commit `0e7f651`, CI verte c
 `32683632141`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : charger
 une vidéo >60s, glisser chaque poignée pour tenter de dépasser 60s, confirmer le plafond continu).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-17 terminé (vérifié/corrigé/documenté/commité/CI verte).
-Enchaîner **automatiquement** sur **V4-F-068** (Wallet-Monetization — `WithdrawView` ne rafraîchit
-jamais le solde depuis le serveur avant d'autoriser une demande de retrait :
-`Wallet/WalletRepository.swift:133-140` [`refreshBalance`, ZÉRO appelant confirmé par grep projet
-entier], `Wallet/WithdrawView.swift:8-9,29` [utilise uniquement le solde en cache local] ; Android
-— `wallet/WithdrawActivity.java:221,415-448` [`getRealAmount()` appelé inconditionnellement avant
-que le formulaire ne devienne interactif] — le solde affiché/utilisé pour le retrait peut être
-obsolète [dérive multi-session, ou conséquence directe du bug V4-F-065 déjà corrigé], et ce solde
-potentiellement obsolète est envoyé au serveur dans le payload de la demande de retrait elle-même —
-un montant d'argent réel — recommandation : câbler `refreshBalance(userId:)` dans le
-`.task`/`.onAppear` de `WithdrawView` avant que le formulaire ne devienne interactif, comme
-`getRealAmount()` côté Android), puis V4-F-073→021→027→019→003 (Social→Groups→Navigation, voir
+**Lot P1-18 traité (V4-F-068)** — Wallet-Monetization, `WithdrawView` ne rafraîchissait jamais le
+solde depuis le serveur avant un retrait. Vérifié dans `WithdrawActivity.java:221`
+(`getRealAmount()` appelé INCONDITIONNELLEMENT dans `onCreate`, avant le câblage de `submitButton`)
++ `:415-448` : le champ `currentBalance` est écrasé par la réponse `getuserbyid`, puis réutilisé à
+la fois pour la validation (`requestedAmount < currentBalance`) ET comme valeur envoyée telle
+quelle au serveur dans le payload (`submitWithdrawalRequest(myId, currentBalance, ...)`). Côté iOS,
+`WalletRepository.refreshBalance(userId:)` existait déjà (port fidèle) mais avait ZÉRO appelant ;
+`WithdrawView` utilisait uniquement le paramètre statique `coinsAmount` (cache local), jamais
+rafraîchi. Corrigé : nouveau `@State private var currentBalance: Double` initialisé depuis
+`coinsAmount` (via `init` explicite), rafraîchi par un `.task` non bloquant, tous les usages internes
+de `submit()` et l'affichage basculés vers `currentBalance`. Flux frères vérifiés PAR LECTURE
+DIRECTE du code Android : `TransfertCoinsActivity.java`/`ConversionActivity.java` → 0 occurrence de
+`getRealAmount`/`getuserbyid` dans les deux — Android lui-même ne rafraîchit le solde serveur QUE
+pour Retrait (le cash-out réel, zone App Store 3.1.5) — `TransferCoinsView`/`ConversionView`
+laissés inchangés, fidèles à leur source. Détail complet dans `PROGRESS_V4.md`, Lot P1-18.
+**Commit `4e6c2f1`, CI verte confirmée (run `32684195949`)** — `BUILD_VALIDATED`, PAS
+`COMPLETE_PARITY_VALIDATED` (test réel requis : modifier le solde serveur depuis un autre
+appareil/session pendant que l'écran Retrait est ouvert, confirmer la mise à jour sans blocage
+visuel du formulaire).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-18 terminé (vérifié/corrigé/documenté/commité/CI verte).
+Enchaîner **automatiquement** sur **V4-F-073** (Performance-Memory — `CDNAsyncImage` décode chaque
+image CDN à pleine résolution, sans sous-échantillonnage : `Media/CDNAsyncImage.swift:54-82`,
+`UIImage(data: data)` sur les octets bruts téléchargés, aucune option `ImageIO`/`CGImageSource` de
+miniature, aucun paramètre de taille cible, sur les 18 sites d'appel confirmés [Feed/Profile/Chat/
+Notifications/Recherche/Commentaires] ; Android — `ChargerImages.java:92-134,201-292,325-552` —
+CHAQUE chargeur Glide utilise `.override(largeur,hauteur)`, décodage sous-échantillonné dès la
+source — mémoire/CPU pic élevés sur tout écran affichant plusieurs images à la fois [Feed, grilles,
+listes de commentaires/notifications], un avatar affiché à 32×32pt décode quand même à sa
+résolution CDN complète — recommandation : ajouter un paramètre `targetSize` à `CDNAsyncImage`,
+décoder via `CGImageSourceCreateThumbnailAtIndex` dimensionné à la taille d'affichage réelle sur
+chacun des 18 sites d'appel, à l'image des valeurs `.override()` par contexte d'Android — **lot
+plus large que les précédents, prévoir de lister les 18 sites d'appel exhaustivement par `grep
+CDNAsyncImage(` avant toute modification, et vérifier la taille d'affichage réelle de chacun avant
+de choisir son `targetSize`**), puis V4-F-021→027→019→003 (Social→Groups→Navigation, voir
 `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 

@@ -7,8 +7,8 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064,
 V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027, V4-F-019 clos. V4-F-003 documenté `BLOQUÉ` (hors
 dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE.** Backlog P2 EN
-COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014/022
-(`BUILD_VALIDATED`) clos. Prochain : V4-F-025.**
+COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014/022/025
+(`BUILD_VALIDATED`) clos. Prochain : V4-F-028.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -2371,3 +2371,77 @@ l'absence de garde sur cet item précis côté Android.
 **Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
 `COMPLETE_PARITY_VALIDATED` — test réel requis : signaler un groupe depuis un compte admin ET un
 compte membre non-admin, confirmer que le payload `POST report` correspond au groupe ciblé.
+
+## 2026-08-24 — Phase B V4 — Lot P2-5 : V4-F-025 (Groups — changement de photo/avatar de groupe non porté)
+
+### Vérification Android
+
+`SettingGroupMessageFragmant.java:197-247` (`profileContainer.setOnClickListener`, gardé
+`IAM_ADMIN`) : galerie (`CustomGalleryView`) → recadrage (`CroperView`) →
+`sendFotoPerfilToServer(path)`. `:628-738` (`sendFotoPerfilToServer`, entier) :
+```java
+String url = infoContract.SERVER + "updategroup";
+UploadData data = new UploadData();
+data.setGroupId(groupId); data.setApykey(apiKey); data.setType(4);
+data.setActor(myId); data.setUrl(url); data.setObject_url(foto);
+httpFileUploader = new HttpFileUploader(getContext(), data);
+```
+`HttpFileUploader.java:328-340` (`uploadRequestBodyGroupPerfil`, `type=4`) :
+```java
+new MultipartBody.Builder().setType(FORM)
+    .addFormDataPart("creator", data.getActor())
+    .addFormDataPart("id", data.getGroupId())
+    .addFormDataPart("apiKey", data.getApykey())
+    .addFormDataPart("column", "profile_picture")   // littéral copié du flux profil PERSONNEL
+    .addFormDataPart("format", "json")
+    .addFormDataPart("object_url", "wn_image.jpeg", RequestBody.create(image/jpeg, file))
+    .build();
+```
+Multipart DIRECT vers le backend (PAS BunnyCDN) — le backend gère lui-même le stockage et renvoie
+`object_url` (nouvelle URL CDN) dans la réponse (`json.getString("object_url")`,
+`uploadPhotoPerfil`). Callback succès : `ChargerImages.glidLoadAvatar(context, fotoPath,
+profileView)` (mise à jour immédiate de l'avatar affiché) PUIS insertion d'un message système local
+`groupPictureChanged` avec `profile=fotoPath` (nouvelle URL).
+
+### État iOS avant correctif
+
+`GroupDetailView` affichait `groupProfile` (alors `let`, donc figé) en lecture seule, aucun geste,
+aucun état d'édition — gap déjà explicitement documenté dans le fichier lui-même.
+
+### Correctif appliqué
+
+1. Nouvelle `GroupRepository.updatePhoto(groupId:creatorId:apiKey:imageData:) async throws ->
+   String` — réutilise `APIClient.uploadMultipart` (helper générique déjà existant, précédemment
+   utilisé par `ProfileRepository.uploadProfilePicture` avant sa migration BunnyCDN de V4-F-008,
+   depuis seulement utilisé par la certification) avec les champs EXACTS d'Android.
+2. `groupProfile` converti en `@State` (était `let`) — même classe de bug (fixité de l'en-tête)
+   déjà corrigée pour `groupName`/`groupDescription` dans un lot antérieur.
+3. Nouveau `groupAvatar` (vue calculée) — `PhotosPicker` natif enveloppant l'avatar, gated
+   `isCurrentUserAdmin` (fidèle à `IAM_ADMIN`), PAS de recadrage — écart d'architecture DÉJÀ assumé
+   et documenté pour la photo de profil PERSONNELLE (`ProfileView.avatar`), appliqué ici pour
+   cohérence plutôt qu'introduire une 2ᵉ convention de portage pour le même type de flux.
+4. `uploadPhoto(_:)` (nouveau) — appelle `GroupRepository.updatePhoto`, met à jour `groupProfile`
+   EN PREMIER (l'en-tête reflète le changement immédiatement), PUIS insère le message système local
+   `groupPictureChanged` via `insertSystemMessage` déjà existant (même motif "écho local immédiat"
+   que `submitName`/`submitDescription`).
+
+### Flux frères vérifiés
+
+`ChatView.systemInfoText` avait DÉJÀ un `case "groupPictureChanged":` prêt et correctement câblé
+(`"\(mlib.from ?? "") a changé la photo du groupe"`) — trouvé non exercé jusqu'ici faute
+d'émetteur, pas un gap de rendu supplémentaire à corriger. `APIClient.uploadMultipart`'s
+documentation de tête corrigée en passant (référençait encore `ProfileRepository.
+uploadProfilePicture` comme appelant, périmée depuis V4-F-008 — corrigée pour lister les VRAIS
+appelants actuels).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/GroupDetailView.swift`,
+`Sources/TiinverSwift/Messagerie/GroupRepository.swift`,
+`Sources/TiinverSwift/Networking/APIClient.swift` (commentaire seul).
+
+**Résultat CI** : commit `eb1464a`, push confirmé (`c5079be..eb1464a main -> main`), run
+`32714506634` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : changer la photo d'un groupe en tant qu'admin,
+confirmer la mise à jour immédiate de l'en-tête, et la réception du message système
+"a changé la photo du groupe" par un AUTRE membre via socket.

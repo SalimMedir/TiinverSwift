@@ -13,7 +13,8 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 Phase B V4 : backlog P0 épuisé, LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE [22 corrigés BUILD_VALIDATED
 + V4-F-003 BLOQUÉ], **backlog P2 EN COURS** [Lot P2-1 : V4-F-004 BLOQUÉ, V4-F-006 différé,
 V4-F-009/010/011 BUILD_VALIDATED ; Lot P2-2 : V4-F-012 BUILD_VALIDATED ; Lot P2-3 : V4-F-014
-BUILD_VALIDATED ; Lot P2-4 : V4-F-022 BUILD_VALIDATED] — backlog P3 PAS ENCORE ATTAQUÉ)
+BUILD_VALIDATED ; Lot P2-4 : V4-F-022 BUILD_VALIDATED ; Lot P2-5 : V4-F-025 BUILD_VALIDATED] —
+backlog P3 PAS ENCORE ATTAQUÉ)
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -566,21 +567,37 @@ câblage. Corrigé : bouton toolbar "Signaler le groupe" +
 `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : signaler un groupe depuis un
 compte admin ET non-admin, confirmer le payload).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P2-4 terminé (vérifié/corrigé/documenté/commité/CI verte).
-Enchaîner **automatiquement** sur le prochain P2 dans l'ordre du document : **V4-F-025** (Groups —
-changement de photo/avatar de groupe non porté : `Messagerie/GroupDetailView.swift` [photo affichée
-en lecture seule, aucun geste ni état d'édition ; gap déjà documenté dans le fichier lui-même] ;
-Android — `messagerie/group/SettingGroupMessageFragmant.java:197-247,628-738` [galerie → crop →
-upload multipart `updategroup` type=4 → message système "groupPictureChanged"] — aucun admin ne
-peut changer la photo d'un groupe depuis iOS — recommandation : ajouter picker+recadrage [gated
-admin] + `GroupRepository.updatePhoto(...)` [multipart `updategroup` type=4], en réutilisant
-l'infrastructure d'upload de photo de profil), puis continuer AUTOMATIQUEMENT le backlog P2 restant
-dans l'ordre du document (V4-F-028, V4-F-031, V4-F-035, V4-F-039, V4-F-041, V4-F-043, V4-F-047,
-V4-F-051, V4-F-052, V4-F-057, V4-F-058, V4-F-060, V4-F-061, V4-F-066, V4-F-067, V4-F-069, V4-F-070,
-V4-F-074 — 18 findings restants après V4-F-025), puis le backlog P3 (21 findings) une fois P2
-entièrement clos, SANS attendre de nouvelle confirmation utilisateur pour chaque lot (instruction
-explicite : continuer automatiquement). Repo Android source de vérité :
-`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lot P2-5 traité (V4-F-025)** — Groups, changement de photo/avatar de groupe non porté. Vérifié
+dans `SettingGroupMessageFragmant.java:197-247` (`profileContainer`, gardé `IAM_ADMIN`) + `:628-738`
+(`sendFotoPerfilToServer`, entier) + `HttpFileUploader.java:328-340`
+(`uploadRequestBodyGroupPerfil`, type=4) : multipart DIRECT vers `updategroup` (PAS BunnyCDN),
+champs `creator`/`id`/`apiKey`/`column="profile_picture"` (littéral copié du flux profil personnel,
+reproduit tel quel)/`format`/fichier `object_url` ; réponse `object_url` appliquée à l'avatar ET au
+message système local `groupPictureChanged`. Côté iOS, `GroupDetailView` affichait la photo en
+lecture seule (`let`), aucun geste. Corrigé : nouvelle `GroupRepository.updatePhoto` (réutilise
+`APIClient.uploadMultipart`, déjà présent) ; `groupProfile` converti en `@State` (même classe de
+bug déjà corrigée pour `groupName`/`groupDescription`) ; `PhotosPicker` gated admin, PAS de
+recadrage (écart déjà assumé pour la photo de profil personnelle) ; écho système local via
+`insertSystemMessage` déjà existant — `ChatView.systemInfoText` avait DÉJÀ le rendu
+`"groupPictureChanged"` prêt, trouvé non exercé faute d'émetteur. Détail complet dans
+`PROGRESS_V4.md`, Lot P2-5. **Commit `eb1464a`, CI verte confirmée (run `32714506634`)** —
+`BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : changer la photo en tant
+qu'admin, confirmer la mise à jour immédiate ET la réception du message système par un autre membre).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P2-5 terminé (vérifié/corrigé/documenté/commité/CI verte).
+Enchaîner **automatiquement** sur le prochain P2 dans l'ordre du document : **V4-F-028** (Creators —
+le classement "Créateur de la semaine" ne se rafraîchit jamais après le premier chargement :
+`Creators/CreatorOfWeekView.swift:52` [`.task` unique] ; `Navigation/HomeShellView.swift:70-98`
+[onglet persistant dans le `TabView`, `.task` ne se redéclenche jamais] ; Android —
+`creatorOfweek/CreatorFragment.java:160-164` [`onResume` → refetch à chaque visite] — classement
+obsolète pour toute la session après un premier chargement, sans moyen de forcer un rafraîchissement
+hors échec — recommandation : ajouter `.refreshable` et/ou redéclencher au retour sur l'onglet),
+puis continuer AUTOMATIQUEMENT le backlog P2 restant dans l'ordre du document (V4-F-031, V4-F-035,
+V4-F-039, V4-F-041, V4-F-043, V4-F-047, V4-F-051, V4-F-052, V4-F-057, V4-F-058, V4-F-060, V4-F-061,
+V4-F-066, V4-F-067, V4-F-069, V4-F-070, V4-F-074 — 17 findings restants après V4-F-028), puis le
+backlog P3 (21 findings) une fois P2 entièrement clos, SANS attendre de nouvelle confirmation
+utilisateur pour chaque lot (instruction explicite : continuer automatiquement). Repo Android
+source de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

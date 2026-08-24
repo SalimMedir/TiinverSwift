@@ -756,6 +756,27 @@ d'édition ; gap déjà documenté dans le fichier lui-même)
 IMPACT : Aucun admin ne peut changer la photo d'un groupe depuis iOS.
 RECOMMANDATION : Ajouter picker+recadrage (gated admin) + `GroupRepository.updatePhoto(...)`
 (multipart `updategroup` type=4), en réutilisant l'infrastructure d'upload de photo de profil.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-5) — Vérifié contre
+`SettingGroupMessageFragmant.java:197-247` (`profileContainer.setOnClickListener`, gardé
+`IAM_ADMIN` — galerie → `CroperView`) et `:628-738` (`sendFotoPerfilToServer`, entier) : multipart
+DIRECT vers le backend (`HttpFileUploader.uploadRequestBodyGroupPerfil`, type=4), PAS BunnyCDN —
+champs `creator`/`id`/`apiKey`/`column="profile_picture"` (littéral copié du flux photo de profil
+PERSONNEL, reproduit tel quel, pas une faute de frappe de ce portage)/`format="json"`, fichier sous
+`object_url`. Réponse `object_url` = nouvelle URL CDN, appliquée immédiatement à l'avatar affiché
+ET au message système local `groupPictureChanged` (`mlib.setProfile(fotoPath)`). Correctif :
+nouvelle `GroupRepository.updatePhoto` (réutilise `APIClient.uploadMultipart`, déjà présent, jusque
+là seulement utilisé par la certification depuis que `ProfileRepository.uploadProfilePicture` est
+passée à BunnyCDN pur en V4-F-008) ; `groupProfile` converti en `@State` (était `let`, même classe
+de bug déjà corrigée pour `groupName`/`groupDescription`) ; `PhotosPicker` gated admin enveloppant
+l'avatar (même motif que `ProfileView.avatar`, PAS de recadrage — écart d'architecture DÉJÀ assumé
+et documenté pour la photo de profil personnelle, appliqué ici pour cohérence plutôt qu'une 2ᵉ
+convention). Écho système local via `insertSystemMessage` déjà existant ; `ChatView.systemInfoText`
+avait déjà le rendu `"groupPictureChanged"` prêt (trouvé non câblé jusqu'ici). Commit `eb1464a`,
+push confirmé (`c5079be..eb1464a main -> main`), CI run `32714506634` conclusion `success`.
+DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (changer la photo d'un groupe en tant
+qu'admin, confirmer la mise à jour immédiate de l'en-tête ET la réception du message système par
+les autres membres via socket).
 ```
 
 ```

@@ -312,6 +312,24 @@ final class AnimemesEditorState: ObservableObject {
         return selectedId
     }
 
+    /// Port de `GestureListener.onLongPress` (`MemesView2.java:1571-1574`) — **ajouté le
+    /// 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-052, Phase B P2)**. Même hit-test top-to-bottom
+    /// que `selectObject(at:)` ci-dessus (`(0..<layers.count).reversed().first(where:)`, aucune
+    /// garde `locked` — fidèle : Android teste `isPointInsideObject` sans filtre de verrouillage
+    /// ici non plus, un calque verrouillé reste sélectionnable/remontable, seule la manipulation
+    /// est bloquée, cf. V4-F-050), s'arrête au PREMIER match (le plus haut = le plus proche du
+    /// dessus visuellement) et appelle `bringLayerToFront` (déjà porté, jusqu'ici zéro appelant).
+    @discardableResult
+    func bringTopLayerToFront(at point: CGPoint) -> String? {
+        guard let index = (0..<layers.count).reversed().first(where: { gestureController.isPoint(point, insideObjectAt: $0, composer: composer) })
+        else { return nil }
+        let id = layers[index].id
+        gestureController.bringLayerToFront(index, composer: composer)
+        syncTimeline()
+        version += 1
+        return id
+    }
+
     private func index(of id: String) -> Int? { layers.firstIndex { $0.id == id } }
 
     /// Port de `touchMove` (translation à un doigt) — délègue à `AnimemesGestureController.

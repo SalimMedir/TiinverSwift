@@ -70,6 +70,18 @@ struct AnimemesEditorView: View {
     @State private var pendingPublishMedia: PublishMedia?
     @State private var publishConversionError: String?
     @State private var showDurationSlider = false
+    /// Port de `GestureListener.onLongPress` (`MemesView2.java:1571-1574`) — **ajouté le
+    /// 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-052, Phase B P2)**. Mis à jour par le PREMIER
+    /// callback de `dragGesture` (`minimumDistance: 0`, déclenché immédiatement au touché, avant
+    /// tout mouvement) — sert de position pour `longPressGesture` ci-dessous, un `LongPressGesture`
+    /// seul n'exposant aucune coordonnée. Câblé via `.simultaneousGesture` (modificateur SÉPARÉ de
+    /// `.gesture(combinedGesture)`, PAS fusionné dedans) — délibérément, pour ne PAS toucher à la
+    /// composition `SimultaneousGesture` déjà fragile de `combinedGesture` (voir son historique de
+    /// régressions documenté juste au-dessus). **Nécessite une vérification sur device réel**
+    /// (aucun simulateur/Xcode disponible dans cet environnement) : confirmer qu'un appui long
+    /// immobile déclenche bien `longPressGesture` SANS que le mouvement minimal du doigt pendant la
+    /// pression ne fasse dévier `dragGesture` vers un déplacement de calque non désiré.
+    @State private var lastTouchLocation: CGPoint = .zero
     @State private var lastMaskDragTranslation: CGSize = .zero
     @State private var lastMaskMagnification: CGFloat = 1.0
     @State private var lastMaskRotationDegrees: CGFloat = 0
@@ -463,6 +475,10 @@ struct AnimemesEditorView: View {
                 .frame(width: fitSize.width, height: fitSize.height)
                 .background(Color(white: 0.08))
                 .gesture(combinedGesture)
+                // V4-F-052 — modificateur SÉPARÉ de `.gesture(combinedGesture)` ci-dessus,
+                // délibérément, pour ne pas toucher à sa composition déjà fragile (voir doc de
+                // `longPressGesture`).
+                .simultaneousGesture(longPressGesture)
                 .onAppear {
                     canvasSize = fitSize
                     state.preparePlayback(canvasSize: fitSize)
@@ -708,6 +724,7 @@ struct AnimemesEditorView: View {
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
+                lastTouchLocation = value.location
                 if state.isMaskEditMode {
                     let delta = CGSize(
                         width: value.translation.width - lastMaskDragTranslation.width,
@@ -779,6 +796,22 @@ struct AnimemesEditorView: View {
                     isPinching = false
                 }
             }
+    }
+
+    /// Port de `GestureListener.onLongPress` (`MemesView2.java:1571-1574`) — **ajouté le
+    /// 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-052, Phase B P2)**. `LongPressGesture` seul
+    /// (pas de composition `.sequenced`/`.simultaneously`, pour rester aussi simple que possible
+    /// dans un fichier à l'historique documenté de régressions de composition de gestes) — la
+    /// position vient de `lastTouchLocation`, tenue à jour par le PREMIER callback de `dragGesture`
+    /// (déclenché immédiatement au touché, `minimumDistance: 0`). PAS de garde `isMaskEditMode` —
+    /// vérifié qu'Android n'a aucun équivalent "appui long" dans `handleMaskEditTouch`, ce geste ne
+    /// s'applique donc qu'au mode normal ; en mode masque, `bringTopLayerToFront` resterait
+    /// inoffensif (juste une réorganisation de calques) mais n'est de toute façon jamais le calque
+    /// visé pendant l'édition d'un masque, laissé tel quel plutôt qu'ajouter une garde non demandée
+    /// par la source Android.
+    private var longPressGesture: some Gesture {
+        LongPressGesture(minimumDuration: 0.5)
+            .onEnded { _ in state.bringTopLayerToFront(at: lastTouchLocation) }
     }
 
     /// `MagnificationGesture`/`RotationGesture` n'exposent pas de callback "début de geste" distinct

@@ -1412,6 +1412,35 @@ chat peut faire un pic mémoire significatif, avec risque de terminaison OOM sur
 limitée ; aucune barre de progression pour les pièces jointes chat.
 RECOMMANDATION : Passer `put(localFile:...)` à `URLSession.shared.upload(for:fromFile:delegate:)`, en
 réutilisant `UploadProgressDelegate` déjà implémenté dans `FeedMediaUploader.swift`.
+
+STATUT : BUILD_VALIDATED (2026-08-24) — Vérifié contre `UploadFileOrDataService.java:242-267`
+(`uploadToBunny`, seul chemin réseau pour LES 4 types de pièce jointe — photo/vidéo/audio/doc,
+`MyMediaType.fromKey(data.getObject())` sans branchement type-spécifique avant l'appel) et
+`ProgressRequestBodyUri.java` (entier) : `writeTo` lit par blocs de 8192 octets depuis un
+`InputStream` ouvert sur l'`Uri` du fichier, jamais de chargement intégral, avec calcul de
+progression réel (`uploaded*100/contentLength`) à chaque bloc. Confirmé côté iOS que
+`ChatMediaUploadService.put` faisait `try Data(contentsOf: localFile)` avant
+`URLSession.shared.upload(for:from:)` — chargement intégral en mémoire, même anti-pattern déjà
+identifié et corrigé pour `FeedMediaUploader.uploadVideo` (V3-F-019/BUNNY-03). Correctif : `put`
+utilise maintenant `URLSession.shared.upload(for:fromFile:delegate:)`, streaming natif depuis le
+disque sans jamais matérialiser le fichier entier en `Data` ; `UploadProgressDelegate`
+(`FeedMediaUploader.swift`) rendue interne (pas `private`) et réutilisée telle quelle plutôt que
+dupliquée, même motif de partage que les constantes BunnyCDN (V4-F-008) ; nouveau paramètre
+`progress` optionnel propagé de `upload(...)` à `put(...)`, défaut `nil` (aucun appelant existant
+ne branche encore de barre de progression — `ChatBubbleViews.swift` affiche déjà un `ProgressView()`
+indéterminé tant que `isFileUploaded != 1`, fidèle à Android qui route sa propre progression vers
+une notification système de service au premier plan, hors périmètre UI de ce finding, dont les
+`IOS FILES` cités se limitent à `ChatMediaUploadService.swift`). Flux frères vérifiés : `grep
+Data(contentsOf:` dans tout le projet → tous les autres usages chargent une image locale déjà en
+cache pour l'affichage UI (pas un upload réseau) ; `grep URLSession.shared.upload(for:` → les 2
+usages restants sur `from:` (Data en mémoire, `FeedMediaUploader.uploadPhoto`/
+`ProfileRepository.uploadProfilePicture`) uploadent des PHOTOS compressées (webp), chemin non
+streamé côté Android non plus (`uploadImageToBunny`, PAS `ProgressRequestBodyUri`) — pas affectés,
+aucun changement nécessaire. Commit `1090279`, push confirmé (`ff1c20e..1090279 main -> main`), CI
+run `32683050887` conclusion `success`. DEVICE_TEST_REQUIRED pour passer en
+COMPLETE_PARITY_VALIDATED (aucun accès Xcode/simulateur dans cet environnement — test réel requis :
+envoyer une pièce jointe volumineuse en chat, confirmer l'absence de pic mémoire significatif
+[Instruments/Memory Graph] et la réussite de l'upload).
 ```
 
 ---

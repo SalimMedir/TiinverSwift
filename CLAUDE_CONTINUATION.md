@@ -11,7 +11,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
 Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS
-[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030/056 traités])
+[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030/056/064 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -351,21 +351,43 @@ Détail complet dans `PROGRESS_V4.md`, Lot P1-15. **Commit `29385f5`, CI verte c
 depuis une photo portrait EXIF via "Freeform", confirmer que le tracé et le résultat final sont
 dans le bon sens).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-15 terminé (vérifié/corrigé/documenté/commité/CI verte).
-Enchaîner **automatiquement** sur **V4-F-064** (BunnyCDN-Media — l'upload de pièce jointe de chat
-charge le fichier entier en RAM au lieu de le streamer depuis le disque :
-`Messagerie/ChatMediaUploadService.swift:59-73`, `put(localFile:...)` utilise `Data(contentsOf:)`
-qui charge tout le fichier avant l'envoi, aucun délégué de progression ; Android —
-`messagerie/service/UploadFileOrDataService.java:242-267,269-301`,
-`ProgressRequestBodyUri` streame par blocs de 8Ko pour TOUTE pièce jointe y compris vidéo, avec
-progression réelle ; exactement l'anti-pattern à risque OOM déjà corrigé pour l'upload vidéo du
-Feed principal [`FeedMediaUploader.uploadVideo`, qui streame déjà correctement], jamais appliqué au
-chemin Chat — recommandation : passer `put(localFile:...)` à
-`URLSession.shared.upload(for:fromFile:delegate:)`, en réutilisant `UploadProgressDelegate` déjà
-implémenté dans `FeedMediaUploader.swift`), puis V4-F-059→068→073→021→027→019→003
-(Wallet→Performance→Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque
-finding complet). Repo Android source de vérité :
-`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lot P1-16 traité (V4-F-064)** — BunnyCDN-Media, l'upload de pièce jointe de chat chargeait le
+fichier entier en RAM avant envoi. Vérifié dans `UploadFileOrDataService.java:242-267,269-301`
+(`uploadToBunny`, seul chemin réseau pour LES 4 types de pièce jointe — photo/vidéo/audio/doc,
+aucun branchement type-spécifique avant l'appel) + `ProgressRequestBodyUri.java` (entier) :
+streaming natif par blocs de 8Ko depuis un `InputStream` sur l'`Uri` du fichier, jamais de
+chargement intégral, progression réelle calculée à chaque bloc. Côté iOS,
+`ChatMediaUploadService.put` faisait `try Data(contentsOf: localFile)` avant l'envoi — même
+anti-pattern à risque OOM déjà corrigé pour l'upload vidéo du Feed principal
+(`FeedMediaUploader.uploadVideo`, V3-F-019/BUNNY-03), jamais appliqué au chemin Chat séparé.
+Corrigé : `put` passé à `URLSession.shared.upload(for:fromFile:delegate:)` (streaming natif depuis
+le disque) ; `UploadProgressDelegate` (`FeedMediaUploader.swift`) rendue interne et RÉUTILISÉE telle
+quelle (pas dupliquée), même motif de partage que les constantes BunnyCDN (V4-F-008) ; nouveau
+paramètre `progress` optionnel propagé, défaut `nil` (pas de barre de progression UI branchée dans
+ce lot — `ChatBubbleViews.swift` affiche déjà un `ProgressView()` indéterminé fidèle à l'écran chat
+Android, qui route sa propre progression vers une notification système séparée, hors périmètre des
+`IOS FILES` cités par ce finding). Flux frères vérifiés : les 2 usages restants de
+`URLSession.shared.upload(for:from:)` (Data en mémoire) sont `FeedMediaUploader.uploadPhoto`/
+`ProfileRepository.uploadProfilePicture` — photos compressées, chemin Android correspondant
+(`uploadImageToBunny`) non streamé non plus, donc pas affectés. Détail complet dans
+`PROGRESS_V4.md`, Lot P1-16. **Commit `1090279`, CI verte confirmée (run `32683050887`)** —
+`BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : envoyer une pièce jointe
+volumineuse en chat, confirmer via Instruments/Memory Graph l'absence de pic mémoire, et la
+réussite de l'upload).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-16 terminé (vérifié/corrigé/documenté/commité/CI verte).
+Enchaîner **automatiquement** sur **V4-F-059** (VideoEditor — la sélection de trim n'a aucun
+plafond continu de durée maximale, l'utilisateur peut glisser au-delà de la limite de 60s :
+`Feed/MediaTrimView.swift:188-204`, `dragGesture` — seule une borne MINIMALE `minHandleSpacing` est
+appliquée ; le chargement initial cadre la sélection par défaut à ≤60s, mais rien n'empêche de
+l'étendre ensuite par glissement ; Android — `editor/view/ProTimelineView.java:685-713`
+[`selMaxWidthPx`, appliqué à CHAQUE déplacement de poignée, tout au long de l'édition],
+`MediaTrim.java:175` [`setTrimeLimitMax(60000)`] — un utilisateur peut publier un segment vidéo
+dépassant la limite prévue de 60s sur iOS, ce qu'Android empêche structurellement à tout moment —
+recommandation : ajouter un plafond de largeur maximale [60s, dérivé de `duration`] aux deux
+branches de `dragGesture`), puis V4-F-068→073→021→027→019→003 (Performance→Social→Groups→
+Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source
+de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

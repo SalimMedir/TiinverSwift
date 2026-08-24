@@ -4,8 +4,8 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
 **État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
-V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056 clos. Prochain :
-V4-F-064.**
+V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064 clos.
+Prochain : V4-F-059.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -1441,3 +1441,92 @@ normalisée — réappliquer l'orientation d'origine aurait doublé la rotation.
 caméra (EXIF non-`.up`), choisir "Freeform", confirmer que le tracé et le rendu final apparaissent
 dans le bon sens (pas de côté/en miroir) ; répéter avec une photo paysage et une photo déjà `.up`
 pour confirmer l'absence de régression sur les cas déjà corrects.
+
+## 2026-08-24 — Phase B V4 — Lot P1-16 : V4-F-064 (BunnyCDN-Media — upload de pièce jointe chat charge tout le fichier en RAM)
+
+### Vérification Android
+
+`UploadFileOrDataService.java:242-267` (`uploadToBunny`) :
+```java
+private boolean uploadToBunny(Uri fileUri, String remotePath, String mimeType) throws IOException {
+    OkHttpClient client = new OkHttpClient();
+    ProgressRequestBodyUri body = new ProgressRequestBodyUri(
+        this, fileUri, MediaType.parse(mimeType), progress -> updateView(progress));
+    Request request = new Request.Builder()
+        .url(remotePath).put(body).addHeader("AccessKey", STORAGE_API_KEY).build();
+    try (Response response = client.newCall(request).execute()) {
+        return response.isSuccessful();
+    }
+}
+```
+`uploadMediaAndThumbnail` (lignes 269-301) est le SEUL appelant, et il dispatch `MyMediaType.
+fromKey(data.getObject())` SANS branchement type-spécifique avant l'appel — donc les 4 types de
+pièce jointe (photo/vidéo/audio/doc) partagent tous ce même chemin `uploadToBunny`/
+`ProgressRequestBodyUri`. `ProgressRequestBodyUri.writeTo` (entier, lu) :
+```java
+byte[] buffer = new byte[8192];
+long uploaded = 0;
+try (InputStream in = contentResolver.openInputStream(fileUri)) {
+    int read;
+    while ((read = in.read(buffer)) != -1) {
+        sink.write(buffer, 0, read);
+        uploaded += read;
+        if (callback != null && contentLength > 0) {
+            callback.onProgress((int) ((uploaded * 100) / contentLength));
+        }
+    }
+}
+```
+Streaming par blocs de 8Ko depuis un `InputStream` ouvert sur l'`Uri` du fichier — jamais de
+chargement intégral en mémoire, quelle que soit la taille du fichier, avec progression réelle
+calculée à chaque bloc.
+
+### État iOS avant correctif
+
+`ChatMediaUploadService.put` :
+```swift
+let fileData = try Data(contentsOf: localFile)
+let (_, response) = try await URLSession.shared.upload(for: request, from: fileData)
+```
+`Data(contentsOf:)` charge le fichier ENTIER en mémoire avant même de commencer l'envoi réseau —
+pour une vidéo volumineuse en pièce jointe chat, risque réel de pic mémoire significatif et de
+terminaison OOM sur un appareil à mémoire limitée. Exactement le même anti-pattern déjà identifié
+et corrigé pour l'upload vidéo du Feed principal (`FeedMediaUploader.uploadVideo`, V3-F-019/
+BUNNY-03), jamais appliqué au chemin Chat séparé.
+
+### Correctif appliqué
+
+1. `ChatMediaUploadService.put` : remplace `Data(contentsOf:)` +
+   `URLSession.shared.upload(for:from:)` par `URLSession.shared.upload(for:fromFile:delegate:)` —
+   streaming natif depuis le disque, jamais de matérialisation intégrale en `Data`.
+2. `UploadProgressDelegate` (`FeedMediaUploader.swift`) rendue interne (retrait de `private`) et
+   réutilisée TELLE QUELLE, plutôt que dupliquée dans `ChatMediaUploadService` — même motif de
+   partage déjà appliqué aux constantes de stockage BunnyCDN entre `FeedMediaUploader` et
+   `ProfileRepository` (V4-F-008).
+3. Nouveau paramètre `progress: (@Sendable (Double) -> Void)? = nil` propagé de `upload(...)` à
+   `put(...)`, défaut `nil` — capacité de progression désormais disponible, non branchée à une UI
+   dans ce lot : `ChatBubbleViews.swift` affiche déjà un `ProgressView()` indéterminé tant que
+   `isFileUploaded != 1` (fidèle à l'écran chat Android, qui n'affiche PAS de barre de pourcentage
+   inline — Android route sa progression vers une notification système de service au premier plan,
+   fonctionnalité séparée hors périmètre des `IOS FILES` cités par ce finding).
+
+### Flux frères vérifiés
+
+`grep "Data(contentsOf:"` dans tout le projet → tous les autres usages chargent une image locale
+déjà en cache pour l'affichage UI (aperçus Animems/Wallet/Feed/Chat), aucun n'est un upload réseau.
+`grep "URLSession.shared.upload(for:"` → 2 usages restants sur `from:` (Data en mémoire) :
+`FeedMediaUploader.uploadPhoto` et `ProfileRepository.uploadProfilePicture`, tous deux des photos
+compressées (webp) — vérifié que le chemin Android correspondant (`uploadImageToBunny`) N'utilise
+PAS non plus `ProgressRequestBodyUri` pour les photos (seul `uploadToBunny`, chemin Chat, et
+`uploadFileToBunny`, vidéo Feed, streament) — pas affectés, aucun changement nécessaire.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatMediaUploadService.swift`,
+`Sources/TiinverSwift/Feed/FeedMediaUploader.swift`.
+
+**Résultat CI** : commit `1090279`, push confirmé (`ff1c20e..1090279 main -> main`), run
+`32683050887` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : envoyer une pièce jointe volumineuse (vidéo) en
+chat, confirmer via Instruments/Memory Graph l'absence de pic mémoire correspondant à la taille du
+fichier, et la réussite de l'upload (bulle passe à `isFileUploaded == 1`).

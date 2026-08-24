@@ -99,7 +99,7 @@ final class NotificationCenterViewModel: ObservableObject {
                 object: row.object,
                 payloadType: row.payloadType,
                 message: row.commentText,
-                myNikname: UserSession.shared.profile
+                myNikname: UserSession.shared.nikname
             )
             LocalNotificationBuilder.present(LocalNotificationBuilder.activityNotificationContent(payload))
         }

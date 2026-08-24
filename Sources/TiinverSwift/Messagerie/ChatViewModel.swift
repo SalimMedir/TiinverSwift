@@ -157,23 +157,24 @@ final class ChatViewModel: ObservableObject {
     /// 2 gestionnaires Android (payload et logique de bannière identiques sinon).
     func resolveGroupSubscription(itemId: String, groupId: String, creatorId: String, price: Int, isRenewal: Bool) {
         guard UserSession.shared.coinsAmount > Double(price) else { return }
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 if isRenewal {
-                    try await GroupRepository.shared.renewGroupSubscription(groupId: groupId, userId: myId, creatorId: creatorId, price: price)
+                    try await GroupRepository.shared.renewGroupSubscription(groupId: groupId, userId: self.myId, creatorId: creatorId, price: price)
                 } else {
-                    try await GroupRepository.shared.subscribeToGroup(groupId: groupId, userId: myId, creatorId: creatorId, price: price)
+                    try await GroupRepository.shared.subscribeToGroup(groupId: groupId, userId: self.myId, creatorId: creatorId, price: price)
                 }
             } catch {
                 return // Port de `onError` — ré-affiche simplement le bouton côté Android, aucun message d'erreur montré.
             }
-            items.removeAll { $0.id == (isRenewal ? "renew-\(itemId)" : "sub-\(itemId)") }
-            isComposerBlocked = items.contains { if case .subscriptionRequired = $0 { return true }; if case .subscriptionRenewal = $0 { return true }; return false }
+            self.items.removeAll { $0.id == (isRenewal ? "renew-\(itemId)" : "sub-\(itemId)") }
+            self.isComposerBlocked = self.items.contains { if case .subscriptionRequired = $0 { return true }; if case .subscriptionRenewal = $0 { return true }; return false }
             UserSession.shared.coinsAmount -= Double(price)
-            var joined = buildOutgoingBase(object: "information")
+            var joined = self.buildOutgoingBase(object: "information")
             joined.verb = "joinGroup"
-            appendOptimistic(joined)
-            Task { try? await messages.insertTextMessage(joined) }
+            self.appendOptimistic(joined)
+            Task { try? await self.messages.insertTextMessage(joined) }
         }
     }
 
@@ -532,20 +533,21 @@ final class ChatViewModel: ObservableObject {
               let localPath = mlib.localFileDirection, let fileURL = URL(string: localPath)
         else { return }
         let thumbnailURL = mlib.thumbnailUri.flatMap(URL.init(string:))
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let result = try await ChatMediaUploadService.shared.upload(
                     messageId: messageId, object: object, fileURL: fileURL, thumbnailFileURL: thumbnailURL
                 )
-                try await messages.updateFileUploaded(messageId: messageId, objectUrl: result.objectUrl, thumbnailUri: result.thumbnailUrl)
-                guard let index = items.firstIndex(where: { $0.messageId == messageId }),
-                      case .message(var updated) = items[index]
+                try await self.messages.updateFileUploaded(messageId: messageId, objectUrl: result.objectUrl, thumbnailUri: result.thumbnailUrl)
+                guard let index = self.items.firstIndex(where: { $0.messageId == messageId }),
+                      case .message(var updated) = self.items[index]
                 else { return }
                 updated.objectUrl = result.objectUrl
                 updated.isFileUploaded = 1
                 if let thumb = result.thumbnailUrl { updated.thumbnailUri = thumb }
-                items[index] = .message(updated)
-                send(updated)
+                self.items[index] = .message(updated)
+                self.send(updated)
             } catch {
                 // `isFileUploaded` reste à 0 — un prochain `handleAppear` (la bulle redevient
                 // visible, ex. scroll) relance un nouvel essai, sans compteur de tentatives, comme
@@ -566,7 +568,8 @@ final class ChatViewModel: ObservableObject {
         guard let messageId = mlib.messageId, let remoteURLString = mlib.objectUrl,
               let remoteURL = URL(string: remoteURLString), remoteURL.scheme?.hasPrefix("http") == true
         else { return }
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let (tempURL, response) = try await URLSession.shared.download(from: remoteURL)
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
@@ -583,13 +586,13 @@ final class ChatViewModel: ObservableObject {
                 }
                 try FileManager.default.moveItem(at: tempURL, to: localURL)
 
-                try await messages.updateFileDownloaded(messageId: messageId, localURL: localURL)
-                guard let index = items.firstIndex(where: { $0.messageId == messageId }),
-                      case .message(var updated) = items[index]
+                try await self.messages.updateFileDownloaded(messageId: messageId, localURL: localURL)
+                guard let index = self.items.firstIndex(where: { $0.messageId == messageId }),
+                      case .message(var updated) = self.items[index]
                 else { return }
                 updated.objectUrl = localURL.absoluteString
                 updated.isFileDownloaded = 1
-                items[index] = .message(updated)
+                self.items[index] = .message(updated)
             } catch {
                 // `isFileDownloaded` reste à 0 — un prochain `handleAppear` relance l'essai, comme
                 // côté upload (`requestUpload`), même politique de retry sans compteur de tentatives.

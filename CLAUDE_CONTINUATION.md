@@ -11,7 +11,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
 Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS
-[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029 traités])
+[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -316,16 +316,33 @@ la vidéo (à côté de l'extraction width/height/duration déjà existante), no
 `COMPLETE_PARITY_VALIDATED` (test réel requis : publier avec le toggle activé ET désactivé, inspecter
 le payload réseau `activity/add` pour confirmer `consentAi`/`metadata` corrects dans les deux cas).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-13 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur **V4-F-030** (Feed — like/partage/commentaire ne déclenchent JAMAIS l'appel
-push vers l'auteur du post : `FeedViewModel.swift:113-140` [`toggleLike`/`toggleShare`], aucun appel
-équivalent nulle part — les auteurs de post ne sont jamais notifiés d'un like/partage venant d'iOS,
-ni de l'ouverture des commentaires ; Android — `MainFragment.java:1150-1174,1190,1238` — `notifyUser`
-→ `POST push` SÉPARÉ de l'appel `reaction`/`comment` lui-même — ajouter un appel `POST push
-{"userId": <auteur>}` dans `toggleLike`, `toggleShare`, et à l'ouverture des commentaires), puis
-V4-F-056→064→059→068→073→021→027→019→003 (Gallery→BunnyCDN→Wallet→Performance→Social→Groups→
-Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de
-vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lot P1-14 traité (V4-F-030)** — Feed, like/partage/commentaire ne notifiaient jamais l'auteur du
+post. Portée réelle affinée par rapport au texte d'audit : `notifyUser` câblé dans `MainFragment`
+(Feed), `ProfileFeedFragment` (Profile), `HashtagProfile` (hashtag), mais CONFIRMÉ ABSENT de
+`FullScreenMedia` (source de `SearchView`/`NotificationsListView`, `grep` = 0). Placement exact
+vérifié ligne par ligne : like → inconditionnel après like ET unlike, sans attendre la réponse ;
+partage → uniquement sur succès réseau, hors du if/else SHARE/UNSHARE ; commentaire → à l'OUVERTURE
+du panneau, pas à l'envoi. Corrigé : `FeedRepository.notifyPostAuthor(userId:)` (nouveau), flag
+`notifiesAuthorOnInteraction` sur `FeedViewModel` (init, chaque écran possède déjà son propre
+viewModel jetable) — `true` pour Feed/Profile/Hashtag/deep-link, `false` documenté explicitement pour
+Search/Notifications. Détail complet dans `PROGRESS_V4.md`, Lot P1-14. **Commit `b6e6807`, CI verte
+confirmée (run `32681817117`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel
+requis : liker/partager/commenter un post d'un autre compte depuis Feed/Profile/Hashtag → confirmer
+la notification reçue ; répéter depuis Search/Notifications → confirmer l'ABSENCE, fidèle à Android).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-14 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur **V4-F-056** (Gallery-PhotoEditor — le recadrage libre [freeform] ignore
+l'orientation EXIF, photos portrait rendues de côté/en miroir : `PublishComposeView.swift:111-125`,
+`PhotoEditor/FreeformCropView.swift:11-38` — `image.cgImage` brut passé directement, dessiné via
+`Image(decorative:)` qui IGNORE `imageOrientation` entièrement ; le mode rect/oval est correct [passe
+par `TOCropViewController`, orientation préservée], SEUL le mode freeform opère sur le buffer brut
+non-tourné ; Android — `engine/.../croper/BitmapLoadingWorkerTask.java:76`,
+`CropImageView.java:981-994` — `rotateBitmapByExif` appliqué en amont pour TOUS les sous-modes de
+recadrage [rect/oval/freeform] — appliquer la rotation EXIF au `CGImage` AVANT de le passer à
+`FreeformCropView`, comme pour rect/oval), puis V4-F-064→059→068→073→021→027→019→003
+(BunnyCDN→Wallet→Performance→Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour
+chaque finding complet). Repo Android source de vérité :
+`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

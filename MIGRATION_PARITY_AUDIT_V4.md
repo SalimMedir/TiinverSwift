@@ -663,6 +663,23 @@ IMPACT : Les auteurs de post ne sont jamais notifiés d'un like/partage (ni de l
 commentaires) venant d'iOS.
 RECOMMANDATION : Ajouter un appel `POST push {"userId": <auteur>}` dans `toggleLike`, `toggleShare`,
 et à l'ouverture des commentaires.
+STATUT : BUILD_VALIDATED (2026-08-24, commit b6e6807, CI run 32681817117 succès). Portée RÉELLE plus
+précise que le texte d'audit : vérifié que `notifyUser` est câblé dans `MainFragment` (Feed),
+`ProfileFeedFragment` (Profile) ET `HashtagProfile` (hashtag), mais CONFIRMÉ ABSENT de
+`FullScreenMedia` (source Android de `SearchView`/`NotificationsListView`, `grep notifyUser` = 0
+résultat) — donc PAS câblé partout uniformément côté Android non plus. Placement exact vérifié ligne
+par ligne : like → inconditionnel après like ET unlike (hors du if/else, sans attendre la réponse
+réseau) ; partage → uniquement sur succès réseau du `reaction`, hors du if/else SHARE/UNSHARE (donc
+même sur un message inattendu) ; commentaire → à l'OUVERTURE du panneau, pas à l'envoi d'un
+commentaire. Corrigé fidèlement : `FeedRepository.notifyPostAuthor(userId:)` (nouveau), flag
+`notifiesAuthorOnInteraction` sur `FeedViewModel` (positionné à l'init, chaque écran possédant déjà
+son propre `FeedViewModel` jetable) — `true` pour `FeedView`/`ProfileView`/`HashtagFeedView`/le
+pager deep-link de `HomeShellView` (confirmé router par `ShareActivity.getActivities` →
+`SplashActivity` → contexte `MainFragment` normal), `false` par défaut (documenté explicitement, pas
+un oubli) pour `SearchView`/`NotificationsListView`. DEVICE_TEST_REQUIRED pour
+COMPLETE_PARITY_VALIDATED (liker/partager/ouvrir les commentaires depuis Feed/Profile/Hashtag avec un
+2ᵉ compte comme auteur, confirmer la réception d'une notification push ; confirmer l'ABSENCE de
+notification depuis Search/Notifications, fidèle à Android).
 ```
 
 ```

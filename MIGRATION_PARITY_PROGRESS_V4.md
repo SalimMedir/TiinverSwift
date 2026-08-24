@@ -4,7 +4,7 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
 **État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
-V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029 clos. Prochain : V4-F-030.**
+V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030 clos. Prochain : V4-F-056.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -1286,3 +1286,72 @@ photo et vidéo de `PublishComposeView.publish()`), tous deux mis à jour avec `
 toggle activé et une fois désactivé, inspecter le payload réseau `activity/add` (outil d'inspection
 réseau) pour confirmer que `consentAi`/`metadata.consentAi`/`metadata.license` reflètent bien l'état
 réel du toggle, et que `metadata.fps`/`.hasAudio`/`.duration` sont cohérents pour une vidéo réelle.
+
+## 2026-08-24 — Phase B V4 — Lot P1-14 : V4-F-030 (Feed — like/partage/commentaire ne notifient
+jamais l'auteur du post)
+
+**Commit** : `b6e6807` — CI **run 32681817117, conclusion: success**.
+
+### Vérification Android (avant tout changement) — portée réelle affinée
+
+`Activity/ui/MainFragment.java:1140-1198,1200-1238` (lu en entier) :
+```java
+private void notifyUser(String id){
+    TransportData data = new TransportData(requireActivity());
+    HashMap<String,String> map = new HashMap<>();
+    map.put("userId", id);
+    data.Post(map, "push", null);   // fire-and-forget, callback null
+}
+```
+Appelé à 3 endroits, chacun avec un placement PRÉCIS vérifié ligne par ligne :
+1. **Like** (ligne 1174) : APRÈS le `if/else` de bascule like/unlike (les deux branches y mènent),
+   INCONDITIONNELLEMENT, SANS attendre la réponse de `activityViewModel.reaction(map)`.
+2. **Commentaire** (ligne 1190, `OnclickCommentaire`) : IMMÉDIATEMENT après
+   `mySheetDialog.show(fm, "modalSheetDialog")` — donc à l'OUVERTURE du panneau, PAS à l'envoi d'un
+   commentaire.
+3. **Partage** (ligne 1238, `OnclickPrtg`) : DANS le callback de succès (`onResonse`,
+   `error.equals("false")`), mais placé APRÈS le `if/else` SHARE/UNSHARE (pas imbriqué dedans) — se
+   déclenche sur tout succès réseau, quel que soit le message retourné.
+
+**Portée réelle affinée par rapport au texte d'audit** : `grep notifyUser` sur `ProfileFeedFragment.
+java`/`HashtagProfile.java` confirme le MÊME mécanisme câblé (3 sites chacun) ; `FullScreenMedia.
+java` (source de `SearchView`/`NotificationsListView`) → **0 résultat**, ce mécanisme n'y est PAS
+câblé côté Android non plus.
+
+### Correctif appliqué
+
+1. `FeedRepository.notifyPostAuthor(userId:)` (nouveau) — `POST push {"userId": userId}`.
+2. `FeedViewModel` : nouveau `private let notifiesAuthorOnInteraction: Bool` (paramètre d'`init`,
+   défaut `false`), `notifyPostAuthorIfNeeded(_:)` (privé, garde le flag + fire-and-forget).
+3. `toggleLike` : appel INCONDITIONNEL après le `Task { reaction(...) }`, sans l'attendre.
+4. `toggleShare` : appel APRÈS le `if/else` SHARE/UNSHARE, à l'intérieur du `guard let message`
+   réussi (donc sur tout succès réseau).
+5. `notifyCommentOpened(_:)` (nouveau, public) — appelé par la VUE au moment où elle arme
+   `commentsPost`, pas depuis `CommentsView`.
+6. Câblage par écran : `FeedView` (`notifiesAuthorOnInteraction: true` à l'instanciation du
+   viewModel, propage à la fois à la grille ET au pager puisqu'ils partagent la MÊME instance) ;
+   `ProfileView`/`HashtagFeedView`/`HomeShellView` (`notifiesAuthor: true` sur l'init `posts:` de
+   `FeedDetailPagerView`) ; `SearchView`/`NotificationsListView` laissés au défaut `false`
+   (commentaire explicite ajouté, pas un oubli silencieux).
+
+### Flux frères vérifiés
+
+`grep -n "FeedDetailPagerView(posts:"` → 5 sites externes + 1 usage interne (`FeedView`) déjà
+recensés lors du lot V4-F-007 — chacun réévalué individuellement contre sa source Android réelle
+(`MainFragment`/`ProfileFeedFragment`/`HashtagProfile`/`FullScreenMedia` ×2), pas une règle générique
+appliquée en bloc.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedViewModel.swift`,
+`Sources/TiinverSwift/Feed/FeedRepository.swift`, `Sources/TiinverSwift/Feed/FeedView.swift`,
+`Sources/TiinverSwift/Profile/ProfileView.swift`, `Sources/TiinverSwift/Discover/HashtagFeedView.swift`,
+`Sources/TiinverSwift/Discover/SearchView.swift`,
+`Sources/TiinverSwift/Notifications/NotificationsListView.swift`,
+`Sources/TiinverSwift/Navigation/HomeShellView.swift`.
+
+**Résultat CI** : run `32681817117` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : depuis un compte, liker/partager/ouvrir les
+commentaires d'un post d'un AUTRE compte depuis Feed/Profile/Hashtag, confirmer la réception d'une
+notification push sur le second appareil ; répéter depuis Search/Notifications et confirmer l'ABSENCE
+de notification (fidèle à Android, pas une régression).

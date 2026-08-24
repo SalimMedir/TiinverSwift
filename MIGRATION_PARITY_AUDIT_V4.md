@@ -222,6 +222,14 @@ DIFFÉRENCE : Android atterrit toujours sur un écran utilisable ; iOS ne fait r
 IMPACT : Mineur, cas de bord seulement.
 PREUVE : `ShareActivity.java:207-210` vs `DeepLinkRouter.swift:83-84`.
 RECOMMANDATION : Ajouter un repli vers Home dans le `default` de `handleContentLink`.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P3, Lot P3-1) — Confirmé : `handleContentLink`'s
+`default: break` n'avait aucun effet observable. Correctif : nouveau cas
+`DeepLinkDestination.home`, routé depuis le `default` de `handleContentLink`, consommé par
+`HomeShellView.handleDeepLink` (`selectedTab = 0`, l'onglet "Accueil"). Un seul site de switch
+exhaustif sur `DeepLinkDestination` dans tout le projet (`HomeShellView.handleDeepLink`), déjà mis
+à jour. Commit `60d4045`, push confirmé (`e9a426b..60d4045 main -> main`), CI run `32728629548`
+conclusion `success`.
 ```
 
 ```
@@ -473,6 +481,20 @@ ANDROID SOURCE : adapter/ProfileAdapter2.java:257-303
 IOS FILES : Models/User.swift:53-55,138-143 (décodés) ; Profile/ProfileView.swift:100-157 (jamais lus)
 IMPACT : Un utilisateur restreint/banni/averti n'a aucune indication in-app ; badge premium jamais visible.
 RECOMMANDATION : Rendre `profile?.userStatus`/`hasProgram`/`programs` dans le header.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P3, Lot P3-3) — Vérifié contre
+`ProfileAdapter2.HeaderViewHolder.bindView` (lignes 285-301, bannière restricted/banned/warning) et
+`ProgramView.createBadge` (`view/ProgramView.java:76-158`, 4 types de badge premium/ambassador/
+creator/partner avec icône+couleur+libellé propres, couleurs reprises de `values/colors.xml`).
+Correctif : bannière de statut (textes EXACTS de `values-fr/strings.xml`) + rangée de badges
+programme ajoutées au header de `ProfileView`, SF Symbols choisis par équivalence sémantique
+(`crown.fill`/`megaphone.fill`/`paintbrush.fill`/`hand.raised.fill`). Seul site de rendu du header
+Profile dans tout le projet (`grep userStatus\|hasProgram` confirmé). **Un premier commit
+(`2ded523`) a cassé la CI** — le compilateur Swift, sous `@ViewBuilder`, ne supporte pas bien une
+fermeture auto-invoquée renvoyant un tuple imbriquée dans une fonction `@ViewBuilder` (diagnostic
+trompeur "buildExpression is unavailable"), corrigé en extrayant le calcul des attributs du badge
+dans une fonction statique simple hors ViewBuilder. Commit correctif `c7b182a`, push confirmé
+(`2ded523..c7b182a main -> main`), CI run `32730329682` conclusion `success`.
 ```
 
 ```
@@ -506,6 +528,15 @@ FEATURE : Aucune action "Partager le profil"
 ANDROID SOURCE : uploadPerfilPhoto/AddPerfilFoto.java:396-419
 IOS FILES : Profile/ProfileView.swift:335-351 (toolbar own-profile = seulement réglages)
 RECOMMANDATION : Ajouter un `ShareLink` vers `https://tiinver.com/user/{username}`.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P3, Lot P3-3) — Vérifié contre
+`AddPerfilFoto.shareProfile()` (lignes 413-419) : texte + lien exacts repris de `values-fr/
+strings.xml` (`profile_link_share_msg`). Correctif : `ShareLink` ajouté à la toolbar own-profile
+(icône `square.and.arrow.up`, texte `"Découvrez mon profil sur Tiinver :\nhttps://tiinver.com/
+user/{username}"`), affiché uniquement si `username` non vide. Seul site "partage de profil"
+existant dans le projet (les autres `ShareLink` du projet sont sans rapport : export Animems,
+lien de parrainage Wallet). Commit `c7b182a`, push confirmé (`2ded523..c7b182a main -> main`), CI
+run `32730329682` conclusion `success`.
 ```
 
 ```
@@ -518,6 +549,13 @@ IOS FILES : Profile/ProfileView.swift:77-86 (PhotosPicker → upload direct, auc
 SUGGESTED_STATUS : IOS_INTENTIONAL_DIFFERENCE (acceptable si le recadrage circulaire côté serveur
 suffit — à confirmer produit)
 RECOMMANDATION : Accepter tel quel, ou ajouter une étape de recadrage si jugé nécessaire.
+
+STATUT : DIFFÉRÉ / IOS_INTENTIONAL_DIFFERENCE (2026-08-24, Phase B P3, Lot P3-2) — L'audit lui-même
+propose ce statut, sous condition d'une décision produit ("à confirmer produit"). Construire une
+étape de recadrage équivalente à `CropFragment`/`MediaEditor` Android serait une fonctionnalité
+UI substantielle, pas un correctif ponctuel, et la RECOMMANDATION elle-même laisse le choix ouvert
+("accepter tel quel, ou ajouter... si jugé nécessaire") plutôt que d'exiger un correctif. Aucun
+code modifié — décision produit hors du périmètre de ce cycle de correction mécanique.
 ```
 
 ---

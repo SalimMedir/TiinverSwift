@@ -10,8 +10,9 @@ dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAIT
 findings) : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014/022/025/
 028/035/039/041/043/047/051/052/057/058/061/066/067/069/074 (`BUILD_VALIDATED`) clos (V4-F-066 déjà
 clos comme effet de bord du Lot P0-1/V4-F-065, vérifié dans l'audit), V4-F-031/060/070 (différés,
-hors périmètre d'un petit lot). **BACKLOG P2 ENTIÈREMENT TRAITÉ (27/27).** Backlog P3 EN COURS.
-Prochain : premier P3 de l'audit V4 dans l'ordre du document.**
+hors périmètre d'un petit lot). **BACKLOG P2 ENTIÈREMENT TRAITÉ (27/27).** Backlog P3 (21 findings)
+EN COURS : V4-F-005/013/015 (`BUILD_VALIDATED`) clos, V4-F-016 (`IOS_INTENTIONAL_DIFFERENCE`,
+décision produit hors périmètre). Prochain : V4-F-018.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -3252,3 +3253,117 @@ règle du cycle, ce statut nécessite un test réel sur device, indisponible dan
 
 Backlog P3 (21 findings) démarré immédiatement après, sans confirmation utilisateur supplémentaire,
 conformément à l'instruction explicite de continuation automatique.
+
+## 2026-08-24 — Phase B V4 — Lot P3-1 : V4-F-005 (BUILD_VALIDATED)
+
+### Vérification
+
+`ANDROID SOURCE : partage/ShareActivity.java:166-217` — le `default:` du dispatch de segment de
+chemin lance `SplashActivity`, garantissant que l'utilisateur atterrit toujours sur un écran
+utilisable, même pour un lien profond dont le premier segment n'est reconnu par aucun `case`.
+
+### État iOS avant correctif
+
+`Navigation/DeepLinkRouter.swift:83-84` — `default: break` dans `handleContentLink`, aucun effet
+observable pour un segment non reconnu.
+
+### Correctif appliqué
+
+Nouveau cas `DeepLinkDestination.home`, routé depuis le `default` de `handleContentLink`, consommé
+par `HomeShellView.handleDeepLink` (`selectedTab = 0`, onglet "Accueil").
+
+### Flux frères vérifiés
+
+Un seul site de switch exhaustif sur `DeepLinkDestination` dans tout le projet
+(`HomeShellView.handleDeepLink`), mis à jour dans le même commit — pas de second site à corriger.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Navigation/DeepLinkCenter.swift`,
+`Sources/TiinverSwift/Navigation/DeepLinkRouter.swift`,
+`Sources/TiinverSwift/Navigation/HomeShellView.swift`.
+
+**Résultat CI** : commit `60d4045`, push confirmé (`e9a426b..60d4045 main -> main`), run
+`32728629548` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : ouvrir un lien `tiinver://xyz-inconnu`, confirmer
+que l'app atterrit sur l'onglet Accueil plutôt que de ne rien faire d'observable.
+
+## 2026-08-24 — Phase B V4 — Lot P3-2 : V4-F-016 (IOS_INTENTIONAL_DIFFERENCE)
+
+### Vérification
+
+`ANDROID SOURCE : uploadPerfilPhoto/AddPerfilFoto.java:421-490` — `CropFragment`/`MediaEditor`,
+une étape de recadrage manuel avant l'envoi de la nouvelle photo de profil.
+
+### État iOS
+
+`Profile/ProfileView.swift` — `PhotosPicker` → upload direct, aucune étape de recadrage. L'audit
+propose lui-même `SUGGESTED_STATUS : IOS_INTENTIONAL_DIFFERENCE`, sous réserve d'une confirmation
+produit ("acceptable si le recadrage circulaire côté serveur suffit").
+
+### Décision
+
+`IOS_INTENTIONAL_DIFFERENCE` / `DIFFÉRÉ` — construire une étape de recadrage équivalente serait une
+fonctionnalité UI substantielle (composant de recadrage interactif), pas un correctif mécanique, et
+la RECOMMANDATION de l'audit laisse elle-même le choix ouvert plutôt que d'exiger un correctif.
+Décision produit hors du périmètre de ce cycle de correction. Aucun code modifié.
+
+**Fichiers modifiés** : `MIGRATION_PARITY_AUDIT_V4.md` (STATUT uniquement).
+
+## 2026-08-24 — Phase B V4 — Lot P3-3 : V4-F-013 et V4-F-015 (BUILD_VALIDATED)
+
+### V4-F-013 — Profile : bannière de statut de compte et badge programme premium décodés mais jamais affichés
+
+**Vérification Android** : `adapter/ProfileAdapter2.HeaderViewHolder.bindView` (lignes 257-303) —
+bannière `status` visible pour `restricted`/`banned`/`warning` (textes `R.string.restricted_message`/
+`banned_message`/`warning_message`), et `ProgramView.createBadge` (`view/ProgramView.java:76-158`)
+pour un badge par programme (`premium`/`ambassador`/`creator`/`partner`), chacun avec icône, couleur
+propre (`values/colors.xml`) et libellé (`premium` affiche en plus le niveau).
+
+**État iOS avant correctif** : `Models/User.swift` décodait déjà `userStatus`/`hasProgram`/
+`programs`, mais `Profile/ProfileView.swift` (header) ne les lisait jamais.
+
+**Correctif appliqué** : bannière de statut (textes français EXACTS repris de `values-fr/
+strings.xml`) + rangée de badges programme ajoutées au header, SF Symbols choisis par équivalence
+sémantique (`crown.fill`/`megaphone.fill`/`paintbrush.fill`/`hand.raised.fill`), couleurs
+hexadécimales reprises telles quelles de `colors.xml`.
+
+**Incident CI** : le premier commit (`2ded523`) a **cassé la CI** — Swift, sous `@ViewBuilder`, ne
+type-vérifie pas correctement une fermeture auto-invoquée renvoyant un tuple imbriquée dans une
+fonction `@ViewBuilder` (diagnostic trompeur `'buildExpression' is unavailable: this expression
+does not conform to 'View'`, alors que le vrai problème n'a rien à voir avec `View`). Corrigé en
+extrayant le calcul des attributs du badge (`icon`/`fg`/`bg`/`label`) dans une fonction statique
+simple (`programBadgeAttributes`) appelée AVANT le corps `@ViewBuilder`, plutôt que la fermeture
+imbriquée. Aucun changement de comportement visuel, uniquement de structure de code.
+
+### V4-F-015 — Profile : aucune action "Partager le profil"
+
+**Vérification Android** : `uploadPerfilPhoto/AddPerfilFoto.shareProfile()` (lignes 413-419) —
+`Intent.ACTION_SEND` avec le texte `R.string.profile_link_share_msg` + `\n` +
+`https://tiinver.com/user/{username}`.
+
+**État iOS avant correctif** : toolbar own-profile limitée au bouton réglages, aucune action de
+partage.
+
+**Correctif appliqué** : `ShareLink` ajouté à la toolbar own-profile (icône
+`square.and.arrow.up`), texte EXACT `"Découvrez mon profil sur Tiinver :\nhttps://tiinver.com/
+user/{username}"`, affiché uniquement si `username` non vide.
+
+### Flux frères vérifiés
+
+`grep userStatus\|hasProgram` (V4-F-013) et `grep action_share\|shareProfile` (V4-F-015) → un seul
+site de rendu concerné dans chaque cas ; les autres `ShareLink` du projet (export Animems, lien de
+parrainage Wallet) sont sans rapport avec le partage de profil.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Profile/ProfileView.swift` (les deux findings, même
+fichier).
+
+**Résultat CI** : commit cassé `2ded523` (échec, diagnostic `@ViewBuilder` trompeur analysé et
+corrigé) → commit correctif `c7b182a`, push confirmé (`2ded523..c7b182a main -> main`), run
+`32730329682` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée) pour les deux. PAS
+`COMPLETE_PARITY_VALIDATED` — tests réels requis : (V4-F-013) définir `userStatus`/`hasProgram` sur
+un compte de test, confirmer visuellement la bannière et les badges ; (V4-F-015) taper le bouton de
+partage sur son propre profil, confirmer que la feuille de partage système s'ouvre avec le texte et
+le lien attendus.

@@ -21,7 +21,8 @@ Lot P2-13 : V4-F-051 BUILD_VALIDATED ; Lot P2-14 : V4-F-052 BUILD_VALIDATED ; Lo
 V4-F-057 BUILD_VALIDATED ; Lot P2-16 : V4-F-058 BUILD_VALIDATED ; Lot P2-17 : V4-F-060 différé +
 V4-F-061 BUILD_VALIDATED ; Lot P2-18 : V4-F-067 BUILD_VALIDATED ; Lot P2-19 : V4-F-069 +
 V4-F-074 BUILD_VALIDATED ; Lot P2-20 : V4-F-070 différé] — **BACKLOG P2 ENTIÈREMENT TRAITÉ
-(27/27)**, backlog P3 EN COURS [21 findings])
+(27/27)**, backlog P3 EN COURS [21 findings ; Lot P3-1 : V4-F-005 BUILD_VALIDATED ; Lot P3-2 :
+V4-F-016 IOS_INTENTIONAL_DIFFERENCE ; Lot P3-3 : V4-F-013 + V4-F-015 BUILD_VALIDATED])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -726,14 +727,33 @@ Liste complète, dans l'ordre du document `MIGRATION_PARITY_AUDIT_V4.md` : V4-F-
 V4-F-015, V4-F-016, V4-F-018, V4-F-023, V4-F-024, V4-F-026, V4-F-034, V4-F-036, V4-F-037, V4-F-044,
 V4-F-045, V4-F-053, V4-F-054, V4-F-055, V4-F-062, V4-F-063, V4-F-071, V4-F-072, V4-F-075.
 
-**PROCHAINE TÂCHE EXACTE** : Backlog P2 clos. Enchaîner **automatiquement** sur le premier P3 :
-**V4-F-005** (Navigation-DeepLinks — segment de chemin deep link non reconnu → no-op silencieux au
-lieu d'un repli vers Home ; Android `partage/ShareActivity.java:166-217` [`default:` → lance
-`SplashActivity`] ; iOS `Navigation/DeepLinkRouter.swift:55-85` [`default: break`] ; impact mineur,
-cas de bord seulement — recommandation : ajouter un repli vers Home dans le `default` de
-`handleContentLink`), puis continuer AUTOMATIQUEMENT tout le backlog P3 dans l'ordre du document
-listé ci-dessus, SANS attendre de nouvelle confirmation utilisateur pour chaque lot (instruction
-explicite : continuer automatiquement). Repo Android source de vérité :
+**Lots P3-1/2/3 traités (V4-F-005, V4-F-016, V4-F-013, V4-F-015)** — V4-F-005
+(Navigation-DeepLinks) : `default: break` dans `handleContentLink` → nouveau cas
+`DeepLinkDestination.home` routé vers l'onglet Accueil. V4-F-016 (Profile, recadrage d'avatar) :
+`IOS_INTENTIONAL_DIFFERENCE`/`DIFFÉRÉ` — décision produit, l'audit lui-même laisse le choix ouvert,
+aucun code modifié. V4-F-013 (Profile) : bannière de statut de compte (restricted/banned/warning)
++ badges programme (premium/ambassador/creator/partner) ajoutés au header, décodés depuis longtemps
+mais jamais rendus. V4-F-015 (Profile) : `ShareLink` "Partager le profil" ajouté à la toolbar.
+**Incident CI notable** : le premier commit de V4-F-013 (`2ded523`) a cassé la CI — Swift
+`@ViewBuilder` ne type-vérifie pas bien une fermeture auto-invoquée renvoyant un tuple à
+l'intérieur d'une fonction `@ViewBuilder` (diagnostic trompeur "buildExpression unavailable"),
+corrigé en extrayant le calcul dans une fonction statique simple hors ViewBuilder — **retenir ce
+piège Swift pour tout futur `@ViewBuilder` complexe dans ce portage**. Commits `60d4045` (run
+`32728629548`), `2ded523` (run `32729420887`, **ÉCHEC**), `c7b182a` (run `32730329682`, correctif —
+succès). Détail complet dans `PROGRESS_V4.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V4-F-018** (Settings — écran
+Stockage : sélection média par type de connexion [photos/vidéos/fichiers] absente ; Android
+`setting/SettingStorageFragment.java:113-151,215-227,255-282` ; iOS `Settings/SettingSubViews.
+swift:81-96` [seulement 3 switches maître] ; l'audit note lui-même que ces préférences granulaires
+ne sont lues NULLE PART côté Android non plus [zéro consommateur hors leur propre écran] — écart
+visuel/de complétude seulement, pas fonctionnel, RECOMMANDATION "priorité basse... uniquement si
+jugé utile" — vérifier si un vrai correctif se justifie ou si `DIFFÉRÉ`/complétude-optionnelle est
+plus honnête avant d'écrire du code), puis continuer AUTOMATIQUEMENT le reste du backlog P3 dans
+l'ordre du document (V4-F-023, V4-F-024, V4-F-026, V4-F-034, V4-F-036, V4-F-037, V4-F-044,
+V4-F-045, V4-F-053, V4-F-054, V4-F-055, V4-F-062, V4-F-063, V4-F-071, V4-F-072, V4-F-075 — 16
+findings restants après V4-F-018), SANS attendre de nouvelle confirmation utilisateur pour chaque
+lot (instruction explicite : continuer automatiquement). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---

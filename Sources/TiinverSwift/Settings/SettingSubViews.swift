@@ -107,12 +107,21 @@ struct SettingStorageView: View {
 struct SettingPrivacyView: View {
     @State private var isPrivate = false
     @State private var isSaving = false
+    /// Port de la distinction Android entre `setOnClickListener` (tap utilisateur → appel réseau,
+    /// `swichtToPrivate`) et `setChecked()` programmatique (revert sur échec, NE redéclenche PAS le
+    /// listener) — **ajouté le 2026-08-23 (V4-F-017)** : `.onChange(of:)` de SwiftUI ne fait PAS
+    /// cette distinction (un revert programmatique de `isPrivate` le redéclenche comme un tap réel),
+    /// ce flag évite qu'un revert n'envoie un second appel réseau non désiré.
+    @State private var isReverting = false
 
     var body: some View {
         Form {
             Toggle("Compte privé", isOn: $isPrivate) // account_type_switch
                 .disabled(isSaving)
-                .onChange(of: isPrivate) { newValue in Task { await save(isPrivate: newValue) } }
+                .onChange(of: isPrivate) { newValue in
+                    if isReverting { isReverting = false; return }
+                    Task { await save(isPrivate: newValue) }
+                }
         }
         .navigationTitle("Confidentialité")
         .task { await load() }
@@ -128,11 +137,24 @@ struct SettingPrivacyView: View {
     }
 
     /// Port de `swichtToPrivate` — `POST user`, `{id, column: "type", value: "private"|"public"}`.
+    ///
+    /// **Corrigé le 2026-08-23 (MIGRATION_PARITY_AUDIT_V4.md V4-F-017, Phase B P1)** — `try?`
+    /// avalait tout échec (réseau OU rejet backend, `updateProfileField` lève désormais correctement
+    /// via `isBackendSuccess`) et laissait le toggle sur sa nouvelle position jamais persistée.
+    /// Vérifié dans `SettingPrivacityFragment.swichtToPrivate` (lignes 294-328, entier) :
+    /// `onError` fait explicitement `account_type_switch.setChecked(!isChecked)` — remet le switch à
+    /// son état PRÉCÉDENT, SANS second appel réseau (`setChecked` ne passe pas par le
+    /// `setOnClickListener` qui déclenche `swichtToPrivate`). Reproduit ici via `isReverting`.
     private func save(isPrivate: Bool) async {
         guard let userId = UserSession.shared.myId else { return }
         isSaving = true
         defer { isSaving = false }
-        try? await ProfileRepository.shared.updateProfileField(userId: userId, column: "type", value: isPrivate ? "private" : "public")
+        do {
+            try await ProfileRepository.shared.updateProfileField(userId: userId, column: "type", value: isPrivate ? "private" : "public")
+        } catch {
+            isReverting = true
+            self.isPrivate = !isPrivate
+        }
     }
 }
 

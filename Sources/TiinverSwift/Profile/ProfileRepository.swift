@@ -102,8 +102,21 @@ final class ProfileRepository {
     /// commun IDENTIQUE dans les deux fichiers : `POST user` avec `{id, column, value}` par champ
     /// modifié (mêmes conventions que `PushTokenRegistrar`/`BuyCoinsActivity.updateToServer` déjà
     /// rencontrées ailleurs dans ce portage).
+    ///
+    /// **Corrigé le 2026-08-23 (MIGRATION_PARITY_AUDIT_V4.md V4-F-017, Phase B P1)** — discardait la
+    /// réponse (`_ = try await ...`) sans jamais vérifier `isBackendSuccess`, donc ne pouvait JAMAIS
+    /// lever pour un rejet backend (HTTP 200, `error:"true"`) — seul un échec RÉSEAU faisait échouer
+    /// cette fonction. `SettingPrivacyView.save` (toggle compte privé) et `CategoryPickerView.save`
+    /// dépendent TOUS DEUX d'un `throw` fiable sur rejet backend pour revert/afficher une erreur
+    /// correctement (Android : `swichtToPrivate`'s `onError` remet le switch à son état précédent,
+    /// jamais atteint côté iOS avant ce correctif faute de levée). Les 8 autres appelants
+    /// (`EditProfileView`/`EditPersonalInformationView`, tous `try?`) ne changent PAS de comportement
+    /// observable (ils ignoraient déjà toute distinction succès/échec).
     func updateProfileField(userId: String, column: String, value: String) async throws {
-        _ = try await APIClient.shared.post(["id": userId, "column": column, "value": value], endpoint: "user")
+        let result = try await APIClient.shared.post(["id": userId, "column": column, "value": value], endpoint: "user")
+        guard result.isBackendSuccess else {
+            throw JSONError.typeMismatch(result.backendErrorMessage ?? "user")
+        }
     }
 
     /// Port de `ProfileService.uploadImageToBunny`+`sendMetaDate`

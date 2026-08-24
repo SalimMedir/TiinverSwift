@@ -6,8 +6,22 @@ import SwiftUI
 /// FIDÈLEMENT (formulaire, calcul de frais, seuil minimum, confirmation) sur demande explicite,
 /// contrairement à l'écran d'achat (`BuyCoinsView`, remplacé par StoreKit 2).
 struct WithdrawView: View {
+    /// Valeur initiale (cache local, `WalletViewModel.coinsAmount`) — affichée immédiatement au
+    /// montage, puis remplacée par `currentBalance` dès que le solde serveur est connu.
     let coinsAmount: Double
     @Environment(\.dismiss) private var dismiss
+
+    /// **Ajouté le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-068, Phase B P1)** — port de
+    /// `getRealAmount()` (`WithdrawActivity.java:221,415-448`), appelé INCONDITIONNELLEMENT dans
+    /// `onCreate` avant même que `submitButton` ne soit câblé. `currentBalance` (champ Android)
+    /// démarre avec la valeur transmise par l'écran précédent (ici, le paramètre `coinsAmount`),
+    /// PUIS est écrasé par la réponse serveur — c'est CETTE MÊME variable qui sert ensuite à la
+    /// validation (`requestedAmount < currentBalance`) ET qui est envoyée telle quelle au serveur
+    /// dans le payload de la demande de retrait (`submitWithdrawalRequest(myId, currentBalance,
+    /// ...)`). Reproduit à l'identique : rafraîchissement lancé au montage (`.task`, non bloquant
+    /// pour le formulaire, fidèle au caractère asynchrone fire-and-forget de `getRealAmount`), et
+    /// c'est `currentBalance` (pas `coinsAmount`) qui est utilisé partout dans `submit()`.
+    @State private var currentBalance: Double
 
     @State private var operators = PaymentOperator.forCurrentZone()
     @State private var selectedOperator: PaymentOperator = PaymentOperator.forCurrentZone().first!
@@ -21,6 +35,11 @@ struct WithdrawView: View {
 
     @StateObject private var rewardedInterstitial = RewardedInterstitialAdManager()
     private let config = TiinverFirebaseConfigManager.shared
+
+    init(coinsAmount: Double) {
+        self.coinsAmount = coinsAmount
+        _currentBalance = State(initialValue: coinsAmount)
+    }
 
     private var pieceValue: Double { selectedOperator.isCrypto ? config.coinsValueInDollar : config.coinsValue }
     private var currency: String { selectedOperator.isCrypto ? "USDC" : "FCFA" }
@@ -39,7 +58,7 @@ struct WithdrawView: View {
                     .listRowInsets(EdgeInsets())
             }
             Section {
-                Text("Solde disponible : \(coinsAmount, specifier: "%.0f")") // R.string.quantity_available
+                Text("Solde disponible : \(currentBalance, specifier: "%.0f")") // R.string.quantity_available
             }
             Section("Moyen de retrait") { // R.string.withdrawal_via (utilisé comme libellé de section ici)
                 Picker("Opérateur", selection: $selectedOperator) {
@@ -81,6 +100,15 @@ struct WithdrawView: View {
         .alert("Retrait envoyé", isPresented: $didSubmit) {
             Button("OK") { dismiss() }
         }
+        .task { await refreshBalance() }
+    }
+
+    /// Port de `getRealAmount()` — appelé au montage, sans bloquer le formulaire (fidèle au
+    /// caractère fire-and-forget de l'appel Android, câblé dans `onCreate` avant même que
+    /// `submitButton` ne soit prêt à être tapé).
+    private func refreshBalance() async {
+        guard let userId = UserSession.shared.myId else { return }
+        currentBalance = (try? await WalletRepository.shared.refreshBalance(userId: userId)) ?? currentBalance
     }
 
     /// Port de `submitButton.setOnClickListener` — validations dans le MÊME ordre que l'original
@@ -99,7 +127,7 @@ struct WithdrawView: View {
             errorMessage = "Le montant minimum de retrait n'est pas atteint" // R.string.the_minimum_withdrawal_amount
             return
         }
-        guard requestedAmount < coinsAmount else {
+        guard requestedAmount < currentBalance else {
             errorMessage = "Solde insuffisant" // R.string.Insufficient_balance_msg
             return
         }
@@ -111,11 +139,11 @@ struct WithdrawView: View {
             do {
                 if selectedOperator.isCrypto {
                     try await WalletRepository.shared.submitWithdrawalByCrypto(
-                        userId: userId, currentBalance: coinsAmount, requestedAmount: requestedAmount, calculatedMoney: calculatedMoney,
+                        userId: userId, currentBalance: currentBalance, requestedAmount: requestedAmount, calculatedMoney: calculatedMoney,
                         operatorName: selectedOperator.name, country: selectedCountry.name, destAddress: fullDestination, currency: currency)
                 } else {
                     try await WalletRepository.shared.submitWithdrawalRequest(
-                        userId: userId, currentBalance: coinsAmount, requestedAmount: requestedAmount, calculatedMoney: calculatedMoney,
+                        userId: userId, currentBalance: currentBalance, requestedAmount: requestedAmount, calculatedMoney: calculatedMoney,
                         operatorName: selectedOperator.name, country: selectedCountry.name, phoneNumber: fullDestination, currency: currency)
                 }
                 didSubmit = true

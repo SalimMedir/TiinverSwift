@@ -604,6 +604,17 @@ plus (grep : zéro consommateur hors leur propre écran), donc écart visuel/de 
 pas fonctionnel.
 RECOMMANDATION : Priorité basse — ajouter les 3 lignes + dialogue multi-sélection pour la complétude
 visuelle uniquement si jugé utile.
+
+STATUT : DIFFÉRÉ / invalidé — code Android mort (2026-08-24, Phase B P3, Lot P3-4). Vérification
+indépendante : `grep -rl storageDataListChoosed\|storageWifiListChoosed\|storageRoamingListChoosed`
+dans tout le dépôt Android → seulement 3 fichiers : `SettingStorageFragment.java` (l'écran
+lui-même, écrit la préférence), `SettingsActivity.java` (définition de la constante `VAR.*`),
+`MyFragmentDialog.java` (le dialogue de sélection générique). AUCUNE logique de téléchargement de
+média (chat, feed, ou ailleurs) ne LIT jamais ces 3 préférences — confirmé indépendamment de
+l'audit, la fonctionnalité écrit dans les préférences mais rien ne les consulte, y compris côté
+Android. Conforme à la consigne explicite : "Si Android contient du code mort, inutilisé ou
+abandonné, ne le migre pas." Porter le dialogue multi-sélection reviendrait à migrer une
+fonctionnalité Android sans effet réel. Aucun code modifié.
 ```
 
 ---

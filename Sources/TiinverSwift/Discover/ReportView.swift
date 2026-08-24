@@ -32,6 +32,13 @@ struct ReportView: View {
             Button("Signaler", role: .destructive) {
                 if let reason = confirmingReason { Task { await submit(reason: reason) } }
             }
+        } message: {
+            // **Ajouté (V4-F-024, 2026-08-24)** — port de `Report.onItemClick` (lignes 117-124) :
+            // le motif choisi était rappelé dans le corps du dialogue, texte EXACT de
+            // `R.string.report_msg`.
+            if let confirmingReason {
+                Text("Je signale cet utilisateur pour avoir publié du contenu lié à \(confirmingReason)")
+            }
         }
         .alert("Signalement envoyé", isPresented: $didSend) { // R.string.report_send
             Button("OK") { dismiss() }
@@ -39,11 +46,13 @@ struct ReportView: View {
     }
 
     /// Port de `Report.report(pos)` — `POST report`, `{userId, username, message, target_id,
-    /// report_type}`.
+    /// report_type}`. **`userId` = `"0"`** pour un signalement de groupe (`Report.java:77-78`,
+    /// convention hardcodée côté Android — `type=="group"` n'a pas d'utilisateur réel visé).
     private func submit(reason: String) async {
         isSubmitting = true
         defer { isSubmitting = false }
-        let params = ["userId": targetId, "username": username, "message": reason, "target_id": targetId, "report_type": reportType]
+        let userId = reportType == "group" ? "0" : targetId
+        let params = ["userId": userId, "username": username, "message": reason, "target_id": targetId, "report_type": reportType]
         if (try? await APIClient.shared.post(params, endpoint: "report")) != nil {
             didSend = true
         }

@@ -19,7 +19,9 @@ V4-F-035 BUILD_VALIDATED ; Lot P2-9 : V4-F-039 BUILD_VALIDATED ; Lot P2-10 : V4-
 BUILD_VALIDATED ; Lot P2-11 : V4-F-043 BUILD_VALIDATED ; Lot P2-12 : V4-F-047 BUILD_VALIDATED ;
 Lot P2-13 : V4-F-051 BUILD_VALIDATED ; Lot P2-14 : V4-F-052 BUILD_VALIDATED ; Lot P2-15 :
 V4-F-057 BUILD_VALIDATED ; Lot P2-16 : V4-F-058 BUILD_VALIDATED ; Lot P2-17 : V4-F-060 différé +
-V4-F-061 BUILD_VALIDATED] — backlog P3 PAS ENCORE ATTAQUÉ)
+V4-F-061 BUILD_VALIDATED ; Lot P2-18 : V4-F-067 BUILD_VALIDATED ; Lot P2-19 : V4-F-069 +
+V4-F-074 BUILD_VALIDATED ; Lot P2-20 : V4-F-070 différé] — **BACKLOG P2 ENTIÈREMENT TRAITÉ
+(27/27)**, backlog P3 EN COURS [21 findings])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -700,19 +702,38 @@ AVAssetExportSession\(` confirmé). Corrigé : `exportSession.shouldOptimizeForN
 côté iOS contrairement à Android. **Commit `dcdb72a`, CI verte (run `32725344933`)** —
 `BUILD_VALIDATED`. Détail complet des 3 lots dans `PROGRESS_V4.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Lots P2-16/17 terminés. Vérification faite : **V4-F-066** est DÉJÀ
-`BUILD_VALIDATED` (fermé comme effet de bord nécessaire du Lot P0-1/V4-F-065 — même 3 fichiers,
-même fonction Android de référence `updateToServer`, CI verte confirmée run `32663823532` —
-documenté directement dans `MIGRATION_PARITY_AUDIT_V4.md` à son propre ID) et **V4-F-073** est en
-réalité P1 (déjà clos dans la liste P1). Le vrai prochain P2 non traité est **V4-F-067**
-(Wallet-Monetization — `ReferralView` utilise le mauvais identifiant de bannière AdMob : Android
-`res/layout/activity_referral.xml:19-25` utilise la même bannière que tous les autres écrans Wallet
-[`5840810574`] ; iOS `Wallet/ReferralView.swift:20` utilise `AdMobIdentifiers.bannerSecondary`
-[`4225372854`] au lieu de `bannerWallet`), puis continuer AUTOMATIQUEMENT le backlog P2 restant
-dans l'ordre du document (V4-F-069, V4-F-070, V4-F-074 — 3 findings restants après V4-F-067), puis
-le backlog P3 (21 findings) une fois P2 entièrement clos, SANS attendre de nouvelle confirmation
-utilisateur pour chaque lot (instruction explicite : continuer automatiquement). Repo Android
-source de vérité :
+**Lots P2-18/19/20 traités (V4-F-067, V4-F-069, V4-F-074, V4-F-070)** — V4-F-067
+(Wallet-Monetization) : `ReferralView.swift:20` utilisait `AdMobIdentifiers.bannerSecondary` au
+lieu de `bannerWallet` (seul écran Wallet à diverger des 6 autres). V4-F-069 (Notifications) :
+`NotificationCenterViewModel.swift` passait `UserSession.shared.profile` (URL photo de profil)
+comme `myNikname`, garbled dans le corps de la notification "nouvelle publication" — corrigé en
+`UserSession.shared.nikname`. V4-F-074 (Performance) : 3 closures `Task` de `ChatViewModel`
+(`resolveGroupSubscription`/`requestUpload`/`requestDownload`) capturaient `self` fortement, sans
+`[weak self]` contrairement à `subscribeToRealtimeEvents` (même fichier) — corrigé sur les 3.
+V4-F-070 (Notifications, push de ré-engagement "contenu suggéré") : `DIFFÉRÉ`, déjà documenté comme
+report volontaire dans `HomeShellView.swift:37-41` ("module 18"), nouvelle pipeline
+`BGTaskScheduler` requise, hors périmètre d'un petit lot. **Commits `1d4fc67` (run
+`32726909705`), `aa3e035` (run `32727508712`)** — tous deux CI verte. Détail complet dans
+`PROGRESS_V4.md`.
+
+## **BACKLOG P2 ENTIÈREMENT TRAITÉ (27/27 findings)** — 22 `BUILD_VALIDATED`, 1 `BLOQUÉ`
+(V4-F-004), 4 `DIFFÉRÉ` (V4-F-006/031/060/070). Aucun `COMPLETE_PARITY_VALIDATED` (device-test
+requis, indisponible ici).
+
+## Backlog P3 (21 findings) — DÉMARRE MAINTENANT
+
+Liste complète, dans l'ordre du document `MIGRATION_PARITY_AUDIT_V4.md` : V4-F-005, V4-F-013,
+V4-F-015, V4-F-016, V4-F-018, V4-F-023, V4-F-024, V4-F-026, V4-F-034, V4-F-036, V4-F-037, V4-F-044,
+V4-F-045, V4-F-053, V4-F-054, V4-F-055, V4-F-062, V4-F-063, V4-F-071, V4-F-072, V4-F-075.
+
+**PROCHAINE TÂCHE EXACTE** : Backlog P2 clos. Enchaîner **automatiquement** sur le premier P3 :
+**V4-F-005** (Navigation-DeepLinks — segment de chemin deep link non reconnu → no-op silencieux au
+lieu d'un repli vers Home ; Android `partage/ShareActivity.java:166-217` [`default:` → lance
+`SplashActivity`] ; iOS `Navigation/DeepLinkRouter.swift:55-85` [`default: break`] ; impact mineur,
+cas de bord seulement — recommandation : ajouter un repli vers Home dans le `default` de
+`handleContentLink`), puis continuer AUTOMATIQUEMENT tout le backlog P3 dans l'ordre du document
+listé ci-dessus, SANS attendre de nouvelle confirmation utilisateur pour chaque lot (instruction
+explicite : continuer automatiquement). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---

@@ -6,11 +6,12 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
 V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064,
 V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027, V4-F-019 clos. V4-F-003 documenté `BLOQUÉ` (hors
-dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE.** Backlog P2 EN
-COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014/022/025/028/
-035/039/041/043/047/051/052/057/058/061/066 (`BUILD_VALIDATED`) clos (V4-F-066 déjà clos comme
-effet de bord du Lot P0-1/V4-F-065, vérifié dans l'audit), V4-F-031 et V4-F-060 (différés, hors
-périmètre d'un petit lot). Prochain : V4-F-067.**
+dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE.** Backlog P2 (27
+findings) : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014/022/025/
+028/035/039/041/043/047/051/052/057/058/061/066/067/069/074 (`BUILD_VALIDATED`) clos (V4-F-066 déjà
+clos comme effet de bord du Lot P0-1/V4-F-065, vérifié dans l'audit), V4-F-031/060/070 (différés,
+hors périmètre d'un petit lot). **BACKLOG P2 ENTIÈREMENT TRAITÉ (27/27).** Backlog P3 EN COURS.
+Prochain : premier P3 de l'audit V4 dans l'ordre du document.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -3135,3 +3136,119 @@ trop large pour un lot). V4-F-061 `BUILD_VALIDATED` (CI verte confirmée). PAS
 `COMPLETE_PARITY_VALIDATED` pour V4-F-061 — test réel requis : exporter une vidéo rognée, inspecter
 la structure binaire du fichier (`ffprobe` ou équivalent) pour confirmer que l'atome `moov` précède
 `mdat`, et/ou mesurer un démarrage de lecture progressive plus rapide qu'avant le correctif.
+
+## 2026-08-24 — Phase B V4 — Lot P2-18 : V4-F-067 (BUILD_VALIDATED)
+
+### Vérification
+
+`ANDROID SOURCE : res/layout/activity_referral.xml:19-25` — même identifiant de bannière AdMob que
+tous les autres écrans Wallet (`5840810574`). L'audit note que l'identifiant iOS actuellement câblé
+(`4225372854`, `bannerSecondary`) est en réalité orphelin côté Android — son seul usage réel
+Android est ailleurs, dans le module Authentification, sans rapport avec Wallet.
+
+### État iOS avant correctif
+
+`Wallet/ReferralView.swift:20` — `AdMobIdentifiers.resolvedBanner(AdMobIdentifiers.bannerSecondary)`,
+seul écran Wallet à ne pas utiliser `bannerWallet` (les 6 autres — `ConversionView`, `EarnCoinsView`,
+`MonetizationView`, `TransferCoinsView`, `WithdrawView`, `FeedView` pour la bannière fil — l'utilisent
+déjà).
+
+### Correctif appliqué
+
+`AdMobIdentifiers.bannerSecondary` → `AdMobIdentifiers.bannerWallet`, alignant `ReferralView` sur
+tous ses écrans frères.
+
+### Flux frères vérifiés
+
+`grep bannerSecondary` dans tout le projet → après correctif, un seul résultat restant : la
+définition elle-même dans `AdMobIdentifiers.swift` — plus aucun site d'usage erroné.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Wallet/ReferralView.swift`.
+
+**Résultat CI** : commit `1d4fc67`, push confirmé (`522b2e2..1d4fc67 main -> main`), run
+`32726909705` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : ouvrir l'écran de parrainage, confirmer via le
+tableau de bord AdMob (ou un inspecteur de requêtes réseau) que la bannière chargée correspond bien
+à l'unité `bannerWallet`.
+
+## 2026-08-24 — Phase B V4 — Lot P2-19 : V4-F-069 et V4-F-074 (BUILD_VALIDATED)
+
+### V4-F-069 — Notifications : la notification "nouvelle publication" affiche l'URL de photo de profil au lieu du pseudonyme
+
+**Vérification Android** : `back_sync/NotificationUtils.java:325-327` — `myNikname` = valeur texte
+du champ `NIKNAME` (`infoContract.NIKNAME`), rendue directement dans le corps de la notification.
+
+**État iOS avant correctif** : `Notifications/NotificationCenterViewModel.swift:96-104` —
+`myNikname: UserSession.shared.profile`, qui est en réalité le champ PHOTO DE PROFIL (une URL), pas
+le pseudonyme. Confirmé dans `LocalNotificationBuilder.swift:56` :
+`content.body = "\(payload.myNikname ?? ""), nouvelle publication"` — rendu direct dans le texte
+visible de la notification.
+
+**Correctif appliqué** : `UserSession.shared.profile` → `UserSession.shared.nikname` (propriété
+correcte déjà présente dans le même fichier `UserSession.swift`).
+
+**Flux frères vérifiés** : `grep myNikname:` dans tout le projet → un seul site d'appel, celui
+corrigé.
+
+### V4-F-074 — Performance : closures `Task` de `ChatViewModel` capturant `self` fortement
+
+**Contexte** : pas de source Android (spécifique au comptage de références Swift/ARC). 3 méthodes
+de `ChatViewModel` (`resolveGroupSubscription`, `requestUpload`, `requestDownload`) lançaient un
+`Task { ... }` capturant `self` implicitement fort à travers un aller-retour réseau, contrairement à
+`subscribeToRealtimeEvents` (même fichier) qui utilise déjà `[weak self]`.
+
+**Correctif appliqué** : `Task { [weak self] in guard let self else { return } ... }` sur les 3
+closures, tous les accès internes (`items`, `messages`, `myId`, `buildOutgoingBase`,
+`appendOptimistic`, `send`) préfixés `self.`. `ChatViewModel` est `@MainActor` — un `Task` non
+détaché hérite du contexte acteur du site d'appel, donc aucun changement de comportement de
+synchronisation, seulement du cycle de vie mémoire.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/NotificationCenterViewModel.swift`
+(V4-F-069) ; `Sources/TiinverSwift/Messagerie/ChatViewModel.swift` (V4-F-074).
+
+**Résultat CI** : commit `aa3e035`, push confirmé (`1d4fc67..aa3e035 main -> main`), run
+`32727508712` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée) pour les deux. PAS
+`COMPLETE_PARITY_VALIDATED` — tests réels requis : (V4-F-069) recevoir une notification push
+"nouvelle publication" et confirmer que le pseudonyme lisible s'affiche, pas une URL ; (V4-F-074)
+quitter l'écran de chat pendant un upload/téléchargement/abonnement en vol et confirmer, via
+Instruments/Memory Graph, que `ChatViewModel` est bien désalloué au lieu d'être retenu jusqu'à la
+fin du réseau.
+
+## 2026-08-24 — Phase B V4 — Lot P2-20 : V4-F-070 (DIFFÉRÉ)
+
+### Vérification
+
+`ANDROID SOURCE : back_sync/NotificationUtils.java:154-220 ; service/MyWorker.java:78-110 ;
+Activity/ui/HomeActivity.java:373-375,752-784` — un job `WorkManager` périodique réel (tous les 2
+jours) qui envoie une notification push de ré-engagement "contenu suggéré" aux utilisateurs
+inactifs, avec sélection du message par moment de la journée.
+
+**État iOS** : `IOS FILES : AUCUN`, confirmé — et déjà documenté comme délibérément différé dans
+`HomeShellView.swift:37-41` ("module 18"), aux côtés des 2 autres `scheduleDynamicWorker`
+`WorkManager` non portés (synchro de vues notamment).
+
+### Décision
+
+`DIFFÉRÉ (hors périmètre d'un petit lot)` — construire ce flux exigerait un job `BGTaskScheduler`
+périodique complet côté iOS + la logique de sélection de message par moment de la journée, pas un
+correctif ponctuel. Le report est déjà planifié et documenté ailleurs dans le code (module 18).
+Aucun code modifié pour ce finding.
+
+**Fichiers modifiés** : `MIGRATION_PARITY_AUDIT_V4.md` (STATUT uniquement, aucun fichier de code).
+
+---
+
+## BACKLOG P2 ENTIÈREMENT TRAITÉ (27/27 findings)
+
+Répartition finale : 22 `BUILD_VALIDATED` (V4-F-009/010/011/012/014/022/025/028/035/039/041/043/
+047/051/052/057/058/061/066/067/069/074), 1 `BLOQUÉ` (V4-F-004, Apple Developer Portal/App Groups),
+4 `DIFFÉRÉ` (V4-F-006 sans objet, V4-F-031/060/070 hors périmètre d'un petit lot, nouvelles
+pipelines/fonctionnalités substantielles). Aucun `COMPLETE_PARITY_VALIDATED` — conformément à la
+règle du cycle, ce statut nécessite un test réel sur device, indisponible dans cet environnement.
+
+Backlog P3 (21 findings) démarré immédiatement après, sans confirmation utilisateur supplémentaire,
+conformément à l'instruction explicite de continuation automatique.

@@ -1988,6 +1988,12 @@ Authentification, sans rapport avec Wallet.
 IMPACT : Attribution erronée des impressions/revenus publicitaires de cet emplacement dans le
 reporting AdMob, potentiellement un eCPM/fill inadapté (identifiant tuné pour un autre contexte).
 RECOMMANDATION : Changer `ReferralView.swift:20` pour utiliser `AdMobIdentifiers.bannerWallet`.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-18) — Vérifié : `grep bannerSecondary`
+confirme un seul site d'usage réel dans le projet (`ReferralView.swift:20`), les autres 6 écrans
+Wallet utilisent tous déjà `bannerWallet`. Correctif : `AdMobIdentifiers.bannerSecondary` →
+`AdMobIdentifiers.bannerWallet` sur ce site unique. Commit `1d4fc67`, push confirmé
+(`522b2e2..1d4fc67 main -> main`), CI run `32726909705` conclusion `success`.
 ```
 
 ```
@@ -2054,6 +2060,13 @@ IMPACT : Chaque notification d'activité "nouvelle publication" affiche un nom g
 une URL d'image) au lieu d'un pseudonyme lisible.
 RECOMMANDATION : Changer `myNikname: UserSession.shared.profile` en `UserSession.shared.nikname`
 (propriété correcte déjà présente dans le même fichier `UserSession.swift`).
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-19) — Vérifié : `grep myNikname:` confirme
+un seul site d'appel dans le projet, et `LocalNotificationBuilder.swift:56` confirme que
+`payload.myNikname` est bien rendu directement dans le corps de la notification
+(`"\(payload.myNikname ?? ""), nouvelle publication"`). Correctif : `UserSession.shared.profile` →
+`UserSession.shared.nikname`. Commit `aa3e035`, push confirmé (`1d4fc67..aa3e035 main -> main`), CI
+run `32727508712` conclusion `success`.
 ```
 
 ```
@@ -2069,6 +2082,12 @@ IMPACT : Les utilisateurs iOS inactifs ne reçoivent aucune notification de ré-
 envoie — écart pertinent pour la rétention.
 RECOMMANDATION : Différé, déjà planifié — ajouter un `BGTaskScheduler` périodique + porter la
 sélection de message par moment de la journée quand ce module sera traité.
+
+STATUT : DIFFÉRÉ (hors périmètre d'un petit lot, 2026-08-24, Phase B P2, Lot P2-19) — Confirmé par
+lecture de `HomeShellView.swift:37-41`, qui documente déjà explicitement ce report ("module 18",
+avec les 2 autres `scheduleDynamicWorker` `WorkManager` non portés). Construire ce flux exigerait un
+job `BGTaskScheduler` périodique complet + la logique de sélection de message par moment de la
+journée — pas un correctif ponctuel. Aucun code modifié pour ce finding.
 ```
 
 ```
@@ -2168,6 +2187,16 @@ upload/download/abonnement est en vol, et risque de mutation d'état `@Published
 dont la vue n'existe plus.
 RECOMMANDATION : Ajouter `[weak self]` (avec `guard` de sortie précoce) aux 3 closures `Task`
 identifiées, cohérent avec le motif déjà établi ailleurs dans le même fichier.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-19) — Confirmé : les 3 closures
+identifiées (`resolveGroupSubscription`, `requestUpload`, `requestDownload`) capturaient bien `self`
+fortement, contrairement à `subscribeToRealtimeEvents` (même fichier) qui utilise déjà
+`[weak self]`. Correctif appliqué aux 3 : `Task { [weak self] in guard let self else { return }
+... }`, tous les accès internes (`items`, `messages`, `myId`, `buildOutgoingBase`,
+`appendOptimistic`, `send`) préfixés `self.`. `ChatViewModel` est `@MainActor` — le `Task` non
+détaché hérite du contexte acteur, aucun changement de comportement de synchronisation. Commit
+`aa3e035`, push confirmé (`1d4fc67..aa3e035 main -> main`), CI run `32727508712` conclusion
+`success`.
 ```
 
 ```

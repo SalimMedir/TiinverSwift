@@ -158,8 +158,16 @@ struct TimelineView: View {
                 case .lock: symbolName = obj.locked ? "lock.fill" : "lock.open"
                 case .visibility: symbolName = obj.visible ? "eye.fill" : "eye.slash.fill"
                 }
-                let resolved = context.resolve(Image(systemName: symbolName).foregroundColor(.white.opacity(0.85)))
-                context.draw(resolved, in: rect)
+                // `Text(Image(systemName:))`, dessiné directement via `context.draw(_:at:)` — MÊME
+                // motif déjà éprouvé dans ce fichier (`drawRuler`, labels de secondes). Évite
+                // `context.resolve(Image(...).foregroundColor(...))` : la 1ʳᵉ version de ce
+                // correctif utilisait cette forme, `Image.foregroundColor` n'y étant pas garanti
+                // de type `Image` (ambiguïté de surcharge avec `resolve`, échec CI build
+                // 32678716272, Xcode 16.2) — `Text.foregroundColor` reste, lui, sans ambiguïté.
+                context.draw(
+                    Text(Image(systemName: symbolName)).font(.system(size: 16)).foregroundColor(.white.opacity(0.85)),
+                    at: CGPoint(x: rect.midX, y: rect.midY)
+                )
             }
         }
     }

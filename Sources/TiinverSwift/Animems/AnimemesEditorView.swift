@@ -474,6 +474,22 @@ struct AnimemesEditorView: View {
                     zoomState.updateMinZoom(targetSize: newSize, parentSize: outerGeo.size)
                 }
                 .onChange(of: state.version) { _ in state.preparePlayback(canvasSize: canvasSize) }
+                // **Corrigé le 2026-08-23 (MIGRATION_PARITY_AUDIT_V4.md V4-F-048, Phase B P1)** —
+                // résout le risque documenté ci-dessous (`zoomControls`) : `.scaleEffect` appliqué
+                // ICI, APRÈS `.gesture(combinedGesture)` dans la chaîne de modificateurs, PAS avant.
+                // `.scaleEffect` est un `GeometryEffect` SwiftUI de premier ordre — placé en aval
+                // (donc englobant) d'un `.gesture()` déjà posé, il ne change QUE le rendu visuel ;
+                // SwiftUI continue de convertir les coordonnées tactiles physiques vers l'espace
+                // LOCAL non-transformé du `Canvas` avant de les reporter dans `value.location`/
+                // `value.translation` de `combinedGesture` — exactement le motif standard pour un
+                // contenu zoomable qui gère lui-même des gestes internes (geste AU-DESSUS/avant la
+                // transform, transform en dernier). `state.dragMoved`/`selectObject`/etc. continuent
+                // donc de recevoir des coordonnées canevas NON mises à l'échelle, sans aucune
+                // correction `/currentScale` nécessaire côté `AnimemesEditorState`. Port fidèle de
+                // `CanvasZoomController.applyZoom` (`setPivotX/Y` au centre, `setScaleX/Y`) —
+                // `anchor: .center`, le défaut de `.scaleEffect`, correspond déjà au pivot centré
+                // qu'Android fixe explicitement.
+                .scaleEffect(zoomState.currentScale)
 
                 zoomControls
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -508,16 +524,27 @@ struct AnimemesEditorView: View {
     /// visuellement RIEN, un cas exact de "bouton qui ne modifie que l'UI" (Phase A5). Remplacé par
     /// `CanvasZoomState`/`CanvasZoomControls` (`CanvasZoomController.swift`, port fidèle de
     /// `computeMinZoom`/`zoom(delta)`/`reset`, orphelin jusqu'ici) pour au moins porter l'ALGORITHME
-    /// correct (clamp `[minZoom dynamique, 4.0]`, pas `[0.5, 3]` fixe). **Le zoom ne zoome
-    /// toujours pas visuellement le canevas après ce lot** — appliquer un `.scaleEffect` sur le
-    /// `Canvas` qui porte aussi `combinedGesture` (translation/pinch/rotation d'objet) risquerait
-    /// de désynchroniser les coordonnées de geste rapportées par SwiftUI de l'espace de coordonnées
-    /// réel du rendu — EXACTEMENT la classe de fragilité gestuelle qui a déjà cassé ce fichier deux
-    /// fois cette session (`.id(state.version)`, voir §18.1 de l'audit). Documenté comme
-    /// **risque non résolu, PAS corrigé silencieusement** : nécessite soit un conteneur de
-    /// viewport séparé du canevas de rendu (zoom du conteneur, pas du contenu), soit une correction
-    /// explicite des coordonnées de geste par `1/currentScale`, les deux nécessitant une
-    /// vérification sur device réel avant d'être considérés sûrs.
+    /// correct (clamp `[minZoom dynamique, 4.0]`, pas `[0.5, 3]` fixe). Le zoom ne zoomait ENCORE
+    /// pas visuellement le canevas après ce lot, risque documenté et délibérément laissé ouvert par
+    /// prudence (voir git history de ce commentaire pour le raisonnement complet sur la classe de
+    /// fragilité gestuelle en cause).
+    ///
+    /// **Corrigé le 2026-08-23 (MIGRATION_PARITY_AUDIT_V4.md V4-F-048, Phase B P1)** — le risque
+    /// ci-dessus est résolu par construction plutôt que contourné : `.scaleEffect(zoomState.
+    /// currentScale)` est appliqué dans `canvasArea` APRÈS `.gesture(combinedGesture)` dans la
+    /// chaîne de modificateurs (voir ce fichier, `canvasArea`) — `.scaleEffect` étant un
+    /// `GeometryEffect` SwiftUI de premier ordre, SwiftUI continue de convertir les coordonnées
+    /// tactiles physiques vers l'espace LOCAL non-transformé du `Canvas` avant de les reporter dans
+    /// `combinedGesture`, exactement le motif standard pour un contenu zoomable qui gère aussi ses
+    /// propres gestes internes (geste posé AVANT/en-dessous de la transform, transform en dernier
+    /// dans la chaîne). AUCUNE correction `/currentScale` n'a donc été nécessaire dans
+    /// `AnimemesEditorState` — `state.dragMoved`/`selectObject`/etc. reçoivent toujours des
+    /// coordonnées canevas non mises à l'échelle. Ce raisonnement s'appuie sur le comportement
+    /// documenté de SwiftUI (non vérifiable empiriquement dans cet environnement sans Xcode/
+    /// simulateur) — DEVICE_TEST_REQUIRED avant `COMPLETE_PARITY_VALIDATED` : zoomer via les
+    /// boutons +/−, confirmer (1) l'effet visuel réel sur le canevas, ET (2) qu'un geste de
+    /// glissement/pincement/rotation sur un objet à `currentScale != 1.0` continue de le déplacer/
+    /// redimensionner/tourner de façon cohérente avec le doigt (pas de dérive de coordonnées).
     @StateObject private var zoomState = CanvasZoomState()
     private var zoomControls: some View {
         // `CanvasZoomControls` porte déjà son propre fond/contour (voir sa définition dans

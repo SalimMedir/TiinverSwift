@@ -294,8 +294,15 @@ struct SearchView: View {
             results = try await SearchRepository.shared.suggest(query: text)
             errorText = nil
         } catch {
+            // **Corrigé (V4-F-036, 2026-08-24)** — `searchSuggest.onError` (`RechercheTiinver.
+            // java:412-421`) affiche `showEmpty("Aucun résultat")`, un texte NEUTRE, jamais le
+            // message d'erreur rouge réservé à `searchFull`. `errorText` reste `nil` : la branche
+            // "Aucun résultat pour {query}" ci-dessous rend déjà l'état neutre attendu puisque
+            // `results` est vidé. Remis à `nil` explicitement (pas seulement laissé tel quel) :
+            // un `errorText` rouge posé par un `runSearch` précédent (query raccourcie ensuite à
+            // 1 caractère) resterait sinon affiché à tort au-dessus de ce nouvel état neutre.
             results = SearchResults()
-            errorText = "Erreur de chargement."
+            errorText = nil
         }
     }
 

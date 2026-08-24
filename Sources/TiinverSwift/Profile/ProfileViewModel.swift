@@ -135,8 +135,14 @@ final class ProfileViewModel: ObservableObject {
         await loadMorePosts()
     }
 
+    /// **Ajouté le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-014, Phase B P2)** — port de
+    /// `UserProfile.executeTask` (`UserProfile.java:723-727`, `if (!isBlocked) { ...fetch... }`) :
+    /// Android n'émet AUCUNE requête de posts pour un profil bloqué. `isBlocked` est déjà peuplé
+    /// AVANT ce point (`loadProfile()` le lit depuis le cache local, appelé avant
+    /// `loadInitialPosts()` dans `.task` de `ProfileView`) — garde ajoutée ici plutôt qu'une
+    /// vérification par appelant, un seul point d'entrée réseau pour les posts.
     func loadMorePosts() async {
-        guard !isLoadingPosts, !reachedEnd, let viewerId = UserSession.shared.myId else { return }
+        guard !isLoadingPosts, !reachedEnd, !isBlocked, let viewerId = UserSession.shared.myId else { return }
         isLoadingPosts = true
         postsLoadError = false
         defer { isLoadingPosts = false }

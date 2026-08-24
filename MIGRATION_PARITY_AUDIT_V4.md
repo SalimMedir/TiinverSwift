@@ -68,6 +68,19 @@ PREUVE : `RootRouterView.swift:35` ; `checkForceUpdate()` (lignes 111-148) atten
 avant de lever `configChecked` ; `FirebaseConfigManager.swift:27-29` sans paramètre timeout.
 RECOMMANDATION : Découpler la lecture Remote Config (cache local, synchrone) de la décision Home/
 Login ; lancer `fetchAndActivate()` en arrière-plan pour la prochaine ouverture, comme Android.
+STATUT : BUILD_VALIDATED (2026-08-24, commit d7d50b0, CI run 32679885732 succès). Reconfirmé côté
+Android (`SplashActivity.java:80-122`, entier) : `getExpireDay()`/etc. lisent le cache LOCAL du SDK
+Remote Config (défauts XML au 1er lancement via `setDefaultsAsync`, appliqués SYNCHRONEMENT malgré
+le nom, ou valeurs du dernier fetch réussi), ZÉRO I/O réseau. `config.fetchAndActivate()` appelé
+SEULEMENT après la navigation, jamais attendu. Corrigé : `checkForceUpdate()` ne fait plus `_ = await
+...fetchAndActivate()` avant de lire `expireDay`/`expireMonth`/`expireYear` — `RemoteConfig.
+setDefaults(fromPlist:)` (iOS) est le même mécanisme synchrone qu'Android, la lecture cache
+fonctionne identiquement sans attendre un fetch. `fetchAndActivate()` désormais lancé dans un `Task`
+en arrière-plan APRÈS `configChecked = true`, fidèle à `config.fetchAndActivate()` (sans listener)
+d'Android. `grep fetchAndActivate` → un seul site d'appel dans tout le projet, celui corrigé — aucun
+autre gap. DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (couper le réseau au lancement avec
+une session locale valide déjà présente, confirmer l'arrivée quasi-instantanée sur Home au lieu d'un
+spinner jusqu'à 60s).
 ```
 
 ```

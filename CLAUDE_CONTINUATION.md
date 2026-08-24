@@ -11,8 +11,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
 Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS
-[V4-F-020/032/033/042/038/017/046/048/049/050 traités — les 3 findings Animems à rigueur renforcée
-sont désormais TOUS clos])
+[V4-F-020/032/033/042/038/017/046/048/049/050/001 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -272,21 +271,34 @@ ambigu sous Xcode 16.2) — corrigé (`1ff1032`) via `Text(Image(systemName:))` 
 `COMPLETE_PARITY_VALIDATED` (test réel requis : icône verrou → bascule + blocage réel du geste ;
 icône œil → bascule + masquage réel ; calque verrouillé reste sélectionnable).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-10 terminé (vérifié/corrigé/documenté/commité/CI verte). Backlog
-P0 ET les 3 findings Animems à rigueur renforcée sont maintenant TOUS clos. Enchaîner
-**automatiquement** sur **V4-F-001** (Session-Auth — cold start bloqué derrière un fetch réseau
-Firebase Remote Config, contrairement à Android : `RootRouterView.swift:31-60,111-148` affiche un
-`ProgressView()` tant que `!configChecked`, mis à `true` seulement APRÈS un `await
-fetchAndActivate()` réel [réseau, jusqu'à ~60s de timeout SDK sur réseau lent/absent], sans repli sur
-cache ; Android [`SplashActivity.java:80-91,98-122`, `FirebaseConfigManager.java:37-56,145-154`]
-décide Home/Login de façon SYNCHRONE à partir du cache Remote Config local + `SessionManager.
-getUser()` [lecture SharedPreferences synchrone, zéro I/O réseau], `fetchAndActivate()` n'étant
-appelé qu'APRÈS la navigation, pour la PROCHAINE ouverture — faire décider `RootRouterView` à partir
-du cache/session locale immédiatement, lancer `fetchAndActivate()` en arrière-plan sans bloquer),
-puis V4-F-002→029→030→056→064→059→068→073→021→027→019→003 (Session/DeepLinks→Feed-publish→Gallery→
-BunnyCDN→Wallet→Performance→Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque
-finding complet). Repo Android source de vérité :
-`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lot P1-11 traité (V4-F-001)** — Session-Auth, cold start bloqué derrière un fetch réseau Firebase
+Remote Config. Vérifié dans `SplashActivity.java:80-122` (entier) : Android navigue Home/Login/
+UpdateApp de façon SYNCHRONE à partir du cache LOCAL du SDK Remote Config (`setDefaultsAsync`,
+appliqué SYNCHRONEMENT à l'init malgré le nom, ou valeurs du dernier fetch réussi) — ZÉRO I/O
+réseau — puis lance `fetchAndActivate()` SANS l'attendre, pour la PROCHAINE ouverture.
+`RootRouterView.checkForceUpdate()` faisait `_ = await ...fetchAndActivate()` AVANT de lire
+`expireDay`/`expireMonth`/`expireYear`, bloquant l'écran racine ENTIER (Home ET Login) jusqu'à ~60s
+sur réseau dégradé. Corrigé : lecture cache immédiate (`RemoteConfig.setDefaults(fromPlist:)` = même
+mécanisme synchrone qu'Android), `fetchAndActivate()` déplacé dans un `Task` en arrière-plan APRÈS
+`configChecked = true`. `grep fetchAndActivate` → un seul site d'appel dans tout le projet, celui
+corrigé. Détail complet dans `PROGRESS_V4.md`, Lot P1-11. **Commit `d7d50b0`, CI verte confirmée (run
+`32679885732`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : session
+locale valide + réseau coupé/dégradé au lancement, confirmer l'arrivée quasi-instantanée sur Home).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-11 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur **V4-F-002** (Navigation-DeepLinks — un deep link résolu AVANT le montage de
+`HomeShellView` est silencieusement perdu : `DeepLinkCenter.swift:44-51` met juste à jour `@Published
+var pending` ; le seul consommateur, `HomeShellView.onChange(of: deepLinks.pending)`
+[`swift:52,190-205`], ne se déclenche QUE sur une transition nil→valeur pendant que la vue est DÉJÀ
+montée, jamais pour une valeur déjà présente à l'attachement du modificateur — un lien tapé pendant
+le cold start [fenêtre RÉDUITE mais pas éliminée par le correctif V4-F-001 ci-dessus] ou avant
+authentification est perdu sans indication ; Android — `ShareActivity.java:140-291` — résout puis
+lance DIRECTEMENT l'écran cible via `startActivity`, sans dépendre qu'une autre Activity soit déjà à
+l'écran et à l'écoute — faire consommer `pending` aussi à l'apparition initiale de `HomeShellView`
+[`.onAppear`, pas seulement `.onChange`], pas seulement sur transition), puis
+V4-F-029→030→056→064→059→068→073→021→027→019→003 (Feed-publish→Gallery→BunnyCDN→Wallet→Performance→
+Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo
+Android source de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

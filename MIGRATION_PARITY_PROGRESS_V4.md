@@ -4,8 +4,7 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
 **État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
-V4-F-048, V4-F-049, V4-F-050 clos. Les 3 findings Animems à rigueur renforcée sont désormais tous
-clos. Prochain : V4-F-001.**
+V4-F-048, V4-F-049, V4-F-050, V4-F-001 clos. Prochain : V4-F-002.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -1092,3 +1091,72 @@ TAPABLE/sélectionnable (pas totalement exclu de l'interaction, fidèle à Andro
 2 findings distincts malgré la numérotation proche) désormais ENTIÈREMENT clos**, chacun avec une
 chaîne complète tracée sur les deux plateformes avant correction, conformément à la consigne
 explicite de l'utilisateur pour ce domaine. Prochain : V4-F-001, retour à la liste P1 standard.
+
+## 2026-08-24 — Phase B V4 — Lot P1-11 : V4-F-001 (Session-Auth — cold start bloqué derrière un
+fetch réseau Firebase Remote Config)
+
+**Commit** : `d7d50b0` — CI **run 32679885732, conclusion: success**.
+
+### Vérification Android (avant tout changement)
+
+`SplashActivity.java:80-122`, lu en entier :
+```java
+// ✅ 4. Naviguer IMMÉDIATEMENT avec les valeurs Firebase déjà en cache
+FirebaseConfigManager config = FirebaseConfigManager.getInstance();
+navigateAfterConfig(config, pf);          // SYNCHRONE, zéro I/O réseau
+
+// ✅ 5. Fetch Firebase en arrière-plan pour la PROCHAINE ouverture
+config.fetchAndActivate();                 // fire-and-forget, jamais attendu
+```
+`FirebaseConfigManager.getInstance()` (`setting/FirebaseConfigManager.java:37-56`) construit le
+wrapper avec `remoteConfig.setDefaultsAsync(R.xml.remote_config_defaults)` — défauts APPLIQUÉS
+SYNCHRONEMENT à l'init malgré le nom trompeur. `getExpireDay()`/etc. lisent donc soit ces défauts
+(tout premier lancement, jamais de fetch réussi encore), soit les valeurs du DERNIER fetch réussi
+(sessions suivantes) — dans les deux cas, un cache LOCAL, zéro réseau à cet instant précis.
+`navigateAfterConfig` décide Home/Login/UpdateApp à partir de CE cache + `SessionManager.getUser()`
+(lecture `SharedPreferences` synchrone).
+
+### Écart iOS constaté (avant correctif)
+
+`RootRouterView.checkForceUpdate()` (avant correctif) :
+```swift
+_ = await TiinverFirebaseConfigManager.shared.fetchAndActivate()   // VRAI fetch réseau, ATTENDU
+let config = TiinverFirebaseConfigManager.shared
+// ... lecture expireDay/expireMonth/expireYear seulement APRÈS
+```
+`configChecked` ne passe à `true` qu'après ce fetch — `RootRouterView.body` reste sur
+`ProgressView()` (ni Home, ni Login) tant que `!configChecked`. `TiinverFirebaseConfigManager.
+fetchAndActivate()` (`FirebaseConfigManager.swift:27-29`) n'a aucun timeout explicite — le SDK
+Firebase peut mettre jusqu'à ~60s à échouer sur réseau dégradé/absent.
+
+### Correctif appliqué
+
+```swift
+private func checkForceUpdate() async {
+    let config = TiinverFirebaseConfigManager.shared   // lecture cache locale, ZÉRO réseau
+    // ... expireDay/expireMonth/expireYear, forceUpdateRequired, configChecked = true (inchangé)
+
+    // Port de config.fetchAndActivate() (sans listener, après navigation) — arrière-plan.
+    Task { _ = await config.fetchAndActivate() }
+}
+```
+`RemoteConfig.setDefaults(fromPlist: "RemoteConfigDefaults")` (`FirebaseConfigManager.swift:24`,
+appelé à l'`init`) est le même mécanisme synchrone qu'Android — la lecture de `expireDay`/etc. reste
+donc correcte et instantanée dès le tout premier lancement, sans dépendre d'un fetch préalable.
+
+### Flux frères vérifiés
+
+`grep -n "fetchAndActivate"` → un seul site d'appel réel dans tout le projet (`RootRouterView.
+checkForceUpdate`, celui corrigé) ; les 4 autres usages de `TiinverFirebaseConfigManager.shared`
+(`EarnCoinsView`/`WithdrawView`/`WalletViewModel`/`CertificationView`) ne lisent que des propriétés
+déjà-en-cache (`coinsValue`, `certificationPrice`, etc.), aucun fetch bloquant ailleurs à corriger.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Navigation/RootRouterView.swift`.
+
+**Résultat CI** : run `32679885732` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : lancer l'app avec une session locale déjà valide
+puis couper le réseau (ou simuler une latence extrême), confirmer l'arrivée quasi-instantanée sur
+Home au lieu d'un spinner prolongé ; confirmer aussi qu'un rejet de mise à jour forcée (`expiryDate`
+dépassée en cache) continue de s'afficher correctement dans ce même scénario réseau dégradé.

@@ -248,7 +248,7 @@ struct ProfileView: View {
     /// que l'image réelle n'a pas chargé) même quand `viewModel.profile` est encore `nil`.
     @ViewBuilder
     private func avatar(_ profile: User?) -> some View {
-        let image = CDNAsyncImage(url: URL(string: profile?.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+        let image = CDNAsyncImage(url: URL(string: profile?.profile ?? ""), targetSize: CGSize(width: 84, height: 84)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
             if viewModel.isUploadingPhoto {
                 ProgressView()
             } else {
@@ -315,7 +315,8 @@ struct ProfileView: View {
     private func postCell(_ post: FeedActivity) -> some View {
         ZStack(alignment: .bottomLeading) {
             if let thumb = post.thumbnailURL {
-                CDNAsyncImage(url: thumb) { $0.resizable().aspectRatio(1, contentMode: .fill).clipped() } placeholder: {
+                // V4-F-073 — tuile de grille 3 colonnes (`ProfileView.columns`, spacing 2).
+                CDNAsyncImage(url: thumb, targetSize: CGSize(width: UIScreen.main.bounds.width / 3, height: UIScreen.main.bounds.width / 3)) { $0.resizable().aspectRatio(1, contentMode: .fill).clipped() } placeholder: {
                     Color(.secondarySystemBackground).aspectRatio(1, contentMode: .fill)
                 }
             } else {

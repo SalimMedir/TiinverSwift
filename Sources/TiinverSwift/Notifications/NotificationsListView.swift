@@ -113,7 +113,7 @@ private struct NotificationRow: View {
                 ProfileView(userId: String(noti.userId), isCurrentUser: false)
             } label: {
                 HStack {
-                    CDNAsyncImage(url: noti.profile.flatMap(URL.init)) { $0.resizable() } placeholder: { Color.gray.opacity(0.3) }
+                    CDNAsyncImage(url: noti.profile.flatMap(URL.init), targetSize: CGSize(width: 44, height: 44)) { $0.resizable() } placeholder: { Color.gray.opacity(0.3) }
                         .frame(width: 44, height: 44)
                         .clipShape(Circle())
 
@@ -159,7 +159,7 @@ private struct NotificationRow: View {
                 Button {
                     if let post = reconstructedPost { onOpenPost(post) }
                 } label: {
-                    CDNAsyncImage(url: thumbnailURL) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color(.secondarySystemBackground) }
+                    CDNAsyncImage(url: thumbnailURL, targetSize: CGSize(width: 44, height: 44)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color(.secondarySystemBackground) }
                         .frame(width: 44, height: 44)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                 }

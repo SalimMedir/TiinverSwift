@@ -19,7 +19,7 @@ struct BoostDetailView: View {
             Section {
                 HStack {
                     Spacer()
-                    CDNAsyncImage(url: boost.resolvedObjectUrl.flatMap(URL.init)) { $0.resizable().aspectRatio(contentMode: .fit) } placeholder: {
+                    CDNAsyncImage(url: boost.resolvedObjectUrl.flatMap(URL.init), targetSize: CGSize(width: 160, height: 160)) { $0.resizable().aspectRatio(contentMode: .fit) } placeholder: {
                         Color(.secondarySystemBackground)
                     }
                     .frame(height: 160)

@@ -1,3 +1,4 @@
+import ImageIO
 import SwiftUI
 import UIKit
 
@@ -13,12 +14,23 @@ import UIKit
 struct CDNAsyncImage<Content: View>: View {
     private let url: URL?
     private let content: (AsyncImagePhase) -> Content
+    private let targetSize: CGSize?
 
     @State private var phase: AsyncImagePhase = .empty
+    @Environment(\.displayScale) private var displayScale
 
     /// Équivalent de `AsyncImage(url:content:)` (variante "phase").
-    init(url: URL?, @ViewBuilder content: @escaping (AsyncImagePhase) -> Content) {
+    ///
+    /// `targetSize` (points, `nil` par défaut) — **ajouté le 2026-08-24
+    /// (MIGRATION_PARITY_AUDIT_V4.md V4-F-073, Phase B P1)**, voir `load()` : port de `.override
+    /// (largeur,hauteur)` (`ChargerImages.java`, CHAQUE chargeur Glide du projet), qui décode
+    /// sous-échantillonné dès la source à la taille d'affichage réelle plutôt qu'à la pleine
+    /// résolution CDN. Chaque site d'appel doit passer la taille RÉELLE d'affichage (celle de son
+    /// `.frame(width:height:)` voisin) — `nil` conserve l'ancien comportement (décodage pleine
+    /// résolution), à réserver aux cas où la taille affichée n'est pas bornée à l'avance.
+    init(url: URL?, targetSize: CGSize? = nil, @ViewBuilder content: @escaping (AsyncImagePhase) -> Content) {
         self.url = url
+        self.targetSize = targetSize
         self.content = content
     }
 
@@ -28,10 +40,12 @@ struct CDNAsyncImage<Content: View>: View {
     /// ce cas d'usage (avatars/vignettes).
     init<I: View, P: View>(
         url: URL?,
+        targetSize: CGSize? = nil,
         @ViewBuilder content: @escaping (Image) -> I,
         @ViewBuilder placeholder: @escaping () -> P
     ) where Content == AnyView {
         self.url = url
+        self.targetSize = targetSize
         self.content = { phase in
             AnyView(Self.build(phase: phase, content: content, placeholder: placeholder))
         }
@@ -69,7 +83,7 @@ struct CDNAsyncImage<Content: View>: View {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-                let uiImage = UIImage(data: data)
+                let uiImage = Self.decode(data, targetSize: targetSize, scale: displayScale)
             else {
                 URLCache.shared.removeCachedResponse(for: request)
                 phase = .failure(URLError(.cannotDecodeContentData))
@@ -79,5 +93,30 @@ struct CDNAsyncImage<Content: View>: View {
         } catch {
             phase = .failure(error)
         }
+    }
+
+    /// Port de `.override(largeur,hauteur)` — sous-échantillonnage dès la source via `ImageIO`
+    /// (`CGImageSourceCreateThumbnailAtIndex`, `kCGImageSourceCreateThumbnailFromImageAlways`),
+    /// jamais un décodage pleine résolution suivi d'un redimensionnement a posteriori (qui aurait
+    /// déjà payé le coût mémoire/CPU du décodage complet). `maxPixelSize` = la plus grande dimension
+    /// de `targetSize`, convertie en pixels via l'échelle d'écran — `ImageIO` respecte le ratio
+    /// d'origine, pas besoin de calculer largeur/hauteur séparément.
+    private static func decode(_ data: Data, targetSize: CGSize?, scale: CGFloat) -> UIImage? {
+        guard let targetSize, targetSize.width > 0, targetSize.height > 0,
+            let source = CGImageSourceCreateWithData(data as CFData, nil)
+        else {
+            return UIImage(data: data)
+        }
+        let maxPixelSize = Int(max(targetSize.width, targetSize.height) * scale)
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        guard let cgThumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return UIImage(data: data)
+        }
+        return UIImage(cgImage: cgThumbnail, scale: scale, orientation: .up)
     }
 }

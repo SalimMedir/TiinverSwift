@@ -116,7 +116,7 @@ struct CreatorOfWeekView: View {
             HStack(spacing: 16) {
                 ZStack {
                     Circle().fill(LinearGradient(colors: [Color.accentColor, .red], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    CDNAsyncImage(url: URL(string: star.profilePicture ?? "")) { image in
+                    CDNAsyncImage(url: URL(string: star.profilePicture ?? ""), targetSize: CGSize(width: 72, height: 72)) { image in
                         image.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: {
                         Text("TR").font(.title.bold()).foregroundStyle(.white.opacity(0.6))
@@ -147,7 +147,7 @@ struct CreatorOfWeekView: View {
 
     private func rankRow(_ creator: CreatorModel, badge: String) -> some View {
         HStack(spacing: 12) {
-            CDNAsyncImage(url: URL(string: creator.profilePicture ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+            CDNAsyncImage(url: URL(string: creator.profilePicture ?? ""), targetSize: CGSize(width: 44, height: 44)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
                 Circle().fill(Color(red: 0.25, green: 0.25, blue: 0.3))
             }
             .frame(width: 44, height: 44)

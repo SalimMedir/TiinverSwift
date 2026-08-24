@@ -167,7 +167,7 @@ private struct RosterRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            CDNAsyncImage(url: URL(string: row.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+            CDNAsyncImage(url: URL(string: row.profile ?? ""), targetSize: CGSize(width: 50, height: 50)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
                 Circle().fill(Color(.secondarySystemBackground))
             }
             .frame(width: 50, height: 50)

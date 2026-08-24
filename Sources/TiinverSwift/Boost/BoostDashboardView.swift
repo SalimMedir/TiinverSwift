@@ -74,7 +74,7 @@ struct BoostDashboardView: View {
 
     private func boostRow(_ boost: AdsData) -> some View {
         HStack(spacing: 12) {
-            CDNAsyncImage(url: boost.resolvedObjectUrl.flatMap(URL.init)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+            CDNAsyncImage(url: boost.resolvedObjectUrl.flatMap(URL.init), targetSize: CGSize(width: 44, height: 44)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
                 Color(.secondarySystemBackground)
             }
             .frame(width: 44, height: 44)

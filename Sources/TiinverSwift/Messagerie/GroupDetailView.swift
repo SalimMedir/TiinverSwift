@@ -78,7 +78,7 @@ struct GroupDetailView: View {
         List {
             Section {
                 HStack(spacing: 12) {
-                    CDNAsyncImage(url: groupProfile.flatMap(URL.init)) { image in
+                    CDNAsyncImage(url: groupProfile.flatMap(URL.init), targetSize: CGSize(width: 56, height: 56)) { image in
                         image.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: { Color(.tertiarySystemFill) }
                         .frame(width: 56, height: 56).clipShape(Circle())
@@ -191,7 +191,7 @@ struct GroupDetailView: View {
     @ViewBuilder
     private func memberRow(_ member: GroupMember) -> some View {
         HStack {
-            CDNAsyncImage(url: member.profile.flatMap(URL.init)) { image in
+            CDNAsyncImage(url: member.profile.flatMap(URL.init), targetSize: CGSize(width: 36, height: 36)) { image in
                 image.resizable().aspectRatio(contentMode: .fill)
             } placeholder: { Color(.tertiarySystemFill) }
                 .frame(width: 36, height: 36).clipShape(Circle())

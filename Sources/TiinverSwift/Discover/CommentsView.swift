@@ -56,7 +56,7 @@ struct CommentsView: View {
                     ProfileView(userId: String(actorId), isCurrentUser: false)
                 }
             } label: {
-                CDNAsyncImage(url: URL(string: comment.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+                CDNAsyncImage(url: URL(string: comment.profile ?? ""), targetSize: CGSize(width: 32, height: 32)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
                     Color(.secondarySystemBackground)
                 }
                 .frame(width: 32, height: 32).clipShape(Circle())

@@ -135,7 +135,7 @@ private struct ChatSearchRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            CDNAsyncImage(url: URL(string: profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+            CDNAsyncImage(url: URL(string: profile ?? ""), targetSize: CGSize(width: 44, height: 44)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
                 Circle().fill(Color(.secondarySystemBackground))
             }
             .frame(width: 44, height: 44)

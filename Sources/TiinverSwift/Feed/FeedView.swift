@@ -368,7 +368,10 @@ struct FeedGridCell: View {
         ZStack(alignment: .bottomLeading) {
             Color(.secondarySystemBackground)
             if let thumb = post.thumbnailURL {
-                CDNAsyncImage(url: thumb) { phase in
+                // V4-F-073 — tuile de grille 2 colonnes (`FeedView.columns`/`HashtagFeedView.
+                // columns`, `spacing: 1`, les deux écrans qui réutilisent cette cellule), largeur
+                // ≈ moitié de l'écran.
+                CDNAsyncImage(url: thumb, targetSize: CGSize(width: UIScreen.main.bounds.width / 2, height: UIScreen.main.bounds.width / 2)) { phase in
                     if case .success(let image) = phase {
                         image.resizable().aspectRatio(contentMode: .fill)
                     }
@@ -716,7 +719,10 @@ private struct FeedDetailCell: View {
                         }
                     }
             } else if let thumb = post.thumbnailURL {
-                CDNAsyncImage(url: thumb) { image in
+                // V4-F-073 — arrière-plan plein écran (viewer fullscreen) : décodage borné à la
+                // taille d'écran réelle plutôt qu'à la résolution CDN d'origine, toujours un gain
+                // mémoire pour une photo source généralement bien plus grande que l'écran.
+                CDNAsyncImage(url: thumb, targetSize: UIScreen.main.bounds.size) { image in
                     image.resizable().aspectRatio(contentMode: .fill)
                 } placeholder: { Color.black }
             } else {
@@ -751,7 +757,7 @@ private struct FeedDetailCell: View {
                         // "dd-MM-yy"), zone tapable entière → profil de l'auteur.
                         Button(action: onOpenProfile) {
                             HStack(spacing: 8) {
-                                CDNAsyncImage(url: post.profile.flatMap(URL.init(string:))) { phase in
+                                CDNAsyncImage(url: post.profile.flatMap(URL.init(string:)), targetSize: CGSize(width: 36, height: 36)) { phase in
                                     if case .success(let image) = phase {
                                         image.resizable().aspectRatio(contentMode: .fill)
                                     } else {

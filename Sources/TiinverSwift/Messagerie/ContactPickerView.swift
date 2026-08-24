@@ -101,7 +101,7 @@ struct ContactPickerView: View {
     private func contactRow(_ candidate: GroupMemberCandidate) -> some View {
         HStack(spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
-                CDNAsyncImage(url: URL(string: candidate.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+                CDNAsyncImage(url: URL(string: candidate.profile ?? ""), targetSize: CGSize(width: 44, height: 44)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
                     Circle().fill(Color(.secondarySystemBackground))
                 }
                 .frame(width: 44, height: 44)
@@ -178,7 +178,7 @@ struct ContactPickerView: View {
             HStack(spacing: 8) {
                 ForEach(viewModel.selectedCandidates) { candidate in
                     VStack(spacing: 4) {
-                        CDNAsyncImage(url: URL(string: candidate.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+                        CDNAsyncImage(url: URL(string: candidate.profile ?? ""), targetSize: CGSize(width: 44, height: 44)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
                             Circle().fill(Color(.secondarySystemBackground))
                         }
                         .frame(width: 44, height: 44)

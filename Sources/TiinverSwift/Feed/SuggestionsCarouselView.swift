@@ -50,7 +50,7 @@ struct SuggestionsCarouselView: View {
     private func card(for user: User) -> some View {
         VStack(spacing: 6) {
             Button(action: { if let id = user.id { openProfileUserId = String(id) } }) {
-                CDNAsyncImage(url: user.profile.flatMap(URL.init(string:))) { phase in
+                CDNAsyncImage(url: user.profile.flatMap(URL.init(string:)), targetSize: CGSize(width: 64, height: 64)) { phase in
                     if let image = phase.image {
                         image.resizable().scaledToFill()
                     } else {

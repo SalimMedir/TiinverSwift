@@ -177,7 +177,7 @@ struct SearchView: View {
 
     private func userRow(_ user: SearchUserResult) -> some View {
         HStack {
-            CDNAsyncImage(url: URL(string: user.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+            CDNAsyncImage(url: URL(string: user.profile ?? ""), targetSize: CGSize(width: 40, height: 40)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
                 Color(.secondarySystemBackground)
             }
             .frame(width: 40, height: 40).clipShape(Circle())
@@ -262,7 +262,8 @@ struct SearchView: View {
         ZStack(alignment: .bottomLeading) {
             Group {
                 if let thumb = post.thumbnailURL {
-                    CDNAsyncImage(url: thumb) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color(.secondarySystemBackground) }
+                    // V4-F-073 — tuile de grille 3 colonnes (`postGridColumns`, spacing 2).
+                    CDNAsyncImage(url: thumb, targetSize: CGSize(width: UIScreen.main.bounds.width / 3, height: UIScreen.main.bounds.width / 3)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color(.secondarySystemBackground) }
                 } else {
                     Color(.secondarySystemBackground)
                 }

@@ -83,7 +83,7 @@ struct GroupCreationView: View {
                 Section("Membres (\(members.count))") {
                     ForEach(members) { member in
                         HStack(spacing: 10) {
-                            CDNAsyncImage(url: URL(string: member.profile ?? "")) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+                            CDNAsyncImage(url: URL(string: member.profile ?? ""), targetSize: CGSize(width: 32, height: 32)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
                                 Circle().fill(Color(.secondarySystemBackground))
                             }
                             .frame(width: 32, height: 32).clipShape(Circle())

@@ -203,7 +203,8 @@ struct MediaImageBubbleBody: View {
     var body: some View {
         Group {
             if let sourcePath, let url = URL(string: sourcePath) {
-                CDNAsyncImage(url: url) { phase in
+                // V4-F-073 — bulle photo, bornée à `.frame(maxWidth: 220, maxHeight: 220)`.
+                CDNAsyncImage(url: url, targetSize: CGSize(width: 220, height: 220)) { phase in
                     switch phase {
                     case .success(let image): image.resizable().aspectRatio(contentMode: .fit)
                     default: mediaPlaceholder
@@ -243,7 +244,8 @@ struct VideoBubbleBody: View {
         ZStack {
             if let path = isMine ? message.localFileDirection : (message.objectUrl ?? message.thumbnailUri),
                 let url = URL(string: path) {
-                CDNAsyncImage(url: url) { phase in
+                // V4-F-073 — bulle vidéo (miniature), bornée à `.frame(maxWidth: 220, maxHeight: 220)`.
+                CDNAsyncImage(url: url, targetSize: CGSize(width: 220, height: 220)) { phase in
                     switch phase {
                     case .success(let image): image.resizable().aspectRatio(contentMode: .fit)
                     default: Color(.tertiarySystemBackground)

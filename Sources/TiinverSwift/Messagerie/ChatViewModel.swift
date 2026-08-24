@@ -70,13 +70,29 @@ final class ChatViewModel: ObservableObject {
     // MARK: - Chargement / pagination (port de `loadInitialData`/`loadMoreData`/
     // `displayMessageOnInicialPage`/`displayMoreMessageOnScroll`)
 
+    /// **Corrigé le 2026-08-23 (MIGRATION_PARITY_AUDIT_V4.md V4-F-038, Phase B P1)** — cette fonction
+    /// affectait `items = built` INCONDITIONNELLEMENT après le `await messages.page(...)` ci-dessous,
+    /// écrasant tout message reçu en direct par `onIncoming` (câblé via `subscribeToRealtimeEvents`,
+    /// donc capable de s'exécuter concurremment PENDANT ce même `await`) — perte visuelle (le message
+    /// restait persisté en Core Data, mais disparaissait de `items` jusqu'à fermeture/réouverture de
+    /// la conversation). Vérifié côté Android (`ChatFragmentTest.java:220`) : `messages` est un
+    /// `LinkedList<MessageLib>` UNIQUE, jamais réassigné en bloc — chaque réception (chargement
+    /// initial OU socket) y AJOUTE, jamais ne le remplace. Reproduit ici par fusion : tout message
+    /// encore présent dans `items` (donc arrivé via `onIncoming` pendant l'`await`) et absent de la
+    /// page fraîchement chargée est réinjecté avant reconstruction des séparateurs de date.
     func loadInitial() async {
         offset = 0
         previousDayComponents = nil
-        let page = try? await messages.page(
-            conversationId: target.conversationId ?? "", limit: pageSize, offset: 0, currentUsername: currentUsername)
+        let page = (try? await messages.page(
+            conversationId: target.conversationId ?? "", limit: pageSize, offset: 0, currentUsername: currentUsername)) ?? []
+        let fetchedIds = Set(page.compactMap(\.messageId))
+        let liveArrived = items.compactMap { item -> MessageLib? in
+            guard case .message(let mlib) = item, let id = mlib.messageId, !fetchedIds.contains(id) else { return nil }
+            return mlib
+        }
+        let merged = (page + liveArrived).sorted { (Double($0.stamp ?? "") ?? 0) < (Double($1.stamp ?? "") ?? 0) }
         var built: [ChatListItem] = []
-        for mlib in page ?? [] { appendWithDateSeparator(mlib, into: &built) }
+        for mlib in merged { appendWithDateSeparator(mlib, into: &built) }
         items = built
         await markConversationRead()
         await checkGroupSubscription()

@@ -340,6 +340,15 @@ struct MediaTrimView: View {
         }
         exportSession.outputURL = outputURL
         exportSession.outputFileType = .mp4
+        // Port de `Mp4Faststart.process(...)` (`VideoTrimmerView.java:710-729`, appelé après
+        // chaque ré-encodage, repli sur le fichier non-optimisé si CETTE passe échoue) —
+        // **ajouté le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-061, Phase B P2)**. Équivalent
+        // AVFoundation natif d'une relocalisation manuelle de l'atome `moov` (pas de post-passe
+        // séparée nécessaire, contrairement à Android qui réécrit le fichier après coup) — même
+        // objectif : `moov` en tête de fichier pour un démarrage/seek rapide en lecture
+        // progressive, pertinent pour les chemins de lecture Bunny en repli MP4 direct (pas
+        // uniquement HLS).
+        exportSession.shouldOptimizeForNetworkUse = true
         exportSession.videoComposition = videoComposition
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             exportSession.exportAsynchronously { continuation.resume() }

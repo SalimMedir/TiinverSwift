@@ -116,6 +116,22 @@ struct ProfileView: View {
                 Text(warning).font(.caption).foregroundStyle(.orange) // R.id.warning
             }
 
+            // **Ajouté (V4-F-013, 2026-08-24)** — port de `ProfileAdapter2.HeaderViewHolder.
+            // bindView` (lignes 257-303) : `userStatus`/`hasProgram`/`programs` étaient déjà
+            // décodés (`User.swift`) mais jamais rendus ici.
+            if let statusMessage {
+                Text(statusMessage).font(.caption).foregroundStyle(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color.red.opacity(0.85), in: Capsule()) // R.id.status
+            }
+            if viewModel.profile?.hasProgram == true, let programs = viewModel.profile?.programs, !programs.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(Array(programs.enumerated()), id: \.offset) { _, program in
+                        programBadge(program) // R.id.programBadge
+                    }
+                }
+            }
+
             HStack(spacing: 32) {
                 NavigationLink { FollowListView(userId: viewModel.userId, type: .followers) } label: { // R.id.follower
                     stat(viewModel.profile?.followers ?? "0", "Abonnés")
@@ -159,6 +175,48 @@ struct ProfileView: View {
             }
         }
         .padding()
+    }
+
+    /// Port de `ProfileAdapter2.HeaderViewHolder.bindView` (lignes 285-301) : `restricted`/
+    /// `banned`/`warning`, textes EXACTS repris de `values-fr/strings.xml`
+    /// (`restricted_message`/`banned_message`/`warning_message`).
+    private var statusMessage: String? {
+        switch viewModel.profile?.userStatus {
+        case "restricted": return "Votre compte est restreint : certaines fonctionnalités sont limitées."
+        case "banned": return "Votre compte est suspendu définitivement."
+        case "warning": return "Attention : Veuillez respecter nos conditions d'utilisation."
+        default: return nil
+        }
+    }
+
+    /// Port de `ProgramView.createBadge` (`view/ProgramView.java:76-158`) — icône/couleur/libellé
+    /// par type de programme (`premium`/`ambassador`/`creator`/`partner`), couleurs reprises de
+    /// `values/colors.xml`. `premium` affiche en plus le niveau (`label + " · " + level`).
+    @ViewBuilder
+    private func programBadge(_ program: User.Program) -> some View {
+        let (icon, fg, bg, label): (String, Color, Color, String) = {
+            switch program.program {
+            case "premium": return ("crown.fill", Color(red: 0x85 / 255, green: 0x64 / 255, blue: 0x04 / 255), Color(red: 0xFF / 255, green: 0xF3 / 255, blue: 0xCD / 255), "premium")
+            case "ambassador": return ("megaphone.fill", Color(red: 0x15 / 255, green: 0x65 / 255, blue: 0xC0 / 255), Color(red: 0xE3 / 255, green: 0xF2 / 255, blue: 0xFD / 255), "ambassadeur")
+            case "creator": return ("paintbrush.fill", Color(red: 0x5E / 255, green: 0x35 / 255, blue: 0xB1 / 255), Color(red: 0xED / 255, green: 0xE7 / 255, blue: 0xF6 / 255), "créateur")
+            case "partner": return ("hand.raised.fill", Color(red: 0x2E / 255, green: 0x7D / 255, blue: 0x32 / 255), Color(red: 0xE8 / 255, green: 0xF5 / 255, blue: 0xE9 / 255), "partenaire")
+            default: return ("star.fill", .secondary, Color.secondary.opacity(0.15), program.program ?? "")
+            }
+        }()
+        let text: String
+        if program.program == "premium", let level = program.level {
+            text = "\(label) · \(level.capitalized)"
+        } else {
+            text = label
+        }
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+            Text(text)
+        }
+        .font(.caption2.bold())
+        .foregroundStyle(fg)
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(bg, in: Capsule())
     }
 
     /// Panneau de diagnostic AFFICHÉ À L'ÉCRAN (pas seulement console) — voir

@@ -5,7 +5,7 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 **État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
 V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064,
-V4-F-059, V4-F-068, V4-F-073, V4-F-021 clos. Prochain : V4-F-027.**
+V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027 clos. Prochain : V4-F-019.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -1868,3 +1868,68 @@ commentaires documentant ce correctif lui-même).
 `ReportView`, confirmer que les 8 motifs affichés correspondent exactement à
 `report_setting_array`, et que le `message` envoyé au backend (`POST report`) reflète le motif
 choisi.
+
+## 2026-08-24 — Phase B V4 — Lot P1-21 : V4-F-027 (Following — la liste abonnés/abonnements n'a aucun bouton suivre/ne plus suivre par ligne)
+
+### Vérification Android
+
+`Recherche/ui/Adapter.java:85-164` (`ViewHolder.bindView`, entier) — le bouton `labelSuivre`
+(container tapable `lL`) est câblé sur CHAQUE ligne : affiche "Suivre"/déjà-suivi selon
+`elts.getIsFollowed()`, et au tap déclenche `td.Following(map)` (optimiste : `labelSuivre.setText(
+R.string.pending)` immédiatement) avec callback `OnFollowingSuccess` (icône + `notifyUser`) /
+`onFollowingError` (masque juste le spinner — reste bloqué sur "pending", bug latent réel côté
+Android, déjà rencontré et corrigé différemment côté iOS lors de V3-F-107).
+
+`Following/FollowList.java:24,43,60` :
+```java
+import com.tiinver.Recherche.ui.Adapter;
+...
+Adapter mAdapter;
+...
+mAdapter = new Adapter(getApplicationContext());
+```
+L'écran abonnés/abonnements RÉUTILISE littéralement le même `Adapter` que Recherche — pas une
+implémentation séparée. Le bouton suivre est donc un élément STRUCTUREL de la ligne, partagé entre
+les deux écrans par construction, pas une fonctionnalité propre à Recherche.
+
+### État iOS avant correctif
+
+`FollowListView.body` : `List(users)` avec seulement un `NavigationLink` (avatar + nom) vers le
+profil — `SearchUserResult.isFollowed` (déjà décodé, déjà utilisé dans `SearchView`/
+`SuggestionsCarouselView`/`FeedViewModel`) jamais lu ici. Aucun moyen de suivre quelqu'un
+directement depuis cette liste.
+
+### Correctif appliqué
+
+Réutilisation EXACTE du motif déjà présent et déjà corrigé dans `SearchView.swift` (pas une
+réimplémentation) :
+1. `followButton(_:)` — bouton "Suivre"/"Abonné" (désactivé si déjà suivi), même style que
+   `SearchView.followButton`.
+2. `toggleFollow(_:)` — `guard user.isFollowed != true` (suivre uniquement, PAS de bascule "ne plus
+   suivre" depuis cette liste — fidèle à `ProfileRepository.follow`/`Adapter.java`, qui n'exposent
+   ni l'un ni l'autre de bouton "ne plus suivre" inline sur cette ligne précise), mise à jour
+   optimiste de `isFollowed`, rollback à `false` en cas d'échec réseau (V3-F-107 : comportement
+   SUPÉRIEUR au blocage "pending" permanent d'Android en cas d'erreur, déjà la décision actée pour
+   `SearchView`).
+3. `body` restructuré : `NavigationLink` limité à avatar+nom (dans un `HStack` avec `Spacer()` +
+   `followButton`), au lieu d'englober toute la ligne — évite que le tap sur le bouton déclenche
+   aussi la navigation, même motif `.buttonStyle(.borderless)` que `SearchView`.
+
+Pas de nouvelle logique réseau : `ProfileRepository.follow` déjà existant, simplement câblé ici.
+
+### Flux frères vérifiés
+
+`grep "FollowListView("` → 2 sites d'appel (`ProfileView.swift`, abonnés ET abonnements) — UNE
+SEULE implémentation de `FollowListView` derrière les deux, corrigée une seule fois, couvre les
+deux écrans.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/FollowListView.swift`.
+
+**Résultat CI** : commit `a2725a9`, push confirmé (`dfb70b3..a2725a9 main -> main`), run
+`32686191058` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : depuis la liste abonnés/abonnements d'un autre
+compte, suivre un utilisateur non encore suivi, confirmer le changement d'état visuel ET la
+persistance après réouverture de l'écran ; couper le réseau et retenter pour confirmer le rollback
+visuel.

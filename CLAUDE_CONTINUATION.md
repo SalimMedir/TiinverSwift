@@ -11,7 +11,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
 Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS
-[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030/056/064/059/068/073/021 traités])
+[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030/056/064/059/068/073/021/027 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -447,17 +447,34 @@ ressource Android est unique pour les deux types. Détail complet dans `PROGRESS
 `COMPLETE_PARITY_VALIDATED` (test réel requis : signaler un profil ET un groupe, confirmer les 8
 motifs et le payload envoyé).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-20 terminé (vérifié/corrigé/documenté/commité/CI verte).
-Enchaîner **automatiquement** sur **V4-F-027** (Following — la liste abonnés/abonnements n'a aucun
-bouton suivre/ne plus suivre par ligne : `Discover/FollowListView.swift:26-44` [avatar+nom
-seulement, `NavigationLink` vers le profil ; `SearchUserResult.isFollowed` déjà utilisé ailleurs
-dans l'app mais jamais lu ici] ; Android — `Recherche/ui/Adapter.java:85-164`
-[`labelSuivre`, câblé] — taps supplémentaires requis pour suivre quelqu'un trouvé dans une liste
-abonnés/abonnements ; écart de parité y compris vis-à-vis des propres écrans
-Recherche/Suggestions d'iOS, qui ont déjà ce motif exact — recommandation : ajouter un bouton
-suivre/ne plus suivre par ligne, en réutilisant le motif déjà implémenté dans
-`SearchView.swift`/`SuggestionsCarouselView.swift`), puis V4-F-019→003 (Navigation, voir
-`MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de vérité :
+**Lot P1-21 traité (V4-F-027)** — Following, la liste abonnés/abonnements n'avait aucun bouton
+suivre par ligne. Vérifié dans `Recherche/ui/Adapter.java:85-164` (`labelSuivre`, câblé) +
+`Following/FollowList.java:24,43,60` (`import com.tiinver.Recherche.ui.Adapter` — l'écran
+abonnés/abonnements RÉUTILISE littéralement le même adaptateur/bouton que Recherche, pas une
+implémentation séparée). Côté iOS, `FollowListView` n'avait qu'un `NavigationLink` avatar+nom,
+`SearchUserResult.isFollowed` jamais lu. Corrigé : `followButton`/`toggleFollow` ajoutés, en
+RÉUTILISANT exactement le motif déjà présent et déjà corrigé dans `SearchView.swift` (V3-F-107 :
+optimiste + rollback sur échec, suivre uniquement — pas de bascule "ne plus suivre" depuis cette
+liste, fidèle à `ProfileRepository.follow`) — aucune nouvelle logique réseau. Flux frères
+vérifiés : `grep FollowListView(` → 2 sites d'appel (abonnés/abonnements), une seule implémentation
+corrigée une fois. Détail complet dans `PROGRESS_V4.md`, Lot P1-21. **Commit `a2725a9`, CI verte
+confirmée (run `32686191058`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel
+requis : suivre un utilisateur depuis la liste, confirmer le changement d'état et la persistance).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-21 terminé (vérifié/corrigé/documenté/commité/CI verte).
+Enchaîner **automatiquement** sur **V4-F-019** (Groups — action "Envoyer un message" absente de la
+gestion des membres de groupe : `Messagerie/GroupDetailView.swift:176-182,205-211` — le dialogue de
+confirmation n'offre que 2 actions [rôle admin, retirer], aucune option "Message" ; pour un
+non-admin, `guard isCurrentUserAdmin ... else { return }` rend le tap totalement mort [aucun
+dialogue, aucun feedback] ; Android — `messagerie/group/SettingGroupMessageFragmant.java:417-478`,
+`Adapter.java:119-144` [`sendMessage`, ouvre un chat 1:1 avec le membre], `res/values/
+strings.xml:443-455` — taper un membre propose TOUJOURS "Message" [+ promouvoir/rétrograder +
+retirer si admin] ; un non-admin a exactement 1 option : Message — impossible de démarrer une
+conversation privée avec un membre du groupe depuis cette liste ; les non-admins n'ont AUCUNE
+interaction du tout sur les lignes de membres — recommandation : ajouter "Message" au dialogue
+admin ; donner aux non-admins un moyen [à option unique] d'ouvrir un chat 1:1 avec le membre tapé),
+puis V4-F-003 (le dernier item de la liste P1 mandatée, voir `MIGRATION_PARITY_AUDIT_V4.md` pour le
+texte complet). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---

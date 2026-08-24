@@ -620,6 +620,24 @@ IMPACT : Taps supplémentaires requis pour suivre quelqu'un trouvé dans une lis
 motif exact.
 RECOMMANDATION : Ajouter un bouton suivre/ne plus suivre par ligne, en réutilisant le motif déjà
 implémenté dans `SearchView.swift`/`SuggestionsCarouselView.swift`.
+
+STATUT : BUILD_VALIDATED (2026-08-24) — Vérifié contre `Recherche/ui/Adapter.java:85-164`
+(`labelSuivre`/`lL.setOnClickListener`, entier) ET `Following/FollowList.java:24,43,60`
+(`import com.tiinver.Recherche.ui.Adapter` ; `Adapter mAdapter` ; `new Adapter(...)`) : l'écran
+abonnés/abonnements RÉUTILISE littéralement le même adaptateur/bouton que Recherche, pas une
+implémentation séparée — confirmant que le bouton suivre est un élément structurel de la ligne
+partagé entre les deux écrans, pas une fonctionnalité Recherche-only. Confirmé côté iOS que
+`FollowListView` n'avait qu'un `NavigationLink` avatar+nom, `SearchUserResult.isFollowed` jamais lu.
+Correctif : bouton `followButton`/`toggleFollow` ajouté, réutilisant EXACTEMENT le motif déjà
+présent et déjà corrigé dans `SearchView.swift` (V3-F-107 : optimiste + rollback sur échec réseau,
+suivre uniquement — pas de bascule "ne plus suivre" depuis cette liste, fidèle à la limitation
+réelle de `ProfileRepository.follow`/`Adapter.java` lui-même, qui n'a pas de bouton "ne plus
+suivre" inline sur cette ligne). Pas de nouvelle logique réseau — `ProfileRepository.follow` déjà
+existant, simplement câblé ici. Commit `a2725a9`, push confirmé (`dfb70b3..a2725a9 main -> main`),
+CI run `32686191058` conclusion `success`. DEVICE_TEST_REQUIRED pour passer en
+COMPLETE_PARITY_VALIDATED (aucun accès Xcode/simulateur dans cet environnement — test réel requis :
+depuis la liste abonnés/abonnements d'un autre compte, suivre un utilisateur non encore suivi,
+confirmer le changement d'état visuel ET la persistance après réouverture de l'écran).
 ```
 
 ```

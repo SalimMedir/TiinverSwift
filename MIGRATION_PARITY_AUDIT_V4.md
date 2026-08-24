@@ -833,6 +833,20 @@ côté callee qu'Android ne génère jamais lui-même de ce côté — risque de
 interopérabilité avec un appelant Android.
 RECOMMANDATION : Inverser la garde (`isOutgoingCall && !wasAnswered`) pour matcher le comportement
 Android, et réévaluer si le déclenchement côté callee doit être retiré.
+STATUT : BUILD_VALIDATED (2026-08-23, commit 9de2d73, CI run 32674952912 succès). Reconfirmé par
+relecture directe de `CallActivity.java` (entier) + `CallService.java:571-612` : `CallActivity` (qui
+possède `isCalleMissedCall`/`notifyMissedCall`) n'est lancée QUE pour `callType ==
+CallModel.OUTGOINGCALL` — le côté entrant route TOUJOURS vers `IncomingCallActivity`, classe séparée
+qui n'appelle jamais `notifyMissedCall`. `isCalleMissedCall` (init `true`) n'est remis à `false` que
+sur acceptation ou `callEnd()` reçu du socket (l'autre partie a terminé l'appel) ; `endCall()`
+déclenche `notifyMissedCall` UNIQUEMENT si encore `true` — donc UNIQUEMENT côté appelant, sur un
+appel sortant jamais décroché ni terminé par l'autre partie. Correctif : garde simplement inversée
+(`if isOutgoingCall, !wasAnswered`), retrait du déclenchement côté callee comme suggéré par la
+recommandation — pas de logique supplémentaire nécessaire, la seule instance de `notifyMissedCall`
+dans tout le projet (`grep`) est celle corrigée ici. DEVICE_TEST_REQUIRED pour
+COMPLETE_PARITY_VALIDATED (passer un appel sortant non répondu et raccrocher — confirmer le message
+"appel manqué" ; recevoir un appel entrant et le refuser — confirmer l'ABSENCE de ce message côté
+callee, avec un pair Android réel des deux côtés si possible pour vérifier l'interopérabilité).
 ```
 
 ```

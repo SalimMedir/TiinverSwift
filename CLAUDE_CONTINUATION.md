@@ -10,7 +10,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 ---
 
 # CURRENT HANDOFF (2026-08-23 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
-Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS [V4-F-020/032/033 traités])
+Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS [V4-F-020/032/033/042 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -155,15 +155,33 @@ dans `PROGRESS_V4.md`, Lot P1-3. **Commit `8d6ebae`, CI verte confirmée (run `3
 `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : bloquer puis débloquer un
 utilisateur depuis le Feed, confirmer le retrait uniquement sur blocage réussi).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-3 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur **V4-F-042** (WebRTC-Calls — logique de notification d'appel manqué inversée :
-`CallCoordinator.swift:347-357` déclenche `if !isOutgoingCall, !wasAnswered` [côté CALLEE], alors
-qu'Android n'enregistre l'appel manqué QUE côté APPELANT, `CallActivity.java:85,467-480,503-507,
-509-525` — inverser la garde en `isOutgoingCall && !wasAnswered`), puis
-V4-F-038→017→046→048→049→050→001→002→029→030→056→064→059→068→073→021→027→019→003
-(Chat→Calls→Animems→Session/DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→Social→
-Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android
-source de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lot P1-4 traité (V4-F-042)** — WebRTC-Calls, notification d'appel manqué déclenchée du mauvais côté
+(logique inversée). Vérifié dans `CallActivity.java` (entier) + `CallService.java:571-612` :
+`CallActivity` (qui possède `isCalleMissedCall`/`notifyMissedCall`) n'est lancée QUE pour
+`callType==OUTGOINGCALL` — le côté entrant route TOUJOURS vers `IncomingCallActivity`, classe séparée
+qui n'appelle jamais `notifyMissedCall`. `isCalleMissedCall` (init `true`) n'est remis à `false` que
+sur acceptation ou `callEnd()` socket (l'autre partie a raccroché) ; `endCall()` notifie
+UNIQUEMENT si encore `true` — donc UNIQUEMENT côté appelant, sur un appel sortant jamais décroché.
+`CallCoordinator.performEndCall` avait la garde inversée (`if !isOutgoingCall, !wasAnswered` — côté
+CALLEE). Corrigé : simple inversion (`if isOutgoingCall, !wasAnswered`), aucune logique
+supplémentaire. `grep notifyMissedCall` → un seul site d'appel dans tout le projet, celui corrigé ;
+`endCallFromRemote` (chemin "l'autre a raccroché") ne déclenche pas cette notification, fidèle à
+Android. Détail complet dans `PROGRESS_V4.md`, Lot P1-4. **Commit `9de2d73`, CI verte confirmée (run
+`32674952912`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : appel
+sortant non répondu + raccrocher → message "appel manqué" ; appel entrant refusé → AUCUN message côté
+callee, idéalement testé avec un pair Android réel pour l'interopérabilité).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-4 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur **V4-F-038** (Chat-Socket — race condition : un message reçu par socket
+pendant le chargement initial de l'historique est perdu visuellement : `ChatViewModel.swift:73-84`
+`loadInitial()` remplace `items` INCONDITIONNELLEMENT après un `await`, écrasant tout ce
+qu'`onIncoming` aurait ajouté entre-temps — Android fait toujours un append+dédup dans une liste
+partagée, jamais de remplacement complet, `ChatFragmentTest.java:217,649,949,1381-1521` — transformer
+`loadInitial()` en fusion dédup-append plutôt qu'un remplacement), puis
+V4-F-017→046→048→049→050→001→002→029→030→056→064→059→068→073→021→027→019→003
+(Calls→Animems→Session/DeepLinks→Feed-publish→Gallery→BunnyCDN→Wallet→Performance→Social→Groups→
+Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de
+vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

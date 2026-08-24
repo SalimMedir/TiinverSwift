@@ -3,7 +3,7 @@
 Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
 **État actuel (2026-08-23) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
-(P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033 clos. Prochain : V4-F-042.**
+(P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042 clos. Prochain : V4-F-038.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -589,3 +589,68 @@ aucun ne dépend de la valeur de retour de `block()` — aucun changement néces
 **Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
 `COMPLETE_PARITY_VALIDATED` — nécessite de bloquer réellement un utilisateur depuis le Feed et de
 confirmer le retrait du post, puis de débloquer et de confirmer qu'aucun post ne disparaît par erreur.
+
+## 2026-08-23 — Phase B V4 — Lot P1-4 : V4-F-042 (WebRTC-Calls — notification d'appel manqué
+déclenchée du mauvais côté)
+
+**Commit** : `9de2d73` — CI **run 32674952912, conclusion: success**.
+
+### Vérification Android (avant tout changement)
+
+`messagerie/ui/call/CallActivity.java`, lu en entier :
+- Ligne 85 : `private boolean isCalleMissedCall = true;` (valeur par défaut).
+- Ligne 476 (`callEnd`, événement socket reçu quand l'AUTRE partie termine l'appel) : `isCalleMissedCall
+  = false;`.
+- Ligne 506 (`onAccepCall`, appel décroché) : `isCalleMissedCall = false;`.
+- Lignes 509-525 (`endCall`, déclenché quand CE device raccroche) : `if (isCalleMissedCall) {
+  callService.notifyMissedCall(...); }`.
+
+Donc `notifyMissedCall` ne se déclenche QUE si `endCall()` est atteint alors que
+`isCalleMissedCall` est encore à sa valeur par défaut `true` — c'est-à-dire ni décroché, ni terminé
+par l'autre partie. Question clé : QUI atteint `endCall()` dans ce scénario ? Vérifié dans
+`CallService.java:571-612` : `CallActivity` (la classe qui possède TOUT ce mécanisme) n'est lancée
+QUE dans la branche `if (callType == CallModel.OUTGOINGCALL)` (ligne 571-578) — le côté `INCOMINGCALL`
+(lignes 591-612) route TOUJOURS vers `IncomingCallActivity`, une classe SÉPARÉE qui n'appelle JAMAIS
+`notifyMissedCall`. Conclusion sans ambiguïté : le message "appel manqué" n'est enregistré QUE côté
+APPELANT, quand il raccroche lui-même un appel sortant jamais décroché.
+
+### Écart iOS constaté (avant correctif)
+
+`CallCoordinator.swift` (`performEndCall`, avant correctif) :
+```swift
+if !isOutgoingCall, !wasAnswered {
+    chatRepository.notifyMissedCall(...)
+}
+```
+Condition EXACTEMENT inversée : se déclenchait côté CALLEE (`!isOutgoingCall`) raccrochant un appel
+entrant non décroché — le scénario qu'Android NE gère JAMAIS de ce côté — et jamais côté appelant
+(le seul scénario réel Android).
+
+### Correctif appliqué
+
+```swift
+if isOutgoingCall, !wasAnswered {
+    chatRepository.notifyMissedCall(...)
+}
+```
+Simple inversion de la garde, comme recommandé par l'audit — aucune logique supplémentaire requise.
+
+### Flux frères vérifiés
+
+`grep -n "notifyMissedCall"` → une seule occurrence d'appel dans tout le projet (celle corrigée
+ici) ; `ChatRepository.notifyMissedCall` (le wrapper réseau) est un simple point d'entrée, pas de
+logique de condition dupliquée ailleurs. `endCallFromRemote` (le chemin "l'autre partie a raccroché
+en premier", équivalent iOS de `callEnd()` reçu du socket côté Android) ne déclenche PAS
+`notifyMissedCall` — fidèle à Android, où ce même chemin (`callEnd()`) se contente de mettre
+`isCalleMissedCall = false` sans notifier.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Calls/CallCoordinator.swift`.
+
+**Résultat CI** : run `32674952912` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — nécessite un test réel : passer un appel sortant non répondu et
+raccrocher soi-même (confirmer le message "appel manqué" apparaît), puis recevoir un appel entrant et
+le refuser sans décrocher (confirmer qu'AUCUN message "appel manqué" n'apparaît côté callee) —
+idéalement avec un pair Android réel des deux côtés pour vérifier l'absence de doublon en
+interopérabilité.

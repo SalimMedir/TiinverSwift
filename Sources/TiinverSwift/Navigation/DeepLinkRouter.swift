@@ -81,7 +81,9 @@ enum DeepLinkRouter {
         case "offer":
             DeepLinkCenter.shared.route(.referral)
         default:
-            break
+            // Port du repli `default:` de `ShareActivity.processUrl` (lignes 207-210) — un segment
+            // non reconnu lance `SplashActivity` côté Android plutôt que de ne rien faire.
+            DeepLinkCenter.shared.route(.home)
         }
     }
 

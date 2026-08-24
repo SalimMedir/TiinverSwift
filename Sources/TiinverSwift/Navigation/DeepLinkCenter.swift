@@ -11,6 +11,10 @@ import Foundation
 /// tour) — même mécanisme de file d'attente `pending`/`consume()` que les notifications push,
 /// pas un second système parallèle.
 enum DeepLinkDestination: Equatable {
+    /// Port du repli `default:` de `ShareActivity.processUrl` (lignes 207-210) — un segment de
+    /// chemin non reconnu lance `SplashActivity` plutôt que de ne rien faire (V4-F-005 audit V4,
+    /// P3, 2026-08-24).
+    case home
     case notifications
     case chat
     case profile

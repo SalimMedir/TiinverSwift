@@ -280,6 +280,7 @@ struct HomeShellView: View {
     /// consommation d'un lien déjà en attente au montage).
     private func handleDeepLink(_ destination: DeepLinkDestination) {
         switch destination {
+        case .home: selectedTab = 0
         case .notifications: showNotifications = true
         case .profile: showProfile = true
         case .chat: selectedTab = 1

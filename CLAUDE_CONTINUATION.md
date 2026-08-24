@@ -10,8 +10,9 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 ---
 
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
-Phase B V4 : backlog P0 épuisé, **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE** [22 corrigés
-BUILD_VALIDATED + V4-F-003 documenté BLOQUÉ hors dépôt] — backlog P2/P3 V4 PAS ENCORE ATTAQUÉ)
+Phase B V4 : backlog P0 épuisé, LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE [22 corrigés BUILD_VALIDATED
++ V4-F-003 BLOQUÉ], **backlog P2 EN COURS** [Lot P2-1 clos : V4-F-004 BLOQUÉ, V4-F-006 différé,
+V4-F-009/010/011 BUILD_VALIDATED] — backlog P3 PAS ENCORE ATTAQUÉ)
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -494,13 +495,56 @@ Détail complet dans `PROGRESS_V4.md`, Lot P1-23.
 introduite à aucun lot. Aucun finding marqué `COMPLETE_PARITY_VALIDATED` (aucun test réel sur
 device disponible dans cet environnement, conformément à la règle du projet).
 
-**PROCHAINE TÂCHE** : la liste P1 imposée par l'utilisateur pour ce cycle V4 est maintenant
-ENTIÈREMENT traitée. `MIGRATION_PARITY_AUDIT_V4.md` §0 liste encore 32 findings P2 et 15 findings
-P3 non attaqués. **Ne PAS enchaîner automatiquement sur le backlog P2/P3** — contrairement à
-l'ordre P1 (explicitement dicté finding par finding par l'utilisateur), aucun ordre P2/P3 n'a été
-donné : attendre une instruction explicite de l'utilisateur avant de démarrer le backlog P2/P3 (ou
-toute autre tâche), conformément à la consigne d'origine de la Phase B ("un lot à la fois,
-strictement dans l'ordre donné" — cet ordre s'arrête ici). Repo Android source de vérité :
+**Backlog P2 DÉMARRÉ (2026-08-24)** — instruction explicite de l'utilisateur : traiter le backlog
+P2 (27 findings réels dans le document actuel, dans son ordre) par petits lots, méthodiquement
+(Android source → comportement réel → code iOS → différence exacte → correction minimale → CI →
+doc), puis enchaîner automatiquement sur P3 une fois P2 entièrement traité. Règles strictes
+rappelées par l'utilisateur : ne pas corriger un finding juste parce qu'il est P2 ; vérifier que la
+différence Android/iOS est réelle avant tout ; ne pas porter du code Android mort/inutilisé ;
+marquer `BLOQUÉ` (raison précise) tout ce qui dépend backend/Apple Developer/serveur/test physique ;
+ne jamais confondre `BUILD_VALIDATED` et `COMPLETE_PARITY_VALIDATED` ; pour toute vue, vérifier
+toute la chaîne navigation→état→action→API→réponse→état Swift→rendu→interaction suivante (pas
+seulement la présence du code — on a déjà trouvé plusieurs "code jamais appelé"/"état change mais
+rien ne se rend") ; pour Animems, vérifier toute la chaîne UI→geste→état→transformation→
+renderer→timeline→export avant de considérer un point terminé.
+
+**Lot P2-1 traité (V4-F-004, V4-F-006, V4-F-009, V4-F-010, V4-F-011)** — V4-F-004
+(Navigation-DeepLinks/Social, Share Extension absente) : `BLOQUÉ`, PAS un simple bug de code —
+nécessite un target Xcode dédié ET un partage de session (Keychain access group) entre l'app et
+l'extension, lui-même bloqué par la même dépendance Apple Developer Portal que V4-F-003 (risque
+réel de casser la signature/CI sans activation préalable de la capability) — aucun code modifié.
+V4-F-006 (route deep link `update`) : différé, sans objet — `appStoreId = nil` est un placeholder
+déjà documenté, aucun App Store ID réel n'existe avant publication, la RECOMMANDATION de l'audit le
+confirme elle-même — aucun code modifié. V4-F-009 (échec upload photo profil silencieux) : corrigé,
+nouveau `photoUploadFailed` + icône d'erreur superposée, port fidèle de
+`ProfileAdapter2.java:281-285`. V4-F-010 (grille profil sans état loading/vide) : corrigé,
+`isLoadingPosts` (déjà publié, zéro lecteur) maintenant rendu + nouveau `postsLoadError`, port
+fidèle du footer 3-états `ProfileAdapter2.FooterViewHolder` (le seul état "vide" ajouté est un
+confort UX documenté comme NON issu d'Android, aucune vue "empty" trouvée côté Android après
+recherche explicite). V4-F-011 (EditProfile ne charge jamais bio/lien) : corrigé, `loadCategory()`
+étendue pour peupler `existingBiography`/`existingLink` utilisés comme PLACEHOLDER (pas pré-saisis
+— fidèle à `EditProfile.onResume`'s `setHint`, PAS `setText`). Détail complet dans `PROGRESS_V4.md`,
+Lot P2-1. **Commit `ac3ce38`, CI verte confirmée (run `32709964672`)** — `BUILD_VALIDATED` pour les
+3 findings corrigés, PAS `COMPLETE_PARITY_VALIDATED`.
+
+**PROCHAINE TÂCHE EXACTE** : Lot P2-1 terminé (vérifié/corrigé ou documenté BLOQUÉ/commité/CI
+verte). Enchaîner **automatiquement** sur le prochain P2 dans l'ordre du document :
+**V4-F-012** (Profile / Settings — écran résumé lecture-seule "Informations personnelles"
+[téléphone/email] entièrement absent, doublon confirmé trouvé indépendamment par 2 agents Phase A
+— Profile et Settings : `Settings/SettingsView.swift:22` [lien direct vers le formulaire d'édition,
+qui ne contient pas non plus téléphone/email — fidèle à Android sur ce point précis], aucun écran
+résumé lecture-seule nulle part dans l'app ; Android —
+`setting/FragmentProfile.java:1-247`, `setting/SettingAccountFragment.java:102` — un écran
+intermédiaire affiche nickname/localisation/travail/qualification/école/username/genre/date de
+naissance/téléphone/email en lecture seule avec un bouton "Modifier" séparé — aucun endroit de
+l'app iOS n'affiche donc le téléphone/email enregistré de l'utilisateur — recommandation : ajouter
+un écran résumé lecture-seule accessible depuis Réglages → Compte, avant/à côté du formulaire
+d'édition), puis continuer AUTOMATIQUEMENT le backlog P2 restant dans l'ordre du document
+(V4-F-014, V4-F-022, V4-F-025, V4-F-028, V4-F-031, V4-F-035, V4-F-039, V4-F-041, V4-F-043,
+V4-F-047, V4-F-051, V4-F-052, V4-F-057, V4-F-058, V4-F-060, V4-F-061, V4-F-066, V4-F-067,
+V4-F-069, V4-F-070, V4-F-074 — 21 findings restants après V4-F-012), puis le backlog P3 (21
+findings) une fois P2 entièrement clos, SANS attendre de nouvelle confirmation utilisateur pour
+chaque lot (instruction explicite : continuer automatiquement). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---

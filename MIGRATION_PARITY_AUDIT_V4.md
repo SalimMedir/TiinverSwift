@@ -193,6 +193,22 @@ appex/ShareExtension. Note : le `text/plain`/`SEND_MULTIPLE` d'Android sont eux-
 stubs non fonctionnels — seul le cas image simple est un vrai gap à porter.
 RECOMMANDATION : Scoper un target Share Extension dédié réutilisant le picker de conversation déjà
 existant (`ContactPickerView` mode browse).
+
+STATUT : BLOQUÉ (2026-08-24, Phase B P2, Lot P2-1) — pas une simple modification de code, un module
+Xcode entier (target App Extension). Vérifié avant de conclure : la session (`UserSession`) est
+stockée via `KeychainStore` (`Sources/TiinverSwift/Security/KeychainStore.swift`), SANS groupe
+d'accès Keychain partagé (`kSecAttrAccessGroup`) déclaré nulle part dans le projet — un target
+d'extension NE PEUT PAS lire cette session sans (1) ajouter l'entitlement "App Groups"/groupe de
+trousseau partagé aux DEUX targets (app + extension), ce qui (2) nécessite d'activer la capability
+correspondante pour l'App ID dans le portail développeur Apple AVANT que l'entitlement n'ait un
+effet — exactement la même dépendance externe et le même risque de casser la signature/CI que
+`V4-F-003` (Associated Domains), hors accès de cet environnement. Scaffolder le target seul (sans
+partage de session fonctionnel) produirait une extension qui ne peut identifier aucun utilisateur —
+un travail non minimal, non testable sans device/compte développeur, pour un résultat non
+fonctionnel en l'état. Conformément à la règle de Phase B ("ne pas modifier le code si l'action
+dépend du backend/Apple Developer/serveur/test physique impossible"), aucun code n'a été modifié.
+Aucun commit, aucune CI dispatchée. Ce finding nécessite une décision produit (vaut-il le coût d'un
+target dédié + partage de session ?) et l'accès au compte développeur Apple du projet.
 ```
 
 ```
@@ -221,6 +237,17 @@ IMPACT : Faible aujourd'hui (lien rarement tapé, gate de force-update séparée
 PREUVE : `DeepLinkRouter.swift:77`.
 RECOMMANDATION : Renseigner l'App Store ID réel avant publication — pas d'investigation
 supplémentaire nécessaire.
+
+STATUT : DIFFÉRÉ, sans objet actuellement (2026-08-24, Phase B P2, Lot P2-1) — vérifié :
+`DeepLinkRouter.swift` déclare bien `let appStoreId: String? = nil` avec un commentaire de tête
+documentant explicitement ce placeholder connu. Pas un bug de code à corriger : l'app n'étant pas
+encore publiée sur l'App Store, AUCUN App Store ID réel n'existe à renseigner — toute tentative de
+"corriger" ce finding maintenant introduirait soit une valeur fictive (pire que `nil`, un lien mort
+silencieux au lieu d'un `nil` explicite et déjà documenté), soit nécessiterait d'attendre une
+publication qui n'a pas eu lieu. La RECOMMANDATION de l'audit lui-même le confirme ("pas
+d'investigation supplémentaire nécessaire"). Le code de routage (`DeepLinkRouter.handleContentLink`,
+route `update`) est déjà prêt à fonctionner dès que cette valeur sera renseignée avant la
+publication réelle — aucune modification de code faite ici, aucun commit, aucune CI.
 ```
 
 ---
@@ -325,6 +352,18 @@ DIFFÉRENCE : Android bascule l'avatar vers une icône d'erreur visible ; iOS n'
 IMPACT : L'utilisateur ne sait pas si son upload a échoué.
 PREUVE : `catch {}` sans état d'erreur ni indicateur.
 RECOMMANDATION : Ajouter un état d'erreur dédié (ex. `photoUploadError`) affiché près de l'avatar.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-1) — Vérifié contre `AddPerfilFoto.java:
+258-289` (`Result.ERROR` → `mAdapter.setProfilePictureStateLoading(3)`) et `ProfileAdapter2.java:
+281-285` (`error.setVisibility(VISIBLE)`, icône d'erreur dédiée superposée à l'avatar, distincte de
+l'icône de succès et du spinner de chargement). Confirmé côté iOS : `ProfileViewModel.
+uploadProfilePicture` avait un `catch {}` strictement vide. Correctif : nouveau `@Published var
+photoUploadFailed`, mis à `true` dans le `catch`/à `false` au démarrage d'un nouvel essai ; rendu
+en overlay (icône `exclamationmark.circle.fill`, coin HAUT-droit pour ne pas chevaucher le bouton
+caméra existant en bas-droit) dans `ProfileView.avatar`. Commit `ac3ce38`, push confirmé
+(`1b06e18..ac3ce38 main -> main`), CI run `32709964672` conclusion `success`.
+DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (couper le réseau pendant un changement
+d'avatar, confirmer l'icône d'erreur visible).
 ```
 
 ```
@@ -338,6 +377,22 @@ DIFFÉRENCE : `isLoadingPosts` publié mais jamais référencé dans la vue (gre
 vide pour un profil sans post.
 IMPACT : Espace blanc inexpliqué pour un profil vide ; aucun feedback pendant la pagination.
 RECOMMANDATION : Ajouter un `ProgressView` en pied de grille + un état vide explicite.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-1) — Vérifié contre `ProfileAdapter2.
+FooterViewHolder.bindView(type)` (`ProfileAdapter2.java:186-208`, entier) : pied de grille paginée
+à 3 états réels — shimmer (chargement, type 0), rien (succès, type 1), icône+texte+bouton
+"Réessayer" (échec, type 2). Recherche explicite d'un état "vide" dédié dans
+`ProfileAdapter2`/`UserProfile.java`/`AddPerfilFoto.java` (`grep emptyView\|no_data\|Aucune`) →
+AUCUN résultat pertinent — Android n'a PAS de vue "aucune publication" explicite, seule la partie
+loading/erreur ci-dessus a un équivalent Android réel. Confirmé côté iOS : `isLoadingPosts` publié
+mais lu par AUCUNE vue (grep confirmé) ; `loadMorePosts()` avalait l'échec via `print(...)` seul.
+Correctif : nouveau `@Published var postsLoadError` ; `postsGridFooter` (nouveau) rend
+`ProgressView`/erreur+retry/texte "Aucune publication" selon l'état — CE DERNIER état est un ajout
+de confort UX documenté comme NON issu d'Android (pas de parité fabriquée), les 2 premiers sont un
+port fidèle du footer Android. Commit `ac3ce38`, push confirmé (`1b06e18..ac3ce38 main -> main`),
+CI run `32709964672` conclusion `success`. DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED
+(couper le réseau pendant le scroll, confirmer l'erreur+retry ; profil sans post, confirmer le
+texte vide).
 ```
 
 ```
@@ -351,6 +406,20 @@ DIFFÉRENCE : `biography`/`link` ne sont jamais assignés depuis un profil charg
 l'ouverture, sans même un placeholder informatif.
 IMPACT : Impossible de voir sa bio/son lien actuels sans quitter cet écran.
 RECOMMANDATION : Précharger `biography`/`link` dans `.task`, comme pour `loadCategory()`.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-1) — Vérifié contre `EditProfile.onResume`
+(`EditProfile.java:86-128`, entier) : `bioInput.setHint(biography)`/`linkView.setHint(link)` — les
+valeurs existantes sont affichées EN PLACEHOLDER (hint), PAS pré-remplies dans le champ éditable
+(`setText` jamais appelé pour ces 2 champs, contrairement à `category`, dont le hint SEUL est
+également utilisé). Confirmé côté iOS : `biography`/`link` jamais assignés depuis un profil
+chargé — champs vides sans même un placeholder informatif. Correctif : `loadCategory()` étendue
+(fetch déjà en place, juste 2 champs supplémentaires lus) pour peupler `existingBiography`/
+`existingLink`, utilisés comme PLACEHOLDER du `TextField` (pas pré-saisis dans `$biography`/`$link`)
+— reproduit fidèlement le hint Android, préserve intact le comportement de `save()` ("un champ
+non-vide seulement est envoyé", déjà correct). Commit `ac3ce38`, push confirmé
+(`1b06e18..ac3ce38 main -> main`), CI run `32709964672` conclusion `success`.
+DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (ouvrir "Modifier le profil" avec une bio/un
+lien déjà enregistrés, confirmer leur affichage en placeholder grisé).
 ```
 
 ```

@@ -6,7 +6,9 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
 V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064,
 V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027, V4-F-019 clos. V4-F-003 documenté `BLOQUÉ` (hors
-dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE.**
+dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE.** Backlog P2 EN
+COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011 (`BUILD_VALIDATED`)
+clos. Prochain : V4-F-012.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -2089,3 +2091,119 @@ V4-F-019, V4-F-003. 22 corrigés avec CI verte (`BUILD_VALIDATED`), 1 documenté
 dépôt, V4-F-003). Aucune régression introduite (CI verte à chaque lot, jamais de commit sans
 validation CI). Aucun finding marqué `COMPLETE_PARITY_VALIDATED` (test réel sur device jamais
 disponible dans cet environnement, conformément à la règle du projet).
+
+---
+
+# BACKLOG P2 (2026-08-24 — )
+
+Consigne de l'utilisateur : traiter le backlog P2 (27 findings), par petits lots, dans l'ordre du
+document `MIGRATION_PARITY_AUDIT_V4.md`. Pour chaque finding : vérifier RÉELLEMENT contre Android
+avant toute modification ; ne pas corriger un finding juste parce qu'il est P2 ; ne pas porter du
+code Android mort/abandonné ; marquer `BLOQUÉ` (raison précise) tout ce qui dépend du
+backend/Apple Developer/serveur/test physique impossible ; ne jamais confondre `BUILD_VALIDATED`
+(CI verte) et `COMPLETE_PARITY_VALIDATED` (comportement réellement testé). Pour toute vue :
+vérifier toute la chaîne (navigation→état→action→API→réponse→état Swift→rendu→interaction
+suivante), pas seulement la présence du code. Pour Animems : vérifier toute la chaîne (UI→geste→
+état→transformation→renderer→timeline→export), ne jamais présumer terminé sur la seule fidélité du
+moteur mathématique.
+
+## 2026-08-24 — Phase B V4 — Lot P2-1 : V4-F-004, V4-F-006, V4-F-009, V4-F-010, V4-F-011
+
+### V4-F-004 (Navigation-DeepLinks / Social) — Share Extension absente — `BLOQUÉ`
+
+Finding réel confirmé (recherche exhaustive `appex`/`ShareExtension`/`NSExtension` = 0 résultat).
+PAS une simple modification de code : nécessite un target Xcode dédié (App Extension). Vérifié
+avant de conclure au blocage (pas une supposition) : `UserSession` est stockée via
+`KeychainStore.swift`, SANS groupe d'accès Keychain partagé déclaré nulle part dans le projet — un
+target d'extension ne peut PAS lire cette session sans (1) ajouter l'entitlement App
+Groups/trousseau partagé aux DEUX targets, ce qui (2) nécessite d'abord activer la capability
+correspondante pour l'App ID dans le portail développeur Apple — même dépendance externe et même
+risque de casse de signature/CI que `V4-F-003` (Associated Domains), hors accès de cet
+environnement. Scaffolder le target seul produirait une extension incapable d'identifier un
+utilisateur — non fonctionnel, non minimal, non testable sans device/compte développeur. Aucun
+code modifié, aucun commit, aucune CI. Nécessite une décision produit + accès au compte
+développeur Apple du projet.
+
+### V4-F-006 (Navigation-DeepLinks) — route `update` no-op — différé, sans objet
+
+Vérifié : `DeepLinkRouter.swift` déclare `let appStoreId: String? = nil`, déjà documenté en
+commentaire comme placeholder connu. Pas un bug : l'app n'étant pas publiée, aucun App Store ID
+réel n'existe à renseigner — la RECOMMANDATION de l'audit lui-même dit "pas d'investigation
+supplémentaire nécessaire". Toute "correction" maintenant introduirait une valeur fictive pire que
+le `nil` explicite actuel. Le code de routage est déjà prêt. Aucune modification, aucun commit,
+aucune CI — à rouvrir lors de la préparation de la publication App Store réelle.
+
+### V4-F-009 (Profile) — échec d'upload photo de profil silencieux
+
+**Vérification Android** : `AddPerfilFoto.java:258-289` (`Result.ERROR` →
+`mAdapter.setProfilePictureStateLoading(3)`) + `ProfileAdapter2.java:281-285`
+(`profilepicturestateloading==3` → `error.setVisibility(VISIBLE)`, icône d'erreur dédiée,
+distincte du spinner de chargement [1] et de l'icône de succès [2]).
+
+**État iOS avant correctif** : `ProfileViewModel.uploadProfilePicture` — `catch {}` strictement
+vide, aucun état, aucun feedback visuel en cas d'échec réseau.
+
+**Correctif** : nouveau `@Published var photoUploadFailed` (`ProfileViewModel.swift`), mis à
+`true` dans le `catch`, réinitialisé à `false` au démarrage d'un nouvel essai ; rendu en overlay
+(`exclamationmark.circle.fill`) dans `ProfileView.avatar`, coin HAUT-droit (le bas-droit est déjà
+occupé par le bouton caméra sur son propre profil) pour éviter toute collision visuelle.
+
+**Flux frères vérifiés** : `grep uploadProfilePicture` → un seul appelant
+(`ProfileView.swift`/`avatarPickerItem.onChange`), un seul site à corriger.
+
+### V4-F-010 (Profile) — grille de posts sans état loading/vide
+
+**Vérification Android** : `ProfileAdapter2.FooterViewHolder.bindView(type)`
+(`ProfileAdapter2.java:186-208`, entier) — 3 états réels : shimmer (chargement, type 0), rien
+(succès, type 1), icône+texte+bouton "Réessayer" (échec, type 2). Recherche explicite d'un état
+"vide" dédié (`grep emptyView\|no_data\|Aucune` dans `ProfileAdapter2`/`UserProfile.java`/
+`AddPerfilFoto.java`) → **0 résultat pertinent** — Android n'a PAS de vue "aucune publication"
+explicite ; seule la partie loading/erreur a un équivalent Android réel.
+
+**État iOS avant correctif** : `isLoadingPosts` (`ProfileViewModel`) publié mais lu par AUCUNE vue
+(grep confirmé) ; `loadMorePosts()` avalait l'échec de pagination via `print(...)` seul, invisible
+à l'écran.
+
+**Correctif** : nouveau `@Published var postsLoadError` ; nouvelle `postsGridFooter`
+(`ProfileView.swift`) rendant `ProgressView` (chargement)/icône+texte+bouton "Réessayer"
+(échec)/texte "Aucune publication" (grille vide, chargement terminé) — les 2 premiers états portent
+fidèlement le footer Android réel ; le 3ᵉ est un ajout de confort UX explicitement documenté comme
+NON issu d'Android (pas de parité fabriquée pour un élément qui n'existe pas côté Android). Guard
+`!viewModel.isLoadingProfile` ajouté au texte vide pour éviter un flash "Aucune publication" avant
+même que le chargement du profil ne démarre.
+
+**Flux frères vérifiés** : une seule grille paginée de posts dans `ProfileView` — pas de duplication
+ailleurs dans le projet suivant ce même motif de pagination (`FeedView`/`HashtagFeedView`/
+`SearchView` ont chacun leur propre état déjà géré séparément, hors périmètre de ce finding scopé à
+`ProfileView`).
+
+### V4-F-011 (Profile) — EditProfile ne charge jamais bio/lien existants
+
+**Vérification Android** : `EditProfile.onResume` (`EditProfile.java:86-128`, entier) —
+`bioInput.setHint(biography)`/`linkView.setHint(link)` : les valeurs existantes sont affichées EN
+PLACEHOLDER (hint), **PAS** pré-remplies dans le champ éditable (`setText` jamais appelé pour ces 2
+champs — contrairement à ce qu'on pourrait supposer, le même traitement "hint seul" s'applique
+aussi à `category`).
+
+**État iOS avant correctif** : `biography`/`link` (`@State` de `EditProfileView`) jamais assignés
+depuis un profil chargé — champs vides à l'ouverture, sans même un placeholder informatif.
+
+**Correctif** : `loadCategory()` étendue (le fetch réseau existait déjà pour `category`, juste 2
+champs supplémentaires lus sur la même réponse) pour peupler `existingBiography`/`existingLink`
+(nouveaux `@State`), utilisés comme PLACEHOLDER du `TextField` — PAS pré-saisis dans `$biography`/
+`$link`, ce qui aurait changé le comportement de `save()` ("un champ non-vide seulement est
+envoyé", déjà correct et fidèle à Android, qui ne permet pas non plus d'effacer un champ existant
+depuis cet écran).
+
+**Flux frères vérifiés** : `grep biography` dans `Sources/TiinverSwift/Settings/` → 0 résultat,
+aucun autre écran de l'app n'a de champ bio/lien à préremplir.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Profile/ProfileViewModel.swift`,
+`Sources/TiinverSwift/Profile/ProfileView.swift`, `Sources/TiinverSwift/Profile/EditProfileView.swift`.
+
+**Résultat CI** : commit `ac3ce38`, push confirmé (`1b06e18..ac3ce38 main -> main`), run
+`32709964672` → **`conclusion: success`**.
+
+**Statut honnête après ce lot** : V4-F-004 `BLOQUÉ` (hors dépôt) ; V4-F-006 différé (sans objet
+avant publication App Store) ; V4-F-009/010/011 `BUILD_VALIDATED` (CI verte confirmée) — PAS
+`COMPLETE_PARITY_VALIDATED` (tests réels requis, détaillés par finding ci-dessus).

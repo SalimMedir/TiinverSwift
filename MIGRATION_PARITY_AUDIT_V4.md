@@ -1247,6 +1247,29 @@ IMPACT : Pour toute photo à orientation EXIF non-`.up` (cas courant pour une ph
 résultat final contre ce buffer mal orienté.
 RECOMMANDATION : Normaliser l'orientation vers `.up` avant de construire le `cgImage` passé à
 `FreeformCropStepView` (ex. via un passage `UIGraphicsImageRenderer` respectant `imageOrientation`).
+
+STATUT : BUILD_VALIDATED (2026-08-24) — Vérifié contre `BitmapLoadingWorkerTask.java:76`
+(`rotateBitmapByExif` appliqué en amont, avant tout branchement rect/oval/freeform) et
+`CropImageView.java:981-994` (même fonction, second point d'entrée). Confirmé côté iOS que
+`PublishComposeView.swift`'s `.freeformCropping` passait `image.cgImage` brut à
+`FreeformCropStepView`, dessiné via `Image(decorative:)` (`FreeformCropView.swift:18`) — cette API
+ignore `imageOrientation`, contrairement au mode rect/oval (`TOCropViewController`, déjà correct).
+Correctif : nouvelle méthode privée `UIImage.normalizedToUpOrientation()` (redessine via
+`UIGraphicsImageRenderer`/`draw(in:)`, qui respecte `imageOrientation`) appliquée avant extraction
+du `cgImage` ; le résultat découpé (`FreeformCropView.croppedImage`) est reconstruit avec
+`orientation: .up` (pas `image.imageOrientation`, qui aurait doublé la rotation puisque la source
+est déjà normalisée). Flux frère vérifié : `PhotoCropView.swift:54` (mode oval) opère sur
+`croppedImage.cgImage` — mais APRÈS le passage par `TOCropViewController`, dont la sortie a déjà
+ses pixels physiquement tournés (orientation `.up` de fait) ; pas affecté. `PhotoToolsView.swift`
+(flip/removeBackground) propage `imageOrientation` d'un bout à l'autre, affiché via `Image(uiImage:)`
+(pas `decorative:`) ; pas affecté. Les usages `Image(decorative:)` dans le module Animems
+(`PaintCapture.swift`, `ShapePreviewEditorPanelView.swift`) opèrent sur des calques/stickers
+générés en interne, jamais sur une photo EXIF importée — hors périmètre de ce finding. Commit code
+`29385f5`, push confirmé (`c1cb713..29385f5 main -> main`), CI run `32682553930` conclusion
+`success`. DEVICE_TEST_REQUIRED pour passer en COMPLETE_PARITY_VALIDATED (aucun accès
+Xcode/simulateur dans cet environnement — le raisonnement sur `UIGraphicsImageRenderer` respectant
+`imageOrientation` est standard-documenté mais non vérifié visuellement sur une vraie photo
+portrait EXIF).
 ```
 
 ```

@@ -4,7 +4,8 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
 **État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
-V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030 clos. Prochain : V4-F-056.**
+V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056 clos. Prochain :
+V4-F-064.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -1355,3 +1356,88 @@ appliquée en bloc.
 commentaires d'un post d'un AUTRE compte depuis Feed/Profile/Hashtag, confirmer la réception d'une
 notification push sur le second appareil ; répéter depuis Search/Notifications et confirmer l'ABSENCE
 de notification (fidèle à Android, pas une régression).
+
+## 2026-08-24 — Phase B V4 — Lot P1-15 : V4-F-056 (Gallery-PhotoEditor — freeform crop ignore l'orientation EXIF)
+
+### Vérification Android
+
+`BitmapLoadingWorkerTask.java:66-79` (`doInBackground`) :
+```java
+BitmapUtils.BitmapSampled decodeResult =
+    BitmapUtils.decodeSampledBitmap(mContext, mUri, mWidth, mHeight);
+...
+BitmapUtils.RotateBitmapResult rotateResult =
+    BitmapUtils.rotateBitmapByExif(decodeResult.bitmap, mContext, mUri);
+```
+`rotateBitmapByExif` est appelé EN AMONT, avant tout branchement sur le sous-mode de recadrage
+(rect/oval/freeform) — c'est le SEUL point de chargement du bitmap pour `CropImageView`, donc les
+trois sous-modes reçoivent déjà un bitmap dont les pixels sont physiquement tournés selon l'EXIF.
+Second point d'entrée confirmé, `CropImageView.java:981-994` (`setImageBitmap(bitmap, exif)`) :
+même fonction `rotateBitmapByExif`, même garantie.
+
+### État iOS avant correctif
+
+`PublishComposeView.swift` (`.freeformCropping` case) :
+```swift
+if case .photo(let image) = media, let cgImage = image.cgImage {
+    FreeformCropStepView(sourceImage: cgImage, path: $freeformPath, ...)
+}
+```
+`image.cgImage` extrait le buffer de pixels BRUT, sans tenir compte de `image.imageOrientation`.
+`FreeformCropView.body` (`FreeformCropView.swift:18`) dessine ce buffer via
+`context.draw(Image(decorative: sourceImage, scale: 1), in: ...)` — `Image(decorative:)` est
+documenté par Apple comme ignorant les métadonnées d'orientation (contrairement à
+`Image(uiImage:)`, qui les respecte). Pour une photo prise en mode portrait (EXIF
+`.rightMirrored`/`.right`/etc., cas quasi-systématique caméra iPhone), le buffer brut est en
+réalité stocké en paysage — la photo apparaît donc de côté ou en miroir pendant le tracé du masque,
+ET le résultat composé (`FreeformCropView.croppedImage`, qui opère sur ce même buffer non tourné)
+hérite du même défaut.
+
+Le mode rect/oval (`.cropping`, même fichier) passe par `TOCropViewController`
+(`PhotoCropView.swift`), une bibliothèque tierce qui respecte nativement `imageOrientation` — seul
+le mode freeform était affecté, confirmant exactement la `DIFFÉRENCE` du finding d'audit.
+
+### Correctif appliqué
+
+Nouvelle méthode privée `UIImage.normalizedToUpOrientation()` (`PublishComposeView.swift`, scope
+`private extension`, utilisée au seul site concerné) :
+```swift
+func normalizedToUpOrientation() -> UIImage {
+    guard imageOrientation != .up else { return self }
+    let format = UIGraphicsImageRendererFormat.default()
+    format.scale = scale
+    return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+        draw(in: CGRect(origin: .zero, size: size))
+    }
+}
+```
+`draw(in:)` respecte `imageOrientation` (contrairement à un accès direct à `.cgImage`), donc le
+bitmap redessiné a des pixels déjà dans le bon sens — équivalent fonctionnel de
+`rotateBitmapByExif`. Appliquée avant l'extraction du `cgImage` passé à `FreeformCropStepView`.
+Le résultat découpé (`onValidate`) est reconstruit avec `orientation: .up` (et non
+`image.imageOrientation`, comme avant le correctif) puisque la source est désormais déjà
+normalisée — réappliquer l'orientation d'origine aurait doublé la rotation.
+
+### Flux frères vérifiés
+
+- `PhotoCropView.swift:54` (mode oval, `croppedImage.cgImage`) : opère sur la SORTIE de
+  `TOCropViewController`, dont les pixels sont déjà physiquement tournés (orientation `.up` de
+  fait, bibliothèque tierce qui gère l'EXIF en interne) — pas affecté, aucun changement nécessaire.
+- `PhotoToolsView.swift` (`flipHorizontal`/`removeBackground`) : propage
+  `displayedImage.imageOrientation` d'un bout à l'autre et affiche via `Image(uiImage:)` (pas
+  `Image(decorative:)`) — pas affecté.
+- `Image(decorative:)` dans le module Animems (`PaintCapture.swift:162`,
+  `ShapePreviewEditorPanelView.swift:25`) : opère sur des calques/aperçus de formes générés en
+  interne par l'éditeur (jamais une photo EXIF importée par l'utilisateur) — hors périmètre de ce
+  finding, `DOMAINE: Gallery-PhotoEditor` uniquement.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/PublishComposeView.swift`.
+
+**Résultat CI** : commit `29385f5`, push confirmé (`c1cb713..29385f5 main -> main`), run
+`32682553930` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : publier depuis une photo portrait prise à la
+caméra (EXIF non-`.up`), choisir "Freeform", confirmer que le tracé et le rendu final apparaissent
+dans le bon sens (pas de côté/en miroir) ; répéter avec une photo paysage et une photo déjà `.up`
+pour confirmer l'absence de régression sur les cas déjà corrects.

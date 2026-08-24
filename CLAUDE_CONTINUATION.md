@@ -11,7 +11,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
 Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS
-[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030 traités])
+[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030/056 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -330,18 +330,41 @@ confirmée (run `32681817117`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VAL
 requis : liker/partager/commenter un post d'un autre compte depuis Feed/Profile/Hashtag → confirmer
 la notification reçue ; répéter depuis Search/Notifications → confirmer l'ABSENCE, fidèle à Android).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-14 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur **V4-F-056** (Gallery-PhotoEditor — le recadrage libre [freeform] ignore
-l'orientation EXIF, photos portrait rendues de côté/en miroir : `PublishComposeView.swift:111-125`,
-`PhotoEditor/FreeformCropView.swift:11-38` — `image.cgImage` brut passé directement, dessiné via
-`Image(decorative:)` qui IGNORE `imageOrientation` entièrement ; le mode rect/oval est correct [passe
-par `TOCropViewController`, orientation préservée], SEUL le mode freeform opère sur le buffer brut
-non-tourné ; Android — `engine/.../croper/BitmapLoadingWorkerTask.java:76`,
-`CropImageView.java:981-994` — `rotateBitmapByExif` appliqué en amont pour TOUS les sous-modes de
-recadrage [rect/oval/freeform] — appliquer la rotation EXIF au `CGImage` AVANT de le passer à
-`FreeformCropView`, comme pour rect/oval), puis V4-F-064→059→068→073→021→027→019→003
-(BunnyCDN→Wallet→Performance→Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour
-chaque finding complet). Repo Android source de vérité :
+**Lot P1-15 traité (V4-F-056)** — Gallery-PhotoEditor, le recadrage libre (freeform) ignorait
+l'orientation EXIF (photos portrait rendues de côté/en miroir). Vérifié dans
+`BitmapLoadingWorkerTask.java:66-79` + `CropImageView.java:981-994` : `rotateBitmapByExif` appliqué
+EN AMONT du chargement du bitmap, avant tout branchement rect/oval/freeform — les 3 sous-modes
+reçoivent donc déjà un buffer physiquement tourné côté Android. Côté iOS, seul le mode freeform
+(`PublishComposeView.swift`, `.freeformCropping`) extrayait `image.cgImage` BRUT, dessiné ensuite
+via `Image(decorative:)` (`FreeformCropView.swift:18`) qui ignore `imageOrientation` — le mode
+rect/oval (`TOCropViewController`) respecte déjà nativement l'orientation, confirmant exactement la
+`DIFFÉRENCE` du texte d'audit. Corrigé : nouvelle `UIImage.normalizedToUpOrientation()` (redessine
+via `UIGraphicsImageRenderer`/`draw(in:)`, qui respecte `imageOrientation`) appliquée avant
+extraction du `cgImage` ; résultat découpé reconstruit avec `orientation: .up` (pas
+`image.imageOrientation`, qui aurait doublé la rotation puisque la source est déjà normalisée).
+Flux frères vérifiés : `PhotoCropView.swift:54` (oval, opère sur la SORTIE déjà tournée de
+`TOCropViewController`) et `PhotoToolsView.swift` (flip/removeBackground, affiche via
+`Image(uiImage:)` pas `decorative:`) — ni l'un ni l'autre affecté ; les `Image(decorative:)` du
+module Animems opèrent sur des calques internes, jamais une photo EXIF importée — hors périmètre.
+Détail complet dans `PROGRESS_V4.md`, Lot P1-15. **Commit `29385f5`, CI verte confirmée (run
+`32682553930`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : publier
+depuis une photo portrait EXIF via "Freeform", confirmer que le tracé et le résultat final sont
+dans le bon sens).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-15 terminé (vérifié/corrigé/documenté/commité/CI verte).
+Enchaîner **automatiquement** sur **V4-F-064** (BunnyCDN-Media — l'upload de pièce jointe de chat
+charge le fichier entier en RAM au lieu de le streamer depuis le disque :
+`Messagerie/ChatMediaUploadService.swift:59-73`, `put(localFile:...)` utilise `Data(contentsOf:)`
+qui charge tout le fichier avant l'envoi, aucun délégué de progression ; Android —
+`messagerie/service/UploadFileOrDataService.java:242-267,269-301`,
+`ProgressRequestBodyUri` streame par blocs de 8Ko pour TOUTE pièce jointe y compris vidéo, avec
+progression réelle ; exactement l'anti-pattern à risque OOM déjà corrigé pour l'upload vidéo du
+Feed principal [`FeedMediaUploader.uploadVideo`, qui streame déjà correctement], jamais appliqué au
+chemin Chat — recommandation : passer `put(localFile:...)` à
+`URLSession.shared.upload(for:fromFile:delegate:)`, en réutilisant `UploadProgressDelegate` déjà
+implémenté dans `FeedMediaUploader.swift`), puis V4-F-059→068→073→021→027→019→003
+(Wallet→Performance→Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque
+finding complet). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---

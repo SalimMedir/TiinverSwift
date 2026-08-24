@@ -162,6 +162,17 @@ struct HomeShellView: View {
         .task {
             await notificationsViewModel.refresh()
             await refreshChatUnreadCount()
+            // Port de `ShareActivity` (`ShareActivity.java:140-291`), qui résout puis lance
+            // DIRECTEMENT l'écran cible (`startActivity`) sans dépendre qu'une autre Activity soit
+            // déjà à l'écran et à l'écoute — **ajouté le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md
+            // V4-F-002, Phase B P1)** : consomme ICI un lien profond déjà résolu AVANT ce montage
+            // (cold start, écran de login/AuthCoordinatorView) — `.onChange(of: deepLinks.pending)`
+            // ci-dessous ne réagit QUE sur une transition nil→valeur survenant APRÈS l'attachement
+            // du modificateur, jamais pour une valeur déjà présente à l'attachement (silencieusement
+            // perdu avant ce correctif).
+            if let destination = deepLinks.consume() {
+                handleDeepLink(destination)
+            }
         }
         .onChange(of: notificationsViewModel.unreadCount) { count in
             // Équivalent du badge Android sur l'icône (pas de contrepartie directe dans
@@ -187,21 +198,9 @@ struct HomeShellView: View {
                 lastContentTab = newValue
             }
         }
-        .onChange(of: deepLinks.pending) { destination in
+        .onChange(of: deepLinks.pending) { _ in
             guard let destination = deepLinks.consume() else { return }
-            switch destination {
-            case .notifications: showNotifications = true
-            case .profile: showProfile = true
-            case .chat: selectedTab = 1
-            case .userProfile(let userId): deepLinkUserId = userId
-            case .post(let post): deepLinkPost = post
-            case .groupChat(let roster): deepLinkRoster = roster
-            case .settingsAccount:
-                settingsStartAtAccount = true
-                showSettings = true
-            case .animems: showAnimems = true
-            case .referral: showReferral = true
-            }
+            handleDeepLink(destination)
         }
         // Port de `ShareActivity.onError` → `showDialog()` (V3-F-138, DeepLinks complémentaire) —
         // affiche l'échec de résolution d'un lien profond (user/post/group introuvable, réseau),
@@ -268,5 +267,24 @@ struct HomeShellView: View {
         let roster = RosterRepository()
         let rows = (try? await roster.query(predicate: NSPredicate(format: "unreadCount > 0"))) ?? []
         chatUnreadCount = rows.reduce(0) { $0 + Int($1.unreadCount) }
+    }
+
+    /// Port de la table de dispatch `ShareActivity.processUrl` — extrait de l'ancien corps de
+    /// `.onChange(of: deepLinks.pending)` pour être partagé avec `.task` (voir V4-F-002 ci-dessus,
+    /// consommation d'un lien déjà en attente au montage).
+    private func handleDeepLink(_ destination: DeepLinkDestination) {
+        switch destination {
+        case .notifications: showNotifications = true
+        case .profile: showProfile = true
+        case .chat: selectedTab = 1
+        case .userProfile(let userId): deepLinkUserId = userId
+        case .post(let post): deepLinkPost = post
+        case .groupChat(let roster): deepLinkRoster = roster
+        case .settingsAccount:
+            settingsStartAtAccount = true
+            showSettings = true
+        case .animems: showAnimems = true
+        case .referral: showReferral = true
+        }
     }
 }

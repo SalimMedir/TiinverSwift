@@ -235,6 +235,19 @@ final class CallCoordinator: ObservableObject {
         // d'engagement du micro), pas avant le report lui-même.
         try? await callKit.reportIncomingCall(uuid: uuid, callerName: profile.nikname ?? profile.username ?? "")
         onReported?()
+        // Port de `CallService.onStartCommand`'s branche `INCOMINGCALL` (lignes 620-622,
+        // `fetchTurnAndStart(false); onRinging();`) — **ajouté le 2026-08-24
+        // (MIGRATION_PARITY_AUDIT_V4.md V4-F-041, Phase B P2)**. `onRinging()` (lignes 663-674)
+        // émet `ROOM.RINGING` INCONDITIONNELLEMENT, avant toute vérification de permission micro
+        // (qui n'existe même pas à cet endroit précis côté Android) — placé ici, juste après le
+        // report CallKit réussi et AVANT la garde permission micro ci-dessous, pour rester fidèle
+        // à ce caractère inconditionnel plutôt que de le faire dépendre d'une étape qu'Android ne
+        // lui fait pas dépendre. Sans cet accusé, l'appelant Android ne voit jamais son état
+        // basculer vers "Sonnerie…" et continue de redéclencher un push toutes les 5s.
+        chatRepository.onRinging(
+            ["messageId": profile.messageId ?? "", "receiver": profile.username ?? "", "packet": (try? Self.encodeJSONString(profile)) ?? ""],
+            chatType: chatType
+        )
         guard await Self.hasMicPermission() else {
             micPermissionDenied = true
             callKit.requestEndCall(uuid: uuid)

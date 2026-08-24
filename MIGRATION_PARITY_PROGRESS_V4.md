@@ -11,8 +11,9 @@ findings) : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010
 028/035/039/041/043/047/051/052/057/058/061/066/067/069/074 (`BUILD_VALIDATED`) clos (V4-F-066 déjà
 clos comme effet de bord du Lot P0-1/V4-F-065, vérifié dans l'audit), V4-F-031/060/070 (différés,
 hors périmètre d'un petit lot). **BACKLOG P2 ENTIÈREMENT TRAITÉ (27/27).** Backlog P3 (21 findings)
-EN COURS : V4-F-005/013/015 (`BUILD_VALIDATED`) clos, V4-F-016 (`IOS_INTENTIONAL_DIFFERENCE`,
-décision produit hors périmètre). Prochain : V4-F-018.**
+EN COURS : V4-F-005/013/015/023/024/034/036 (`BUILD_VALIDATED`) clos, V4-F-016/018/026/037/044/045
+(`DIFFÉRÉ`/`IOS_INTENTIONAL_DIFFERENCE`, décisions produit ou code Android mort, hors périmètre).
+Prochain : V4-F-053.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -3367,3 +3368,165 @@ corrigé) → commit correctif `c7b182a`, push confirmé (`2ded523..c7b182a main
 un compte de test, confirmer visuellement la bannière et les badges ; (V4-F-015) taper le bouton de
 partage sur son propre profil, confirmer que la feuille de partage système s'ouvre avec le texte et
 le lien attendus.
+
+## 2026-08-24 — Phase B V4 — Lot P3-4 : V4-F-018 (DIFFÉRÉ, code Android mort)
+
+### Vérification
+
+`ANDROID SOURCE : setting/SettingStorageFragment.java:113-151,215-227,255-282` — sélection média
+granulaire par type de connexion (photos/vidéos/fichiers), écrite dans 3 préférences
+(`storageDataListChoosed`/`storageWifiListChoosed`/`storageRoamingListChoosed`) via un dialogue
+multi-sélection.
+
+**Vérification indépendante** (au-delà de la note déjà présente dans l'audit) :
+`grep -rl storageDataListChoosed\|storageWifiListChoosed\|storageRoamingListChoosed` dans tout le
+dépôt Android → seulement 3 fichiers : l'écran lui-même (écrit la préférence), la définition de
+constante, et le dialogue générique de sélection. **Aucune logique de téléchargement de média (chat,
+feed, ou ailleurs) ne LIT jamais ces 3 préférences**, y compris côté Android.
+
+### Décision
+
+`DIFFÉRÉ` — conforme à la consigne explicite : "Si Android contient du code mort, inutilisé ou
+abandonné, ne le migre pas." Porter le dialogue multi-sélection reviendrait à migrer une
+fonctionnalité Android sans effet réel. Aucun code modifié.
+
+**Fichiers modifiés** : `MIGRATION_PARITY_AUDIT_V4.md` (STATUT uniquement).
+
+## 2026-08-24 — Phase B V4 — Lot P3-5 : V4-F-026 (DIFFÉRÉ / IOS_INTENTIONAL_DIFFERENCE)
+
+### Vérification
+
+`ANDROID SOURCE : messagerie/group/InviteLinkActivity.java:49-103` — affichage persistant du lien
+d'invitation + bouton Copier fonctionnel ; l'audit note lui-même que "Share"/"Reset" sont du code
+mort/no-op côté Android.
+
+### Décision
+
+`DIFFÉRÉ` / `IOS_INTENTIONAL_DIFFERENCE` — l'audit qualifie l'IMPACT de faible et note que la
+share-sheet système iOS actuelle est "arguablement plus fonctionnelle dans l'ensemble" que les
+boutons Android en grande partie non fonctionnels. RECOMMANDATION explicitement "priorité basse —
+optionnel". Préférence de présentation UX, pas une régression réelle. Aucun code modifié.
+
+**Fichiers modifiés** : `MIGRATION_PARITY_AUDIT_V4.md` (STATUT uniquement).
+
+## 2026-08-24 — Phase B V4 — Lot P3-6 : V4-F-023, V4-F-024, V4-F-034 (BUILD_VALIDATED)
+
+### V4-F-023 — Groups : `ReportView` ne reproduit pas la convention `userId="0"` d'Android pour un signalement de groupe
+
+**Vérification Android** : `Report.java:77-88` — `userId="0"` hardcodé inconditionnellement quand
+`type.equals("group")`. Devenu pertinent maintenant que V4-F-022 (câblage "Signaler le groupe",
+Lot P2-4) est clos.
+
+**État iOS avant correctif** : `ReportView.submit` envoyait `"userId": targetId` inconditionnellement
+— pour un signalement de groupe, `targetId` est le `groupId`, pas `"0"`.
+
+**Correctif appliqué** : `let userId = reportType == "group" ? "0" : targetId`.
+
+### V4-F-024 — Groups : le dialogue de confirmation de signalement n'affiche pas le motif choisi
+
+**Vérification Android** : `Report.onItemClick` (lignes 117-124) — corps du dialogue =
+`R.string.report_msg` + le motif choisi.
+
+**Correctif appliqué** : closure `message:` ajoutée au `confirmationDialog` existant, affichant le
+motif choisi (texte français exact repris de `values-fr/strings.xml`).
+
+### V4-F-034 — Feed : le pager plein écran lie chaque cellule vidéo au même `AVPlayer` partagé, sans exclusivité
+
+**Vérification** : `ExoPlayerManager.java:198-330` détache explicitement le player de la vue
+précédente avant de l'attacher à la nouvelle. `SUGGESTED_STATUS: DEVICE_TEST_REQUIRED` dans
+l'audit, mais le mécanisme sous-jacent est confirmable par lecture seule (comportement AVFoundation
+documenté, pas spécifique à ce projet) : un `AVPlayer` unique attaché simultanément à 2 vues
+`VideoPlayer`/`AVPlayerLayer` rend ses images sur LES DEUX à la fois.
+
+**État iOS avant correctif** : `isActive: index == currentIndex` déjà calculé correctement par
+l'appelant, mais jamais utilisé pour gater le BINDING `VideoPlayer(player:)` lui-même — seulement le
+déclenchement de la lecture (`.onChange(of: isActive)`).
+
+**Correctif appliqué** : `if post.isVideo, let url = post.playbackURL, isActive` (le binding
+lui-même conditionné), repli sur la vignette existante quand inactif ; lecture déplacée vers
+`.onAppear` (la vue ne monte plus qu'une fois `isActive` déjà vrai).
+
+### Flux frères vérifiés
+
+`grep userId\|action_share` (023), `confirmationDialog` unique (024), et `grep
+VideoPlayerManager.shared.player` → un seul site dans tout le projet pour chacun (l'autre usage de
+`VideoPlayer`, `MediaTrimView.swift`, utilise un player local non partagé, non concerné par 034).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/ReportView.swift` (023, 024) ;
+`Sources/TiinverSwift/Feed/FeedView.swift` (034).
+
+**Résultat CI** : commit `ad5a0dc` (023, 024), push confirmé (`c1728da..ad5a0dc main -> main`), run
+`32731300889` → **`conclusion: success`** ; commit `74bbfa1` (034), push confirmé
+(`ad5a0dc..74bbfa1 main -> main`), run `32732034223` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` pour les 3 (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — tests réels requis : (023/024) signaler un groupe, inspecter le
+payload réseau et le dialogue de confirmation ; (034) swiper entre 2 posts vidéo consécutifs dans le
+pager plein écran, confirmer visuellement l'absence de bleed.
+
+## 2026-08-24 — Phase B V4 — Lot P3-7 : V4-F-036 (BUILD_VALIDATED), V4-F-037 (DIFFÉRÉ)
+
+### V4-F-036 — Search : un échec réseau sur le chemin "suggestion" affiche le mauvais message/la mauvaise sévérité
+
+**Vérification Android** : `searchSuggest.onError` (`RechercheTiinver.java:412-421`) —
+`showEmpty("Aucun résultat")`, texte NEUTRE, jamais le message rouge réservé à `searchFull`.
+
+**État iOS avant correctif** : `suggest(_:)`'s `catch` positionnait le même `errorText` rouge que
+`runSearch`'s `catch` — un simple hoquet réseau sur une query de 1 caractère affichait une bannière
+rouge alarmante.
+
+**Correctif appliqué** : `errorText` remis explicitement à `nil` dans le `catch` de `suggest(_:)`
+(pas seulement omis — un `errorText` rouge laissé par un `runSearch` précédent, sur une query
+ensuite raccourcie à 1 caractère, resterait sinon affiché à tort). La branche neutre "Aucun résultat
+pour {query}" déjà existante rend l'état attendu puisque `results` est vidé.
+
+### V4-F-037 — Search : `error:true` explicite du backend fusionné avec le message "aucun résultat pour {query}"
+
+**Décision** : `DIFFÉRÉ` / optionnel — l'audit qualifie l'IMPACT de purement cosmétique et la
+RECOMMANDATION d'optionnelle. Corriger nécessiterait de threader un flag `error:true` distinct
+depuis `SearchRepository` jusqu'à `SearchView` pour une différence de texte seule. Aucun code
+modifié.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/SearchView.swift` (036 uniquement).
+
+**Résultat CI** : commit `bb3029e`, push confirmé (`74bbfa1..bb3029e main -> main`), run
+`32732768339` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (036, CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : couper le réseau brièvement pendant la saisie
+d'une query de 1 caractère, confirmer l'affichage neutre "Aucun résultat" plutôt qu'une bannière
+rouge.
+
+## 2026-08-24 — Phase B V4 — Lot P3-8 : V4-F-044, V4-F-045 (DIFFÉRÉ)
+
+### V4-F-044 — WebRTC-Calls : aucune tonalité de retour d'appel (ringback) pendant que le téléphone du callee sonne
+
+**Vérification Android** : `CallService.java:790-802` (`playOutgoingSound`), déclenchée sur
+réception du signal `RINGING` côté appelant, arrêtée sur `ACCEPT_CALL`/fin d'appel.
+
+**Prémisse invalidée** : l'audit notait "actuellement inatteignable en pratique (V4-F-041 non
+corrigé)" — V4-F-041 est désormais corrigé (Lot P2-10), rendant ce chemin réellement atteignable.
+
+**Vérification approfondie** : `CallCoordinator.swift`'s `case .ringing` ne déclenche aucune
+tonalité audible (seulement `callKit.reportOutgoingCallConnecting`, qui ne joue PAS de tonalité
+système). Un commentaire existant sur `case .acceptCall` affirme à tort que "CallKit arrête déjà sa
+propre tonalité système" pour un appel SORTANT — ce comportement automatique n'existe réellement que
+côté APPELÉ via `reportNewIncomingCall`, pas côté appelant.
+
+**Décision** : `DIFFÉRÉ` — implémenter fidèlement nécessiterait un nouveau fichier audio binaire
+bundlé (aucun fichier audio n'existe actuellement nulle part dans ce portage) ou une tonalité
+synthétisée par code. Ce projet a un historique documenté et récurrent de pipeline de ressources
+XcodeGen fragile (`project.yml` : 2 contournements `postBuildScripts:` déjà nécessaires pour
+`GoogleService-Info.plist`/`RemoteConfigDefaults.plist`, échecs SILENCIEUX — absent du bundle sans
+erreur de build). Un nouvel asset audio ne pourrait pas être vérifié fonctionnel sans test réel sur
+device. Disproportionné pour un petit lot sans possibilité de vérification. Aucun code modifié.
+
+### V4-F-045 — WebRTC-Calls : fin d'appel "occupé" immédiate côté iOS vs délai de grâce de 3s côté Android
+
+**Décision** : `DIFFÉRÉ` / optionnel — `SUGGESTED_STATUS: VISUALLY_DIFFERENT` dans l'audit,
+RECOMMANDATION optionnelle. CallKit gère déjà l'affichage natif de fin d'appel (écran système, pas
+une vue custom comme `CallActivity`) ; insérer un délai artificiel serait une décision produit UX.
+Aucun code modifié.
+
+**Fichiers modifiés** : `MIGRATION_PARITY_AUDIT_V4.md` (STATUT uniquement, aucun fichier de code
+pour ce lot).

@@ -22,7 +22,10 @@ V4-F-057 BUILD_VALIDATED ; Lot P2-16 : V4-F-058 BUILD_VALIDATED ; Lot P2-17 : V4
 V4-F-061 BUILD_VALIDATED ; Lot P2-18 : V4-F-067 BUILD_VALIDATED ; Lot P2-19 : V4-F-069 +
 V4-F-074 BUILD_VALIDATED ; Lot P2-20 : V4-F-070 différé] — **BACKLOG P2 ENTIÈREMENT TRAITÉ
 (27/27)**, backlog P3 EN COURS [21 findings ; Lot P3-1 : V4-F-005 BUILD_VALIDATED ; Lot P3-2 :
-V4-F-016 IOS_INTENTIONAL_DIFFERENCE ; Lot P3-3 : V4-F-013 + V4-F-015 BUILD_VALIDATED])
+V4-F-016 IOS_INTENTIONAL_DIFFERENCE ; Lot P3-3 : V4-F-013 + V4-F-015 BUILD_VALIDATED ; Lot P3-4 :
+V4-F-018 différé ; Lot P3-5 : V4-F-026 différé ; Lot P3-6 : V4-F-023 + V4-F-024 + V4-F-034
+BUILD_VALIDATED ; Lot P3-7 : V4-F-036 BUILD_VALIDATED + V4-F-037 différé ; Lot P3-8 : V4-F-044 +
+V4-F-045 différés])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -727,34 +730,35 @@ Liste complète, dans l'ordre du document `MIGRATION_PARITY_AUDIT_V4.md` : V4-F-
 V4-F-015, V4-F-016, V4-F-018, V4-F-023, V4-F-024, V4-F-026, V4-F-034, V4-F-036, V4-F-037, V4-F-044,
 V4-F-045, V4-F-053, V4-F-054, V4-F-055, V4-F-062, V4-F-063, V4-F-071, V4-F-072, V4-F-075.
 
-**Lots P3-1/2/3 traités (V4-F-005, V4-F-016, V4-F-013, V4-F-015)** — V4-F-005
-(Navigation-DeepLinks) : `default: break` dans `handleContentLink` → nouveau cas
-`DeepLinkDestination.home` routé vers l'onglet Accueil. V4-F-016 (Profile, recadrage d'avatar) :
-`IOS_INTENTIONAL_DIFFERENCE`/`DIFFÉRÉ` — décision produit, l'audit lui-même laisse le choix ouvert,
-aucun code modifié. V4-F-013 (Profile) : bannière de statut de compte (restricted/banned/warning)
-+ badges programme (premium/ambassador/creator/partner) ajoutés au header, décodés depuis longtemps
-mais jamais rendus. V4-F-015 (Profile) : `ShareLink` "Partager le profil" ajouté à la toolbar.
-**Incident CI notable** : le premier commit de V4-F-013 (`2ded523`) a cassé la CI — Swift
-`@ViewBuilder` ne type-vérifie pas bien une fermeture auto-invoquée renvoyant un tuple à
-l'intérieur d'une fonction `@ViewBuilder` (diagnostic trompeur "buildExpression unavailable"),
-corrigé en extrayant le calcul dans une fonction statique simple hors ViewBuilder — **retenir ce
-piège Swift pour tout futur `@ViewBuilder` complexe dans ce portage**. Commits `60d4045` (run
-`32728629548`), `2ded523` (run `32729420887`, **ÉCHEC**), `c7b182a` (run `32730329682`, correctif —
-succès). Détail complet dans `PROGRESS_V4.md`.
+**Lots P3-1 à P3-8 traités** — V4-F-005 (deep link `default` → repli Home), V4-F-016 (recadrage
+avatar, `IOS_INTENTIONAL_DIFFERENCE`), V4-F-013+015 (bannière statut/badges programme + partage de
+profil), V4-F-018 (stockage par type média, `DIFFÉRÉ` — code Android mort, préférences jamais lues
+même côté Android), V4-F-026 (lien d'invitation, `DIFFÉRÉ` — boutons Android eux-mêmes non
+fonctionnels), V4-F-023+024+034 (`userId="0"` pour signalement de groupe, motif rappelé dans le
+dialogue de confirmation, binding `AVPlayer` partagé gaté sur `isActive` dans le pager plein écran),
+V4-F-036 (bannière neutre au lieu de rouge sur échec suggestion) + V4-F-037 (`DIFFÉRÉ`, cosmétique),
+V4-F-044+045 (`DIFFÉRÉ` — tonalité ringback nécessiterait un nouvel asset audio dans un projet au
+pipeline de ressources XcodeGen documenté comme fragile, non vérifiable sans device ; délai
+"occupé" 3s explicitement optionnel dans l'audit). **Incident CI notable retenu** : le premier
+commit de V4-F-013 (`2ded523`) a cassé la CI — Swift `@ViewBuilder` ne type-vérifie pas bien une
+fermeture auto-invoquée renvoyant un tuple à l'intérieur d'une fonction `@ViewBuilder` (diagnostic
+trompeur "buildExpression unavailable"), corrigé en extrayant le calcul dans une fonction statique
+simple hors ViewBuilder — **retenir ce piège Swift pour tout futur `@ViewBuilder` complexe dans ce
+portage**. Commits `60d4045`, `2ded523` (ÉCHEC), `c7b182a` (correctif), `ad5a0dc`, `74bbfa1`,
+`bb3029e` — tous CI verte sauf `2ded523`. Détail complet dans `PROGRESS_V4.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V4-F-018** (Settings — écran
-Stockage : sélection média par type de connexion [photos/vidéos/fichiers] absente ; Android
-`setting/SettingStorageFragment.java:113-151,215-227,255-282` ; iOS `Settings/SettingSubViews.
-swift:81-96` [seulement 3 switches maître] ; l'audit note lui-même que ces préférences granulaires
-ne sont lues NULLE PART côté Android non plus [zéro consommateur hors leur propre écran] — écart
-visuel/de complétude seulement, pas fonctionnel, RECOMMANDATION "priorité basse... uniquement si
-jugé utile" — vérifier si un vrai correctif se justifie ou si `DIFFÉRÉ`/complétude-optionnelle est
-plus honnête avant d'écrire du code), puis continuer AUTOMATIQUEMENT le reste du backlog P3 dans
-l'ordre du document (V4-F-023, V4-F-024, V4-F-026, V4-F-034, V4-F-036, V4-F-037, V4-F-044,
-V4-F-045, V4-F-053, V4-F-054, V4-F-055, V4-F-062, V4-F-063, V4-F-071, V4-F-072, V4-F-075 — 16
-findings restants après V4-F-018), SANS attendre de nouvelle confirmation utilisateur pour chaque
-lot (instruction explicite : continuer automatiquement). Repo Android source de vérité :
-`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V4-F-053** (Animems-Interaction —
+taper une zone vide de la timeline ne désélectionne pas le calque courant ; Android `engine/.../
+views/TimelineView.java:879-887` + `AnimemesCompound.java:1406-1414` [sélection explicitement mise
+à `null`, cascade sur le panneau/boutons dépendants] ; iOS `Animems/TimelineView.swift:149-161`
+[`.pan` → `break` explicite, ne touche jamais `state.selectedId`] — recommandation :
+`state.selectedId = nil` dans le repli `.pan` sans item touché), puis continuer AUTOMATIQUEMENT le
+reste du backlog P3 dans l'ordre du document (V4-F-054, V4-F-055, V4-F-062, V4-F-063, V4-F-071,
+V4-F-072, V4-F-075 — 7 findings restants après V4-F-053), SANS attendre de nouvelle confirmation
+utilisateur pour chaque lot (instruction explicite : continuer automatiquement). Une fois le
+backlog P3 entièrement épuisé, **l'audit V4 sera ENTIÈREMENT TRAITÉ** (P0+P1+P2+P3) — vérifier à ce
+moment s'il reste des findings non enumérés/oubliés avant de conclure le cycle. Repo Android source
+de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

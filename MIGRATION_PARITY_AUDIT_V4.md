@@ -781,6 +781,15 @@ ANDROID SOURCE : report/Report.java:77-78,138-150 (`userId="0"` hardcodé pour `
 IOS FILES : Discover/ReportView.swift:42-48 (`userId: targetId` inconditionnel)
 SUGGESTED_STATUS : CODE_PRESENT_UNVERIFIED — pertinent seulement une fois V4-F-022 câblé.
 RECOMMANDATION : Spécialiser `submit()` pour envoyer `"userId":"0"` quand `reportType=="group"`.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P3, Lot P3-6) — V4-F-022 (câblage "Signaler le
+groupe") déjà clos en Lot P2-4, rendant ce finding pertinent. Vérifié contre `Report.java:77-88` :
+`userId="0"` hardcodé inconditionnellement pour `type.equals("group")`. Correctif :
+`let userId = reportType == "group" ? "0" : targetId` dans `ReportView.submit`. Un seul appelant
+`reportType: "group"` dans le projet (`GroupDetailView.swift`), déjà correctement câblé — le
+correctif dans le composant partagé couvre les deux `reportType` sans dupliquer de logique.
+Commit `ad5a0dc`, push confirmé (`c1728da..ad5a0dc main -> main`), CI run `32731300889`
+conclusion `success`.
 ```
 
 ```
@@ -791,6 +800,13 @@ FEATURE : Le dialogue de confirmation de signalement n'affiche pas le motif choi
 ANDROID SOURCE : report/Report.java:117-124 (titre + corps rappelant le motif)
 IOS FILES : Discover/ReportView.swift:27-34 (titre seul, pas de `message:`)
 RECOMMANDATION : Ajouter un `message:` au `confirmationDialog` rappelant le motif sélectionné.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P3, Lot P3-6) — Vérifié contre `Report.onItemClick`
+(lignes 117-124) : corps du dialogue = `R.string.report_msg` + le motif choisi (texte français
+exact repris de `values-fr/strings.xml`). Correctif : closure `message:` ajoutée au
+`confirmationDialog` existant, affichant `confirmingReason` quand non nil. Un seul
+`confirmationDialog` dans le fichier, pas de site frère. Commit `ad5a0dc`, push confirmé
+(`c1728da..ad5a0dc main -> main`), CI run `32731300889` conclusion `success`.
 ```
 
 ```
@@ -840,6 +856,12 @@ IMPACT : Faible — impact limité car les boutons Android correspondants sont d
 non fonctionnels ; la share-sheet iOS est arguablement plus fonctionnelle dans l'ensemble.
 RECOMMANDATION : Priorité basse — optionnel, afficher le lien en texte + bouton Copier dédié avant
 la share-sheet pour une parité visuelle plus proche.
+
+STATUT : DIFFÉRÉ / IOS_INTENTIONAL_DIFFERENCE (2026-08-24, Phase B P3, Lot P3-5) — L'audit
+lui-même qualifie l'impact de faible et note que les boutons Android équivalents ("Share"/"Reset")
+sont eux-mêmes en grande partie du code mort/no-op, la share-sheet iOS étant "arguablement plus
+fonctionnelle dans l'ensemble". RECOMMANDATION explicitement "priorité basse — optionnel". Pas une
+régression réelle à corriger, une préférence de présentation UX. Aucun code modifié.
 ```
 
 ---
@@ -1078,6 +1100,21 @@ voisine pendant un swipe) — non confirmable sans test réel.
 SUGGESTED_STATUS : DEVICE_TEST_REQUIRED
 RECOMMANDATION : Tester sur device un swipe entre 2 posts vidéo consécutifs ; si confirmé, gater le
 binding `VideoPlayer(player:)` lui-même (pas seulement la lecture) sur `isActive`.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P3, Lot P3-6) — Le mécanisme sous-jacent est
+confirmable par lecture seule, sans device : un unique `AVPlayer` attaché simultanément à 2 vues
+`VideoPlayer`/`AVPlayerLayer` rend ses images sur LES DEUX (comportement AVFoundation documenté,
+pas spécifique à ce projet), et `isActive: index == currentIndex` était déjà calculé correctement
+par appelant mais jamais utilisé pour gater le binding lui-même — seulement le déclenchement de la
+lecture. Correctif : `if post.isVideo, let url = post.playbackURL, isActive` (au lieu de
+`if post.isVideo, let url = ...` seul), repli sur la vignette existante quand inactif ; lecture
+déplacée vers `.onAppear` (la vue ne monte plus qu'une fois `isActive` déjà vrai). `grep
+VideoPlayerManager.shared.player` confirme un seul site concerné dans tout le projet (l'autre
+usage de `VideoPlayer`, `MediaTrimView.swift`, utilise un player LOCAL à l'écran, pas le singleton
+partagé — non concerné). Commit `74bbfa1`, push confirmé (`ad5a0dc..74bbfa1 main -> main`), CI run
+`32732034223` conclusion `success`. DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (swiper
+entre 2 posts vidéo consécutifs dans le pager plein écran, confirmer visuellement l'absence de
+bleed).
 ```
 
 ---
@@ -1123,6 +1160,14 @@ IOS FILES : Discover/SearchView.swift:288-296 (`errorText = "Erreur de chargemen
 IMPACT : Un simple hoquet réseau sur une query de 1 caractère affiche une bannière rouge alarmante
 au lieu du message neutre "Aucun résultat" qu'Android affiche pour ce même cas.
 RECOMMANDATION : Dans `suggest(_:)`, ne pas positionner `errorText` en cas d'échec.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P3, Lot P3-7) — Vérifié contre `searchSuggest.
+onError` (`RechercheTiinver.java:412-421`) : `showEmpty("Aucun résultat")`, texte NEUTRE, jamais le
+message rouge réservé à `searchFull`. Correctif : `suggest(_:)`'s `catch` ne positionne plus
+`errorText` (remis explicitement à `nil`, pas seulement omis, pour effacer un éventuel `errorText`
+rouge laissé par un `runSearch` précédent) — la branche neutre "Aucun résultat pour {query}" déjà
+existante rend l'état attendu puisque `results` est vidé. Commit `bb3029e`, push confirmé
+(`74bbfa1..bb3029e main -> main`), CI run `32732768339` conclusion `success`.
 ```
 
 ```
@@ -1134,6 +1179,12 @@ ANDROID SOURCE : RechercheTiinver.java:461-467 (message différent, sans nom de 
 IOS FILES : Discover/SearchRepository.swift:54-62 ; SearchView.swift:120-126
 IMPACT : Différence de texte cosmétique uniquement, aucune perte fonctionnelle.
 RECOMMANDATION : Priorité basse — optionnel, threader un flag distinct si jugé utile.
+
+STATUT : DIFFÉRÉ / optionnel (2026-08-24, Phase B P3, Lot P3-7) — L'audit lui-même qualifie
+l'IMPACT de purement cosmétique ("aucune perte fonctionnelle") et la RECOMMANDATION d'optionnelle.
+Corriger nécessiterait de threader un flag `error:true` distinct depuis `SearchRepository` jusqu'à
+`SearchView` pour une différence de texte seule, disproportionné pour le bénéfice. Aucun code
+modifié.
 ```
 
 ---
@@ -1336,6 +1387,23 @@ ANDROID SOURCE : messagerie/service/CallService.java:790-802 (`playOutgoingSound
 IOS FILES : Aucun (grep `AVAudioPlayer|ringback|SystemSoundID` sur `Calls/` = zéro résultat)
 IMPACT : Mineur — actuellement inatteignable en pratique de toute façon (V4-F-041 non corrigé).
 RECOMMANDATION : Ajouter une tonalité en boucle une fois V4-F-041 corrigé.
+
+STATUT : DIFFÉRÉ (2026-08-24, Phase B P3, Lot P3-8) — Prémisse "inatteignable" invalidée :
+V4-F-041 est désormais corrigé (Lot P2-10, `.ringing` bien reçu côté appelant). Vérifié :
+`CallCoordinator.swift`'s `case .ringing` ne déclenche aucune tonalité audible (seulement
+`callKit.reportOutgoingCallConnecting`, qui ne joue PAS de tonalité système — contrairement à un
+commentaire existant sur `case .acceptCall` qui affirme à tort que "CallKit arrête déjà sa propre
+tonalité système" pour un appel SORTANT ; ce comportement automatique n'existe que côté APPELÉ via
+`reportNewIncomingCall`, pas côté appelant). Implémenter fidèlement nécessiterait soit d'ajouter un
+nouveau fichier audio binaire au bundle, soit une tonalité synthétisée par code (`AVAudioEngine`) —
+**aucun fichier audio n'est actuellement bundlé nulle part dans ce portage** (`Resources/` ne
+contient qu'un asset catalog + 2 plists), et ce projet a un historique documenté et récurrent de
+pipeline de ressources XcodeGen fragile pour ce dépôt précis (voir `project.yml`, 2 contournements
+`postBuildScripts:` déjà nécessaires pour `GoogleService-Info.plist`/`RemoteConfigDefaults.plist`,
+échecs silencieux — absent du bundle sans erreur de build). Un nouvel asset audio ne pourrait pas
+être vérifié fonctionnel sans test réel sur device (CI ne détecterait pas un échec de bundling
+silencieux). Disproportionné pour un petit lot mécanique sans possibilité de vérification. Aucun
+code modifié.
 ```
 
 ```
@@ -1348,6 +1416,12 @@ IOS FILES : Calls/CallCoordinator.swift:111-112 (fermeture immédiate)
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Optionnel — ajouter un état "occupé" transitoire de ~3s si la parité visuelle exacte
 est désirée.
+
+STATUT : DIFFÉRÉ / optionnel (2026-08-24, Phase B P3, Lot P3-8) — L'audit lui-même qualifie ceci de
+`VISUALLY_DIFFERENT` et la RECOMMANDATION d'optionnelle ("si la parité visuelle exacte est
+désirée"). CallKit gère déjà l'affichage natif de fin d'appel côté iOS (écran système, pas une vue
+custom comme `CallActivity`) — insérer un délai artificiel de 3s avant `endCallFromRemote` serait
+une décision produit UX, pas un correctif de divergence fonctionnelle. Aucun code modifié.
 ```
 
 ---

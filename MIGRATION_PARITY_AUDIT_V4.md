@@ -1329,6 +1329,25 @@ IMPACT : Un utilisateur peut publier un segment vidéo dépassant la limite pré
 qu'Android empêche structurellement à tout moment.
 RECOMMANDATION : Ajouter un plafond de largeur maximale (60s, dérivé de `duration`) aux deux branches
 de `dragGesture` dans `MediaTrimView.swift`.
+
+STATUT : BUILD_VALIDATED (2026-08-24) — Vérifié contre `ProTimelineView.java:685-713`
+(`handleMove`, cas `DRAG_LEFT_PX`/`DRAG_RIGHT_PX`) : `selMaxWidthPx` (dérivé de
+`setTrimeLimitMax(60000)`, `MediaTrim.java:175`, ligne 316 `selMaxWidthPx = maxTrimMs /
+viewWindowMs * w`) est reclampé à CHAQUE déplacement de poignée, dans les DEUX directions — si la
+nouvelle largeur dépasserait la limite, la poignée en cours de déplacement est ramenée à la largeur
+maximale (`newLeft = selRightPx - selMaxWidthPx` / `newRight = selLeftPx + selMaxWidthPx`), pas un
+blocage dur du geste. Confirmé côté iOS que `MediaTrimView.dragGesture` (lignes 188-204) n'appliquait
+qu'une borne MINIMALE (`minHandleSpacing`) — le cadrage initial (`load()`) limite bien la sélection
+par défaut à `maxDurationSeconds` si la vidéo dépasse 60s, mais rien n'empêchait ensuite de
+l'ÉTENDRE par glissement. Correctif : nouveau clamp `maxWidthFraction = min(1, maxDurationSeconds /
+duration)` appliqué APRÈS le clamp minimal existant dans les deux branches (`isStart`/`!isStart`),
+reproduisant fidèlement le comportement "recale la poignée en cours, ne bloque pas le geste"
+d'Android. Flux frères vérifiés : `grep minHandleSpacing`/`dragGesture(isStart:` dans tout le projet
+→ un seul site, `MediaTrimView.swift` — aucun autre écran ne reproduit ce motif de poignées de trim.
+Commit `0e7f651`, push confirmé (`5088cb0..0e7f651 main -> main`), CI run `32683632141` conclusion
+`success`. DEVICE_TEST_REQUIRED pour passer en COMPLETE_PARITY_VALIDATED (aucun accès
+Xcode/simulateur dans cet environnement — test réel requis : charger une vidéo >60s, tenter
+d'étendre la sélection au-delà de 60s en glissant chaque poignée, confirmer le plafond réel).
 ```
 
 ```

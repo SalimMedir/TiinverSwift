@@ -4,8 +4,8 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
 **État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
-V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064 clos.
-Prochain : V4-F-059.**
+V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064,
+V4-F-059 clos. Prochain : V4-F-068.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -1530,3 +1530,93 @@ PAS non plus `ProgressRequestBodyUri` pour les photos (seul `uploadToBunny`, che
 `COMPLETE_PARITY_VALIDATED` — test réel requis : envoyer une pièce jointe volumineuse (vidéo) en
 chat, confirmer via Instruments/Memory Graph l'absence de pic mémoire correspondant à la taille du
 fichier, et la réussite de l'upload (bulle passe à `isFileUploaded == 1`).
+
+## 2026-08-24 — Phase B V4 — Lot P1-17 : V4-F-059 (VideoEditor — sélection de trim sans plafond continu de durée maximale)
+
+### Vérification Android
+
+`ProTimelineView.java:685-713` (`handleMove`, cas `DRAG_LEFT_PX`/`DRAG_RIGHT_PX`) :
+```java
+case DRAG_LEFT_PX: {
+    float newLeft = downSelLeftPx + (x - downX);
+    newLeft = Math.max(MARGIN_PX, newLeft);
+    newLeft = Math.min(selRightPx - selMinWidthPx, newLeft);
+    if (selRightPx - newLeft > selMaxWidthPx)
+        newLeft = selRightPx - selMaxWidthPx;
+    selLeftPx = newLeft;
+    ...
+}
+case DRAG_RIGHT_PX: {
+    float newRight = downSelRightPx + (x - downX);
+    newRight = Math.min(w - MARGIN_PX, newRight);
+    newRight = Math.max(selLeftPx + selMinWidthPx, newRight);
+    if (newRight - selLeftPx > selMaxWidthPx)
+        newRight = selLeftPx + selMaxWidthPx;
+    selRightPx = newRight;
+    ...
+}
+```
+`selMaxWidthPx` (ligne 316, `selMaxWidthPx = (float) maxTrimMs / viewWindowMs * w`) dérive de
+`maxTrimMs`, lui-même alimenté par `videotrimmer.setTrimeLimitMax(60000)` (`MediaTrim.java:175`) —
+soit 60 secondes. Les DEUX branches de `handleMove` reclampent `selMaxWidthPx` À CHAQUE appel
+(donc à chaque pixel de déplacement du doigt, pas seulement au moment du cadrage initial) : si le
+nouveau bord dépasserait la largeur maximale, c'est CE bord précis (celui en cours de glissement)
+qui est ramené en arrière pour maintenir exactement `selMaxWidthPx` — le geste n'est jamais bloqué
+dur, juste recadré en continu.
+
+### État iOS avant correctif
+
+`MediaTrimView.dragGesture` (lignes 188-204) :
+```swift
+if isStart {
+    let maxAllowed = endFraction - Self.minHandleSpacing
+    startFraction = min(max(0, startFractionAtDragBegin + delta), max(0, maxAllowed))
+} else {
+    let minAllowed = startFraction + Self.minHandleSpacing
+    endFraction = max(min(1, endFractionAtDragBegin + delta), min(1, minAllowed))
+}
+```
+Seule une borne MINIMALE (`minHandleSpacing`, écart minimal entre les 2 poignées) est appliquée.
+`load()` cadre bien la sélection par défaut à `maxDurationSeconds` (60s) si la vidéo source est plus
+longue (`endFraction = maxDurationSeconds / seconds`) — mais ce cadrage n'a lieu QU'UNE FOIS, au
+chargement. Rien dans `dragGesture` n'empêchait ensuite d'étendre la sélection en glissant une
+poignée vers l'extérieur, bien au-delà de 60s.
+
+### Correctif appliqué
+
+Ajout d'un clamp de largeur maximale dans `dragGesture`, appliqué APRÈS le clamp minimal existant
+(même ordre qu'Android — largeur min d'abord, puis largeur max) :
+```swift
+let maxWidthFraction = duration > 0 ? min(1, Self.maxDurationSeconds / duration) : 1
+if isStart {
+    ... // clamp minimal existant, inchangé
+    if endFraction - startFraction > maxWidthFraction {
+        startFraction = endFraction - maxWidthFraction
+    }
+} else {
+    ... // clamp minimal existant, inchangé
+    if endFraction - startFraction > maxWidthFraction {
+        endFraction = startFraction + maxWidthFraction
+    }
+}
+```
+Reproduit fidèlement le comportement Android : c'est la poignée EN COURS de déplacement qui est
+recadrée à la largeur maximale, pas un blocage dur du geste (le doigt peut continuer à glisser sans
+que la vue "saute" ou refuse le geste). Appliqué en continu à chaque callback `onChanged`, comme
+`handleMove` côté Android — pas seulement au chargement initial.
+
+### Flux frères vérifiés
+
+`grep "minHandleSpacing\|dragGesture(isStart:"` dans tout le projet → un seul site,
+`MediaTrimView.swift` — aucun autre écran (Animems, Stories, autre) ne reproduit ce motif de
+poignées de trim avec bornes min/max.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/MediaTrimView.swift`.
+
+**Résultat CI** : commit `0e7f651`, push confirmé (`5088cb0..0e7f651 main -> main`), run
+`32683632141` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : charger une vidéo de plus de 60s, glisser chaque
+poignée (gauche puis droite) pour tenter d'étendre la sélection au-delà de 60s, confirmer que la
+largeur reste plafonnée en continu (pas seulement au chargement initial).

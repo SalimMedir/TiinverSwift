@@ -11,7 +11,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
 Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS
-[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030/056/064 traités])
+[V4-F-020/032/033/042/038/017/046/048/049/050/001/002/029/030/056/064/059 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -375,19 +375,36 @@ Android, qui route sa propre progression vers une notification système séparé
 volumineuse en chat, confirmer via Instruments/Memory Graph l'absence de pic mémoire, et la
 réussite de l'upload).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-16 terminé (vérifié/corrigé/documenté/commité/CI verte).
-Enchaîner **automatiquement** sur **V4-F-059** (VideoEditor — la sélection de trim n'a aucun
-plafond continu de durée maximale, l'utilisateur peut glisser au-delà de la limite de 60s :
-`Feed/MediaTrimView.swift:188-204`, `dragGesture` — seule une borne MINIMALE `minHandleSpacing` est
-appliquée ; le chargement initial cadre la sélection par défaut à ≤60s, mais rien n'empêche de
-l'étendre ensuite par glissement ; Android — `editor/view/ProTimelineView.java:685-713`
-[`selMaxWidthPx`, appliqué à CHAQUE déplacement de poignée, tout au long de l'édition],
-`MediaTrim.java:175` [`setTrimeLimitMax(60000)`] — un utilisateur peut publier un segment vidéo
-dépassant la limite prévue de 60s sur iOS, ce qu'Android empêche structurellement à tout moment —
-recommandation : ajouter un plafond de largeur maximale [60s, dérivé de `duration`] aux deux
-branches de `dragGesture`), puis V4-F-068→073→021→027→019→003 (Performance→Social→Groups→
-Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source
-de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lot P1-17 traité (V4-F-059)** — VideoEditor, la sélection de trim n'avait aucun plafond continu
+de durée maximale. Vérifié dans `ProTimelineView.java:685-713` (`handleMove`,
+`DRAG_LEFT_PX`/`DRAG_RIGHT_PX`) : `selMaxWidthPx` (dérivé de `setTrimeLimitMax(60000)`,
+`MediaTrim.java:175`) est reclampé À CHAQUE déplacement de poignée, dans les DEUX directions — si
+le nouveau bord dépasserait la largeur max, c'est CE bord (celui en cours de glissement) qui est
+ramené en arrière, pas un blocage dur du geste. Côté iOS, `MediaTrimView.dragGesture` n'appliquait
+qu'une borne MINIMALE (`minHandleSpacing`) — `load()` cadre bien la sélection par défaut à ≤60s si
+la vidéo est plus longue, mais ce cadrage n'a lieu QU'UNE FOIS ; rien n'empêchait ensuite d'étendre
+la sélection par glissement. Corrigé : nouveau clamp `maxWidthFraction = min(1, maxDurationSeconds
+/ duration)` appliqué après le clamp minimal existant dans les deux branches, recadrant la poignée
+en cours de déplacement (pas un blocage dur), fidèle à Android. Flux frères vérifiés : `grep
+minHandleSpacing/dragGesture(isStart:` → un seul site dans tout le projet, `MediaTrimView.swift`.
+Détail complet dans `PROGRESS_V4.md`, Lot P1-17. **Commit `0e7f651`, CI verte confirmée (run
+`32683632141`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : charger
+une vidéo >60s, glisser chaque poignée pour tenter de dépasser 60s, confirmer le plafond continu).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-17 terminé (vérifié/corrigé/documenté/commité/CI verte).
+Enchaîner **automatiquement** sur **V4-F-068** (Wallet-Monetization — `WithdrawView` ne rafraîchit
+jamais le solde depuis le serveur avant d'autoriser une demande de retrait :
+`Wallet/WalletRepository.swift:133-140` [`refreshBalance`, ZÉRO appelant confirmé par grep projet
+entier], `Wallet/WithdrawView.swift:8-9,29` [utilise uniquement le solde en cache local] ; Android
+— `wallet/WithdrawActivity.java:221,415-448` [`getRealAmount()` appelé inconditionnellement avant
+que le formulaire ne devienne interactif] — le solde affiché/utilisé pour le retrait peut être
+obsolète [dérive multi-session, ou conséquence directe du bug V4-F-065 déjà corrigé], et ce solde
+potentiellement obsolète est envoyé au serveur dans le payload de la demande de retrait elle-même —
+un montant d'argent réel — recommandation : câbler `refreshBalance(userId:)` dans le
+`.task`/`.onAppear` de `WithdrawView` avant que le formulaire ne devienne interactif, comme
+`getRealAmount()` côté Android), puis V4-F-073→021→027→019→003 (Social→Groups→Navigation, voir
+`MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo Android source de vérité :
+`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

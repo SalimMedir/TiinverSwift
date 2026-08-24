@@ -25,22 +25,63 @@ struct FollowListView: View {
 
     var body: some View {
         List(users) { user in
-            NavigationLink { ProfileView(userId: String(user.id), isCurrentUser: false) } label: {
-                HStack {
-                    CDNAsyncImage(url: URL(string: user.profile ?? ""), targetSize: CGSize(width: 44, height: 44)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
-                        Color(.secondarySystemBackground)
-                    }
-                    .frame(width: 44, height: 44).clipShape(Circle())
-                    VStack(alignment: .leading) {
-                        Text("\(user.firstname ?? "") \(user.lastname ?? "")")
-                        Text("@\(user.username ?? "")").font(.caption).foregroundStyle(.secondary)
+            // Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-027, Phase B P1) — port de
+            // `Recherche/ui/Adapter.java:85-164` (`labelSuivre`, réutilisé TEL QUEL par
+            // `FollowList.java`, confirmé par `import com.tiinver.Recherche.ui.Adapter` : les
+            // écrans abonnés/abonnements et Recherche partagent le MÊME adaptateur/bouton côté
+            // Android) — bouton suivre ajouté, même motif déjà câblé dans `SearchView.userRow`/
+            // `followButton` (V3-F-107 : optimiste + rollback sur échec, PAS de bascule "ne plus
+            // suivre" depuis cette liste, fidèle à `ProfileRepository.follow`).
+            HStack {
+                NavigationLink { ProfileView(userId: String(user.id), isCurrentUser: false) } label: {
+                    HStack {
+                        CDNAsyncImage(url: URL(string: user.profile ?? ""), targetSize: CGSize(width: 44, height: 44)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+                            Color(.secondarySystemBackground)
+                        }
+                        .frame(width: 44, height: 44).clipShape(Circle())
+                        VStack(alignment: .leading) {
+                            Text("\(user.firstname ?? "") \(user.lastname ?? "")")
+                            Text("@\(user.username ?? "")").font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
+                Spacer()
+                followButton(user)
             }
             .onAppear { if user.id == users.last?.id { Task { await loadMore() } } }
         }
         .navigationTitle(type.title) // R.id.title, port de `title.setText(type)`
         .task { await loadMore() }
+    }
+
+    private func followButton(_ user: SearchUserResult) -> some View {
+        Button {
+            Task { await toggleFollow(user) }
+        } label: {
+            Text(user.isFollowed == true ? "Abonné" : "Suivre")
+                .font(.caption.bold())
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(user.isFollowed == true ? Color(.secondarySystemBackground) : Color.accentColor)
+                .foregroundStyle(user.isFollowed == true ? Color.primary : Color.white)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.borderless)
+        .disabled(user.isFollowed == true)
+    }
+
+    /// Port de `Adapter.lL.setOnClickListener`/`ProfileRepository.follow` — même limitation que
+    /// `SearchView.toggleFollow` (suivre uniquement, pas de bascule) et même correctif de rollback
+    /// (V3-F-107) sur échec réseau, plutôt que le blocage "pending" permanent d'Android en cas
+    /// d'erreur (`onFollowingError` ne fait que masquer le spinner, sans jamais réafficher "Suivre").
+    private func toggleFollow(_ user: SearchUserResult) async {
+        guard user.isFollowed != true, let myId = UserSession.shared.myId else { return }
+        guard let index = users.firstIndex(where: { $0.id == user.id }) else { return }
+        users[index].isFollowed = true
+        do {
+            try await ProfileRepository.shared.follow(userId: String(user.id), followerId: myId)
+        } catch {
+            users[index].isFollowed = false
+        }
     }
 
     private func loadMore() async {

@@ -38,11 +38,14 @@ final class ChatMediaUploadService {
     /// sont clairement accidentels (incohérents entre les 2 branches, pas un protocole voulu) —
     /// reconstruites ici PROPREMENT et UNIFORMÉMENT pour les 2 branches plutôt que de répliquer une
     /// incohérence involontaire.
-    func upload(messageId: String, object: String, fileURL: URL, thumbnailFileURL: URL?) async throws -> Result {
+    func upload(
+        messageId: String, object: String, fileURL: URL, thumbnailFileURL: URL?,
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws -> Result {
         let kind = MessageMediaKind(object: object)
         let folder = "tiinver/message/\(object)"
         let mediaName = "\(messageId)\(kind.fileExtension)"
-        let objectUrl = try await put(localFile: fileURL, folder: folder, filename: mediaName, mimeType: kind.mimeType)
+        let objectUrl = try await put(localFile: fileURL, folder: folder, filename: mediaName, mimeType: kind.mimeType, progress: progress)
 
         var thumbnailUrl: String?
         if kind == .video, let thumbnailFileURL {
@@ -56,15 +59,27 @@ final class ChatMediaUploadService {
     /// pas de multipart. Retourne l'URL CDN publique (`cdn_base_url + folder + filename`, PAS
     /// `storage.bunnycdn.com`, distincts côté Android — confirmé dans `uploadToBunny` vs
     /// `saveMediaUrls`).
-    private func put(localFile: URL, folder: String, filename: String, mimeType: String) async throws -> String {
+    ///
+    /// **Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-064, Phase B P1)** — chargeait tout
+    /// le fichier en RAM via `Data(contentsOf:)` avant l'envoi, contrairement à Android
+    /// (`ProgressRequestBodyUri.writeTo`, `UploadFileOrDataService.java:242-267`) qui streame
+    /// TOUTE pièce jointe (photo/vidéo/audio/doc, un seul chemin `uploadToBunny` pour les 4 types)
+    /// par blocs de 8Ko directement depuis le disque, avec progression réelle. Même anti-pattern déjà
+    /// corrigé pour l'upload vidéo du Feed (`FeedMediaUploader.uploadVideo`, V3-F-019/BUNNY-03) —
+    /// réutilise ici le même `UploadProgressDelegate` (rendu interne pour ce partage) plutôt que d'en
+    /// dupliquer un second.
+    private func put(
+        localFile: URL, folder: String, filename: String, mimeType: String,
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws -> String {
         let remoteURL = URL(string: "\(storageBaseURL)/\(storageZone)/\(folder)/\(filename)")!
         var request = URLRequest(url: remoteURL)
         request.httpMethod = "PUT"
         request.setValue(storageAPIKey, forHTTPHeaderField: "AccessKey")
         request.setValue(mimeType, forHTTPHeaderField: "Content-Type")
 
-        let fileData = try Data(contentsOf: localFile)
-        let (_, response) = try await URLSession.shared.upload(for: request, from: fileData)
+        let delegate = progress.map { UploadProgressDelegate(onProgress: $0) }
+        let (_, response) = try await URLSession.shared.upload(for: request, fromFile: localFile, delegate: delegate)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
             throw UploadError.httpFailure(status)

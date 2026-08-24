@@ -145,7 +145,11 @@ enum FeedMediaUploader {
 /// `totalBytesSent`/`totalBytesExpectedToSend` sans avoir besoin de gérer le découpage par bloc
 /// soi-même (`URLSession.upload(for:fromFile:)` s'en charge en interne). Fraction 0...1 plutôt que
 /// 0...100 — conversion laissée à l'appelant UI, cohérent avec `ProgressView(value:)` SwiftUI natif.
-private final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate {
+/// Accès interne (pas `private`) — réutilisée par `ChatMediaUploadService` (V4-F-064, même besoin
+/// de streaming progressif depuis le disque pour une pièce jointe chat), même motif que le
+/// partage des constantes de stockage BunnyCDN entre `FeedMediaUploader`/`ProfileRepository`
+/// (V4-F-008).
+final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate {
     private let onProgress: @Sendable (Double) -> Void
 
     init(onProgress: @escaping @Sendable (Double) -> Void) {

@@ -7,8 +7,8 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002, V4-F-029, V4-F-030, V4-F-056, V4-F-064,
 V4-F-059, V4-F-068, V4-F-073, V4-F-021, V4-F-027, V4-F-019 clos. V4-F-003 documenté `BLOQUÉ` (hors
 dépôt, aucune action de code possible). **LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE.** Backlog P2 EN
-COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014/022/025
-(`BUILD_VALIDATED`) clos. Prochain : V4-F-028.**
+COURS : V4-F-004 (`BLOQUÉ`), V4-F-006 (différé, sans objet), V4-F-009/010/011/012/014/022/025/028/035
+(`BUILD_VALIDATED`) clos, V4-F-031 (différé, hors périmètre d'un petit lot). Prochain : V4-F-039.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -2445,3 +2445,139 @@ appelants actuels).
 `COMPLETE_PARITY_VALIDATED` — test réel requis : changer la photo d'un groupe en tant qu'admin,
 confirmer la mise à jour immédiate de l'en-tête, et la réception du message système
 "a changé la photo du groupe" par un AUTRE membre via socket.
+
+## 2026-08-24 — Phase B V4 — Lot P2-6 : V4-F-028 (Creators — le classement "Créateur de la semaine" ne se rafraîchit jamais après le premier chargement)
+
+### Vérification Android
+
+`CreatorFragment.java:160-164` :
+```java
+@Override
+public void onResume() {
+    super.onResume();
+    viewModel.getTrophy();
+}
+```
+Refetch à CHAQUE fois que le fragment redevient visible (retour depuis un autre onglet/écran), pas
+seulement au premier affichage.
+
+### État iOS avant correctif
+
+`HomeShellView.body` héberge `NavigationStack { CreatorOfWeekView() }` comme contenu de l'onglet 2
+d'un `TabView(selection: $selectedTab)` — SwiftUI garde TOUS les onglets d'un `TabView` vivants en
+mémoire, jamais recréés entre deux sélections (contrairement à une navigation push/pop où la vue
+est vraiment recréée). `CreatorOfWeekView.body` ne déclenchait le chargement que via `.task`, qui
+ne se redéclenche donc JAMAIS après le tout premier montage — aucun équivalent SwiftUI direct
+d'`onResume` de Fragment pour ce cas précis d'onglet persistant.
+
+### Correctif appliqué
+
+Nouveau paramètre `var isActive: Bool = true` sur `CreatorOfWeekView` — calculé par l'APPELANT
+(`HomeShellView`, `selectedTab == 2`) plutôt que de coupler cet écran à la connaissance de son
+propre numéro d'onglet dans la barre. `.onChange(of: isActive) { if $0 { Task { await
+viewModel.load() } } }` ajouté à côté du `.task` existant (conservé pour le premier affichage,
+`.onChange` ne se déclenche jamais sur la valeur initiale) — se redéclenche à chaque fois que
+`selectedTab` redevient `2`, même signal "cet écran redevient visible" qu'`onResume`.
+
+### Flux frères vérifiés
+
+`grep "\.task {"` dans `FeedView.swift`/`RosterListView.swift` (onglets 0/1 du même `TabView`) →
+même motif structurel (`.task` unique), MAIS ni l'un ni l'autre n'est signalé par l'audit V4 comme
+ayant ce bug — Chat a son propre mécanisme de mise à jour temps réel (Socket.IO), Feed a déjà un
+`.refreshable` pull-to-refresh établi dans un lot antérieur. Pas de finding correspondant à
+corriger pour ces 2 écrans ; rester strictement dans le périmètre de V4-F-028 (Creators) plutôt que
+de fabriquer une correction non demandée pour des écrans qui n'ont pas ce gap réel.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Creators/CreatorOfWeekView.swift`,
+`Sources/TiinverSwift/Navigation/HomeShellView.swift`.
+
+**Résultat CI** : commit `314590d`, push confirmé (`a26ea5f..314590d main -> main`), run
+`32715491986` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : charger l'onglet Créateurs, naviguer vers un autre
+onglet, revenir sur Créateurs, confirmer qu'un nouveau chargement réseau est déclenché (visible via
+proxy/logs) à chaque retour.
+
+## 2026-08-24 — Phase B V4 — Lot P2-7 : V4-F-031 (Feed / Performance — analytics de temps de visionnage construites mais jamais câblées) — DIFFÉRÉ, AUCUN CODE MODIFIÉ
+
+### Vérification et décision
+
+`Activity/ui/FeedFragment.java` : `WatchTimeTracker` est un CHAMP D'INSTANCE (`:158`), exercé à
+PLUSIEURS points de la boucle de scroll/snap du fil (`:665` `flushSnapshotAndReset` sur changement
+de photo affichée, `:1416-1441` `ViewTracker.record` au déclenchement d'enregistrement, `:1587`
+autre point de flush) — un véritable automate d'état lié au cycle de vie du scroll `RecyclerView`,
+PAS un appel réseau isolé.
+
+`ViewEventRepository.swift` (déjà porté, correct — écriture locale Core Data fidèle à
+`ViewEventDao`/`ViewTracker.record`) documente LUI-MÊME explicitement, dans son commentaire de
+tête, que la synchronisation serveur (`ViewSyncWorker`/`WorkManager` côté Android,
+`BGTaskScheduler` équivalent iOS) est un sujet séparé, jamais commencé ("module 18").
+
+**Décision** : NE PAS câbler uniquement le cycle de vie du tracker sans la synchronisation
+périodique — cela laisserait les données collectées bloquées en local Core Data, sans jamais
+atteindre le serveur, ne corrigeant donc PAS l'IMPACT réel du finding ("aucune donnée de
+watch-time n'est jamais collectée côté serveur"). Un faux sentiment d'achèvement serait pire qu'un
+report honnête. Ce finding est par ailleurs la REDÉCOUVERTE d'un finding DÉJÀ explicitement différé
+au cycle précédent (`V3-F-095`, confirmé après discussion avec l'utilisateur, voir
+`PROGRESS_V3.md:1402`) — pas une régression nouvelle, la même décision reste valide.
+
+**PAS `BLOQUÉ`** (aucune dépendance backend/Apple Developer/serveur/test physique empêchant le
+travail) — **DIFFÉRÉ** car hors périmètre d'un petit lot méthodique : nécessite (1) le câblage du
+cycle de vie `WatchTimeTracker` dans `FeedDetailPagerView`/`FeedDetailCell` [scroll/visibilité/
+lecture vidéo], (2) un `BGTaskScheduler` de synchronisation périodique, (3) probablement un
+endpoint serveur dédié à vérifier. Recommandé comme item de travail dédié séparé, pas glissé dans
+ce backlog P2.
+
+**Fichiers modifiés** : AUCUN. **Résultat CI** : AUCUNE dispatch.
+
+**Statut honnête** : `DIFFÉRÉ` (hors périmètre) — ni `BUILD_VALIDATED` ni
+`COMPLETE_PARITY_VALIDATED` ne s'appliquent.
+
+## 2026-08-24 — Phase B V4 — Lot P2-8 : V4-F-035 (Search — l'historique de recherche perd le contexte d'onglet)
+
+### Vérification Android
+
+`RechercheTiinver.java:324-328` (`buildDisplayEntry`, entier) :
+```java
+private String buildDisplayEntry(String query, String tab) {
+    if ("hashtags".equals(tab)) return "#" + query;
+    if ("users".equals(tab))    return "@" + query;
+    return query;
+}
+```
+Appelé à 2 sites de sauvegarde réels : `:210` (soumission directe de la query via le clavier) et
+`:447` (succès de `searchFull`, déclenché après debounce). `:252-279`
+(`RecentSearchAdapter.setOnItemClickListener`) : le CÔTÉ LECTURE — `entry.startsWith("#")`/`"@"` →
+`tab` dérivé, `query` dépouillée du préfixe — était déjà porté et corrigé côté iOS lors d'un lot
+antérieur (`V3-F-103`, `selectRecent`).
+
+### État iOS avant correctif
+
+`SearchView.runSearch` : `RecentSearchStore.save(query)` — sauvegardait la query BRUTE, sans
+préfixe selon l'onglet actif. Le côté lecture (`selectRecent`) était donc déjà prêt à parser un
+préfixe qu'aucune sauvegarde n'écrivait jamais réellement — un aller-retour cassé d'un seul côté.
+
+### Correctif appliqué
+
+Nouvelle `displayEntry(query:tab:)` — port direct de `buildDisplayEntry` (seuls `hashtags`/`users`
+préfixés, `posts`/`all` inchangés, fidèle à l'ordre des conditions Android). Utilisée au SEUL site
+d'appel réel (`RecentSearchStore.save`, dans `runSearch`) — couvre à la fois la soumission directe
+ET le tap sur une entrée récente (qui redéclenche `runSearch` via `selectRecent`, `tab` déjà mis à
+jour avant l'appel), sans site supplémentaire à modifier — même structure à 2-sites-mais-1-fonction
+qu'Android.
+
+### Flux frères vérifiés
+
+`grep "RecentSearchStore.save"` → un seul site après correctif, celui modifié — pas de duplication
+de la logique de sauvegarde ailleurs dans `SearchView.swift`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/SearchView.swift`.
+
+**Résultat CI** : commit `0b30bfe`, push confirmé (`314590d..0b30bfe main -> main`), run
+`32716508786` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : rechercher sous l'onglet Hashtags, retaper
+l'entrée sauvegardée depuis l'historique, confirmer que l'onglet Hashtags (pas Tous) est restauré ;
+répéter pour l'onglet Utilisateurs.

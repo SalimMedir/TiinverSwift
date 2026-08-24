@@ -13,8 +13,9 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 Phase B V4 : backlog P0 épuisé, LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE [22 corrigés BUILD_VALIDATED
 + V4-F-003 BLOQUÉ], **backlog P2 EN COURS** [Lot P2-1 : V4-F-004 BLOQUÉ, V4-F-006 différé,
 V4-F-009/010/011 BUILD_VALIDATED ; Lot P2-2 : V4-F-012 BUILD_VALIDATED ; Lot P2-3 : V4-F-014
-BUILD_VALIDATED ; Lot P2-4 : V4-F-022 BUILD_VALIDATED ; Lot P2-5 : V4-F-025 BUILD_VALIDATED] —
-backlog P3 PAS ENCORE ATTAQUÉ)
+BUILD_VALIDATED ; Lot P2-4 : V4-F-022 BUILD_VALIDATED ; Lot P2-5 : V4-F-025 BUILD_VALIDATED ;
+Lot P2-6 : V4-F-028 BUILD_VALIDATED ; Lot P2-7 : V4-F-031 différé (hors périmètre) ; Lot P2-8 :
+V4-F-035 BUILD_VALIDATED] — backlog P3 PAS ENCORE ATTAQUÉ)
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -584,20 +585,48 @@ recadrage (écart déjà assumé pour la photo de profil personnelle) ; écho sy
 `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : changer la photo en tant
 qu'admin, confirmer la mise à jour immédiate ET la réception du message système par un autre membre).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P2-5 terminé (vérifié/corrigé/documenté/commité/CI verte).
-Enchaîner **automatiquement** sur le prochain P2 dans l'ordre du document : **V4-F-028** (Creators —
-le classement "Créateur de la semaine" ne se rafraîchit jamais après le premier chargement :
-`Creators/CreatorOfWeekView.swift:52` [`.task` unique] ; `Navigation/HomeShellView.swift:70-98`
-[onglet persistant dans le `TabView`, `.task` ne se redéclenche jamais] ; Android —
-`creatorOfweek/CreatorFragment.java:160-164` [`onResume` → refetch à chaque visite] — classement
-obsolète pour toute la session après un premier chargement, sans moyen de forcer un rafraîchissement
-hors échec — recommandation : ajouter `.refreshable` et/ou redéclencher au retour sur l'onglet),
-puis continuer AUTOMATIQUEMENT le backlog P2 restant dans l'ordre du document (V4-F-031, V4-F-035,
-V4-F-039, V4-F-041, V4-F-043, V4-F-047, V4-F-051, V4-F-052, V4-F-057, V4-F-058, V4-F-060, V4-F-061,
-V4-F-066, V4-F-067, V4-F-069, V4-F-070, V4-F-074 — 17 findings restants après V4-F-028), puis le
-backlog P3 (21 findings) une fois P2 entièrement clos, SANS attendre de nouvelle confirmation
-utilisateur pour chaque lot (instruction explicite : continuer automatiquement). Repo Android
-source de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lot P2-6 traité (V4-F-028)** — Creators, le classement ne se rafraîchissait jamais après le
+premier chargement. Vérifié dans `CreatorFragment.java:160-164` (`onResume`, refetch à chaque
+visite). `CreatorOfWeekView` vit dans un onglet `TabView` PERSISTANT — `.task` ne se redéclenche
+jamais après le premier montage. Corrigé : nouveau `isActive: Bool` (calculé par `HomeShellView`
+depuis `selectedTab == 2`), `.onChange(of: isActive)` redéclenche le chargement à chaque retour.
+**Commit `314590d`, CI verte (run `32715491986`)** — `BUILD_VALIDATED`.
+
+**Lot P2-7 (V4-F-031) — DIFFÉRÉ, AUCUN CODE MODIFIÉ.** Feed/Performance, analytics de temps de
+visionnage jamais câblées. `WatchTimeTracker` (Android) est un automate d'état lié au cycle de vie
+du scroll `RecyclerView` (multiples points d'appel), et `ViewEventRepository.swift` (déjà porté)
+documente lui-même que la synchronisation serveur (`BGTaskScheduler` équivalent) reste un sujet
+séparé ("module 18"), jamais commencé. Câbler le tracker SANS la synchronisation ne corrigerait pas
+l'impact réel (rien n'atteindrait le serveur) — faux sentiment d'achèvement. Redécouverte de
+`V3-F-095`, déjà explicitement différé au cycle précédent avec confirmation utilisateur — pas une
+régression, la même décision reste valide. PAS `BLOQUÉ` (aucune dépendance externe), mais hors
+périmètre d'un petit lot — recommandé comme item de travail dédié séparé.
+
+**Lot P2-8 traité (V4-F-035)** — Search, l'historique de recherche perdait le contexte d'onglet
+(pas de préfixe `#`/`@` à la sauvegarde). Vérifié dans `RechercheTiinver.java:324-328`
+(`buildDisplayEntry`). Le côté LECTURE (`selectRecent`) était déjà corrigé (V3-F-103) mais ne
+recevait jamais d'entrée préfixée puisque `RecentSearchStore.save(query)` sauvegardait la query
+brute. Corrigé : nouvelle `displayEntry(query:tab:)`, utilisée au seul site d'appel réel
+(`runSearch`), couvrant à la fois la soumission directe et le tap sur une entrée récente. **Commit
+`0b30bfe`, CI verte (run `32716508786`)** — `BUILD_VALIDATED`. Détail complet des 3 lots dans
+`PROGRESS_V4.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Lots P2-6/7/8 terminés. Enchaîner **automatiquement** sur le prochain
+P2 dans l'ordre du document : **V4-F-039** (Chat-Socket / Groups — les messages système
+"deleteMember"/"addMember" ne mettent jamais à jour l'état d'appartenance local ni ne quittent la
+room socket : `Storage/MessageRepository.swift:128-173` [`addGroupMessage` — gap AUTO-DOCUMENTÉ
+dans le code lui-même comme non traité] ; Android — `messagerie/ui/ChatManager.java:1190-1282,
+1263-1281` [retire la ligne membre locale, bascule un flag d'appartenance, ÉMET `leaveRoom` si
+l'utilisateur courant est retiré] — un utilisateur retiré d'un groupe voit le bon message système,
+mais l'app ne signale jamais au serveur avoir quitté la room, aucun état local d'appartenance mis à
+jour — recommandation : ajouter la gestion des verbes `deleteMember`/`addMember` avec mise à jour
+d'état local + `leaveRoom` émis quand l'utilisateur courant est retiré), puis continuer
+AUTOMATIQUEMENT le backlog P2 restant dans l'ordre du document (V4-F-041, V4-F-043, V4-F-047,
+V4-F-051, V4-F-052, V4-F-057, V4-F-058, V4-F-060, V4-F-061, V4-F-066, V4-F-067, V4-F-069, V4-F-070,
+V4-F-074 — 14 findings restants après V4-F-039), puis le backlog P3 (21 findings) une fois P2
+entièrement clos, SANS attendre de nouvelle confirmation utilisateur pour chaque lot (instruction
+explicite : continuer automatiquement). Repo Android source de vérité :
+`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

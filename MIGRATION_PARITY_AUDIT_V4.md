@@ -841,6 +841,24 @@ IOS FILES : Creators/CreatorOfWeekView.swift:52 (`.task` unique) ; Navigation/Ho
 IMPACT : Classement obsolète pour toute la session après un premier chargement, sans moyen de forcer
 un rafraîchissement hors échec.
 RECOMMANDATION : Ajouter `.refreshable` et/ou redéclencher au retour sur l'onglet.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-6) — Vérifié contre
+`CreatorFragment.java:160-164` (`onResume() { super.onResume(); viewModel.getTrophy(); }`) — Android
+refetch à CHAQUE fois que le fragment redevient visible, pas seulement au premier affichage.
+Confirmé côté iOS que `HomeShellView` héberge `CreatorOfWeekView` dans un onglet `TabView`
+PERSISTANT (jamais recréé entre deux sélections d'onglet) — `.task` (et `.onAppear`) ne se
+redéclenchent donc JAMAIS après le tout premier affichage, aucun équivalent SwiftUI direct
+d'`onResume` pour un onglet `TabView`. Correctif : nouveau paramètre `isActive: Bool` sur
+`CreatorOfWeekView`, calculé par `HomeShellView` (`selectedTab == 2`) plutôt que de coupler cet
+écran à son propre numéro d'onglet ; `.onChange(of: isActive) { if $0 { reload } }` redéclenche le
+chargement à chaque retour sur l'onglet. Flux frères vérifiés : `FeedView`/`RosterListView`
+(onglets 0/1) ont le même motif `.task` unique, mais ne sont PAS signalés par l'audit comme ayant
+ce bug (autres mécanismes de rafraîchissement déjà en place — socket temps réel pour Chat,
+pull-to-refresh pour Feed) — pas de finding correspondant à corriger pour ces écrans, hors
+périmètre de V4-F-028. Commit `314590d`, push confirmé (`a26ea5f..314590d main -> main`), CI run
+`32715491986` conclusion `success`. DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (charger
+l'onglet Créateurs, changer d'onglet, modifier le classement côté serveur si possible, revenir sur
+l'onglet, confirmer le rafraîchissement).
 ```
 
 ---
@@ -923,6 +941,25 @@ IMPACT : Aucune donnée de watch-time/scroll/replay/exit-point n'est jamais coll
 impact potentiel sur le classement/les revenus créateur si le backend en dépend.
 RECOMMANDATION : Déjà planifié comme "module 18" — porter le cycle de vie `WatchTimeTracker` dans
 `FeedDetailPagerView`/`FeedDetailCell` + un `BGTaskScheduler` de synchronisation périodique.
+
+STATUT : DIFFÉRÉ (hors périmètre d'un petit lot, 2026-08-24, Phase B P2, Lot P2-7) — PAS `BLOQUÉ`
+(aucune dépendance backend/Apple Developer/serveur/test physique), mais une fonctionnalité à part
+entière, pas une correction ponctuelle. Vérifié avant de conclure : `Activity/ui/FeedFragment.java`
+— `WatchTimeTracker` est un CHAMP D'INSTANCE (`:158`) exercé à PLUSIEURS points de la boucle de
+scroll/snap du fil (`:665`, `:1416-1441`, `:1587` — `flushSnapshotAndReset` appelé sur chaque
+changement de photo affichée ET à la destruction de la vue), pas un appel isolé — un véritable
+automate d'état lié au cycle de vie du scroll RecyclerView. `ViewEventRepository.swift` (déjà
+porté, correct) documente lui-même explicitement que la synchronisation serveur
+(`ViewSyncWorker`/`WorkManager` côté Android, `BGTaskScheduler` équivalent iOS) est un sujet séparé,
+"module 18", jamais commencé. Câbler UNIQUEMENT le cycle de vie du tracker (sans la synchronisation
+périodique) laisserait les données collectées bloquées en local, sans jamais atteindre le serveur —
+ne corrigerait PAS l'IMPACT réel du finding ("aucune donnée de watch-time n'est jamais collectée
+côté serveur"), un faux sentiment d'achèvement pire que de documenter honnêtement le report. Déjà
+explicitement différé une première fois lors du cycle précédent (`V3-F-095`, `MIGRATION_PARITY_
+AUDIT_V3.md`/`PROGRESS_V3.md:1402` — "en différant V3-F-095" après confirmation utilisateur) — ce
+finding V4 confirme simplement que ce report reste d'actualité, pas une régression nouvelle. Aucun
+code modifié. Recommandé comme item de travail dédié séparé (tracker + BGTaskScheduler + endpoint
+serveur), pas un correctif de petit lot.
 ```
 
 ```
@@ -1010,6 +1047,21 @@ IMPACT : Retaper une entrée d'historique sauvegardée sous l'onglet Hashtags/Ut
 l'onglet "Tous" au lieu du bon onglet — résultats potentiellement différents de ce qui a été sauvegardé.
 RECOMMANDATION : Ajouter un équivalent de `buildDisplayEntry` préfixant selon l'onglet actif avant
 `RecentSearchStore.save`.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B P2, Lot P2-8) — Vérifié contre
+`RechercheTiinver.java:210,433-447` (`buildDisplayEntry`, entier, `:324-328`) — appelé aux 2 sites
+de sauvegarde réels (soumission directe de la query, ET succès de `searchFull` après debounce) ;
+`:252-279` (`RecentSearchAdapter.setOnItemClickListener`) confirme que le CÔTÉ LECTURE
+(`entry.startsWith("#")`/`"@"` → onglet dérivé) était déjà porté et corrigé côté iOS lors d'un lot
+antérieur (`V3-F-103`, `selectRecent`) — seul le CÔTÉ ÉCRITURE manquait, `RecentSearchStore.
+save(query)` sauvegardant la query brute sans préfixe. Correctif : nouvelle `displayEntry(query:
+tab:)` (port direct de `buildDisplayEntry`), utilisée au seul site d'appel réel
+(`runSearch`) — couvre à la fois la soumission directe ET le tap sur une entrée récente (qui
+redéclenche `runSearch` via `selectRecent`, déjà correctement câblé), sans site supplémentaire à
+modifier. Commit `0b30bfe`, push confirmé (`314590d..0b30bfe main -> main`), CI run `32716508786`
+conclusion `success`. DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (rechercher sous l'onglet
+Hashtags, retaper l'entrée sauvegardée depuis l'historique, confirmer que l'onglet Hashtags [pas
+Tous] est restauré).
 ```
 
 ```

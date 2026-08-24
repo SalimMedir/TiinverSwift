@@ -53,6 +53,7 @@ struct ProfileView: View {
                         }
                 }
             }
+            postsGridFooter
         }
         .navigationTitle(viewModel.profile.map { "@\($0.username ?? "")" } ?? "")
         .navigationBarTitleDisplayMode(.inline)
@@ -261,6 +262,18 @@ struct ProfileView: View {
             }
         }
         .frame(width: 84, height: 84).clipShape(Circle())
+        // Port de `ProfileAdapter2.java:281-285` (état `profilepicturestateloading==3`, icône
+        // d'erreur superposée) — V4-F-009 : `photoUploadFailed` n'était lu nulle part côté vue
+        // avant ce correctif. Coin HAUT-droit (pas bas-droit, déjà occupé par le bouton caméra
+        // ci-dessous) pour éviter toute collision visuelle des deux superpositions.
+        .overlay(alignment: .topTrailing) {
+            if viewModel.photoUploadFailed {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.white, .red)
+                    .background(Circle().fill(.white))
+            }
+        }
 
         if viewModel.isCurrentUser {
             PhotosPicker(selection: $avatarPickerItem, matching: .images) {
@@ -334,6 +347,30 @@ struct ProfileView: View {
                 .font(.caption2).foregroundStyle(.white)
                 .padding(4)
                 .shadow(radius: 2)
+        }
+    }
+
+    /// Pied de la grille paginée — port de `ProfileAdapter2.FooterViewHolder` (V4-F-010) :
+    /// shimmer/vide pendant le chargement (`isLoadingPosts`), icône+texte+bouton "Réessayer" sur
+    /// échec de pagination (`postsLoadError`, type 2 Android), rien une fois la page chargée avec
+    /// succès (type 1). L'état "aucune publication" (grille vide, chargement terminé, pas d'erreur)
+    /// n'a PAS d'équivalent explicite trouvé côté Android (aucune vue "empty" dans
+    /// `ProfileAdapter2`/`UserProfile`/`AddPerfilFoto`) — ajouté ici comme simple confort UX pour ne
+    /// pas laisser un espace blanc inexpliqué, PAS présenté comme un port de parité Android.
+    @ViewBuilder
+    private var postsGridFooter: some View {
+        if viewModel.isLoadingPosts {
+            ProgressView().padding()
+        } else if viewModel.postsLoadError {
+            VStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle").foregroundStyle(.secondary)
+                Text("Impossible de charger les publications.").font(.caption).foregroundStyle(.secondary)
+                Button("Réessayer") { Task { await viewModel.loadMorePosts() } }
+                    .font(.caption.bold())
+            }
+            .padding()
+        } else if viewModel.posts.isEmpty, !viewModel.isLoadingProfile {
+            Text("Aucune publication").font(.caption).foregroundStyle(.secondary).padding()
         }
     }
 

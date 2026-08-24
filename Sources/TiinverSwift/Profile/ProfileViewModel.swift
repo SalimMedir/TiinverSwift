@@ -13,9 +13,22 @@ final class ProfileViewModel: ObservableObject {
     @Published var posts: [FeedActivity] = []
     @Published var isLoadingProfile = false
     @Published var isLoadingPosts = false
+    /// **Ajouté le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-010, Phase B P2)** — port de
+    /// `ProfileAdapter2.FooterViewHolder.bindView(type)` (`ProfileAdapter2.java:186-208`) : le
+    /// pied de grille paginée bascule entre shimmer (chargement, type 0), rien (succès, type 1) et
+    /// icône+texte+bouton "Réessayer" (échec, type 2) — `loadMorePosts()` avalait l'échec en
+    /// silence (`catch { print(...) }`, jamais visible à l'écran), et `isLoadingPosts` (déjà
+    /// publié) n'était lu par AUCUNE vue (confirmé par grep avant ce correctif).
+    @Published var postsLoadError = false
     @Published var isBlocked = false
     @Published var isFollowing = false
     @Published var isUploadingPhoto = false
+    /// **Ajouté le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-009, Phase B P2)** — port de
+    /// `AddPerfilFoto`'s `Result.ERROR` → `mAdapter.setProfilePictureStateLoading(3)`
+    /// (`ProfileAdapter2.java:281-285` : `error.setVisibility(VISIBLE)`, une icône d'erreur dédiée
+    /// superposée à l'avatar). `uploadProfilePicture` avalait l'échec réseau via `catch {}` vide —
+    /// aucun état d'erreur, aucun indicateur visuel, contrairement à Android.
+    @Published var photoUploadFailed = false
     /// Port du même correctif que `FeedViewModel.errorMessage` (2026-08-13, cause racine du feed
     /// vide sans erreur visible) — `loadProfile()` avalait silencieusement toute erreur réseau/
     /// session via `try?`, laissant `ProfileView.header` ne RIEN afficher (ni spinner, ni erreur,
@@ -125,6 +138,7 @@ final class ProfileViewModel: ObservableObject {
     func loadMorePosts() async {
         guard !isLoadingPosts, !reachedEnd, let viewerId = UserSession.shared.myId else { return }
         isLoadingPosts = true
+        postsLoadError = false
         defer { isLoadingPosts = false }
         print("PROFILE POSTS REQUEST: endpoint=feedtimeline/\(userId)/\(viewerId)/\(limit)/\(offset)")
         do {
@@ -138,6 +152,7 @@ final class ProfileViewModel: ObservableObject {
             }
         } catch {
             print("PROFILE POSTS RESPONSE: error=\(error)")
+            postsLoadError = true
         }
     }
 
@@ -170,11 +185,14 @@ final class ProfileViewModel: ObservableObject {
     func uploadProfilePicture(imageData: Data) async {
         guard isCurrentUser, let myId = UserSession.shared.myId else { return }
         isUploadingPhoto = true
+        photoUploadFailed = false
         defer { isUploadingPhoto = false }
         do {
             let url = try await repository.uploadProfilePicture(userId: myId, imageData: imageData)
             profile?.profile = url
-        } catch {}
+        } catch {
+            photoUploadFailed = true
+        }
     }
 
     /// Port de `UserProfile.block`/`actionOnMenuItem` — bascule bloquer/débloquer.

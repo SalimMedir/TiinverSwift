@@ -16,19 +16,29 @@ struct EditProfileView: View {
     /// finding.
     @State private var showCategoryPicker = false
     @State private var currentCategoryId: String?
+    /// **Ajouté le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-011, Phase B P2)** — port de
+    /// `EditProfile.onResume` (`EditProfile.java:86-128`) : la bio/le lien existants sont affichés
+    /// EN PLACEHOLDER (`bioInput.setHint(biography)`/`linkView.setHint(link)`), PAS pré-remplis
+    /// dans le champ éditable (`setText` n'est jamais appelé pour ces 2 champs, contrairement à
+    /// `category`). Reproduit fidèlement ici — PAS une pré-saisie de `$biography`/`$link`, qui
+    /// changerait le comportement de `save()` (`if !biography.isEmpty` : un champ non retouché
+    /// resterait vide et ne serait donc PAS envoyé, fidèle à Android, qui ne permet pas non plus
+    /// d'effacer un champ existant depuis cet écran).
+    @State private var existingBiography: String?
+    @State private var existingLink: String?
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Biographie") { // R.id.biographyInput
-                    TextField("Biographie (160 caractères max)", text: $biography, axis: .vertical)
+                    TextField(existingBiography?.isEmpty == false ? existingBiography! : "Biographie (160 caractères max)", text: $biography, axis: .vertical)
                         .onChange(of: biography) { newValue in
                             if newValue.count > 160 { biography = String(newValue.prefix(160)) }
                         }
                     Text("\(biography.count)/160").font(.caption2).foregroundStyle(.secondary) // R.id.charCounter
                 }
                 Section("Lien") { // R.id.linkInput
-                    TextField("https://...", text: $link).keyboardType(.URL).autocapitalization(.none)
+                    TextField(existingLink?.isEmpty == false ? existingLink! : "https://...", text: $link).keyboardType(.URL).autocapitalization(.none)
                 }
                 Section {
                     Button {
@@ -61,7 +71,10 @@ struct EditProfileView: View {
 
     private func loadCategory() async {
         guard let userId = UserSession.shared.myId else { return }
-        currentCategoryId = try? await ProfileRepository.shared.fetchProfile(userId: userId, viewerId: userId).category
+        guard let profile = try? await ProfileRepository.shared.fetchProfile(userId: userId, viewerId: userId) else { return }
+        currentCategoryId = profile.category
+        existingBiography = profile.biography
+        existingLink = profile.link
     }
 
     /// Port de `EditProfile.UpdateProfileData` — un champ n'est envoyé QUE s'il n'est pas vide

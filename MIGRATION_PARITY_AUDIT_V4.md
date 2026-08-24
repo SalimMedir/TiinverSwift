@@ -105,6 +105,18 @@ PREUVE : `HomeShellView.swift:190-191`, seul site de consommation dans tout le p
 aucun `.onAppear`/`.task` de repli pour drainer une valeur déjà en attente.
 RECOMMANDATION : Ajouter un `.task`/`.onAppear` dans `HomeShellView` qui appelle `deepLinks.consume()`
 dès le premier rendu, en plus du `.onChange` existant.
+STATUT : BUILD_VALIDATED (2026-08-24, commit 97f87fd, CI run 32680432322 succès). Reconfirmé :
+`HomeShellView` reste le SEUL consommateur de `DeepLinkCenter.shared.pending` dans tout le projet
+(`grep DeepLinkCenter` — plusieurs PRODUCTEURs dans `AppDelegate`/`DeepLinkRouter`, un seul
+consommateur). Corrigé exactement comme recommandé : la table de dispatch de destinations extraite
+en `handleDeepLink(_:)` partagée, appelée à la fois par le `.onChange` existant (inchangé) ET par le
+`.task` déjà présent (ajout d'une consommation au montage). `DeepLinkCenter.consume()`'s `defer {
+pending = nil }` rend les deux appels sûrs (le second, si atteint, est un no-op sur `pending == nil`).
+DEVICE_TEST_REQUIRED pour COMPLETE_PARITY_VALIDATED (taper un lien profond [notification push ou URL
+`tiinver://`/`https://tiinver.com/...`] PENDANT le cold start ou l'écran de login, avant toute
+authentification, puis confirmer qu'il est bien consommé une fois `HomeShellView` monté après
+connexion — scénario impossible à reproduire de façon fiable sans device réel et un lien réellement
+reçu pendant cette fenêtre précise).
 ```
 
 ```

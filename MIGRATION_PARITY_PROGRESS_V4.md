@@ -4,7 +4,7 @@ Journal de correction du cycle d'audit V4 (`MIGRATION_PARITY_AUDIT_V4.md`).
 
 **État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase B EN COURS — backlog P0 épuisé
 (P0-1..P0-4 clos). Liste P1 : V4-F-020, V4-F-032, V4-F-033, V4-F-042, V4-F-038, V4-F-017, V4-F-046,
-V4-F-048, V4-F-049, V4-F-050, V4-F-001 clos. Prochain : V4-F-002.**
+V4-F-048, V4-F-049, V4-F-050, V4-F-001, V4-F-002 clos. Prochain : V4-F-029.**
 
 `MIGRATION_PARITY_AUDIT_V4.md` est maintenant complet : 75 findings (V4-F-001 à V4-F-075), produits
 par 16 agents de recherche indépendants (lecture directe du code Android/iOS, sans lecture des
@@ -1160,3 +1160,58 @@ déjà-en-cache (`coinsValue`, `certificationPrice`, etc.), aucun fetch bloquant
 puis couper le réseau (ou simuler une latence extrême), confirmer l'arrivée quasi-instantanée sur
 Home au lieu d'un spinner prolongé ; confirmer aussi qu'un rejet de mise à jour forcée (`expiryDate`
 dépassée en cache) continue de s'afficher correctement dans ce même scénario réseau dégradé.
+
+## 2026-08-24 — Phase B V4 — Lot P1-12 : V4-F-002 (Navigation-DeepLinks — lien profond résolu avant
+le montage de HomeShellView est silencieusement perdu)
+
+**Commit** : `97f87fd` — CI **run 32680432322, conclusion: success**.
+
+### Vérification Android (avant tout changement)
+
+`partage/ShareActivity.java:140-291` : résout la destination (user/post/groupe/paramètres/animems/
+parrainage) puis appelle `startActivity(intent)` DIRECTEMENT — aucune dépendance à ce qu'une autre
+`Activity` soit déjà à l'écran et à l'écoute d'un état partagé. Le lancement de l'écran cible EST
+l'action elle-même, pas une notification qu'un autre composant doit capter.
+
+### Écart iOS constaté (avant correctif)
+
+`DeepLinkCenter.route(_:)` (`DeepLinkCenter.swift:44-46`) se contente de `pending = destination`
+(`@Published`). Le SEUL consommateur, `HomeShellView.onChange(of: deepLinks.pending)`
+(`HomeShellView.swift:190-205` avant correctif), ne réagit QUE sur une transition nil→valeur
+survenant APRÈS que ce modificateur soit déjà attaché à la hiérarchie de vues — jamais pour une
+valeur déjà présente au moment de l'attachement. Si un lien est résolu (`AppDelegate`/
+`DeepLinkRouter`) PENDANT le cold start ou l'écran de login (`RootRouterView` affiche encore
+`ProgressView()`/`AuthCoordinatorView`, `HomeShellView` pas encore monté), `pending` est déjà
+non-`nil` au moment où `HomeShellView` apparaît enfin — `.onChange` ne se déclenche jamais pour cette
+valeur, `consume()` n'est jamais appelé, le lien est perdu sans erreur ni indication.
+
+### Correctif appliqué
+
+Extrait la table de dispatch (`switch destination { ... }`) du corps de `.onChange` vers une méthode
+partagée `handleDeepLink(_:)`, appelée :
+1. Par le `.onChange(of: deepLinks.pending)` existant, inchangé dans son déclenchement.
+2. PAR le `.task` déjà présent dans `HomeShellView` (rafraîchissement notifications/badge chat) —
+   ajout d'une consommation de `deepLinks.pending` AU MONTAGE, fidèle au lancement direct
+   `startActivity` d'Android qui ne dépend d'aucun état de montage préalable.
+
+`DeepLinkCenter.consume()`'s `defer { pending = nil }` (déjà existant, non modifié) rend les deux
+points d'appel sûrs par construction : si le `.task` consomme déjà la valeur au montage, le
+`.onChange` suivant ne trouvera plus rien à consommer (`pending == nil`), sans double traitement.
+
+### Flux frères vérifiés
+
+`grep -n "DeepLinkCenter"` → `AppDelegate.swift`/`DeepLinkRouter.swift` sont des PRODUCTEURS
+(`route(...)`/`showError()`) ; `HomeShellView.swift` est le SEUL consommateur (`@StateObject`,
+`.pending`, `.consume()`) dans tout le projet — aucun autre site à corriger.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Navigation/HomeShellView.swift`.
+
+**Résultat CI** : run `32680432322` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — scénario de test réel difficile à provoquer de façon fiable (nécessite
+de recevoir un vrai lien profond — notification push ou URL `tiinver://`/`https://tiinver.com/...` —
+PENDANT la fenêtre précise du cold start/écran de login, avant authentification, sur un device réel)
+; suggéré : déclencher un lien profond juste après le lancement de l'app sur un compte non connecté,
+se connecter, confirmer que le lien est bien honoré une fois `HomeShellView` monté plutôt que
+silencieusement ignoré.

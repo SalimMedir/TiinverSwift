@@ -11,7 +11,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
 Phase B V4 EN COURS, backlog P0 épuisé, liste P1 EN COURS
-[V4-F-020/032/033/042/038/017/046/048/049/050/001 traités])
+[V4-F-020/032/033/042/038/017/046/048/049/050/001/002 traités])
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
@@ -285,20 +285,33 @@ corrigé. Détail complet dans `PROGRESS_V4.md`, Lot P1-11. **Commit `d7d50b0`, 
 `32679885732`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : session
 locale valide + réseau coupé/dégradé au lancement, confirmer l'arrivée quasi-instantanée sur Home).
 
-**PROCHAINE TÂCHE EXACTE** : Lot P1-11 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
-**automatiquement** sur **V4-F-002** (Navigation-DeepLinks — un deep link résolu AVANT le montage de
-`HomeShellView` est silencieusement perdu : `DeepLinkCenter.swift:44-51` met juste à jour `@Published
-var pending` ; le seul consommateur, `HomeShellView.onChange(of: deepLinks.pending)`
-[`swift:52,190-205`], ne se déclenche QUE sur une transition nil→valeur pendant que la vue est DÉJÀ
-montée, jamais pour une valeur déjà présente à l'attachement du modificateur — un lien tapé pendant
-le cold start [fenêtre RÉDUITE mais pas éliminée par le correctif V4-F-001 ci-dessus] ou avant
-authentification est perdu sans indication ; Android — `ShareActivity.java:140-291` — résout puis
-lance DIRECTEMENT l'écran cible via `startActivity`, sans dépendre qu'une autre Activity soit déjà à
-l'écran et à l'écoute — faire consommer `pending` aussi à l'apparition initiale de `HomeShellView`
-[`.onAppear`, pas seulement `.onChange`], pas seulement sur transition), puis
-V4-F-029→030→056→064→059→068→073→021→027→019→003 (Feed-publish→Gallery→BunnyCDN→Wallet→Performance→
-Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque finding complet). Repo
-Android source de vérité : `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
+**Lot P1-12 traité (V4-F-002)** — Navigation-DeepLinks, lien profond résolu AVANT le montage de
+`HomeShellView` silencieusement perdu. Vérifié dans `ShareActivity.java:140-291` : Android résout
+puis lance DIRECTEMENT l'écran cible via `startActivity`, sans dépendre qu'une autre Activity soit
+déjà à l'écran. `HomeShellView.onChange(of: deepLinks.pending)` (seul consommateur dans tout le
+projet, confirmé par grep) ne réagit QUE sur une transition nil→valeur survenant APRÈS l'attachement
+du modificateur — jamais pour une valeur déjà présente au montage. Corrigé : table de dispatch
+extraite en `handleDeepLink(_:)` partagée, appelée par le `.onChange` existant (inchangé) ET par le
+`.task` déjà présent (nouvelle consommation au montage) — `DeepLinkCenter.consume()`'s `defer {
+pending = nil }` existant rend les deux appels sûrs sans double traitement. Détail complet dans
+`PROGRESS_V4.md`, Lot P1-12. **Commit `97f87fd`, CI verte confirmée (run `32680432322`)** —
+`BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : lien profond reçu PENDANT le
+cold start/écran de login, avant authentification, confirmer qu'il est honoré une fois `HomeShellView`
+monté après connexion).
+
+**PROCHAINE TÂCHE EXACTE** : Lot P1-12 terminé (vérifié/corrigé/documenté/commité/CI verte). Enchaîner
+**automatiquement** sur **V4-F-029** (Feed — la publication n'envoie JAMAIS le consentement IA ni les
+métadonnées enrichies au backend, divergence LÉGALE/conformité réelle, pas seulement qualité de
+données : `FeedRepository.swift:187-209` envoie `"metadata": ""`/`"consentAi": "0"` hardcodés,
+`PublishComposeView.swift` n'a AUCUN contrôle de consentement IA dans l'UI — les utilisateurs iOS ne
+peuvent jamais donner ni refuser explicitement leur consentement à l'entraînement IA ; Android —
+`ActivityService.java:182-201`, `PublishFragment.java:274-283,367-390,544-643` — case à cocher
+`acceptAi` réelle, JSON `metadata` construit avec langue/locale/pays/dimensions/fps/durée/licence —
+ajouter un toggle de consentement IA à l'écran de légende + construire un vrai JSON de métadonnées
+dans `FeedRepository.publish`), puis V4-F-030→056→064→059→068→073→021→027→019→003 (Gallery→
+BunnyCDN→Wallet→Performance→Social→Groups→Navigation, voir `MIGRATION_PARITY_AUDIT_V4.md` pour chaque
+finding complet). Repo Android source de vérité :
+`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ---
 

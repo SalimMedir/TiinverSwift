@@ -194,29 +194,53 @@ struct ProfileView: View {
     /// `values/colors.xml`. `premium` affiche en plus le niveau (`label + " · " + level`).
     @ViewBuilder
     private func programBadge(_ program: User.Program) -> some View {
-        let (icon, fg, bg, label): (String, Color, Color, String) = {
-            switch program.program {
-            case "premium": return ("crown.fill", Color(red: 0x85 / 255, green: 0x64 / 255, blue: 0x04 / 255), Color(red: 0xFF / 255, green: 0xF3 / 255, blue: 0xCD / 255), "premium")
-            case "ambassador": return ("megaphone.fill", Color(red: 0x15 / 255, green: 0x65 / 255, blue: 0xC0 / 255), Color(red: 0xE3 / 255, green: 0xF2 / 255, blue: 0xFD / 255), "ambassadeur")
-            case "creator": return ("paintbrush.fill", Color(red: 0x5E / 255, green: 0x35 / 255, blue: 0xB1 / 255), Color(red: 0xED / 255, green: 0xE7 / 255, blue: 0xF6 / 255), "créateur")
-            case "partner": return ("hand.raised.fill", Color(red: 0x2E / 255, green: 0x7D / 255, blue: 0x32 / 255), Color(red: 0xE8 / 255, green: 0xF5 / 255, blue: 0xE9 / 255), "partenaire")
-            default: return ("star.fill", .secondary, Color.secondary.opacity(0.15), program.program ?? "")
-            }
-        }()
-        let text: String
-        if program.program == "premium", let level = program.level {
-            text = "\(label) · \(level.capitalized)"
-        } else {
-            text = label
-        }
+        let attributes = Self.programBadgeAttributes(program)
         HStack(spacing: 4) {
-            Image(systemName: icon)
-            Text(text)
+            Image(systemName: attributes.icon)
+            Text(attributes.text)
         }
         .font(.caption2.bold())
-        .foregroundStyle(fg)
+        .foregroundStyle(attributes.fg)
         .padding(.horizontal, 8).padding(.vertical, 4)
-        .background(bg, in: Capsule())
+        .background(attributes.bg, in: Capsule())
+    }
+
+    private static func programBadgeAttributes(_ program: User.Program) -> (icon: String, fg: Color, bg: Color, text: String) {
+        let icon: String
+        let fg: Color
+        let bg: Color
+        let label: String
+        switch program.program {
+        case "premium":
+            icon = "crown.fill"
+            fg = Color(red: 0x85 / 255, green: 0x64 / 255, blue: 0x04 / 255)
+            bg = Color(red: 0xFF / 255, green: 0xF3 / 255, blue: 0xCD / 255)
+            label = "premium"
+        case "ambassador":
+            icon = "megaphone.fill"
+            fg = Color(red: 0x15 / 255, green: 0x65 / 255, blue: 0xC0 / 255)
+            bg = Color(red: 0xE3 / 255, green: 0xF2 / 255, blue: 0xFD / 255)
+            label = "ambassadeur"
+        case "creator":
+            icon = "paintbrush.fill"
+            fg = Color(red: 0x5E / 255, green: 0x35 / 255, blue: 0xB1 / 255)
+            bg = Color(red: 0xED / 255, green: 0xE7 / 255, blue: 0xF6 / 255)
+            label = "créateur"
+        case "partner":
+            icon = "hand.raised.fill"
+            fg = Color(red: 0x2E / 255, green: 0x7D / 255, blue: 0x32 / 255)
+            bg = Color(red: 0xE8 / 255, green: 0xF5 / 255, blue: 0xE9 / 255)
+            label = "partenaire"
+        default:
+            icon = "star.fill"
+            fg = Color.secondary
+            bg = Color.secondary.opacity(0.15)
+            label = program.program ?? ""
+        }
+        if program.program == "premium", let level = program.level {
+            return (icon, fg, bg, "\(label) · \(level.capitalized)")
+        }
+        return (icon, fg, bg, label)
     }
 
     /// Panneau de diagnostic AFFICHÉ À L'ÉCRAN (pas seulement console) — voir
@@ -435,6 +459,16 @@ struct ProfileView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         if viewModel.isCurrentUser {
+            // **Ajouté (V4-F-015, 2026-08-24)** — port de `AddPerfilFoto.shareProfile()`
+            // (lignes 413-419) : texte + lien EXACTS repris de `values-fr/strings.xml`
+            // (`profile_link_share_msg`).
+            if let username = viewModel.profile?.username, !username.isEmpty {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    ShareLink(item: "Découvrez mon profil sur Tiinver :\nhttps://tiinver.com/user/\(username)") {
+                        Image(systemName: "square.and.arrow.up")
+                    } // R.id.action_share
+                }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 NavigationLink { SettingsView() } label: { Image(systemName: "gearshape") } // R.id.action_setting
             }

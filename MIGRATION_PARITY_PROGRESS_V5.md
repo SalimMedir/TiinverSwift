@@ -3,10 +3,10 @@
 Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 
 **État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
-Phase B (correction) DÉMARRÉE — backlog P0 EN COURS (1/7 clos : V5-F-094). Ordre imposé par
-l'utilisateur : V5-F-094 en premier (priorité absolue explicite), puis les 6 autres P0 dans l'ordre
-du document (V5-F-018, V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064), puis automatiquement les
-40 P1, 31 P2, 21 P3.**
+Phase B (correction) DÉMARRÉE — backlog P0 EN COURS (2/7 clos : V5-F-094, V5-F-018). Ordre imposé
+par l'utilisateur : V5-F-094 en premier (priorité absolue explicite), puis les 6 autres P0 dans
+l'ordre du document (V5-F-018 ✓, V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064), puis
+automatiquement les 40 P1, 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -98,6 +98,62 @@ par la même fonction corrigée.
 calque animé, taper "Exporter la vidéo", confirmer qu'un MP4 valide est produit (frames + son si
 piste audio ajoutée), que le spinner disparaît à la fin, et qu'un export raté affiche `exportError`
 plutôt que de rester bloqué indéfiniment.
+
+## 2026-08-24 — Phase B V5 — Lot P0-2 : V5-F-018 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android — approfondie au-delà de la citation de l'audit** : `mLayoutManager.setStackFromEnd(true)`
+positionne implicitement en bas au chargement initial (`ChatFragmentTest.java:539`).
+`addMessage`/`onOldMessage`→`addOldMessage` (message envoyé localement OU reçu en direct par
+socket — `:2678-2717,2001-2065`, PAS des noms trompeurs : `addOldMessage` gère en réalité les
+messages socket "en retard", pas la pagination REST) appellent explicitement
+`smoothScrollToPosition(getItemCount()-1)`. **Point clé vérifié personnellement, absent de la
+citation d'audit initiale** : `displayMoreMessageOnScroll` (`:1645-1758`, le VRAI gestionnaire de
+pagination, déclenché par `onScrolled`/`!canScrollVertically(-1)`) N'APPELLE PAS ce scroll — il
+insère les anciens messages en tête (`messages.add(0, mlib)`) et laisse le `LinearLayoutManager`
+préserver nativement la position de lecture pendant un prépend. La RECOMMANDATION de l'audit
+restait incertaine sur ce point ; la vérification personnelle confirme qu'un scroll inconditionnel
+sur CHAQUE ajout (y compris pagination) aurait été infidèle à Android.
+
+**iOS avant correctif** : `ChatView.messageList` était un `List` SwiftUI classique sans
+`ScrollViewReader` ni aucun mécanisme de scroll. La conversation s'ouvrait sur les messages les
+PLUS ANCIENS de la page chargée. Pire : le premier item (le plus ancien) déclenchait immédiatement
+son `.onAppear` → `loadMore()`, qui préfixait une page supplémentaire dont le nouveau premier
+élément redevenait visible en haut, redéclenchant `loadMore()` en cascade — chargement de tout
+l'historique de la conversation avant toute interaction utilisateur.
+
+### Correctif appliqué
+
+`messageList` entourée d'un `ScrollViewReader`, scroll vers `viewModel.items.last?.id` dans
+`.onChange(of:)`. Ce signal ne se déclenche JAMAIS pendant `loadMore()` (insère exclusivement à
+l'index 0 — le dernier élément ne change donc jamais), mais se déclenche pour le chargement initial
+(`items` vide → peuplé) et tout ajout en fin de liste (`onIncoming`/`appendOptimistic`) —
+reproduisant exactement la distinction Android vérifiée ci-dessus, sans flag/garde supplémentaire
+côté ViewModel.
+
+**Effet de bord positif confirmé** : résout AUSSI la cascade de pagination — une fois la vue
+effectivement scrollée en bas au chargement, le premier item n'est plus dans le viewport visible,
+donc son `.onAppear` ne se déclenche plus immédiatement à l'ouverture.
+
+### Flux frères vérifiés
+
+`grep "List {"` dans `Sources/TiinverSwift/Messagerie` → `ChatSearchView`/`GroupDetailView`/
+`PrivateMessageSettingView`/`RosterListView` — aucun n'est un historique de messages avec
+équivalent de `stackFromEnd` côté Android, pas de site frère à corriger.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatView.swift`.
+
+**Résultat CI** : commit `5964e87`, push confirmé (`61d96f6..5964e87 main -> main`), run
+`32889479501` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : ouvrir une conversation avec plus d'une page
+d'historique, confirmer l'affichage immédiat des messages les plus récents sans scroll manuel ;
+confirmer via l'inspecteur réseau qu'aucune requête de pagination en cascade ne se déclenche avant
+toute interaction ; remonter manuellement l'historique et confirmer que la position de lecture est
+préservée pendant le chargement d'anciens messages ; envoyer/recevoir un message en direct et
+confirmer le scroll automatique vers le bas.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

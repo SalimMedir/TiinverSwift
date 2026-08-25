@@ -584,6 +584,46 @@ CAUSE : Absence totale de gestion de position de défilement côté SwiftUI : au
 IMPACT : Dès qu'une conversation contient plus de messages que ce qui tient à l'écran (cas normal après quelques échanges), l'utilisateur qui ouvre le chat voit les messages les plus ANCIENS de la page chargée au lieu des plus récents, et doit défiler manuellement vers le bas pour retrouver la conversation en cours. Pire : comme le tout premier item de la page (le plus ancien) est visible dès l'ouverture, son .onAppear (ChatView.swift:146-152, condition `item.id == viewModel.items.first?.id`) déclenche IMMÉDIATEMENT `loadMore()` — qui préfixe une page supplémentaire de 100 messages plus anciens, dont le nouveau premier élément redevient à son tour visible en haut, redéclenchant loadMore() en cascade. Résultat observable : à l'ouverture de toute conversation dépassant une page d'historique, l'app charge en boucle TOUT l'historique de la conversation au lieu de la page initiale de 100 messages, avant même toute interaction de l'utilisateur — surconsommation de données/CPU et lenteur d'ouverture, en plus du problème d'affichage. De plus, l'envoi d'un nouveau message (optimiste) ou la réception d'un message en direct n'amène pas non plus la vue vers le bas — le message part/arrive bien mais peut rester invisible hors du viewport actuel.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Entourer `messageList` d'un `ScrollViewReader`, scroller vers le dernier `id` de `viewModel.items` (1) juste après `loadInitial()` dans `.task`, (2) dans un `.onChange(of: viewModel.items.last?.id)` limité aux ajouts en fin de liste (nouveaux messages envoyés/reçus, pas aux préfixes de pagination), avec une garde équivalente à `belongsToCurrentUser` ou 'déjà proche du bas' si on veut respecter le confort de lecture d'un utilisateur remonté dans l'historique — mais à minima reproduire le comportement Android qui scrolle inconditionnellement, pour ne pas régresser silencieusement.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B V5, Lot P0-2) — Vérification Android APPROFONDIE
+au-delà de la citation initiale de l'audit : `displayMessageOnInicialPage` (chargement initial)
+positionne implicitement en bas via `stackFromEnd=true`, sans appel de scroll explicite ;
+`addMessage`/`onOldMessage`→`addOldMessage` (message envoyé localement OU reçu en direct par
+socket, `ChatFragmentTest.java:2678-2717,2001-2065`) appellent explicitement
+`smoothScrollToPosition(getItemCount()-1)` ; **mais `displayMoreMessageOnScroll`
+(`ChatFragmentTest.java:1645-1758`, le vrai gestionnaire de pagination déclenché par
+`onScrolled`/`!canScrollVertically(-1)`) N'APPELLE PAS ce scroll** — il insère les anciens messages
+en tête (`messages.add(0, mlib)`) et laisse le `LinearLayoutManager` préserver nativement la
+position de lecture. La RECOMMANDATION de l'audit restait incertaine sur ce point ("mais à minima
+reproduire... qui scrolle inconditionnellement") ; vérification personnelle du code Android confirme
+qu'un scroll inconditionnel serait en réalité INFIDÈLE à Android sur la pagination.
+
+Correctif : `messageList` entourée d'un `ScrollViewReader`, scroll vers `viewModel.items.last?.id`
+dans `.onChange(of:)`. Ce signal ne se déclenche JAMAIS pendant `loadMore()` (qui insère
+exclusivement à l'index 0, `items.insert(contentsOf:at: 0)` — le dernier élément ne change donc
+jamais), mais se déclenche pour le chargement initial (`items` vide → peuplé) et tout ajout en fin
+de liste (`onIncoming`/`appendOptimistic`) — reproduisant exactement la distinction Android
+vérifiée ci-dessus, sans avoir besoin d'un flag/garde supplémentaire côté ViewModel.
+
+**Effet de bord positif confirmé** : ce correctif résout AUSSI la cascade de pagination décrite dans
+IMPACT — une fois la vue effectivement scrollée en bas au chargement, le premier item (le plus
+ancien) n'est plus dans le viewport visible, donc son `.onAppear` ne se déclenche plus
+immédiatement à l'ouverture ; `loadMore()` ne se relance alors que si l'utilisateur remonte
+manuellement l'historique, comme sur Android.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatView.swift`.
+
+**Résultat CI** : commit `5964e87`, push confirmé (`61d96f6..5964e87 main -> main`), run
+`32889479501` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis (aucun accès Xcode/simulateur/device) : ouvrir une
+conversation avec plus d'une page d'historique, confirmer l'affichage immédiat des messages les
+PLUS RÉCENTS (pas les plus anciens) sans scroll manuel ; confirmer via l'inspecteur réseau qu'AUCUNE
+requête de pagination en cascade ne se déclenche avant toute interaction ; remonter manuellement
+l'historique et confirmer que la position de lecture est bien préservée (pas de saut vers le bas)
+pendant le chargement d'anciens messages ; envoyer un message ou en recevoir un en direct et
+confirmer le scroll automatique vers le bas.
 ```
 
 ```

@@ -12,11 +12,15 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos, **cycle V4 ENTIÈREMENT CLOS (75/75 findings)**,
 **cycle V5 EN COURS** : Phase A [69 findings] + Phase A.2 contre-audit ciblé [30 findings
 supplémentaires, V5-F-070 à V5-F-099] TERMINÉES, **99 findings au total**, Phase B DÉMARRÉE —
-backlog P0 EN COURS [1/7 clos : **Lot P0-1 : V5-F-094 BUILD_VALIDATED** (export MP4 Animems
+backlog P0 EN COURS [2/7 clos : **Lot P0-1 : V5-F-094 BUILD_VALIDATED** (export MP4 Animems
 bloqué indéfiniment — `AnimemesExporter` variable locale désallouée par ARC avant l'exécution de
-son callback async, corrigé via une propriété stockée forte `activeExporter`)] — reste à traiter
-dans l'ordre du document : V5-F-018, V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 [6 P0], puis
-40 P1, 31 P2, 21 P3. Voir section "Cycle V5" plus bas pour le détail complet.)
+son callback async, corrigé via une propriété stockée forte `activeExporter`) ; **Lot P0-2 :
+V5-F-018 BUILD_VALIDATED** (chat ouvert sur les messages les plus ANCIENS au lieu des plus récents,
++ cascade de pagination runaway au chargement — `ChatView.messageList` sans `ScrollViewReader`,
+corrigé en scrollant vers `items.last?.id`, signal qui ne se déclenche jamais pendant la
+pagination puisque `loadMore()` insère exclusivement en tête de liste)] — reste à traiter dans
+l'ordre du document : V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 [5 P0], puis 40 P1, 31 P2,
+21 P3. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -78,16 +82,43 @@ inchangé, export MP4 fonctionnel, toutes les frames écrites, completion toujou
 valide produit avec frames+son, spinner qui disparaît bien, erreur affichée sur échec simulé).
 Détail complet dans `PROGRESS_V5.md`, Lot P0-1.
 
+**Lot P0-2 traité (V5-F-018)** — Écran de conversation, positionnement initial et auto-scroll de la
+liste de messages cassés. Vérification Android APPROFONDIE au-delà de la citation initiale de
+l'audit : `stackFromEnd=true` positionne implicitement en bas au chargement initial ;
+`addMessage`/`addOldMessage` (messages envoyés/reçus EN DIRECT, malgré le nom trompeur de la 2ᵉ
+fonction) appellent `smoothScrollToPosition(getItemCount()-1)` ; **mais
+`displayMoreMessageOnScroll` (le VRAI gestionnaire de pagination scroll-up) n'appelle PAS ce
+scroll** — il préfixe en tête de liste et laisse le `LinearLayoutManager` préserver nativement la
+position. Ce point précis manquait à la RECOMMANDATION de l'audit ("scroller inconditionnellement"
+aurait en fait été INFIDÈLE à Android sur la pagination). `ChatView.messageList` était un `List`
+SwiftUI nu sans `ScrollViewReader` : la conversation s'ouvrait sur les messages les plus ANCIENS,
+et le premier item visible déclenchait `.onAppear`→`loadMore()` en cascade dès l'ouverture
+(chargement runaway de tout l'historique avant toute interaction). Correctif : `ScrollViewReader` +
+scroll vers `items.last?.id` dans `.onChange(of:)` — ce signal ne se déclenche JAMAIS pendant
+`loadMore()` (insère exclusivement à l'index 0), seulement au chargement initial et aux ajouts en
+fin de liste, reproduisant exactement la distinction Android vérifiée. Effet de bord positif
+confirmé : résout aussi la cascade de pagination (le 1er item n'est plus dans le viewport une fois
+scrollé en bas). **Commit `5964e87`, CI verte confirmée (run `32889479501`)** —
+`BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : ouvrir une conversation
+longue, confirmer affichage des messages récents sans scroll manuel, absence de cascade réseau,
+préservation de position en remontant l'historique, auto-scroll sur envoi/réception en direct).
+Détail complet dans `PROGRESS_V5.md`, Lot P0-2.
+
 **PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur le prochain P0 dans l'ordre du
-document : **V5-F-018** (Écran de conversation — liste de messages / défilement : positionnement
-initial et auto-scroll vers le bas de la liste de messages cassé — voir `MIGRATION_PARITY_AUDIT_V5.
-md` pour la citation Android/iOS complète), puis continuer AUTOMATIQUEMENT V5-F-031, V5-F-032,
-V5-F-042, V5-F-045, V5-F-064 (5 P0 restants après V5-F-018), puis tous les P1 (40), P2 (31), P3
-(21) dans l'ordre du document, SANS s'arrêter entre les lots (instruction explicite de
-l'utilisateur), en respectant à chaque fois : preuve Android vérifiée personnellement → code Swift
-vérifié → chaîne complète tracée (UI → State/ViewModel → Repository/API/Socket → réponse → rendu,
-des deux côtés) → correction minimale → diff revu → commit → push → CI → attente OBLIGATOIRE du
-résultat → mise à jour des 3 documents (`MIGRATION_PARITY_AUDIT_V5.md`,
+document : **V5-F-031** (Wallet — crédit récompense pub `rewardedCoins` : un échec applicatif du
+serveur, HTTP 200 avec `error≠"false"` dans le corps JSON, est traité comme un succès —
+`WalletRepository.creditReward` n'appelle jamais `isBackendSuccess` contrairement à la quasi-
+totalité des autres repositories du projet ; `pendingCoinsAmount` est remis à 0 à tort, aucune
+resynchronisation ultérieure, aucune erreur affichée, le solde local diverge silencieusement et
+définitivement du solde serveur réel — voir `MIGRATION_PARITY_AUDIT_V5.md` pour la citation
+Android/iOS complète ; **vérification financière DOUBLE requise** avant tout correctif : paramètres
+envoyés, delta, solde, réponse serveur, rollback UI, idempotence, erreur réseau), puis continuer
+AUTOMATIQUEMENT V5-F-032, V5-F-042, V5-F-045, V5-F-064 (4 P0 restants après V5-F-031), puis tous
+les P1 (40), P2 (31), P3 (21) dans l'ordre du document, SANS s'arrêter entre les lots (instruction
+explicite de l'utilisateur), en respectant à chaque fois : preuve Android vérifiée personnellement
+→ code Swift vérifié → chaîne complète tracée (UI → State/ViewModel → Repository/API/Socket →
+réponse → rendu, des deux côtés) → correction minimale → diff revu → commit → push → CI → attente
+OBLIGATOIRE du résultat → mise à jour des 3 documents (`MIGRATION_PARITY_AUDIT_V5.md`,
 `MIGRATION_PARITY_PROGRESS_V5.md`, `CLAUDE_CONTINUATION.md`) → finding suivant. Attention
 particulière aux domaines Animems (chaîne complète UI→gesture→State→Transform→Timeline→
 Keyframes→Renderer→Playback→Export→Audio→Import), Socket.IO/Chat (reconnexion, doublons, ordre,

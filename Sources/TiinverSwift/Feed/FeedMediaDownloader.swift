@@ -2,12 +2,17 @@ import Foundation
 import Photos
 
 /// Port de `ProfileFeedFragment.addingDownloadingFileToQueue`/`checkBestQualityAndDownload`/
-/// `extractVideoId`/`downloadFile` (`uploadPerfilPhoto/ProfileFeedFragment.java:769-849`) —
-/// **le SEUL contexte Android où "Télécharger" est un item de menu réellement câblé**, vérifié par
-/// lecture des 3 autres menus "..." (`MainFragment.OnclickMoreExpand:1260-1367` — `ids` n'y liste
-/// JAMAIS `R.id.download` ; `FullScreenMedia.OnclickMoreExpand:485-494` et
-/// `HashtagProfile.OnclickMoreExpand:637-646` — même menu à 5 items sans download). Reproduit ici
-/// uniquement pour `ProfileView` (`FeedDetailPagerView(includesDownload: true)`).
+/// `extractVideoId`/`downloadFile` (`uploadPerfilPhoto/ProfileFeedFragment.java:769-849`).
+///
+/// **Corrigé (V5-F-006, 2026-08-24)** — le commentaire précédent affirmait que Profile était "le
+/// SEUL contexte Android où Télécharger est réellement câblé", sur la base de la vérification de 3
+/// menus "..." (`MainFragment.OnclickMoreExpand:1260-1367` ; `FullScreenMedia.
+/// OnclickMoreExpand:485-494` ; `HashtagProfile.OnclickMoreExpand:637-646` — aucun des 3 ne liste
+/// `R.id.download`) — analyse INCOMPLÈTE : un 4ᵉ menu existe, `FeedFragment.OnclickMoreExpand`
+/// (`Activity/ui/FeedFragment.java:1246-1247,1360-1365`), la classe RÉELLE du plein écran atteint
+/// depuis la grille Home (pas `MainFragment`), qui liste bien `R.id.download`, masqué uniquement
+/// sur les posts PROPRES via `idContentHide`. Reproduit maintenant pour `ProfileView` ET
+/// `FeedView` (grille Home) via `FeedDetailPagerView(includesDownload: true)` dans les deux cas.
 enum FeedMediaDownloader {
     enum DownloadError: LocalizedError {
         case photoLibraryDenied

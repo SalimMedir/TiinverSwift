@@ -133,9 +133,18 @@ struct FeedView: View {
             // `showManagementActions: true` — SEUL contexte "..." avec Statistiques/Promouvoir (voir
             // `boostTargetPost`/`statsTargetPost` ci-dessus, propres posts du fil principal
             // uniquement, fidèle à `promoteBtn`/`statisticBtn` de `CustomCardView`).
+            //
+            // **Corrigé (V5-F-006, 2026-08-24)** — `includesDownload: true` ajouté. Vérifié
+            // directement : `FeedFragment.java:1246-1247,1360-1365` (la classe RÉELLE du plein
+            // écran atteint depuis la grille Home, `HomeActivity.java:787-796` →
+            // `onArticleSelected(1,...)` → `FeedFragment.newInstance`) inclut bien `R.id.download`
+            // dans son menu "...", câblé sur `addingDownloadingFileToQueue`/
+            // `checkBestQualityAndDownload`, masqué uniquement sur les posts PROPRES via
+            // `idContentHide` — déjà reproduit fidèlement par la garde `if !isOwnPost` existante
+            // autour du bouton "Télécharger" (voir plus bas), il ne manquait que ce paramètre.
             FeedDetailPagerView(
                 viewModel: viewModel, startIndex: detailStartIndex,
-                showManagementActions: true, onClose: { showDetail = false }
+                showManagementActions: true, includesDownload: true, onClose: { showDetail = false }
             )
         }
         .fullScreenCover(isPresented: $showCamera) {

@@ -137,23 +137,41 @@ struct ChatView: View {
 
     // MARK: - Liste (port de `mRecycleView`/`MessageListAdapter`)
 
+    /// **Corrigé (V5-F-018, 2026-08-24)** — port de `mLayoutManager.setStackFromEnd(true)`
+    /// (positionnement initial) + `mRecycleView.smoothScrollToPosition(getItemCount()-1)` (appelé
+    /// par `addMessage`, à chaque nouveau message envoyé/reçu en direct — `ChatFragmentTest.java:
+    /// 2678-2717`). Vérifié précisément côté Android que la pagination (`displayMoreMessageOnScroll`,
+    /// prépend en tête de liste) N'APPELLE PAS ce scroll — seuls le chargement initial et un AJOUT
+    /// EN FIN de liste ramènent la vue vers le bas, la RecyclerView préserve nativement la position
+    /// de lecture pendant un scroll-up de pagination. `ScrollViewReader` + `.onChange(of: items.
+    /// last?.id)` reproduit exactement cette distinction : le dernier item ne change JAMAIS lors
+    /// d'un `loadMore()` (qui insère au DÉBUT, `items.insert(contentsOf:at: 0)`), donc ce signal ne
+    /// se déclenche que pour le chargement initial et les ajouts en fin de liste (message envoyé
+    /// via `appendOptimistic`, reçu en direct via `onIncoming`) — jamais pour la pagination.
     private var messageList: some View {
-        List {
-            ForEach(viewModel.items) { item in
-                row(for: item)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .onAppear {
-                        // Port de `onScrolled` (`!canScrollVertically(-1)`) : ici, approximé par
-                        // l'apparition du PREMIER élément affiché (haut de la liste inversée).
-                        if item.id == viewModel.items.first?.id {
-                            Task { await viewModel.loadMore() }
+        ScrollViewReader { proxy in
+            List {
+                ForEach(viewModel.items) { item in
+                    row(for: item)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .id(item.id)
+                        .onAppear {
+                            // Port de `onScrolled` (`!canScrollVertically(-1)`) : ici, approximé par
+                            // l'apparition du PREMIER élément affiché (haut de la liste inversée).
+                            if item.id == viewModel.items.first?.id {
+                                Task { await viewModel.loadMore() }
+                            }
                         }
-                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: viewModel.items.last?.id) { lastId in
+                guard let lastId else { return }
+                withAnimation { proxy.scrollTo(lastId, anchor: .bottom) }
             }
         }
-        .listStyle(.plain)
-        .scrollDismissesKeyboard(.interactively)
     }
 
     @ViewBuilder

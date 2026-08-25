@@ -1156,6 +1156,23 @@ CAUSE : Confusion entre le nom du champ interne Java commentText (jamais sérial
 IMPACT : Tout commentaire ou toute réponse postée depuis l'app iOS envoie le texte sous une clé que le backend n'attend probablement pas pour cet endpoint — risque réel que le commentaire arrive vide/absent côté serveur, ce qui casserait silencieusement TOUTE publication de commentaire/réponse depuis iOS, alors que l'UI affiche un succès (seul isBackendSuccess est vérifié, pas le contenu retourné).
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Renommer la clé envoyée dans CommentRepository.post de "commentText" à "comment", fidèle à MyBottomSheetDialogFragment.java:498.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B V5, Lot P0-6) — Vérifié directement :
+`MyBottomSheetDialogFragment.java:498` confirme `map.put("comment", data.getCommentText())`, clé
+réseau `"comment"`. Correctif trivial : `"commentText": text` → `"comment": text` dans
+`CommentRepository.post`. `grep "commentText"` confirmé : un seul site réseau concerné (les 3
+autres occurrences dans le projet sont des attributs Core Data locaux sans rapport, noms de champ
+de stockage indépendants du protocole réseau). Aucun site frère à corriger.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/CommentRepository.swift`.
+
+**Résultat CI** : commit `7df099a`, push confirmé (`2515367..7df099a main -> main`), run
+`32893884706` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis (nécessite d'inspecter la réponse backend réelle,
+impossible sans accès au serveur de test) : poster un commentaire et une réponse depuis iOS,
+confirmer via le backend/l'historique que le texte est bien enregistré (pas vide/absent).
 ```
 
 ```
@@ -1460,7 +1477,53 @@ CAUSE : `try?` sur l'appel réseau sans vérifier son succès avant d'exécuter 
 IMPACT : Pour « Se déconnecter » : une simple coupure réseau au moment du tap déconnecte quand même l'utilisateur localement et purge tout son cache (messages/roster/notifications, voir `LocalDataPurger`), sans que le serveur en soit informé — désynchronisation silencieuse. Plus grave pour « Supprimer le compte » : si l'appel `deleteaccount` échoue côté serveur (le compte N'EST PAS réellement supprimé), l'utilisateur est quand même éjecté vers l'écran de connexion avec tout son cache local effacé, sans AUCUN message d'erreur — il croit son compte supprimé alors qu'il existe toujours côté serveur, avec risque de confusion majeure (tentative de reconnexion sur un compte qu'il pense supprimé, ou inversement absence de retry alors que la suppression n'a jamais eu lieu).
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Remplacer `try?` par `do/catch` : n'exécuter `LocalDataPurger.purgeAll()`/`UserSession.shared.clear()`/`.userDidLogout` que dans la branche succès, et afficher une erreur explicite (garder l'utilisateur connecté) dans la branche catch, fidèle à `onErrorResponse` d'Android.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B V5, Lot P0-7 — dernier P0 du backlog) — Vérifié
+directement : `transportDataBackground.java:90-116` confirme que la purge/navigation ne survient
+QUE dans `onResponse`, jamais `onErrorResponse` (qui ne fait que `dialog.dismiss()`, aucun texte
+d'erreur pour ces 2 cas précis, contrairement à `"Logout1"`).
+
+**DOUBLON CONFIRMÉ avec V5-F-005** (P1, domaine "Session / Déconnexion / Gestion d'erreur réseau")
+— même code exact (`SettingSubViews.swift:35-61`), même citation Android, même cause, même
+recommandation, trouvé indépendamment par 2 agents différents de la Phase A. Corrigé UNE SEULE FOIS
+ici sous cet ID (le P0) ; V5-F-005 sera marqué `DUPLICATE` sans modification de code supplémentaire
+lorsque le backlog P1 l'atteindra.
+
+Correctif : `try?` → `do/catch` dans `logout()`/`deleteAccount()`, purge/déconnexion locale limitée
+à la branche succès. Ajout d'un message d'erreur minimal (`.alert`) — écart volontaire mineur par
+rapport à Android (qui n'affiche AUCUN texte pour ces 2 cas), documenté explicitement : la garde
+essentielle reste fidèle, seul l'ajout d'un message diverge, au bénéfice de l'utilisateur.
+
+**Flux frères vérifiés** : `grep "ProfileRepository.shared.logout\|ProfileRepository.shared.
+deleteAccount"` → exactement 2 sites d'appel dans tout le projet, tous deux dans
+`SettingAccountView`, tous deux corrigés.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Settings/SettingSubViews.swift`.
+
+**Résultat CI** : commit `dd67146`, push confirmé (`7df099a..dd67146 main -> main`), run
+`32894676015` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : couper le réseau puis tenter une déconnexion ET
+une suppression de compte, confirmer qu'aucune purge locale ne se produit et qu'un message
+d'erreur s'affiche dans les deux cas.
 ```
+
+---
+
+# BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7 findings)
+
+Répartition finale : 7 `BUILD_VALIDATED` — V5-F-094 (export MP4 Animems), V5-F-018 (chat scroll +
+cascade pagination), V5-F-031 (rewardedCoins), V5-F-032 (retrait/transfert/conversion), V5-F-042
+(verrouillage timeline Animems), V5-F-045 (clé JSON commentaire), V5-F-064 (logout/suppression de
+compte, doublon de V5-F-005 résolu en même temps). Aucun `BLOQUÉ`, aucun `DIFFÉRÉ` — tous les P0
+étaient de vraies divergences fonctionnelles corrigeables sans dépendance externe. Aucun
+`COMPLETE_PARITY_VALIDATED` — conforme à la règle stricte du cycle.
+
+Backlog P1 (40 findings) démarré immédiatement après, sans confirmation utilisateur
+supplémentaire, conformément à l'instruction explicite de continuation automatique.
+
+---
 
 ```
 ID : V5-F-065

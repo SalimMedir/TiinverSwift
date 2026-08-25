@@ -11,30 +11,19 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos, **cycle V4 ENTIÈREMENT CLOS (75/75 findings)**,
 **cycle V5 EN COURS** : Phase A [69 findings] + Phase A.2 contre-audit ciblé [30 findings
-supplémentaires, V5-F-070 à V5-F-099] TERMINÉES, **99 findings au total**, Phase B DÉMARRÉE —
-backlog P0 EN COURS [5/7 clos : **Lot P0-1 : V5-F-094 BUILD_VALIDATED** (export MP4 Animems
-bloqué indéfiniment — `AnimemesExporter` variable locale désallouée par ARC avant l'exécution de
-son callback async, corrigé via une propriété stockée forte `activeExporter`) ; **Lot P0-2 :
-V5-F-018 BUILD_VALIDATED** (chat ouvert sur les messages les plus ANCIENS au lieu des plus récents,
-+ cascade de pagination runaway au chargement — `ChatView.messageList` sans `ScrollViewReader`,
-corrigé en scrollant vers `items.last?.id`, signal qui ne se déclenche jamais pendant la
-pagination puisque `loadMore()` insère exclusivement en tête de liste) ; **Lot P0-3 : V5-F-031
-BUILD_VALIDATED** (Wallet `rewardedCoins` — un rejet applicatif serveur, HTTP 200 avec
-`error≠"false"`, était traité comme un succès, `pendingCoinsAmount` remis à 0 à tort, gain perdu
-en silence — `WalletRepository.creditReward` vérifiait uniquement le status HTTP, jamais le champ
-`error`, corrigé par `guard isBackendSuccess else { throw }`, vérifié financièrement DEUX FOIS) ;
-**Lot P0-4 : V5-F-032 BUILD_VALIDATED** (même classe de bug appliquée aux 4 méthodes
-`submitWithdrawalRequest`/`submitWithdrawalByCrypto`/`convert`/`transferCoins` — un rejet serveur
-[ex. `WITHDRAWAL_THRESHOLD_EXCEEDED`] affichait un faux succès, et pour le transfert P2P le solde
-local était même décrémenté sans qu'aucune pièce n'ait quitté le compte serveur ; vérifié
-financièrement DEUX FOIS, correctif entièrement contenu au repository) ; **Lot P0-5 : V5-F-042
-BUILD_VALIDATED** (Animems Timeline — le verrouillage d'une piste ne bloquait pas le glisser/
-redimensionnement du bloc ; `resolveMode` ne lisait jamais `item.locked` — corrigé par un nouveau
-cas `DragMode.lockedTap(id:)` dédié plutôt que la réutilisation de `.pan` suggérée par l'audit
-[qui aurait désélectionné l'item et fait défiler la timeline, 2 régressions vérifiées et évitées])]
-— reste à traiter dans
-l'ordre du document : V5-F-045, V5-F-064 [2 P0], puis 40 P1, 31 P2,
-21 P3. Voir section "Cycle V5" plus bas pour le détail complet.)
+supplémentaires, V5-F-070 à V5-F-099] TERMINÉES, **99 findings au total**, Phase B EN COURS —
+**BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7, tous BUILD_VALIDATED)** : Lot P0-1 V5-F-094 (export MP4
+Animems bloqué indéfiniment, `AnimemesExporter` variable locale désallouée par ARC, corrigé via
+`activeExporter` propriété stockée) ; Lot P0-2 V5-F-018 (chat ouvert sur messages anciens +
+cascade pagination runaway, `ScrollViewReader` + scroll sur `items.last?.id`) ; Lot P0-3 V5-F-031
+(Wallet `rewardedCoins`, rejet serveur traité comme succès, `guard isBackendSuccess else throw`,
+vérifié financièrement 2×) ; Lot P0-4 V5-F-032 (même classe sur retrait/crypto/conversion/
+transfert, 4 méthodes corrigées, vérifié financièrement 2×) ; Lot P0-5 V5-F-042 (Animems Timeline,
+verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6 V5-F-045
+(commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
+de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
+même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
+findings) DÉMARRÉ**, premier : V5-F-001. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -164,21 +153,54 @@ directement) était déjà fidèle, pas de bug sœur. **Commit `76da082`, CI ver
 verrouiller une piste, confirmer sélection possible mais glisser/redimensionner bloqués). Détail
 complet dans `PROGRESS_V5.md`, Lot P0-5.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur le prochain P0 dans l'ordre du
-document : **V5-F-045** (Commentaires : envoi d'un commentaire/réponse envoie un mauvais nom de
-paramètre JSON au serveur — Android [`MyBottomSheetDialogFragment.java:498`] envoie
-`map.put("comment", data.getCommentText())`, la clé réseau est `"comment"`, jamais `"commentText"`
-[confirmé : `commentText` est seulement un nom de champ Java interne] ; iOS
-[`CommentRepository.swift:54`] envoie `"commentText": text` — déjà vérifié Android en détail,
-correctif trivial : renommer la clé du dictionnaire `params` de `"commentText"` à `"comment"`,
-aucun site frère trouvé [`grep "commentText"` ne remonte que ce site + des attributs Core Data
-locaux sans rapport]), puis continuer AUTOMATIQUEMENT V5-F-064 (1 P0 restant après V5-F-045), puis
-tous les P1 (40), P2 (31), P3 (21) dans l'ordre du document, SANS s'arrêter entre les lots
-(instruction
-explicite de l'utilisateur), en respectant à chaque fois : preuve Android vérifiée personnellement
-→ code Swift vérifié → chaîne complète tracée (UI → State/ViewModel → Repository/API/Socket →
-réponse → rendu, des deux côtés) → correction minimale → diff revu → commit → push → CI → attente
-OBLIGATOIRE du résultat → mise à jour des 3 documents (`MIGRATION_PARITY_AUDIT_V5.md`,
+**Lot P0-6 traité (V5-F-045)** — Commentaires, mauvaise clé JSON. Vérifié
+`MyBottomSheetDialogFragment.java:498` : `map.put("comment", data.getCommentText())`, clé réseau
+`"comment"`. `CommentRepository.post` envoyait `"commentText"`. Renommage trivial de la clé. Aucun
+site frère (`grep "commentText"` ne remonte que ce site + des attributs Core Data locaux sans
+rapport). **Commit `7df099a`, CI verte confirmée (run `32893884706`)** — `BUILD_VALIDATED`. Détail
+complet dans `PROGRESS_V5.md`, Lot P0-6.
+
+**Lot P0-7 traité (V5-F-064) — dernier P0 du backlog** — Settings, logout/suppression de compte
+purgeaient les données locales même sur échec réseau. Vérifié `transportDataBackground.java:
+90-116` : purge/navigation QUE dans `onResponse`, `onErrorResponse` pour "logout"/"deleteaccount"
+ne fait que `dialog.dismiss()` (Android n'affiche même aucun texte d'erreur pour ces 2 cas
+précis). **DOUBLON CONFIRMÉ avec V5-F-005** (même code exact, même citation Android, trouvé
+indépendamment par 2 agents Phase A) — corrigé UNE SEULE FOIS ici ; V5-F-005 sera marqué
+`DUPLICATE` sans re-corriger quand le P1 l'atteindra. Correctif : `try?` → `do/catch` dans
+`logout()`/`deleteAccount()`, purge limitée à la branche succès, + `.alert` minimal (écart
+volontaire mineur documenté, Android n'affiche rien du tout pour ces 2 cas). **Commit `dd67146`,
+CI verte confirmée (run `32894676015`)** — `BUILD_VALIDATED`. Détail complet dans `PROGRESS_V5.md`,
+Lot P0-7.
+
+## **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7 findings, tous BUILD_VALIDATED)**
+
+V5-F-094, V5-F-018, V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064. Aucun `BLOQUÉ`, aucun
+`DIFFÉRÉ` — tous étaient de vraies divergences corrigeables sans dépendance externe. Aucun
+`COMPLETE_PARITY_VALIDATED`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur le backlog P1 (40 findings),
+premier dans l'ordre du document : **V5-F-001** (Architecture/navigation — écran d'appel
+[`CallView`] accessible uniquement depuis la conversation d'origine, pas globalement : Android
+[`AndroidManifest.xml:347-353`, `CallService.java:571-617`] lance `CallActivity`/
+`IncomingCallActivity` depuis un Service via `FLAG_ACTIVITY_NEW_TASK`, TOUJOURS atteignable
+pendant un appel quel que soit l'écran affiché ; iOS [`ChatView.swift:70-72`] présente `CallView`
+via un `.fullScreenCover` LOCAL à `ChatView` — si l'utilisateur n'est pas précisément sur le
+ChatView de la conversation en cours d'appel [autre onglet, autre conversation, app relancée en
+arrière-plan après réponse CallKit depuis l'écran verrouillé], aucun contrôle muet/haut-parleur/
+raccrocher n'est disponible ; grep confirmé : `HomeShellView`/`RootRouterView` n'observent
+`CallCoordinator.shared.state` nulle part — recommandation de l'audit : déplacer le
+`.fullScreenCover` vers `HomeShellView`/`RootRouterView`, qui restent montés quel que soit l'écran
+affiché), puis continuer AUTOMATIQUEMENT V5-F-005 (marquer `DUPLICATE` de V5-F-064, déjà corrigé —
+ne PAS re-corriger), V5-F-006, V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019,
+V5-F-020, V5-F-021, V5-F-022, V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037,
+V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063,
+V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085,
+V5-F-089, V5-F-095, V5-F-097, V5-F-098 (39 P1 restants après V5-F-001, dans l'ordre exact du
+document), puis tous les P2 (31), P3 (21), SANS s'arrêter entre les lots (instruction explicite de
+l'utilisateur), en respectant à chaque fois : preuve Android vérifiée personnellement → code Swift
+vérifié → chaîne complète tracée (UI → State/ViewModel → Repository/API/Socket → réponse → rendu,
+des deux côtés) → correction minimale → diff revu → commit → push → CI → attente OBLIGATOIRE du
+résultat → mise à jour des 3 documents (`MIGRATION_PARITY_AUDIT_V5.md`,
 `MIGRATION_PARITY_PROGRESS_V5.md`, `CLAUDE_CONTINUATION.md`) → finding suivant. Attention
 particulière aux domaines Animems (chaîne complète UI→gesture→State→Transform→Timeline→
 Keyframes→Renderer→Playback→Export→Audio→Import), Socket.IO/Chat (reconnexion, doublons, ordre,

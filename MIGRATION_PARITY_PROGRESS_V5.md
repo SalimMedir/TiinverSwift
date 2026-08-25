@@ -3,10 +3,10 @@
 Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 
 **État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
-Phase B (correction) DÉMARRÉE — backlog P0 EN COURS (2/7 clos : V5-F-094, V5-F-018). Ordre imposé
-par l'utilisateur : V5-F-094 en premier (priorité absolue explicite), puis les 6 autres P0 dans
-l'ordre du document (V5-F-018 ✓, V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064), puis
-automatiquement les 40 P1, 31 P2, 21 P3.**
+Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
+V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
+temps). Backlog P1 (40 findings) EN COURS, démarré automatiquement à V5-F-001, dans l'ordre du
+document. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -282,6 +282,101 @@ directe sur le CANEVAS (distinct de la timeline) et confirmé sa garde de verrou
 **Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
 `COMPLETE_PARITY_VALIDATED` — test réel requis : verrouiller une piste, confirmer sélection
 possible mais glisser/redimensionner bloqués, et absence de défilement de la timeline.
+
+## 2026-08-24 — Phase B V5 — Lot P0-6 : V5-F-045 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `MyBottomSheetDialogFragment.java:498` — `map.put("comment", data.getCommentText())`,
+la clé réseau est `"comment"`. `"commentText"` n'est qu'un nom de champ Java interne
+(`CommentModel.commentText`), jamais sérialisé tel quel — distinct de `"comment_text"`
+(snake_case), la clé lue par `NotificationRepository.java:176` sur un endpoint différent.
+
+**iOS avant correctif** : `CommentRepository.post` envoyait `"commentText": text` au lieu de
+`"comment"` — risque réel que le texte du commentaire arrive vide/absent côté serveur, sans
+qu'aucune erreur ne soit levée (seul `isBackendSuccess` est vérifié, pas le contenu retourné).
+
+### Correctif appliqué
+
+Renommage trivial de la clé du dictionnaire `params` : `"commentText"` → `"comment"`.
+
+### Flux frères vérifiés
+
+`grep "commentText"` → un seul site réseau concerné ; les 3 autres occurrences sont des attributs
+Core Data locaux (noms de champ de stockage), sans rapport avec le protocole réseau.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/CommentRepository.swift`.
+
+**Résultat CI** : commit `7df099a`, push confirmé (`2515367..7df099a main -> main`), run
+`32893884706` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : poster un commentaire et une réponse depuis iOS,
+confirmer via le backend que le texte est bien enregistré.
+
+## 2026-08-24 — Phase B V5 — Lot P0-7 : V5-F-064 (BUILD_VALIDATED) — dernier P0 du backlog
+
+### Vérification
+
+**Android** : `transportDataBackground.java:90-116` — la purge des préférences locales (profil/id/
+username) et le retour à l'écran de connexion ne surviennent QUE dans `onResponse` (succès réseau
+confirmé), pour `method="logout"` ET `"deleteaccount"` (routés vers la même méthode
+`deleteaccount()`). `onErrorResponse` pour ces 2 cas ne fait QUE `dialog.dismiss()` — noté :
+Android n'affiche même AUCUN texte d'erreur pour ces 2 cas précis (contrairement à `"Logout1"` qui
+montre un Toast "NoConnect") — juste la fermeture silencieuse du dialogue de progression, session
+locale intacte.
+
+**iOS avant correctif** : `try?` sur `ProfileRepository.shared.logout`/`deleteAccount` avalait
+silencieusement toute erreur réseau, laissant `LocalDataPurger.purgeAll()`/
+`UserSession.shared.clear()`/`.userDidLogout` s'exécuter INCONDITIONNELLEMENT — pour la
+suppression de compte en particulier, un échec réseau signifiait que le compte N'ÉTAIT PAS
+supprimé côté serveur, mais que tout le cache local ET la session étaient quand même détruits,
+éjectant l'utilisateur vers l'écran de connexion en lui faisant croire son compte supprimé.
+
+**Doublon confirmé** : ce finding est IDENTIQUE à **V5-F-005** (même code exact,
+`SettingSubViews.swift:35-61`, même citation Android, même cause, même recommandation) — trouvé
+indépendamment par 2 agents différents de la Phase A (domaines "Session" et "Gestion d'erreur
+transversale"). Corrigé UNE SEULE FOIS ici (V5-F-064, le P0) ; V5-F-005 sera marqué `DUPLICATE`
+sans modification de code lorsque le backlog P1 l'atteindra.
+
+### Correctif appliqué
+
+`try?` remplacé par `do/catch` dans `logout()` et `deleteAccount()` : la purge/déconnexion locale
+ne s'exécute plus que dans la branche succès. Ajout d'un `@State private var errorMessage: String?`
++ `.alert` pour donner un minimum de retour utilisateur sur l'échec — écart volontaire mineur par
+rapport à Android (qui n'affiche AUCUN texte pour ces 2 cas précis, juste `dialog.dismiss()`),
+documenté explicitement : la garde essentielle (pas de purge tant que le serveur n'a pas confirmé)
+reste fidèle, seul l'ajout d'un message minimal diverge, au bénéfice de l'utilisateur (éviter qu'un
+tap sans effet visible ne semble être un bug côté iOS).
+
+### Flux frères vérifiés
+
+`grep "ProfileRepository.shared.logout\|ProfileRepository.shared.deleteAccount"` → exactement 2
+sites d'appel dans tout le projet, tous deux dans `SettingAccountView`, tous deux corrigés.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Settings/SettingSubViews.swift`.
+
+**Résultat CI** : commit `dd67146`, push confirmé (`7df099a..dd67146 main -> main`), run
+`32894676015` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : couper le réseau puis tenter une déconnexion ET
+une suppression de compte, confirmer dans les deux cas qu'aucune purge locale ne se produit, que
+l'utilisateur reste connecté, et qu'un message d'erreur s'affiche.
+
+---
+
+# BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7 findings)
+
+Répartition finale : 7 `BUILD_VALIDATED` — V5-F-094 (export MP4 Animems), V5-F-018 (chat scroll +
+cascade pagination), V5-F-031 (rewardedCoins), V5-F-032 (retrait/transfert/conversion), V5-F-042
+(verrouillage timeline Animems), V5-F-045 (clé JSON commentaire), V5-F-064 (logout/suppression
+compte, doublon de V5-F-005 résolu en même temps). Aucun `BLOQUÉ`, aucun `DIFFÉRÉ` — tous les P0
+étaient de vraies divergences fonctionnelles corrigeables sans dépendance externe. Aucun
+`COMPLETE_PARITY_VALIDATED` — conforme à la règle stricte du cycle.
+
+Backlog P1 (40 findings) démarré immédiatement après, sans confirmation utilisateur
+supplémentaire, conformément à l'instruction explicite de continuation automatique.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

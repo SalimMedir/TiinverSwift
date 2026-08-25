@@ -9,29 +9,92 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-24 — cycle V3 clos [backlog P2/P3 épuisé], cycle V4 Phase A terminée,
-Phase B V4 : backlog P0 épuisé, LISTE P1 IMPOSÉE ENTIÈREMENT TRAITÉE [22 corrigés BUILD_VALIDATED
-+ V4-F-003 BLOQUÉ], **backlog P2 EN COURS** [Lot P2-1 : V4-F-004 BLOQUÉ, V4-F-006 différé,
-V4-F-009/010/011 BUILD_VALIDATED ; Lot P2-2 : V4-F-012 BUILD_VALIDATED ; Lot P2-3 : V4-F-014
-BUILD_VALIDATED ; Lot P2-4 : V4-F-022 BUILD_VALIDATED ; Lot P2-5 : V4-F-025 BUILD_VALIDATED ;
-Lot P2-6 : V4-F-028 BUILD_VALIDATED ; Lot P2-7 : V4-F-031 différé (hors périmètre) ; Lot P2-8 :
-V4-F-035 BUILD_VALIDATED ; Lot P2-9 : V4-F-039 BUILD_VALIDATED ; Lot P2-10 : V4-F-041
-BUILD_VALIDATED ; Lot P2-11 : V4-F-043 BUILD_VALIDATED ; Lot P2-12 : V4-F-047 BUILD_VALIDATED ;
-Lot P2-13 : V4-F-051 BUILD_VALIDATED ; Lot P2-14 : V4-F-052 BUILD_VALIDATED ; Lot P2-15 :
-V4-F-057 BUILD_VALIDATED ; Lot P2-16 : V4-F-058 BUILD_VALIDATED ; Lot P2-17 : V4-F-060 différé +
-V4-F-061 BUILD_VALIDATED ; Lot P2-18 : V4-F-067 BUILD_VALIDATED ; Lot P2-19 : V4-F-069 +
-V4-F-074 BUILD_VALIDATED ; Lot P2-20 : V4-F-070 différé] — **BACKLOG P2 ENTIÈREMENT TRAITÉ
-(27/27)**, **BACKLOG P3 ENTIÈREMENT TRAITÉ (21/21)** [Lot P3-1 : V4-F-005 BUILD_VALIDATED ; Lot
-P3-2 : V4-F-016 IOS_INTENTIONAL_DIFFERENCE ; Lot P3-3 : V4-F-013 + V4-F-015 BUILD_VALIDATED ; Lot
-P3-4 : V4-F-018 différé ; Lot P3-5 : V4-F-026 différé ; Lot P3-6 : V4-F-023 + V4-F-024 + V4-F-034
-BUILD_VALIDATED ; Lot P3-7 : V4-F-036 BUILD_VALIDATED + V4-F-037 différé ; Lot P3-8 : V4-F-044 +
-V4-F-045 différés ; Lot P3-9 : V4-F-053 + V4-F-055 BUILD_VALIDATED + V4-F-054
-IOS_INTENTIONAL_DIFFERENCE ; Lot P3-10 : V4-F-062 BUILD_VALIDATED + V4-F-063 différé ; Lot P3-11 :
-V4-F-071 + V4-F-072 BUILD_VALIDATED ; Lot P3-12 : V4-F-075 IOS_INTENTIONAL_DIFFERENCE] —
-**AUDIT V4 ENTIER (P0+P1+P2+P3, 75/75 findings) ENTIÈREMENT TRAITÉ**)
+# CURRENT HANDOFF (2026-08-24 — cycle V3 clos, **cycle V4 ENTIÈREMENT CLOS (75/75 findings)**,
+**cycle V5 EN COURS** : Phase A [69 findings] + Phase A.2 contre-audit ciblé [30 findings
+supplémentaires, V5-F-070 à V5-F-099] TERMINÉES, **99 findings au total**, Phase B DÉMARRÉE —
+backlog P0 EN COURS [1/7 clos : **Lot P0-1 : V5-F-094 BUILD_VALIDATED** (export MP4 Animems
+bloqué indéfiniment — `AnimemesExporter` variable locale désallouée par ARC avant l'exécution de
+son callback async, corrigé via une propriété stockée forte `activeExporter`)] — reste à traiter
+dans l'ordre du document : V5-F-018, V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 [6 P0], puis
+40 P1, 31 P2, 21 P3. Voir section "Cycle V5" plus bas pour le détail complet.)
+
+**Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
+BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
+(21/21, 12 BUILD_VALIDATED + 9 différés/IOS_INTENTIONAL_DIFFERENCE). Détail lot par lot dans
+`MIGRATION_PARITY_PROGRESS_V4.md`. **AUCUN `COMPLETE_PARITY_VALIDATED`** sur l'ensemble du cycle —
+device-test toujours requis pour chaque correctif `BUILD_VALIDATED`.
 
 **⚠️ Les entrées "suite 2" à "suite 5" ci-dessous (toutes datées 2026-08-17) sont PÉRIMÉES.**
 Conservées pour l'historique GAP-020 à GAP-023 uniquement — ne pas s'y fier pour l'état actuel.
+
+## Cycle V5 — NOUVEAU (2026-08-24)
+
+**Phase A (Audit) TERMINÉE** : `MIGRATION_PARITY_AUDIT_V5.md` §0-§2 contiennent 69 findings
+(V5-F-001 à V5-F-069, 7 P0/29 P1/22 P2/12 P3 à l'origine), produits par 23 agents de recherche
+indépendants (un par domaine fonctionnel) + 1 agent critique de complétude qui a identifié des
+domaines probablement sous-creusés (Socket.IO, Chat, pipeline média BunnyCDN, Photo Editor,
+Animems Canvas) et des patterns de bug systématiquement sous-cherchés (double action/idempotence,
+mémoire/concurrence, lifecycle). Aucun agent n'a lu les audits V1-V4 avant de produire ses
+findings. Commit `ec6eee9`. **AUCUN code modifié pendant la Phase A.**
+
+**Phase A.2 (Contre-audit ciblé) TERMINÉE** : demandée explicitement par l'utilisateur pour
+vérifier les zones signalées sous-creusées par l'agent critique. 12 agents indépendants (Socket.IO,
+Chat-messages, Media-avatar, Media-feed/post, Media-chat, Media-Animems, Photo-Editor,
+Animems-canvas, Animems-extra[playback/audio/perf], Idempotence, Mémoire/concurrence, Lifecycle),
+chacun recevant la liste des findings V5 déjà connus dans son périmètre pour confirmer plutôt que
+dupliquer. **30 nouveaux findings** (V5-F-070 à V5-F-099, voir section "PHASE A.2" en fin d'audit)
++ **12 findings Phase A reconfirmés indépendamment** (§A.2.2, non recréés). Découverte la plus
+critique : V5-F-094 (P0, export MP4 Animems totalement cassé). Commit `a85063a`. **AUCUN code
+modifié pendant la Phase A.2.**
+
+**Total combiné : 99 findings (7 P0, 40 P1, 31 P2, 21 P3)**, détail complet dans
+`MIGRATION_PARITY_AUDIT_V5.md`, journal lot par lot dans `MIGRATION_PARITY_PROGRESS_V5.md`.
+
+**Phase B (Correction) DÉMARRÉE (2026-08-24)** — ordre imposé par l'utilisateur : V5-F-094 en
+PREMIER (priorité absolue explicite, malgré son rang naturel de dernier P0 dans le document), puis
+les 6 autres P0 dans l'ordre du document, puis automatiquement tous les P1, P2, P3 sans s'arrêter
+entre les lots. Règle stricte : CI verte + documentation des 3 fichiers avant de passer au finding
+suivant, jamais `COMPLETE_PARITY_VALIDATED` sans test réel sur device.
+
+**Lot P0-1 traité (V5-F-094)** — Animems, export MP4 totalement non fonctionnel pour tout contenu
+animé. Cause confirmée par lecture complète d'`AnimemesExporter.swift` (227 lignes) + du site
+d'appel `AnimemesEditorState.export(canvasSize:completion:)` : `exporter` était une variable
+purement LOCALE ; `AnimemesExporter.export(to:completion:)` enregistre son pipeline vidéo via
+`videoInput.requestMediaDataWhenReady` (callback ASYNCHRONE rappelé plus tard sur une autre file)
+puis retourne immédiatement — `AnimemesEditorState.export(...)` retourne lui aussi aussitôt après,
+donc plus rien ne retenait `exporter` : ARC le désallouait avant le premier rappel du callback, dont
+la capture `[weak self]` retrouvait `self == nil` systématiquement — aucune frame écrite,
+`completion` jamais invoquée, `isExporting` bloqué à `true` indéfiniment, aucune erreur visible.
+Confirmé côté Android : `AnimemesCompound.java:259,3317` (`MP4Encoder encoder`, champ persistant de
+la vue pour toute la durée de l'encodage). Correctif MINIMAL et fidèle : nouvelle propriété stockée
+forte `AnimemesEditorState.activeExporter: AnimemesExporter?`, assignée avant l'appel à
+`export(to:completion:)`, remise à `nil` dans la completion (succès ET échec) — diff strictement
+additif (1 propriété + 2 lignes), `exportStaticImage` (chemin synchrone séparé) intégralement
+inchangé. Toutes les garanties demandées explicitement par l'utilisateur vérifiées (export image
+inchangé, export MP4 fonctionnel, toutes les frames écrites, completion toujours appelée,
+`isExporting` toujours réinitialisé, erreur correctement propagée, aucune régression). **Commit
+`f5b7fbd`, CI verte confirmée (run `32888135380`)** — `BUILD_VALIDATED`, PAS
+`COMPLETE_PARITY_VALIDATED` (test réel requis : ajouter un calque animé, exporter, confirmer un MP4
+valide produit avec frames+son, spinner qui disparaît bien, erreur affichée sur échec simulé).
+Détail complet dans `PROGRESS_V5.md`, Lot P0-1.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur le prochain P0 dans l'ordre du
+document : **V5-F-018** (Écran de conversation — liste de messages / défilement : positionnement
+initial et auto-scroll vers le bas de la liste de messages cassé — voir `MIGRATION_PARITY_AUDIT_V5.
+md` pour la citation Android/iOS complète), puis continuer AUTOMATIQUEMENT V5-F-031, V5-F-032,
+V5-F-042, V5-F-045, V5-F-064 (5 P0 restants après V5-F-018), puis tous les P1 (40), P2 (31), P3
+(21) dans l'ordre du document, SANS s'arrêter entre les lots (instruction explicite de
+l'utilisateur), en respectant à chaque fois : preuve Android vérifiée personnellement → code Swift
+vérifié → chaîne complète tracée (UI → State/ViewModel → Repository/API/Socket → réponse → rendu,
+des deux côtés) → correction minimale → diff revu → commit → push → CI → attente OBLIGATOIRE du
+résultat → mise à jour des 3 documents (`MIGRATION_PARITY_AUDIT_V5.md`,
+`MIGRATION_PARITY_PROGRESS_V5.md`, `CLAUDE_CONTINUATION.md`) → finding suivant. Attention
+particulière aux domaines Animems (chaîne complète UI→gesture→State→Transform→Timeline→
+Keyframes→Renderer→Playback→Export→Audio→Import), Socket.IO/Chat (reconnexion, doublons, ordre,
+pagination), BunnyCDN/médias (sélection→préparation→upload→URL→backend→cache→affichage), et Wallet
+(vérification financière double : paramètres envoyés, delta, solde, réponse serveur, rollback UI,
+idempotence). Repo Android source de vérité :
+`C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ## Cycle V3 (CLOS pour ce cycle — voir `MIGRATION_PARITY_AUDIT_V3.md`/`PROGRESS_V3.md`)
 

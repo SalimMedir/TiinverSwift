@@ -1879,6 +1879,60 @@ IMPACT : Toute tentative d'export d'une animation (calque animé présent, `hasA
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Faire de `exporter` une propriété stockée (forte) de `AnimemesEditorState` (ex. `private var activeExporter: AnimemesExporter?`) assignée avant l'appel à `export(to:completion:)` et libérée seulement dans le `completion` (succès ou échec) — garantissant que l'instance survit à toute la durée réelle de l'écriture asynchrone. Alternativement, retirer `[weak self]` et gérer explicitement l'annulation (ex. flag `isCancelled` vérifié dans la boucle) si l'objectif était d'éviter un retain cycle.
 CONTRE-AUDIT : trouvé par l'agent "Animems — playback/audio/performance" (Phase A.2, 2026-08-24)
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B V5, Lot P0-1) — Cause confirmée indépendamment par
+lecture complète d'`AnimemesExporter.swift` (227 lignes) ET du site d'appel
+`AnimemesEditorState.export(canvasSize:completion:)` : `let exporter = AnimemesExporter(...)` est
+bien une variable purement locale, aucune propriété stockée ni référence externe ne la retient.
+`AnimemesExporter.export(to:completion:)` retourne immédiatement après avoir enregistré
+`videoInput.requestMediaDataWhenReady(on:using:)` (callback asynchrone, rappelé plus tard sur
+`videoQueue`) — entre ce retour et le premier rappel, `AnimemesEditorState.export(...)` est lui
+aussi déjà retourné (synchrone), donc plus rien ne retient `exporter` : ARC le désalloue, et la
+capture `[weak self]` à l'intérieur du callback retrouve `self == nil` à chaque invocation
+ultérieure — confirmé qu'aucune frame n'était donc jamais rendue/écrite et que `completion`
+n'était jamais invoquée. Vérifié côté Android : `AnimemesCompound.java:259` (`MP4Encoder encoder;`,
+champ de la vue) et `:3317` (`encoder = new MP4Encoder();`), retenu pour toute la durée de
+l'encodage tant que la vue existe — confirme le diagnostic de cause.
+
+Correctif MINIMAL et fidèle à la RECOMMANDATION : `AnimemesEditorState.activeExporter` (nouvelle
+propriété stockée forte `private var activeExporter: AnimemesExporter?`), assignée juste avant
+`exporter.export(to:completion:)`, remise à `nil` dans la completion (succès ET échec, avant le
+`switch`). Aucune autre modification — `exportStaticImage` (chemin synchrone séparé, export
+d'image statique) intégralement inchangé ; `isExporting`/`exportError` inchangés dans leur
+sémantique, seulement désormais réellement atteints puisque la completion s'exécute enfin.
+
+Garanties demandées par l'utilisateur, toutes vérifiées par relecture du diff final :
+- export image inchangé : `exportStaticImage` non touché.
+- export MP4 fonctionnel : le pipeline complet (frames vidéo → piste audio optionnelle →
+  `writer.finishWriting`) peut désormais s'exécuter jusqu'au bout, `self` restant valide tout du
+  long.
+- toutes les frames écrites : la boucle `while videoInput.isReadyForMoreMediaData` n'est plus
+  interrompue prématurément par un `self` nil.
+- completion toujours appelée : les 3 points de sortie (`writer.finishWriting` cas frames vides,
+  `beginAudioPass`, échec `cannotCreatePixelBuffer`) atteignent désormais réellement
+  `AnimemesEditorState`'s completion.
+- `isExporting` toujours réinitialisé : `self.isExporting = false` s'exécute désormais dans TOUS
+  les cas (succès et échec), plus jamais bloqué à `true`.
+- erreur correctement propagée : la branche `.failure` continue de positionner `exportError` et
+  d'appeler `completion(nil)`, désormais réellement atteinte.
+- aucune régression du pipeline existant : diff strictement additif (1 propriété + 2 lignes dans
+  `export`), aucune ligne de logique de rendu/écriture/audio modifiée.
+
+Un seul site de construction d'`AnimemesExporter` et 2 sites d'appel de `export(canvasSize:)` dans
+tout le projet (les 2 boutons "Exporter la vidéo" d'`AnimemesEditorView.swift`), tous deux passent
+par la même fonction corrigée — pas de site frère à corriger séparément.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorState.swift`.
+
+**Résultat CI** : commit `f5b7fbd`, push confirmé (`a85063a..f5b7fbd main -> main`), run
+`32888135380` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis (aucun accès Xcode/simulateur/device dans cet
+environnement) : ajouter un calque animé dans l'éditeur Animems, taper "Exporter la vidéo",
+confirmer qu'un fichier MP4 valide est produit (frames + son si une piste audio a été ajoutée),
+que le spinner d'export disparaît bien à la fin, et qu'un export raté (ex. simulé) affiche
+`exportError` plutôt que de rester bloqué indéfiniment.
 ```
 
 ```

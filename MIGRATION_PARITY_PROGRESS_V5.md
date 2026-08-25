@@ -3,8 +3,10 @@
 Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 
 **État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
-Phase B (correction) PAS ENCORE DÉMARRÉE — en attente d'instruction explicite de l'utilisateur
-avant toute modification de code.**
+Phase B (correction) DÉMARRÉE — backlog P0 EN COURS (1/7 clos : V5-F-094). Ordre imposé par
+l'utilisateur : V5-F-094 en premier (priorité absolue explicite), puis les 6 autres P0 dans l'ordre
+du document (V5-F-018, V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064), puis automatiquement les
+40 P1, 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -31,7 +33,7 @@ n'a pas été re-classé dans ce TOP 20), §2 pour le détail domaine par domain
 section "PHASE A.2" en fin de document pour le détail complet du contre-audit (findings, findings
 reconfirmés, couverture par domaine).
 
-**Découverte la plus critique du contre-audit** : V5-F-095 (P0, `FUNCTIONALLY_FAILED`) — l'export
+**Découverte la plus critique du contre-audit** : V5-F-094 (P0, `FUNCTIONALLY_FAILED`) — l'export
 vidéo MP4 d'Animems (fonctionnalité de sortie principale du module) est totalement non fonctionnel
 pour tout contenu animé : `AnimemesExporter` est capturé en `[weak self]` sur l'unique point
 d'entrée de son pipeline d'écriture asynchrone, mais rien ne retient l'instance en vie pendant
@@ -40,8 +42,64 @@ désalloué par ARC avant que la closure GCD ne s'exécute, donc `self` vaut `ni
 invocation, aucune frame n'est écrite, `completion`/`isExporting` ne se déclenchent jamais :
 l'export reste bloqué indéfiniment sans aucune erreur visible.
 
-Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`,
-uniquement lorsque l'utilisateur aura explicitement demandé le démarrage de la Phase B V5.
+## 2026-08-24 — Phase B V5 — Lot P0-1 : V5-F-094 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `AnimemesCompound.java:259` (`MP4Encoder encoder;`, champ de la vue) et `:3317`
+(`encoder = new MP4Encoder();`) — l'encodeur est un champ PERSISTANT de la vue, retenu pour toute
+la durée de l'encodage tant que la vue existe, utilisé aux lignes 2624-2654
+(`createVideosFromBitmap`).
+
+**iOS avant correctif** : `AnimemesEditorState.export(canvasSize:completion:)` créait `exporter`
+comme variable purement LOCALE. `AnimemesExporter.export(to:completion:)` enregistre son pipeline
+vidéo via `videoInput.requestMediaDataWhenReady(on:using:)` (callback ASYNCHRONE rappelé plus tard
+sur `videoQueue`) puis retourne immédiatement — `AnimemesEditorState.export(...)` retourne lui
+aussi aussitôt après. Plus rien ne retenait alors `exporter` : ARC le désallouait avant le premier
+rappel du callback, dont la capture `[weak self]` retrouvait systématiquement `self == nil` —
+aucune frame jamais écrite, `completion` jamais invoquée, `isExporting` bloqué à `true`
+indéfiniment, aucune erreur visible. Confirmé par lecture complète des 2 fichiers (227 lignes
+d'`AnimemesExporter.swift` + le site d'appel).
+
+### Correctif appliqué
+
+Nouvelle propriété stockée forte `AnimemesEditorState.activeExporter: AnimemesExporter?`,
+assignée juste avant `exporter.export(to:completion:)`, remise à `nil` dans la completion (succès
+ET échec) — fidèle au champ persistant `encoder` d'Android. Diff strictement additif (1 propriété
++ 2 lignes), aucune ligne de logique de rendu/écriture/audio touchée. `exportStaticImage` (chemin
+synchrone séparé pour l'export d'image statique) intégralement inchangé.
+
+### Garanties vérifiées (demandées explicitement par l'utilisateur)
+
+- Export image inchangé — `exportStaticImage` non touché.
+- Export MP4 fonctionnel — le pipeline complet peut désormais s'exécuter jusqu'au bout, `self`
+  restant valide tout du long.
+- Toutes les frames écrites — la boucle `while videoInput.isReadyForMoreMediaData` n'est plus
+  interrompue prématurément.
+- Completion toujours appelée — les 3 points de sortie du pipeline atteignent désormais
+  réellement la completion d'`AnimemesEditorState`.
+- `isExporting` toujours réinitialisé — `self.isExporting = false` s'exécute dans tous les cas.
+- Erreur correctement propagée — la branche `.failure` continue de positionner `exportError`.
+- Aucune régression du pipeline existant — diff strictement additif.
+
+### Flux frères vérifiés
+
+Un seul site de construction d'`AnimemesExporter` et 2 sites d'appel de `export(canvasSize:)` dans
+tout le projet (les 2 boutons "Exporter la vidéo" d'`AnimemesEditorView.swift`), tous deux passent
+par la même fonction corrigée.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorState.swift`.
+
+**Résultat CI** : commit `f5b7fbd`, push confirmé (`a85063a..f5b7fbd main -> main`), run
+`32888135380` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis (aucun accès Xcode/simulateur/device) : ajouter un
+calque animé, taper "Exporter la vidéo", confirmer qu'un MP4 valide est produit (frames + son si
+piste audio ajoutée), que le spinner disparaît à la fin, et qu'un export raté affiche `exportError`
+plutôt que de rester bloqué indéfiniment.
+
+Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :
 

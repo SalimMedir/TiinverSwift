@@ -312,6 +312,33 @@ CAUSE : Le portage a recréé `CallCoordinator`/`CallView` comme un couple orche
 IMPACT : Pendant un appel, si l'utilisateur (ou l'app relancée en arrière-plan par CallKit après réponse depuis l'écran verrouillé) n'est pas précisément sur le ChatView de la conversation en cours d'appel, aucun contrôle muet/haut-parleur/raccrocher propre à l'app n'est disponible — seul l'écran système CallKit initial (sonnerie) a été montré, sans équivalent d'écran d'appel actif ensuite. L'utilisateur peut se retrouver bloqué en communication sans moyen visible de raccrocher depuis l'interface de l'app.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Déplacer le `.fullScreenCover(isPresented: callCoordinator.state != .idle) { CallView(...) }` de `ChatView.swift` vers `HomeShellView.swift` (ou `RootRouterView.swift`, qui reste monté même avant authentification) afin qu'il soit atteignable depuis n'importe quel écran de l'app, fidèle à l'indépendance de CallActivity/IncomingCallActivity côté Android.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B V5, Lot P1-1) — Vérifié directement :
+`AndroidManifest.xml:347-353` confirme `CallActivity`/`IncomingCallActivity` comme Activities
+`exported` indépendantes ; `CallService.java:571-617` confirme leur lancement inconditionnel via
+`FLAG_ACTIVITY_NEW_TASK` depuis un Service, atteignables par-dessus n'importe quel écran.
+
+Correctif : `.fullScreenCover` déplacé de `ChatView.swift` vers `RootRouterView.swift` (choisi
+plutôt que `HomeShellView.swift` : un commentaire existant dans `RootRouterView.swift` confirme
+que `CallCoordinator.start()` peut déjà être actif AVANT authentification, donc seul
+`RootRouterView` — monté dans TOUS les états de l'app, y compris pré-authentification — garantit
+la disponibilité totale). L'alerte "Micro requis" reste dans `ChatView.swift` — elle est liée au
+bouton d'appel sortant qui vit sur cet écran précis, l'utilisateur y étant déjà lorsque le refus
+survient. `grep "CallView("` confirmé : un seul site de présentation dans tout le projet après le
+déplacement (pas de doublon introduit).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Navigation/RootRouterView.swift`,
+`Sources/TiinverSwift/Messagerie/ChatView.swift`.
+
+**Résultat CI** : commit `7c77d7b`, push confirmé (`a59e01b..7c77d7b main -> main`), run
+`32912327146` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis (device + backend d'appel fonctionnel) : démarrer
+un appel depuis une conversation, naviguer vers un autre onglet/écran, confirmer que `CallView`
+reste accessible/visible ; recevoir un appel via CallKit depuis l'écran verrouillé avec l'app en
+arrière-plan, confirmer l'accessibilité des contrôles muet/haut-parleur/raccrocher au retour dans
+l'app.
 ```
 
 ```
@@ -376,6 +403,16 @@ CAUSE : Le portage a remplacé le couple onResponse/onErrorListener d'Android pa
 IMPACT : Pour `deleteAccount()` en particulier : si la requête `deleteaccount` échoue (réseau instable, timeout 20s de l'APIClient), le compte N'EST PAS supprimé côté serveur (toutes les données y restent), mais côté iOS TOUT le cache local est quand même détruit : messages, roster, notifications, fil d'activités (Core Data) ET la session (apiKey Keychain, identifiants UserDefaults) — l'utilisateur est éjecté vers l'écran de connexion en croyant son compte supprimé, sans aucun message d'erreur (aucun texte d'erreur affiché dans `SettingAccountView`), alors que son compte existe toujours intact côté serveur et que son cache local vient d'être perdu pour rien. Pour `logout()`, impact moindre mais même divergence : une déconnexion échouée côté serveur reste malgré tout une déconnexion locale complète côté iOS, contrairement à Android qui ne change rien tant que le serveur n'a pas confirmé.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Ne déclencher `LocalDataPurger.purgeAll()` + `UserSession.shared.clear()` + `.userDidLogout` que si `ProfileRepository.shared.logout/deleteAccount` a RÉELLEMENT réussi (remplacer `try?` par un `do/catch` qui affiche une erreur à l'utilisateur et n'exécute PAS la purge en cas d'échec), à l'identique du branchement onResponse/onErrorListener d'Android.
+
+STATUT : DUPLICATE de V5-F-064 (2026-08-24, Phase B V5) — Code exact identique
+(`SettingSubViews.swift:35-61`), même citation Android (`transportDataBackground.java:90-116`),
+même cause, même recommandation : trouvé indépendamment par 2 agents distincts de la Phase A
+(domaines "Session" et "Gestion d'erreur transversale"). Déjà corrigé sous V5-F-064 (P0, traité en
+premier car priorité plus élevée) — commit `dd67146`, CI run `32894676015` conclusion `success`.
+Aucune modification de code supplémentaire ici, conformément à la règle « ne pas modifier le code
+inutilement » pour un finding déjà résolu par un autre commit. Voir `MIGRATION_PARITY_AUDIT_V5.md`
+(entrée V5-F-064) et `MIGRATION_PARITY_PROGRESS_V5.md` (Lot P0-7) pour le détail complet du
+correctif.
 ```
 
 ```

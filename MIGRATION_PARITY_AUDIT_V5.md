@@ -1,34 +1,41 @@
 # MIGRATION PARITY AUDIT V5
 
-Audit indépendant Android → iOS du portage Tiinver, Phase A (recherche uniquement,
-**aucune modification de code Swift pendant cette phase**). Réalisé par 24 agents de
-recherche indépendants répartis sur 23 domaines fonctionnels + 1 agent critique de
-complétude, sans lecture des audits V1/V2/V3/V4 par les agents eux-mêmes, pour maximiser
-les chances de trouver ce que ces cycles antérieurs ont manqué. Android reste la référence
-fonctionnelle : seuls les comportements Android réellement atteignables (pas de code mort,
-commenté, ou jamais invoqué) ont été considérés comme faisant foi.
+Audit indépendant Android → iOS du portage Tiinver. **Phase A** (recherche uniquement,
+**aucune modification de code Swift**) : 24 agents de recherche indépendants répartis sur 23
+domaines fonctionnels + 1 agent critique de complétude, sans lecture des audits V1/V2/V3/V4 par
+les agents eux-mêmes, pour maximiser les chances de trouver ce que ces cycles antérieurs ont
+manqué. **Phase A.2** (contre-audit ciblé, voir section dédiée en fin de document) : 12 agents
+supplémentaires ont creusé en profondeur les domaines que l'agent critique de la Phase A avait
+signalés comme sous-explorés (Socket.IO, Chat, pipeline média BunnyCDN, Photo Editor, Animems
+Canvas) ainsi que 3 patterns de bug transversaux (double action/idempotence, mémoire/concurrence,
+lifecycle). Android reste la référence fonctionnelle dans les deux phases : seuls les
+comportements Android réellement atteignables (pas de code mort, commenté, ou jamais invoqué) ont
+été considérés comme faisant foi.
 
-## 0. Sommaire
+## 0. Sommaire (Phase A + Phase A.2 combinées)
 
-**69 findings** (V5-F-001 à V5-F-069), répartis sur 23 domaines.
+**99 findings** (V5-F-001 à V5-F-099) : 69 de la Phase A initiale + 30 du contre-audit ciblé
+Phase A.2 (§ "PHASE A.2" en fin de document, qui contient aussi 12 findings de la Phase A
+reconfirmés indépendamment, non recomptés ici).
 
 ### Répartition par priorité
 
-- **P0** : 6
-- **P1** : 29
-- **P2** : 22
-- **P3** : 12
+- **P0** : 7 (6 Phase A + 1 Phase A.2)
+- **P1** : 40 (29 Phase A + 11 Phase A.2)
+- **P2** : 31 (22 Phase A + 9 Phase A.2)
+- **P3** : 21 (12 Phase A + 9 Phase A.2)
 
 ### Répartition par statut suggéré
 
-- **MISSING** : 20
-- **FUNCTIONALLY_FAILED** : 22
-- **PARTIAL** : 15
-- **VISUALLY_DIFFERENT** : 10
-- **CODE_PRESENT_UNVERIFIED** : 2
+- **MISSING** : 32 (20 + 12)
+- **FUNCTIONALLY_FAILED** : 28 (22 + 6)
+- **PARTIAL** : 21 (15 + 6)
+- **VISUALLY_DIFFERENT** : 13 (10 + 3)
+- **CODE_PRESENT_UNVERIFIED** : 3 (2 + 1)
+- **IOS_INTENTIONAL_DIFFERENCE** : 2 (0 + 2)
 
 Aucun finding de ce cycle n'a encore de statut `BUILD_VALIDATED` ou
-`COMPLETE_PARITY_VALIDATED` — la Phase A est un audit pur, aucun code n'a été modifié.
+`COMPLETE_PARITY_VALIDATED` — les Phases A et A.2 sont un audit pur, aucun code n'a été modifié.
 
 ---
 
@@ -1394,3 +1401,664 @@ IMPACT : Upload/téléchargement CDN dupliqué (bande passante et stockage gaspi
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter un `Set<String>` (ou dictionnaire d'état) de messageId actuellement en upload/téléchargement dans `ChatViewModel`, consulté et alimenté par `requestUpload`/`requestDownload` avant de lancer un nouveau `Task`, reproduisant la garde `uniqueUploadSet`/`uniqueDowloadSet` d'Android.
 ```
+
+---
+
+# PHASE A.2 — CONTRE-AUDIT CIBLÉ (2026-08-24)
+
+Contre-vérification demandée explicitement par l'utilisateur après que l'agent critique
+de complétude de la Phase A ait signalé plusieurs domaines probablement sous-creusés
+(Socket.IO, Chat, pipeline média BunnyCDN, Photo Editor, Animems Canvas) ainsi que des
+patterns de bug systématiquement sous-cherchés (double action/idempotence, fuites
+mémoire/concurrence, lifecycle). 12 agents indépendants ont creusé ces 8 zones en
+profondeur, chacun recevant la liste des findings V5 déjà connus dans son périmètre pour
+éviter les doublons — un finding retrouvé indépendamment est marqué **confirmé**, pas
+recréé. **Aucun code Swift modifié.**
+
+## A.2.0 — Sommaire du contre-audit
+
+**30 findings NOUVEAUX** (V5-F-070 à V5-F-099).
+
+### Répartition par priorité (nouveaux findings uniquement)
+
+- **P0** : 1
+- **P1** : 11
+- **P2** : 9
+- **P3** : 9
+
+**12 findings V5 existants reconfirmés indépendamment** (voir §A.2.2) —
+non recréés, non modifiés.
+
+### Nouveaux findings par domaine du contre-audit
+
+- **Socket.IO / temps réel** : 2 nouveau(x)
+- **Chat — chaîne de messages (UI, types, pagination, cache)** : 2 nouveau(x)
+- **Pipeline média — Avatar** : 2 nouveau(x)
+- **Pipeline média — Photo/vidéo de publication (Feed)** : 1 nouveau(x)
+- **Pipeline média — Chat (image/vidéo/fichier/vocal)** : 5 nouveau(x)
+- **Pipeline média — Animems (import/export)** : 3 nouveau(x)
+- **Photo Editor** : 4 nouveau(x)
+- **Animems Canvas** : 5 nouveau(x)
+- **Animems — playback/audio/performance** : 2 nouveau(x)
+- **Double action / idempotence** : 1 nouveau(x)
+- **Mémoire / concurrence** : 1 nouveau(x)
+- **Lifecycle** : 2 nouveau(x)
+
+**Aucun des 12 domaines contre-audités n'a produit zéro nouveau finding** — chacun a
+révélé au moins un écart réel non détecté par l'audit initial, confirmant que la
+critique de complétude de la Phase A était fondée. Le domaine le plus proche d'une
+parité saine est le sweep "double action/idempotence" : sur la douzaine de boutons
+d'action vérifiés (Like, Follow, Publier, upload, création de groupe, envoi de message
+texte, etc.), la quasi-totalité a une garde réelle et fonctionnelle côté iOS — un seul
+nouveau gap a été confirmé (bouton "Télécharger" du menu post, V5-F-096).
+
+---
+
+## A.2.1 — Nouveaux findings détaillés
+
+```
+ID : V5-F-070
+PRIORITÉ : P1
+DOMAINE : Socket.IO / temps réel — traitement concurrent des événements
+FEATURE : Réception d'un message privé/groupe via socket (new message / new message group) : absence de sérialisation côté iOS, contrairement à Android
+ANDROID SOURCE : app/src/main/java/com/tiinver/messagerie/repository/ChatRepository.java:780-818 (NewPrivateMessage, poste sur Handler(Looper.getMainLooper())) + app/src/main/java/com/tiinver/Utils/DecodeThreadPool.java:8-19 (ThreadPoolExecutor corePoolSize=1 + LinkedBlockingQueue non bornée => un SEUL thread de decode en pratique, maxPoolSize=50 jamais atteint car une queue non bornée ne rejette jamais de tâche) + app/src/main/java/com/tiinver/messagerie/ui/ChatManager.java:1156-1159 (addMessage(MessageLib) déclarée `synchronized`, check-then-insert isMessageExist(messageId) protégé)
+ANDROID BEHAVIOR : Chaque événement socket entrant est décodé sur UN SEUL thread de fond (le pool n'utilise jamais plus d'un thread tant que la queue ne déborde pas, ce qui n'arrive jamais avec une LinkedBlockingQueue non bornée), puis le traitement métier (dédup + insertion + mise à jour LiveData) est posté comme un Runnable unique sur le Main Looper — un Runnable s'exécute intégralement, sans possibilité qu'un autre Runnable s'intercale au milieu. ChatManager.addMessage est en plus `synchronized`. Résultat : deux événements arrivant presque simultanément sont toujours traités strictement dans leur ordre d'arrivée, et le couple vérifier-si-existe + insérer est atomique — deux occurrences du même messageId ne peuvent jamais être insérées en double.
+IOS FILES : Sources/TiinverSwift/Realtime/ChatRepository.swift:98-103 (socket.on(SocketEvent.newMessage)/socket.on(SocketEvent.newGroupMessage), chacun lance Task { @MainActor in await self?.handleNewMessage(...) } — une Task NON structurée indépendante par événement reçu) et :226-312 (handleNewMessage, qui await messages.addMessage(meta) avant d'appeler chatEvents.send(.message(meta))) ; Sources/TiinverSwift/Storage/MessageRepository.swift:100-126 (addMessage : guard !(try await messageExists(messageId: messageId)) else { return nil } PUIS try await messages.insert { ... } — deux appels await séparés, sans verrou entre eux) ; aucune contrainte d'unicité Core Data trouvée sur messageId (Sources/TiinverSwift/Storage/TiinverModel.xcdatamodeld/TiinverModel.xcdatamodel/contents, entité MessageEntity, pas de uniquenessConstraints)
+IOS BEHAVIOR : Chaque événement socket entrant démarre une Task MainActor indépendante ; handleNewMessage contient plusieurs points de suspension réels (await messages.addMessage, qui fait lui-même deux await séparés : messageExists puis insert, sur un contexte Core Data en arrière-plan). @MainActor garantit l'exclusion mutuelle du code qui s'exécute à un instant T, mais pas l'ordre relatif entre plusieurs Tasks : dès qu'une Task suspend sur un await, une autre Task déjà planifiée (issue d'un événement socket arrivé entre-temps) peut s'exécuter et se terminer avant que la première ne reprenne.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Le portage a remplacé le pipeline Android (1 thread de decode strictement séquentiel -> 1 Runnable atomique sur le Main Looper -> méthode synchronized) par un modèle purement asynchrone (Task non structurée par événement + await multiples dans la chaîne de persistance) sans introduire d'équivalent de sérialisation (acteur dédié, file FIFO explicite, ou verrou autour du couple messageExists+insert).
+IMPACT : Deux conséquences dans le périmètre explicitement visé par la mission (ordre de traitement, doublons après reconnexion) : (1) si deux messages arrivent à quelques millisecondes d'intervalle (rafale de rattrapage après reconnexion, ou double envoi rapide côté pair), leur chatEvents.send peut être émis dans le désordre par rapport à l'arrivée réelle — ChatViewModel.onIncoming/appendWithDateSeparator (ChatViewModel.swift:266-282,199-209) ajoute en fin de liste sans re-tri, donc le message le plus récent peut s'afficher AVANT l'autre dans la conversation ouverte. (2) si le serveur redélivre le même messageId à deux reprises rapprochées (scénario réaliste après une coupure réseau/reconnexion), les deux Tasks peuvent toutes deux passer le guard !messageExists avant qu'aucune des deux n'ait terminé son insert — sans contrainte d'unicité Core Data pour rattraper la course, cela peut produire deux lignes MessageEntity pour le même message (bulle dupliquée à l'écran, doublon persistant en base).
+SUGGESTED_STATUS : FUNCTIONALLY_FAILED
+RECOMMANDATION : Sérialiser le traitement des événements socket entrants côté iOS — par exemple un actor dédié (ou une file FIFO explicite) par lequel tout événement newMessage/newGroupMessage/onDeleteMessage/offlineStatus transite avant que la Task suivante ne soit autorisée à démarrer son propre traitement, reproduisant l'atomicité que le pipeline Android obtient via le pool à 1 thread + Handler.post + méthode synchronized. À défaut, ajouter au minimum une contrainte d'unicité Core Data sur messageId pour éliminer le risque de doublon en base (n'éliminerait pas le risque d'ordre d'affichage).
+CONTRE-AUDIT : trouvé par l'agent "Socket.IO / temps réel" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-071
+PRIORITÉ : P2
+DOMAINE : Socket.IO / réinitialisation de connexion (reconnexion réseau, ré-authentification post-login)
+FEATURE : TiinverSocket.reset(apiKey:) ne détache pas les listeners de l'ancien socket avant de le déconnecter et de l'abandonner, contrairement à App.resetSocket() côté Android
+ANDROID SOURCE : app/src/main/java/com/tiinver/App.java:157-171 (resetSocket() : mSocket.io().off(EVENT_RECONNECT/...) PUIS mSocket.off() PUIS mSocket.disconnect() PUIS mSocket=null, dans cet ordre — tous les handlers de l'ancien objet Socket sont retirés AVANT l'appel à disconnect())
+ANDROID BEHAVIOR : Avant de déconnecter et d'abandonner l'ancien objet Socket, Android retire explicitement tous ses listeners (.off() sur le socket ET sur .io()/Manager). Si un événement EVENT_DISCONNECT se déclenche malgré tout sur cet ancien objet suite à disconnect(), aucun handler n'y est plus attaché — il ne peut avoir aucun effet de bord (aucun mSocket.emit(LEAVE_ROOM,...) ne peut être déclenché depuis l'ancien socket).
+IOS FILES : Sources/TiinverSwift/Realtime/TiinverSocket.swift:96-105 (func reset(apiKey:) : socket?.disconnect() PUIS manager=nil; socket=nil PUIS connect(apiKey:) — aucun appel .off()/removeAllHandlers() sur l'ancien socket avant disconnect(), choix explicitement justifié dans le commentaire des lignes 97-100) ; Sources/TiinverSwift/Realtime/ChatRepository.swift:62-67 (attachToCurrentSocket(), appelé après login ET à chaque reconnexion réseau via NetworkMonitor — RootRouterView.swift:104-108) et :80-82,200-210 (le handler .disconnect enregistré par registerAllListeners() capture [weak self] — l'instance ChatRepository, pas l'objet socket — et onDisconnected lit self.socket/UserSession.shared.username COURANTS au moment de son exécution, pas ceux de l'ancien socket)
+IOS BEHAVIOR : reset() déconnecte l'ancien SocketIOClient puis l'abandonne (mise à nil du champ), en s'appuyant uniquement sur ARC pour empêcher ses handlers de se redéclencher — le commentaire du fichier justifie cela par le fait qu'une fois socket=nil, ses handlers ne peuvent plus jamais se déclencher. Ce raisonnement suppose que l'ancien objet SocketIOClient est immédiatement désalloué et qu'aucun événement .disconnect en attente de dispatch (potentiellement asynchrone côté bibliothèque) ne peut s'exécuter après la réassignation de ChatRepository.socket vers le nouveau socket — ni l'un ni l'autre n'est garanti par la seule mise à nil d'une référence locale : si le handler .disconnect de l'ancien socket se déclenche malgré tout après coup, alors que attachToCurrentSocket() a déjà réassigné self.socket/registerAllListeners() sur le nouveau socket, onDisconnected(reason:) s'exécuterait avec les données courantes (nouveau socket, session actuelle) — émettant potentiellement un leaveRoom erroné sur le socket fraîchement (re)connecté, juste après son joinRoom.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Le commentaire de TiinverSocket.swift (lignes 97-100) écarte removeAllHandlers() faute d'API confirmée disponible dans la version de bibliothèque utilisée, sans lui substituer d'équivalent (ex. socket?.off() par événement, disponible et déjà utilisé ailleurs dans registerAllListeners()) avant l'appel à disconnect() — contrairement à Android qui applique ce nettoyage AVANT la déconnexion de l'ancien socket, précisément pour éviter ce cas.
+IMPACT : Risque d'un leaveRoom parasite émis juste après une reconnexion (chaque changement réseau détecté par NetworkMonitor déclenche attachToCurrentSocket(), donc ce chemin est emprunté fréquemment, pas seulement au login) — pourrait faire quitter côté serveur la room de présence/messagerie de l'utilisateur juste après qu'il l'ait rejointe, jusqu'au prochain cycle de connexion. Non vérifié en conditions réelles : le déclenchement effectif dépend du comportement interne (synchrone ou asynchrone, file de dispatch) de la bibliothèque Socket.IO-Client-Swift au moment de disconnect(), dont le code source n'est pas vendored dans ce dépôt et n'a pas pu être inspecté directement dans cette passe.
+SUGGESTED_STATUS : CODE_PRESENT_UNVERIFIED
+RECOMMANDATION : Appeler socket?.off() (et socket?.off(clientEvent:) pour chaque événement enregistré, ou l'équivalent disponible dans la version de Socket.IO-Client-Swift utilisée) sur l'ancien socket AVANT disconnect() dans TiinverSocket.reset(), à l'identique d'App.resetSocket() côté Android, pour éliminer ce risque plutôt que de compter sur la seule désallocation ARC.
+CONTRE-AUDIT : trouvé par l'agent "Socket.IO / temps réel" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-072
+PRIORITÉ : P1
+DOMAINE : Chat — roster (liste des conversations)
+FEATURE : Texte du "dernier message" affiché pour chaque conversation dans la liste (roster)
+ANDROID SOURCE : roster/RosterManager.java:84,111,135 (updateRoster* écrit `cv.put("lastMessage", message.getMessage())` directement sur la ligne `wk_roster` à CHAQUE réception/envoi de message) ; roster/ui/Roster.java:638-704 (`messagePrivateRoster` lit la colonne `lastMessage` du roster directement, sans jointure, via le CursorLoader sur `infoContract.ROSTER_URI`)
+ANDROID BEHAVIOR : Le texte de dernier message affiché dans chaque ligne de la liste de conversations provient d'une colonne dénormalisée `wk_roster.lastMessage`, tenue à jour de façon fiable à chaque insertion/mise à jour de message (`RosterManager.updateRoster`). Il correspond donc TOUJOURS au message le plus récent de la conversation.
+IOS FILES : Sources/TiinverSwift/Storage/RosterRepository.swift:35-53 (rosterAll(), notamment lignes 42-49) ; consommé par Sources/TiinverSwift/Messagerie/RosterListView.swift:266 (`model.message = pair.lastMessage?.message ?? entity.lastMessage`)
+IOS BEHAVIOR : `rosterAll()` refait une jointure manuelle en mémoire : pour chaque conversation, elle exécute un `fetch` Core Data sur `MessageEntity` filtré par `conversationId`, avec `fetchLimit = 1`, mais SANS AUCUN `sortDescriptors`. Le message retourné par `.first` n'est donc PAS garanti être le plus récent (ordre non spécifié par Core Data en l'absence de tri explicite — dans la pratique souvent l'ordre d'insertion, càd potentiellement le PREMIER message jamais envoyé dans la conversation, pas le dernier). `RosterListView` utilise ensuite ce résultat en priorité (`pair.lastMessage?.message ?? entity.lastMessage`) : comme une correspondance existe presque toujours dès qu'il y a au moins un message, le champ `entity.lastMessage` correctement tenu à jour par `RosterRepository.updateRoster` (le port fidèle du mécanisme Android, confirmé correct) est systématiquement ignoré au profit de ce résultat non trié.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Non — voir CAUSE pour contexte
+CAUSE : `RosterRepository.rosterAll()` reproduit la jointure SQL brute `rosterall` de `StubProvider.java` (elle-même confirmée CODE MORT côté Android — `ROSTER_ALL_URI` n'est jamais requêté par aucun appelant réel, seul `ROSTER_URI` dénormalisé est utilisé par l'écran `Roster.java` réellement affiché) sans ajouter le tri par `stamp` qu'une vraie jointure "dernier message" nécessiterait, et sans se rendre compte que la colonne dénormalisée déjà fiable (`entity.lastMessage`) suffisait et n'avait pas besoin d'être recalculée.
+IMPACT : Pour toute conversation ayant échangé plus d'un message, l'aperçu du dernier message dans la liste des conversations peut afficher un message ancien/périmé au lieu du plus récent — information visible en permanence sur l'écran le plus consulté de l'app (liste des chats), à chaque lancement/rafraîchissement.
+SUGGESTED_STATUS : FUNCTIONALLY_FAILED
+RECOMMANDATION : Soit ajouter `messageRequest.sortDescriptors = [NSSortDescriptor(key: "stamp", ascending: false)]` avant le `fetchLimit = 1` dans `rosterAll()`, soit — plus simple et fidèle au mécanisme Android réel — supprimer entièrement cette ré-agrégation et utiliser directement `entity.lastMessage` (déjà tenu à jour par `RosterRepository.updateRoster`) comme source unique du texte affiché, sans requête `MessageEntity` supplémentaire.
+CONTRE-AUDIT : trouvé par l'agent "Chat — chaîne de messages (UI, types, pagination, cache)" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-073
+PRIORITÉ : P2
+DOMAINE : Chat — pagination de l'historique (groupe)
+FEATURE : Chargement d'un historique de groupe plus ancien que le cache local une fois le scroll vers le haut épuisé
+ANDROID SOURCE : messagerie/ui/ChatFragmentTest.java:1035-1046 (`loadMoreFromServeur`, appelée depuis `onLoadFinished` ligne 1478-1480 quand le CursorLoader local ne renvoie plus rien) ; messagerie/repository/ChatRepository.java:1135-1178 (`loadMoreFromServeur`, GET `/group/{groupId}/messages?lastDate=...&limit=...`) ; messagerie/ui/ChatManager.java:1090-1149 (`prepareOldGroupMessage`, insère les messages reçus du serveur en local et les diffuse via `ChatModel.OLDMESSAGE`)
+ANDROID BEHAVIOR : Pour une conversation de GROUPE, quand le scroll vers le haut atteint une page locale vide (`data.getCount()<=0`), Android bascule automatiquement sur un appel réseau REST (`/group/{id}/messages?lastDate=...`) qui va chercher l'historique plus ancien directement sur le serveur, l'insère dans la base locale et le diffuse à l'écran — l'historique de groupe reste donc consultable même au-delà de ce qui a été mis en cache localement (utile après réinstallation, changement d'appareil, ou purge locale).
+IOS FILES : Sources/TiinverSwift/Messagerie/ChatViewModel.swift:184-195 (`loadMore()`)
+IOS BEHAVIOR : `loadMore()` interroge uniquement `MessageRepository.page(...)` (Core Data local) ; si la page retournée est vide, la fonction retourne simplement (`guard let page, !page.isEmpty else { return }`) sans jamais tenter d'appel réseau. Aucune méthode ni endpoint équivalent à `loadMoreFromServeur`/`/group/{id}/messages` n'existe dans le portage iOS (confirmé par recherche exhaustive : zéro occurrence de `loadMoreFromServeur`/`prepareOldGroupMessage`/de l'URL `group/.../messages?lastDate` dans tout `Sources/TiinverSwift`).
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Fonctionnalité de repli serveur pour la pagination d'historique de groupe jamais portée — `ChatViewModel.loadMore()` s'arrête silencieusement dès que le cache Core Data local est épuisé, sans distinguer chat privé (où Android n'a pas non plus ce repli, comportement identique aux deux) et groupe (où Android EN A un).
+IMPACT : Dans une conversation de groupe, dès que l'utilisateur scrolle au-delà des messages présents en cache local (ex. après réinstallation de l'app, changement d'appareil, ou simplement un historique de groupe plus long que ce qui a été synchronisé pendant que l'app était fermée), le scroll s'arrête silencieusement comme si c'était le début de la conversation, alors qu'Android continuerait à charger l'historique réel depuis le serveur.
+SUGGESTED_STATUS : MISSING
+RECOMMANDATION : Ajouter dans `ChatViewModel.loadMore()` (ou dans `MessageRepository`/un nouveau service réseau dédié) un repli vers l'endpoint REST `/group/{groupId}/messages?lastDate=...&limit=...` quand `target.isGroup` et que la page locale est vide, insérer les résultats via `MessageRepository.addGroupMessage` (déjà existant) puis les injecter dans `items`, à l'image de `loadMoreFromServeur`/`prepareOldGroupMessage` côté Android.
+CONTRE-AUDIT : trouvé par l'agent "Chat — chaîne de messages (UI, types, pagination, cache)" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-074
+PRIORITÉ : P2
+DOMAINE : Avatar (BunnyCDN) — profil personnel + groupe
+FEATURE : Aperçu local optimiste de la nouvelle photo pendant l'upload de l'avatar
+ANDROID SOURCE : uploadPerfilPhoto/AddPerfilFoto.java:584-593 (onFileReady : user.setProfile(detail.getFilePath()) + mAdapter.setUser(user), AVANT l'appel réseau) ; messagerie/group/SettingGroupMessageFragmant.java:215-221 (onUriResult : profileView.setImageBitmap(b) DIRECTEMENT, avant sendFotoPerfilToServer(path))
+ANDROID BEHAVIOR : Dès que l'utilisateur valide le recadrage, Android affiche IMMÉDIATEMENT et de façon synchrone le bitmap local recadré dans l'ImageView de l'avatar (fichier local pour le profil personnel via Glide, Bitmap direct pour le groupe) — AVANT même que la requête réseau (PUT BunnyCDN ou POST multipart) ne démarre. L'utilisateur voit sa nouvelle photo instantanément, l'upload se déroule ensuite en arrière-plan.
+IOS FILES : Sources/TiinverSwift/Profile/ProfileView.swift:82-91,332-372 ; Sources/TiinverSwift/Profile/ProfileViewModel.swift:191-202 ; Sources/TiinverSwift/Messagerie/GroupDetailView.swift:229-284 ; Sources/TiinverSwift/Media/CDNAsyncImage.swift:63-96 (.task(id: url) ne se redéclenche QUE si l'URL change)
+IOS BEHAVIOR : `onChange(of: avatarPickerItem)`/`onChange(of: photoPickerItem)` convertissent l'image choisie en JPEG puis appellent directement `uploadProfilePicture(imageData:)`/`uploadPhoto(_:)` SANS jamais assigner l'image locale à l'affichage. L'avatar continue d'afficher l'URL CDN PRÉCÉDENTE (`profile?.profile`/`groupProfile`, inchangée jusqu'au succès réseau) — et comme `CDNAsyncImage` ne redéclenche `load()` que via `.task(id: url)` (donc seulement si l'URL change), la branche `placeholder` contenant `if isUploadingPhoto { ProgressView() }` n'est JAMAIS atteinte tant qu'un avatar existant est déjà chargé (cas de la quasi-totalité des utilisateurs) : `phase.image` reste non-nil pendant tout l'upload, donc `build()` retourne systématiquement `content(image)` (l'ancien avatar), jamais `placeholder()`. Résultat vérifié par lecture directe du mécanisme `.task(id:)` : aucun indice visuel — ni la nouvelle photo, ni même un spinner — n'apparaît entre le tap et la fin de l'upload.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Le portage iOS a remplacé le flux galerie+recadrage Android (qui manipule un Bitmap/fichier local affichable immédiatement) par `PhotosPicker` + conversion directe en `Data` réseau, sans jamais matérialiser cette `Data` en `UIImage` affiché localement pendant l'attente réseau ; combiné au fait que `CDNAsyncImage` ne réagit qu'aux changements d'URL (pas à un état de chargement externe), la superposition `isUploadingPhoto` du placeholder devient inatteignable dès qu'un avatar est déjà en cache.
+IMPACT : Sur un réseau lent ou une image volumineuse, l'utilisateur qui vient de sélectionner une nouvelle photo de profil ou de groupe ne voit RIEN se passer (ni la photo choisie, ni un indicateur de progression) pendant potentiellement plusieurs secondes — seul un bouton désactivé (`disabled(isUploadingPhoto)`) le signale, sans retour visuel dans le cercle avatar lui-même. Cela peut donner l'impression que le tap n'a pas été pris en compte, contrairement à Android qui donne un retour instantané.
+SUGGESTED_STATUS : FUNCTIONALLY_FAILED
+RECOMMANDATION : Convertir la `Data` sélectionnée en `UIImage` et l'assigner à un état local (`@State private var pendingAvatarImage: UIImage?`) affiché en overlay/remplacement PENDANT `isUploadingPhoto`, avant même l'appel réseau — reproduit l'aperçu optimiste immédiat d'Android sans dépendre du changement d'URL CDN.
+CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Avatar" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-075
+PRIORITÉ : P3
+DOMAINE : Avatar (BunnyCDN) — profil personnel + groupe
+FEATURE : Recadrage interactif de l'avatar avant envoi
+ANDROID SOURCE : uploadPerfilPhoto/AddPerfilFoto.java:448-455 (CropFragment, DEMO_PRESET RECT) ; messagerie/group/SettingGroupMessageFragmant.java:208-213 (CroperView, setImageUri)
+ANDROID BEHAVIOR : Après sélection dans la galerie, Android insère systématiquement une étape de recadrage interactif (l'utilisateur déplace/zoome un cadre) AVANT l'envoi — aussi bien pour l'avatar personnel (`CropFragment`) que pour l'avatar de groupe (`CroperView`).
+IOS FILES : Sources/TiinverSwift/Profile/ProfileView.swift:82-91 ; Sources/TiinverSwift/Messagerie/GroupDetailView.swift:229-238
+IOS BEHAVIOR : `PhotosPicker` envoie l'image sélectionnée telle quelle (re-encodée en JPEG qualité 0.9), sans aucune étape de recadrage interactif — le cercle d'affichage applique un `aspectRatio(.fill)` automatique côté client, mais l'utilisateur ne choisit jamais quelle zone de l'image est conservée.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Écart d'architecture délibéré et déjà documenté dans les commentaires du code source iOS lui-même (référencé "GAP-004" dans `ProfileView.swift`/`GroupDetailView.swift`) — `PhotosPicker` natif choisi à la place du sélecteur+recadreur custom Android.
+IMPACT : Pour une image non carrée ou dont le sujet n'est pas centré, le centrage automatique peut couper une partie importante de la photo (visage, logo) sans que l'utilisateur ait pu ajuster le cadrage, contrairement à Android où ce contrôle existe.
+SUGGESTED_STATUS : IOS_INTENTIONAL_DIFFERENCE
+RECOMMANDATION : Aucune action requise si l'écart reste assumé ; si un vrai recadrage est souhaité, ajouter une étape d'édition (ex. `PhotosUI` + un contrôle de recadrage maison ou `TOCropViewController`-like) entre la sélection et l'appel à `uploadProfilePicture`/`uploadPhoto`.
+CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Avatar" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-076
+PRIORITÉ : P1
+DOMAINE : Pipeline média BunnyCDN — publication Feed (résilience arrière-plan / reprise après échec)
+FEATURE : Résilience de l'upload de publication (photo/vidéo) à la mise en arrière-plan de l'app et absence totale de mécanisme de reprise après échec réseau
+ANDROID SOURCE : Activity/service/ActivityService.java:107-139 (onStartCommand : startForeground(NOTIF_ID,...) ligne 115, exécution sur un Thread dédié, retour START_STICKY) + Activity/ui/MainFragment.java:733-769 et 1015-1074 (insertion locale dans le ContentProvider FILE_TRANSFERT_URI via ActivityRepository.saveFilebeforeTransfer, relecture via CursorLoader URL_LOADER_TRANSFER qui reconstruit UploadData depuis la ligne persistée et rappelle publish(data))
+ANDROID BEHAVIOR : La publication tourne dans un vrai Android Service en foreground (notification persistante "Upload in progress"), explicitement protégé par l'OS contre la suspension liée au passage en arrière-plan de l'app — startForeground() est précisément le mécanisme qui garantit que l'upload BunnyCDN (PUT photo/vidéo) et le POST activity/add qui suit continuent de s'exécuter même si l'utilisateur quitte l'écran, verrouille le téléphone ou bascule vers une autre app. En parallèle, chaque publication est d'abord écrite dans une table SQLite locale (via un ContentProvider, colonne "status") AVANT même le début de l'upload CDN, ce qui permet de relire l'état d'une publication interrompue.
+IOS FILES : Sources/TiinverSwift/Feed/FeedMediaUploader.swift:60-140 (uploadPhoto/uploadVideo, URLSession.shared standard — PAS de configuration .background) + Sources/TiinverSwift/Feed/PublishComposeView.swift:204,287-388 (Button("Publier") { Task { await publish() } }, Task non structuré non protégé, aucun UIApplication.shared.beginBackgroundTask nulle part)
+IOS BEHAVIOR : L'upload BunnyCDN (PUT photo/vidéo) puis le POST activity/add s'exécutent via URLSession.shared (session de premier plan standard) à l'intérieur d'un Task Swift déclenché depuis un bouton, sans aucune assertion de tâche d'arrière-plan (beginBackgroundTask) ni URLSessionConfiguration.background. Aucune trace de ces deux mécanismes n'existe nulle part dans tout le dépôt iOS (grep exhaustif sur beginBackgroundTask / URLSessionConfiguration.background = 0 résultat), et UIBackgroundModes (project.yml:156-159) ne déclare que audio/voip/remote-notification, aucun mode pertinent pour prolonger une tâche réseau. Aucune persistance locale (Core Data ou disque) de la publication en cours n'existe non plus : tout l'état (média sélectionné, légende, catégorie, progression) vit uniquement dans les @State de PublishComposeView.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Le portage a reproduit la mécanique réseau BunnyCDN elle-même fidèlement (endpoints, headers, ordre des appels — voir FeedMediaUploader.swift, déjà très abouti après plusieurs correctifs V2/V3/V4), mais n'a jamais reproduit l'infrastructure de robustesse qui entoure cette mécanique côté Android (Service en foreground + file d'attente persistée en base locale) : deux architectures fonctionnellement équivalentes en apparence (l'upload aboutit dans les deux cas si l'app reste au premier plan) mais radicalement différentes face à l'interruption.
+IMPACT : Un utilisateur qui publie une photo ou (surtout) une vidéo puis quitte brièvement l'app pendant l'upload (bascule vers une autre app, verrouille l'écran, reçoit un appel) — un geste extrêmement courant, en particulier pour une vidéo dont l'envoi peut prendre plusieurs dizaines de secondes sur un réseau mobile moyen — s'expose à voir l'upload interrompu par la suspension standard iOS (~30s après la mise en arrière-plan sans protection). Aucune erreur n'est alors visible (la vue qui aurait affiché errorText a déjà disparu au moment de l'échec), aucune reprise n'est proposée au retour dans l'app, et la légende/catégorie/média déjà préparés sont perdus : l'utilisateur doit recommencer intégralement la publication sans comprendre pourquoi elle n'est jamais apparue dans le fil. Côté Android, ce même scénario n'interrompt jamais l'upload grâce au Service en foreground.
+SUGGESTED_STATUS : MISSING
+RECOMMANDATION : Faire porter l'upload BunnyCDN (photo comme vidéo) par une URLSessionConfiguration(.background) (ou a minima envelopper le Task de publish() dans UIApplication.shared.beginBackgroundTask(expirationHandler:)) pour survivre à la mise en arrière-plan, et persister l'état d'une publication en cours (média, légende, catégorie, jeton, étape atteinte) dans Core Data pour permettre une reprise ou au moins un signalement d'échec au retour dans l'app — reproduisant l'intention de la file d'attente locale FILE_TRANSFERT_URI côté Android, sans nécessairement répliquer son schéma exact.
+CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Photo/vidéo de publication (Feed)" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-077
+PRIORITÉ : P1
+DOMAINE : Chat — pipeline média BunnyCDN (téléchargement)
+FEATURE : En-tête HTTP Referer manquant sur le téléchargement de pièce jointe chat (photo/vidéo/audio/doc)
+ANDROID SOURCE : messagerie/ui/ChatFragmentTest.java:3152-3176 (downloadFile), ligne 3159 : request.addRequestHeader("Referer", "https://tiinver.com")
+ANDROID BEHAVIOR : Chaque téléchargement de pièce jointe chat via DownloadManager attache systématiquement l'en-tête Referer:https://tiinver.com à la requête GET vers cdn.tiinver.com — exactement le même en-tête que TOUS les autres points d'accès au CDN Tiinver du projet (ChargerImages.java, ExoPlayerManager.java, ActivityAdapter.java, CustomCardView.java, etc., ~15 fichiers).
+IOS FILES : Messagerie/ChatViewModel.swift:567-600 (requestDownload), ligne 574 : URLSession.shared.download(from: remoteURL) — appel brut sans URLRequest ni en-tête.
+IOS BEHAVIOR : Le téléchargement de pièce jointe chat n'attache AUCUN en-tête HTTP, en particulier pas de Referer, alors que TOUS les autres chemins CDN déjà portés côté iOS (FeedMediaDownloader.swift:37/91, CDNAsyncImage.swift:72, VideoPlayerManager.swift:54, VideoCacheManager.swift, CommunityTemplateRepository.swift:74/97) l'ajoutent explicitement — plusieurs de ces fichiers documentent en commentaire que ce Referer est une exigence RÉELLE du CDN Tiinver confirmée par test (ex. VideoCacheManager.swift:46 "cause racine déjà confirmée par test réel").
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Oubli lors du portage de requestDownload : contrairement à requestUpload/ChatMediaUploadService (qui portent fidèlement l'en-tête AccessKey de Bunny Storage), la branche téléchargement n'a pas repris le Referer que ChatFragmentTest.downloadFile ajoute sur Android, alors que ce même en-tête est systématiquement requis ailleurs dans le portage iOS pour le même domaine cdn.tiinver.com.
+IMPACT : Si (comme l'indiquent les nombreux autres points du code iOS déjà corrigés pour la même raison) la zone CDN Tiinver bloque les requêtes sans Referer valide, TOUTE pièce jointe chat (photo/vidéo/audio/document) envoyée par un correspondant échouerait systématiquement au téléchargement (403), rendant les médias reçus en chat invisibles/inutilisables — sans qu'aucun message d'erreur explicite ne le signale à l'utilisateur (cf. finding séparé ci-dessous).
+SUGGESTED_STATUS : FUNCTIONALLY_FAILED
+RECOMMANDATION : Ajouter request.setValue("https://tiinver.com", forHTTPHeaderField: "Referer") sur la requête de téléchargement dans requestDownload, en utilisant URLSession.shared.download(for: request) plutôt que download(from: URL), à l'identique des autres chemins CDN déjà corrigés du projet.
+CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Chat (image/vidéo/fichier/vocal)" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-078
+PRIORITÉ : P1
+DOMAINE : Chat — pipeline média BunnyCDN (upload, reprise en arrière-plan)
+FEATURE : Absence de reprise automatique des uploads de pièces jointes chat bloqués, déclenchée par reconnexion socket / changement réseau / sync périodique / notification push
+ANDROID SOURCE : messagerie/ui/ChatManager.java:261-296 (sendMessageFromCursor, branche isFileUploaded==0 → enqueue OneTimeWorkRequest<UploadChatWork> avec Constraints.setRequiredNetworkType(CONNECTED) + BackoffCriteria EXPONENTIAL) ; service/HttpConnectionService.java:44-90 (onStartCommand appelle sendMessageFromCursor/sendGroupMessageFromCursor sur TOUT message status=0) déclenché par service/broadcast/NetworkStateReceiver.java:60, service/MyJobService.java:68, back_sync/SyncAdapter.java:75, back_sync/SyncWorker.java:26, back_sync/MyBroadcastReceiver.java:28 ; service/TiinverSyncWorker.java:75-114 (même scan) déclenché par back_sync/MyFirebaseMessagingService.java:109-113 (à CHAQUE notification push reçue) ; service/worker/UploadChatWork.java:58-76 (doWork retourne Result.retry() sur exception → WorkManager relance automatiquement).
+ANDROID BEHAVIOR : Indépendamment du fait qu'une bulle de message soit affichée à l'écran, Android balaie périodiquement (job planifié), à chaque changement d'état réseau, et à chaque notification push reçue, TOUS les messages locaux non délivrés (status=0) ; pour ceux dont isFileUploaded==0, il ré-enfile un upload BunnyCDN via WorkManager avec une contrainte réseau (attend une connexion) et une politique de backoff exponentielle avec retries automatiques réels en cas d'échec.
+IOS FILES : Realtime/ChatRepository.swift:190-198 (onConnected, appelé sur .connect et .reconnect du socket) ; recherche exhaustive (grep) confirmant qu'aucun fichier iOS ne scanne isFileUploaded==0 en dehors de handleAppear.
+IOS BEHAVIOR : onConnected() se contente d'émettre addUser/offlineStatus/joinRoom sur le socket ; aucune tâche ne balaie les messages Core Data avec isFileUploaded==0 pour relancer leur upload. Le SEUL déclencheur de reprise côté iOS est ChatViewModel.handleAppear (ChatViewModel.swift:479-496), qui exige que la bulle du message concerné redevienne visible à l'écran (.onAppear SwiftUI, câblé depuis ChatView.swift:195).
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Le mécanisme de reprise "on view appear" (checkAndUploadFile/onBindViewHolder) a été fidèlement porté, mais le second mécanisme de reprise Android — indépendant de l'UI, déclenché par réseau/sync/push via UploadChatWork+WorkManager — n'a pas d'équivalent dans le portage iOS.
+IMPACT : Un upload de média chat interrompu (app tuée en cours d'envoi, coupure réseau prolongée) ne sera JAMAIS relancé automatiquement en arrière-plan côté iOS : il faut que l'utilisateur rouvre la conversation ET fasse défiler jusqu'à revoir la bulle concernée pour qu'un nouvel essai soit tenté. Sur Android, une notification push, un simple changement de réseau, ou une synchronisation périodique suffisent à relancer l'envoi même sans ouvrir la conversation.
+SUGGESTED_STATUS : MISSING
+RECOMMANDATION : Ajouter, dans ChatRepository.onConnected() (et/ou lors d'un rafraîchissement réseau/à l'ouverture de l'app), un balayage de MessageRepository pour les messages isFileUploaded==0 appartenant à l'utilisateur courant, et relancer requestUpload/ChatMediaUploadService pour chacun — avec idéalement une vraie politique de retry/backoff (contrairement à Android qui, lui, en dispose via WorkManager pour ce chemin précis).
+CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Chat (image/vidéo/fichier/vocal)" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-079
+PRIORITÉ : P2
+DOMAINE : Chat — pipeline média BunnyCDN (téléchargement, persistance du cache)
+FEATURE : Stockage du fichier téléchargé dans le dossier Caches (évictable par l'OS) sans re-téléchargement de secours si le fichier disparaît
+ANDROID SOURCE : messagerie/ui/ChatFragmentTest.java:3163-3168 (request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS,...) pour photo/vidéo, getExternalFilesDir(null) pour VOICE) — stockage persistant, jamais purgé automatiquement par l'OS.
+ANDROID BEHAVIOR : Le fichier téléchargé est écrit dans le dossier public Downloads (ou le stockage privé externe de l'app pour les vocaux), des emplacements que le système Android ne purge jamais automatiquement pour libérer de l'espace ; isFileDownloaded=1 reste donc fiable indéfiniment.
+IOS FILES : Messagerie/ChatViewModel.swift:579-587 (FileManager.default.urls(for: .cachesDirectory,...).appendingPathComponent("ChatMedia")) ; Messagerie/ChatBubbleViews.swift:200-257 (aucune vérification FileManager.fileExists avant d'utiliser objectUrl quand isFileDownloaded==1).
+IOS BEHAVIOR : Le fichier est écrit dans le dossier Caches de l'app (~/Library/Caches), qu'iOS est explicitement autorisé à purger sous pression de stockage quand l'app n'est pas active. isFileDownloaded reste à 1 en Core Data même si le fichier disparaît, et handleAppear ne relance un téléchargement QUE si isFileDownloaded==0 — donc aucun mécanisme ne détecte ni ne corrige la perte du fichier : la bulle média reste cassée en permanence.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Choix de FileManager.SearchPathDirectory.cachesDirectory au lieu d'un dossier non-évictable (Documents, ou Application Support) pour un contenu que le modèle de données traite comme définitivement acquis (isFileDownloaded=1, jamais réinitialisé).
+IMPACT : Sous pression de stockage (fréquent sur les appareils avec peu d'espace libre), l'OS peut supprimer discrètement des pièces jointes chat déjà téléchargées ; l'utilisateur se retrouve avec une bulle média cassée de façon permanente, sans recours dans l'app (pas de pull-to-refresh ni de bouton retry visible sur ce chemin).
+SUGGESTED_STATUS : PARTIAL
+RECOMMANDATION : Stocker les pièces jointes chat téléchargées hors de Caches (ex. Application Support/ChatMedia), ou à défaut vérifier FileManager.fileExists avant utilisation et retomber sur isFileDownloaded=0 (donc re-déclenchement automatique via handleAppear) si le fichier local est absent.
+CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Chat (image/vidéo/fichier/vocal)" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-080
+PRIORITÉ : P3
+DOMAINE : Chat — pipeline média BunnyCDN (téléchargement, erreurs)
+FEATURE : Aucun retour utilisateur en cas d'échec de téléchargement d'une pièce jointe chat
+ANDROID SOURCE : service/broadcast/DownloadReceiver.java:164-211 (status()/handleDownloadError) — Toast explicite selon la raison (ERROR_INSUFFICIENT_SPACE, ERROR_DEVICE_NOT_FOUND, ERROR_HTTP_DATA_ERROR, etc.) à chaque échec DownloadManager.STATUS_FAILED.
+ANDROID BEHAVIOR : Sur échec de téléchargement (espace insuffisant, stockage introuvable, erreur HTTP/réseau), Android affiche un Toast avec un message adapté à la cause précise.
+IOS FILES : Messagerie/ChatViewModel.swift:596-599 (bloc catch vide, commentaire "isFileDownloaded reste à 0... relance l'essai").
+IOS BEHAVIOR : Le bloc catch de requestDownload ne fait strictement rien de visible : aucun toast, alerte ou indicateur d'erreur n'informe l'utilisateur qu'un téléchargement a échoué ; seule la relance silencieuse au prochain .onAppear se produit.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Le portage a repris la logique de retry silencieux mais pas l'affichage d'erreur associé côté Android (Toast avec message contextualisé).
+IMPACT : Impact UX mineur : un échec persistant (ex. Referer manquant du finding P1 ci-dessus, ou CDN indisponible) reste invisible pour l'utilisateur, qui voit juste un spinner ou une bulle vide sans explication ni action possible.
+SUGGESTED_STATUS : PARTIAL
+RECOMMANDATION : Ajouter un indicateur d'erreur (icône ou toast) sur la bulle média après un échec de téléchargement, au moins pour différencier "en cours" de "échoué".
+CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Chat (image/vidéo/fichier/vocal)" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-081
+PRIORITÉ : P3
+DOMAINE : Chat — pipeline média BunnyCDN (upload, en-tête Content-Type)
+FEATURE : Content-Type envoyé à Bunny Storage lors du PUT différent entre Android et iOS pour les pièces jointes non-vidéo (photo/audio)
+ANDROID SOURCE : messagerie/service/UploadFileOrDataService.java:336-352 (uploadMediaToBunny) — MediaType.parse("application/octet-stream") codé en dur pour TOUTE pièce jointe non-vidéo (photo, audio, doc), quel que soit le MIME réel du fichier.
+ANDROID BEHAVIOR : Le PUT vers storage.bunnycdn.com envoie systématiquement Content-Type: application/octet-stream pour les photos et fichiers audio (seule la branche vidéo, uploadMediaAndThumbnail, utilise mediaType.getMimeType() pour le média réel).
+IOS FILES : Messagerie/ChatMediaUploadService.swift:41-56 (upload) et 71-88 (put) — mimeType: kind.mimeType toujours transmis, y compris pour la branche non-vidéo.
+IOS BEHAVIOR : Le PUT vers storage.bunnycdn.com envoie le Content-Type réel du type de média (image/jpeg pour une photo, audio/3gpp pour un audio) au lieu de application/octet-stream pour ces deux cas.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Le portage a factorisé les deux branches Android (vidéo vs non-vidéo, qui utilisaient chacune un Content-Type différent dans le code source) en un seul chemin put() paramétré par kind.mimeType — cohérent en soi, mais divergent de la valeur exacte que la branche non-vidéo Android envoie réellement sur le fil.
+IMPACT : Incertain sans test live : si Bunny Storage/la pull zone CDN sert le Content-Type stocké tel quel, un client qui se fierait à ce header (plutôt qu'à l'extension d'URL ou au sniffing) pourrait se comporter différemment entre les deux plateformes pour une même pièce jointe photo/audio ; probablement sans conséquence visible dans l'app elle-même (chargement basé sur l'extension/les données) mais c'est une divergence protocolaire réelle par rapport à la référence Android.
+SUGGESTED_STATUS : IOS_INTENTIONAL_DIFFERENCE
+RECOMMANDATION : Si une stricte parité protocolaire est souhaitée, envoyer aussi application/octet-stream pour les branches photo/audio ; sinon documenter explicitement cette divergence comme une amélioration délibérée (Content-Type correct plutôt que la valeur générique probablement non-intentionnelle d'Android).
+CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Chat (image/vidéo/fichier/vocal)" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-082
+PRIORITÉ : P1
+DOMAINE : Pipeline média Animems — export/publication
+FEATURE : Habillage promotionnel (outro + watermark animé) lors du partage externe d'une vidéo Animems exportée
+ANDROID SOURCE : app/src/main/java/com/tiinver/editor/PublishFragment.java:306-312 (share.setOnClickListener → exportingVideo() dès que object=='videos', ce qui est le cas pour tout export Animems, voir MediasDisplay.java:264 b.putString("object","videos")), :448-461 (exportingVideo → démarre ExportVideoService) ; app/src/main/java/com/tiinver/editor/service/ExportVideoService.java:315-480 (onEncodeFinished : construit un outro de 4s via MP4Encoder.setOutroConfig/startOutreVideoEncode — logo, username, message "connect_grow_and_monetize" — PUIS un AnimatedWatermarkComposer avec 5 keyframes de position/échelle/alpha animées sur toute la vidéo, puis UnifiedComposerFinal.compose(mainPath, outroVideo, watermark, ...) qui produit le fichier final réellement partagé)
+ANDROID BEHAVIOR : Quand l'utilisateur appuie sur le bouton "Partager" (partage natif OS, PAS le bouton "Publier"/post) après un export vidéo Animems, Android lance un pipeline de composition secondaire complet : ajoute un outro de 4 secondes (logo Tiinver + nom d'utilisateur + message d'accroche) ET superpose un watermark Tiinver animé (déplacement haut-gauche → haut-droite → bas-gauche puis fixe) sur toute la durée de la vidéo principale, avant de proposer le fichier au partage natif — un mécanisme de croissance virale (branding systématique de tout contenu Animems partagé hors de l'app).
+IOS FILES : Sources/TiinverSwift/Animems/AnimemesEditorView.swift:245-266 (ShareLink(item: export.url) — partage direct du fichier brut exporté par AnimemesExporter, aucune étape de composition intermédiaire) ; Sources/TiinverSwift/Animems/AnimemesExporter.swift:34-37 (le fichier documente lui-même : "vidéo 'outro' (OUTRO_DURATION_SEC/outreVideo, mécanisme séparé pas encore lu)" — non porté, TODO explicite laissé par le passage précédent)
+IOS BEHAVIOR : Le bouton "Partager l'export" appelle directement ShareLink sur le fichier brut produit par AnimemesExporter — aucun outro, aucun watermark, aucune étape de composition secondaire n'existe dans le code iOS (confirmé par recherche exhaustive de "watermark"/"outro"/"UnifiedComposer" sur tout Sources/, seule occurrence étant la note de TODO ci-dessus).
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : MISSING — `UnifiedComposerFinal`/`AnimatedWatermarkComposer`/`OutroConfig`/`ExportVideoService` n'ont aucun équivalent Swift.
+IMPACT : Toute vidéo Animems partagée par un utilisateur iOS vers WhatsApp/Instagram/etc. part totalement dépourvue de branding Tiinver (pas de logo, pas de watermark, pas d'appel à l'action) — perte du mécanisme de croissance virale/attribution qu'Android applique systématiquement à ce point du flux.
+SUGGESTED_STATUS : MISSING
+RECOMMANDATION : Porter au minimum une version simplifiée : composer un outro de quelques secondes (logo + nom d'utilisateur) et/ou un watermark statique ou animé via AVFoundation (AVVideoComposition + CALayer d'overlay) avant d'exposer le fichier au ShareLink, réutilisant AnimemesExporter comme point d'insertion.
+CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Animems (import/export)" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-083
+PRIORITÉ : P2
+DOMAINE : Pipeline média Animems — export/publication
+FEATURE : Métadonnées de classification (style/content_type/template_id) perdues lors de la publication backend d'un export Animems
+ANDROID SOURCE : engine (AnimemesCompound.java):2705-2716 (bundle RESULT_VIDEO : contentType="animation", style="animemes", template_id=activeCommunityTemplateId si applicable) → propagé sans altération à travers MediaTrim.java:195-197 → MediasDisplay.java:271-274 (b.putString("contentType"/"style"/"template_id")) → PublishFragment.java:151-153 (lus depuis les arguments) → :296-297/381-383 (proceedToPublish : intent.putExtra("template_id", template_id) + getMetadata(...) qui appelle meta.setStyle(style)/meta.setContent_type(contentType) dans getVideoMetadata:626-627) → app/src/main/java/com/tiinver/Activity/service/ActivityService.java:196 (params.put("template_id", data.getTemplate_id())) — chaîne complète et réellement atteinte pour tout export Animems publié.
+ANDROID BEHAVIOR : Une vidéo/image produite par l'éditeur Animems et publiée via le bouton "Publier" (proceedToPublish) envoie au backend, dans le JSON metadata ET en paramètre top-niveau : style="animemes", content_type="animation", et template_id (identifiant du modèle communautaire utilisé, si applicable) — permettant classification du contenu et attribution d'utilisation de modèle.
+IOS FILES : Sources/TiinverSwift/Animems/AnimemesEditorView.swift:1004-1017 (publishMedia(from:) — convertit le fichier exporté en simple PublishMedia.video(url)/.photo(image), sans aucune trace de style/content_type/template_id) ; Sources/TiinverSwift/Feed/PublishComposeView.swift (enum PublishMedia:17-24) ; Sources/TiinverSwift/Feed/FeedRepository.swift:176-268 (func publish(...))
+IOS BEHAVIOR : publishMedia(from:) ne porte aucune métadonnée Animems ; PublishMedia n'a pas de slot pour style/content_type/template_id ; FeedRepository.publish (ligne 241-242) code en dur content_type: nil, style: nil (avec un commentaire expliquant que ces champs sont nuls "pour ce flux Galerie standard") et (ligne 266) "template_id": "" toujours vide — pour TOUTE publication, y compris celles issues d'un export Animems.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : PARTIAL — le pipeline générique FeedRepository.publish existe et fonctionne pour le flux Galerie normal (où Android lui-même envoie effectivement null/vide pour ces 3 champs), mais aucun chemin ne relie l'export Animems (qui EST le cas où Android renseigne réellement ces 3 champs) à ce pipeline.
+IMPACT : Un contenu produit par l'éditeur Animems et publié depuis iOS arrive au backend indiscernable d'une simple photo/vidéo Galerie — perte de la classification de style/type de contenu et, plus significatif, perte de l'attribution d'usage du modèle communautaire (template_id) que le créateur du modèle pourrait s'attendre à voir comptabilisée côté serveur.
+SUGGESTED_STATUS : MISSING
+RECOMMANDATION : Étendre PublishMedia (ou une variante) pour transporter style="animemes"/content_type="animation"/template_id depuis AnimemesEditorState jusqu'à FeedRepository.publish, et ajouter ces 3 paramètres optionnels à publish() en les injectant dans MediaMetaData/params exactement comme le fait PublishFragment.java.
+CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Animems (import/export)" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-084
+PRIORITÉ : P3
+DOMAINE : Pipeline média Animems — export/publication
+FEATURE : Débit audio (bitrate) de l'export vidéo Animems divisé par deux côté iOS
+ANDROID SOURCE : engine (MP4Encoder.java):1576-1587 (onStartAudio : MediaFormat.createAudioFormat(AAC, 44100, 2) puis audioFormat.setInteger(KEY_BIT_RATE, 128_000)) — chemin réellement emprunté par createVideosFromBitmap (AnimemesCompound.java:2695-2722, encoder.setAudioTrackExiste(true)/addFrame/startFrameEncoding)
+ANDROID BEHAVIOR : Quand l'animation exportée contient une piste audio ("Ajouter un son"), l'AAC encodé est à 128 kbps, 44100 Hz, stéréo.
+IOS FILES : Sources/TiinverSwift/Animems/AnimemesExporter.swift:125-130 (AVEncoderBitRateKey: 64000, AVSampleRateKey: 44100, AVNumberOfChannelsKey: 2)
+IOS BEHAVIOR : Le même export encode l'AAC à seulement 64 kbps — la fréquence d'échantillonnage et le nombre de canaux sont identiques, seul le débit binaire est divisé par 2.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : PARTIAL — constante de configuration divergente, pas une logique manquante.
+IMPACT : Qualité audio perceptiblement inférieure (surtout sur des sons/musiques ajoutés riches en fréquences) dans toute vidéo Animems exportée depuis iOS par rapport à l'équivalent Android, sans que rien dans le code ou les commentaires ne justifie ce choix comme intentionnel.
+SUGGESTED_STATUS : VISUALLY_DIFFERENT
+RECOMMANDATION : Aligner AVEncoderBitRateKey sur 128000 dans AnimemesExporter.swift pour reproduire fidèlement le débit audio Android.
+CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Animems (import/export)" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-085
+PRIORITÉ : P1
+DOMAINE : Photo Editor
+FEATURE : Manipulation interactive (glisser, pincer-zoomer, pivoter à deux doigts) des calques placés (texte, sticker/emoji, image ajoutée) après leur ajout au canevas
+ANDROID SOURCE : engine/src/main/java/com/animems/engine/android/memes/ImageViewCanvas.java:1156-1187 (GestureListener.onSingleTapUp → touchDown(e,i) sélectionne le calque tapé ; onScroll → translation(-dx,-dy,objectInAction) déplace le calque sélectionné) ; :1191-1207 (ScaleListener.onScale → scale(scaleFactor, focusX, focusY, objectInAction), pincer-zoomer le calque sélectionné, borné [MIN_SCALE, MAX_SCALE]) ; :1238-1358 (touchDown/touchMove/rotate — un second doigt (modo==2) calcule oldDegre/midPoint puis rotate(newDegre,i) applique une rotation libre au calque) ; :1210-1232 (onTouchEvent — ces gestes sont actifs pour TOUT calque non verrouillé et de type != PATH dès que getAction() != "drawPath", c'est-à-dire l'état par défaut après avoir ajouté un texte/sticker/image ou fermé le mode peinture)
+ANDROID BEHAVIOR : Après avoir ajouté un texte (containerEditText), un emoji (onEmojiClick→addBitmap) ou une image (onNewAddBitmap), l'utilisateur peut le sélectionner d'un tap puis le faire glisser (un doigt), le redimensionner (pincer à deux doigts) et le faire pivoter librement (rotation à deux doigts) directement sur le canevas — ce sont les gestes standard de tout éditeur de type Stories/mèmes.
+IOS FILES : Sources/TiinverSwift/PhotoEditor/PhotoToolsView.swift:56-61 (ForEach(texts) { Text(item.text)...position(item.position) } — aucun modificateur de geste sur l'élément) ; :208-226 (drawGesture, le SEUL geste défini dans tout le fichier, n'est actif que si isDrawMode==true et sert exclusivement au dessin libre, attaché au ZStack entier via .contentShape(Rectangle()).gesture(drawGesture), jamais à un élément individuel) ; :153-172 (addText/addSticker fixent position une fois pour toutes à l'ajout, aucun moyen ultérieur de la modifier)
+IOS BEHAVIOR : Un texte ou un sticker ajouté est positionné une seule fois (centre du canevas + décalage de 24pt par élément déjà présent) puis reste figé : aucun DragGesture, MagnificationGesture ni RotationGesture n'est attaché aux vues Text() du ForEach. Il est impossible de déplacer, redimensionner ou faire pivoter un texte/sticker/image après l'avoir ajouté ; le seul recours est de fermer l'écran et de recommencer entièrement, ou de vivre avec la position par défaut.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Le portage n'a repris que le sous-ensemble 'ajout' de chaque type de calque (containerEditText/ic_smile/BitmapManager.getBitmapFromText) sans reproduire GestureListener/ScaleListener/la logique de rotation à deux doigts d'ImageViewCanvas.onTouchEvent, qui gèrent la manipulation post-placement de TOUS les calques non-PATH — déjà signalé comme périmètre volontairement réduit dans l'en-tête du fichier ("PAS de glisser-déposer du texte/sticker une fois placé") mais jamais formalisé comme finding numéroté ni évalué dans un audit dédié (le résumé de domaine du V5 note explicitement ce point comme non vérifié en détail).
+IMPACT : Perte fonctionnelle réelle et visible pour l'utilisateur final : sur Android, ajouter un texte/sticker/image mal placé se corrige d'un geste ; sur iOS, il n'existe aucun moyen de repositionner, redimensionner ou faire pivoter un élément une fois ajouté — l'utilisateur doit annuler tout l'ajout (bouton undo, qui ne retire que les traits de peinture, pas les textes/stickers, cf. V5-F-036/V4-F-057) ou fermer entièrement l'éditeur et recommencer. Affecte TOUS les usages de texte/sticker/image ajoutée sur cet écran, pas un cas limite.
+SUGGESTED_STATUS : MISSING
+RECOMMANDATION : Attacher à chaque `Text` du `ForEach(texts)` une combinaison de `DragGesture` (translation de `item.position`), `MagnificationGesture` (échelle appliquée à la taille de police/du sticker, bornée) et `RotationGesture` (angle stocké sur `PlacedText`, appliqué via `.rotationEffect`), avec une sélection préalable (tap) fidèle à `ImageViewCanvas.touchDown`/`objectInAction`, et reporter l'angle/l'échelle dans `flatten()` lors de la composition finale.
+CONTRE-AUDIT : trouvé par l'agent "Photo Editor" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-086
+PRIORITÉ : P2
+DOMAINE : Photo Editor
+FEATURE : Bouton 'recadrer à nouveau' (ic_repeate) — re-crop du composite courant en le remplaçant par une nouvelle image aplatie
+ANDROID SOURCE : engine/src/main/java/com/animems/engine/android/views/ImageEditorCompound.java:616-619 (R.id.ic_repeate → onRepeateImage()) et :861-885 (onRepeateImage : capture un bitmap du mView courant via getBitmapFromView, ouvre une nouvelle CroperView sur cette capture, et à la validation appelle mView.clearBoard() puis onNewAddBitmap(bitmap,"bitmap",true,true) pour remplacer TOUS les calques existants par le résultat recadré)
+ANDROID BEHAVIOR : Un bouton dédié (icône répétition, toujours visible dans la barre d'outils via initView()) permet à l'utilisateur de figer l'état courant du canevas (traits de peinture + texte + images déjà ajoutés) en une seule image, de la recadrer une nouvelle fois via l'écran de recadrage complet (forme/freeform/suppression d'arrière-plan), puis de repartir de ce nouveau cliché aplati comme unique calque de fond, effaçant l'historique précédent.
+IOS FILES : Sources/TiinverSwift/PhotoEditor/PhotoToolsView.swift (fichier entier — barre d'outils lignes 121-145, boutons flip/removeBackground/paint/text/sticker/undo uniquement, aucun bouton ou fonction équivalente à ic_repeate/onRepeateImage/clearBoard)
+IOS BEHAVIOR : Aucun équivalent : impossible de figer et re-recadrer le composite en cours d'édition. Le seul recadrage possible est celui effectué AVANT PhotoToolsView (PhotoCropView/FreeformCropView, étape précédente du flux) ; une fois sur cet écran, aucune fonctionnalité ne permet de revenir à un recadrage à partir de l'état courant.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Fonctionnalité entièrement omise lors du portage — aucune mention dans l'en-tête ni les commentaires de PhotoToolsView.swift, contrairement au flip/removeBackground/paint/text/sticker qui sont explicitement documentés comme portés.
+IMPACT : Perte fonctionnelle mineure à modérée : les utilisateurs Android peuvent réajuster le cadrage de leur composition après avoir déjà ajouté du texte/dessin (utile si l'ajout révèle qu'un recadrage différent serait préférable) ; les utilisateurs iOS n'ont aucun recours équivalent et doivent recommencer entièrement l'édition depuis le début du flux de publication pour changer le cadrage.
+SUGGESTED_STATUS : MISSING
+RECOMMANDATION : Évaluer la fréquence d'usage réelle de ce bouton avant de porter (feature secondaire) ; si jugé utile, ajouter un bouton 'recadrer' qui aplatit `strokes`/`texts` sur `displayedImage` (réutilisant la logique de `flatten()`), rouvre `PhotoCropView` sur ce résultat, et remplace `displayedImage` en vidant `strokes`/`texts` à la validation.
+CONTRE-AUDIT : trouvé par l'agent "Photo Editor" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-087
+PRIORITÉ : P3
+DOMAINE : Photo Editor
+FEATURE : Fond/conteneur opaque derrière le texte ajouté (bascule texte blanc-sur-transparent ↔ texte noir-sur-fond blanc)
+ANDROID SOURCE : engine/src/main/java/com/animems/engine/android/views/ImageEditorCompound.java:441-457 (R.id.btn_textContainer : bascule `isBorderText`, applique `et.setContainerColor(white)`+`et.setTextColor(black)` vs `et.setContainerColor(trans)`+`et.setTextColor(white)`) — bouton visible uniquement quand le mode texte est actif (:495, `Visibility.show(btn_contaoner)`)
+ANDROID BEHAVIOR : Pendant la saisie d'un texte, un bouton dédié permet de basculer entre texte blanc sur fond transparent et texte noir sur un rectangle de fond blanc plein, avant validation — ce fond fait partie du bitmap final aplati (getBitmapFromEdittextView capture l'EditText avec son `containerColor`).
+IOS FILES : Sources/TiinverSwift/PhotoEditor/PhotoToolsView.swift:89-93 (alert 'Ajouter du texte' — un seul TextField, aucune option de fond) ; :306-314 (struct PlacedText — aucun champ de couleur de fond/conteneur, uniquement `color` de premier plan)
+IOS BEHAVIOR : Le texte ajouté n'a jamais de fond : il est toujours rendu en `.foregroundStyle(item.color)` sur fond totalement transparent, sans possibilité de conteneur opaque.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : L'option de fond de texte (isBorderText/btn_textContainer/et.setContainerColor) n'a pas été portée — PhotoToolsView ne modélise que la couleur de premier plan du texte, pas de fond.
+IMPACT : Perte d'une option de lisibilité mineure : sur une photo à fond clair/variable, un texte ajouté sans fond peut devenir illisible, option que l'utilisateur Android peut activer pour y remédier, indisponible sur iOS.
+SUGGESTED_STATUS : MISSING
+RECOMMANDATION : Ajouter un bouton bascule dans l'alerte ou la barre d'outils qui applique un `.background(Capsule().fill(.white))`/couleur pleine derrière le `Text`, avec un `PlacedText.containerColor: Color?` optionnel reporté dans `flatten()`.
+CONTRE-AUDIT : trouvé par l'agent "Photo Editor" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-088
+PRIORITÉ : P3
+DOMAINE : Photo Editor
+FEATURE : Résolution de l'image composée finale : capée à la résolution d'AFFICHAGE côté Android (pas la résolution pixel de la photo source, contrairement à ce qu'affirme le commentaire de tête de `flatten()` côté iOS)
+ANDROID SOURCE : engine/src/main/java/com/animems/engine/android/views/ImageEditorCompound.java:240-280 (fitBitmapToView : le bitmap recadré est redimensionné via `Bitmap.createScaledBitmap` à `availableWidth` = largeur MESURÉE du parent (donc la largeur d'écran), AVANT d'être posé comme image de fond de `mView` — `lp.width = MATCH_PARENT`) ; :818-825 (createImage : `getBitmapFromView(mView)` crée un bitmap de `view.getWidth()`×`view.getHeight()`, c'est-à-dire les dimensions de la VUE écran, pas celles de la photo source d'origine)
+ANDROID BEHAVIOR : La photo de base est explicitement redimensionnée à la largeur d'écran mesurée AVANT tout ajout de peinture/texte/sticker, et l'image finale exportée (`getBitmapFromView`) a pour dimensions celles de la vue à l'écran — donc plafonnée à la résolution d'AFFICHAGE, quelle que soit la résolution native (souvent bien plus élevée, ex. 12 MP) de la photo source.
+IOS FILES : Sources/TiinverSwift/PhotoEditor/PhotoToolsView.swift:236-298 (flatten(), en particulier :255-260 où `imageSize = displayedImage.size` et :293 `.frame(width: imageSize.width, height: imageSize.height)` — le composite est rendu à la résolution PIXEL COMPLÈTE de la photo source, pas à `canvasSize` écran) ; commentaire de tête :241-254 affirmant explicitement '`ImageEditorCompound` bake le contenu à la résolution pixel de la photo, jamais à la résolution d'affichage' — affirmation infirmée par la lecture directe du code Android ci-dessus
+IOS BEHAVIOR : iOS exporte systématiquement à la pleine résolution pixel de la photo source (post-recadrage), potentiellement plusieurs fois supérieure à ce qu'exporte Android pour la même photo via ce même écran.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Le correctif du 2026-08-20 (V3-F-126/V3-F-039) a corrigé un vrai bug (lettrboxing au ratio écran) mais s'est appuyé sur une lecture incorrecte du comportement Android — `ImageEditorCompound`/`ImageViewCanvas` ne bake JAMAIS à la résolution pixel de la photo source une fois passée par `fitBitmapToView`, contrairement à ce qu'affirme le commentaire.
+IMPACT : Divergence réelle non régressive pour l'utilisateur (iOS produit une image finale de meilleure qualité/résolution qu'Android pour la même action), mais (a) le résultat exporté n'est pas dimensionnellement identique entre les deux plateformes pour une même photo/action utilisateur — pertinent si un test de parité ou une vérification manuelle s'appuie sur les dimensions de sortie — et (b) le commentaire du code source iOS documente une justification factuellement inexacte, risquant d'induire en erreur un futur audit ou un développeur qui s'y fierait sans revérifier le code Android. Accessoirement, composer via `ImageRenderer` à pleine résolution (ex. 12 MP+) sur un appareil ancien est plus coûteux en mémoire que l'approche Android qui traite toujours une image plafonnée à la largeur écran.
+SUGGESTED_STATUS : VISUALLY_DIFFERENT
+RECOMMANDATION : Corriger le commentaire de `flatten()` pour refléter le comportement Android réel (résolution plafonnée à la largeur d'affichage, pas la résolution pixel source) ; décider consciemment si le comportement iOS actuel (export haute résolution) est le comportement souhaité (probablement oui, c'est une amélioration) et le documenter comme divergence intentionnelle assumée plutôt que comme une 'fidélité' à Android.
+CONTRE-AUDIT : trouvé par l'agent "Photo Editor" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-089
+PRIORITÉ : P1
+DOMAINE : Animems Canvas — Édition de texte
+FEATURE : Ajout de texte : police, couleur, taille, alignement, fond arrondi
+ANDROID SOURCE : AnimemesCompound.java:224 (proTextEditor field), :315 (findViewById(R.id.editText)), :336/456 (btn_text listener), :2030-2039 (ic_text → proTextEditor.show()/dismiss()) ; ProTextEditorView.java:80 (alignment=Gravity.CENTER par défaut, mais réglable), :110-158 (7 Typeface réels : sans/sans-bold/sans-italic/serif/mono/sans-bold-italic/serif-bold-italic), :~294-365 (rangée de 3 boutons d'alignement gauche/centre/droite), :~412-440 (toggle fond + coins arrondis), sliders de taille de texte
+ANDROID BEHAVIOR : Au tap sur le bouton texte (btn_text/ic_text), Android ouvre un vrai panneau `ProTextEditorView` plein écran : choix parmi 7 polices/styles, sélecteur de couleur de texte, toggle + couleur de fond avec rayon de coin réglable, et alignement gauche/centre/droite du texte, AVANT de confirmer (onTextConfirmed rasterise le tout en bitmap).
+IOS FILES : AnimemesEditorView.swift:179-183 (.alert("Ajouter du texte") { TextField("Texte", text: $newText) }) ; AnimemesEditorState.swift:238-250 (addText(_:canvasSize:) — objectColor et backgroundColor codés en dur, aucune police/alignement/taille exposés) ; ProTextEditorState.swift (modèle complet : 7 ProTextFont, palette de 16 couleurs, alignment, bgEnabled, cornerDp — ENTIÈREMENT PORTÉ)
+IOS BEHAVIOR : L'ajout de texte se fait via une simple alerte système iOS avec un seul TextField — aucune option de police, de couleur, de taille ou d'alignement n'est proposée à l'utilisateur ; le texte est toujours blanc sur fond noir semi-transparent (0xB3000000), taille fixe. Le modèle `ProTextEditorState`/`ProTextFont` (police, palette 16 couleurs, alignement, fond, coin arrondi) existe et est correctement porté, mais n'est référencé NULLE PART ailleurs dans le dépôt (grep exhaustif sur `ProTextEditorState`/`ProTextFont` : un seul fichier, celui qui les déclare) — code mort, jamais câblé à `AnimemesEditorView`.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Non — voir CAUSE pour contexte
+CAUSE : Le modèle de données/logique de l'éditeur de texte riche a été porté (probablement en prévision d'un futur écran dédié) mais l'écran SwiftUI qui l'utiliserait n'a jamais été construit ; `addText` a été implémenté séparément avec une alerte minimale comme solution de repli temporaire, sans jamais être remplacée.
+IMPACT : Toute personnalisation de texte (police, couleur, taille, alignement, fond) disponible côté Android est indisponible côté iOS — fonctionnalité utilisateur significativement réduite pour un cas d'usage central de l'éditeur Animems (memes/texte stylisé).
+SUGGESTED_STATUS : PARTIAL
+RECOMMANDATION : Construire une vue SwiftUI (sheet/fullScreenCover) qui consomme le modèle `ProTextEditorState` déjà porté — sélecteur de police (7 `ProTextFont`), palette de couleurs, toggle fond + coin arrondi, alignement — et appeler `addText` avec ces valeurs au lieu du `TextField` d'alerte actuel.
+CONTRE-AUDIT : trouvé par l'agent "Animems Canvas" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-090
+PRIORITÉ : P2
+DOMAINE : Animems Canvas — Dessin libre
+FEATURE : Dessin libre sur le canevas : épaisseur de trait réglable, palette de couleurs complète, lissage du tracé
+ANDROID SOURCE : AnimemesCompound.java:2066-2076 (ic_paint_size → PaintSizeListAdapter, SeekBar 0-100) ; PaintSizeListAdapter.java:35-45 (SeekBar réel, progress par défaut=5, max=100) ; AnimemesCompound.java:1941-1957 (ic_palete → PaintListAdapter/mRecyclerView) ; PaintList.java:18-24 (21 couleurs réelles, `getPaintList()`) ; AnimemesCompound.java:3266-3268 (onColorChoosed → mView.setPathColor quand action=="drawPath") et :3285 (onSizeChoosed → mView.setPaintSize) ; MemesView2.java:1976-1977 (chaikin(rawPathPoints) — lissage Chaikin appliqué à chaque ACTION_MOVE) et :119-120 (MIN_DIST=4f, CHAikin_ITER=1)
+ANDROID BEHAVIOR : Le trait de dessin libre a une épaisseur réglable via un SeekBar réel (0-100, défaut proche de 5px), une couleur choisie parmi une palette de 21 couleurs réelles (PaintList), et les points bruts du doigt sont lissés par un algorithme de Chaikin (`animationEngine.chaikin`) avant d'être tracés — courbe visuellement lissée, pas des segments droits bruts.
+IOS FILES : AnimemesDrawingView.swift:34 (StrokeStyle(lineWidth: 8, ...) fixe, aucun contrôle UI) ; :54 (ForEach([Color.red, .yellow, .blue, .green, .white, .black]) — 6 couleurs fixes) ; :28-49 (Canvas trace directement stroke.points sans aucun lissage, path.addLine point à point)
+IOS BEHAVIOR : L'épaisseur du trait est fixée en dur à 8pt, sans aucun contrôle utilisateur pour l'ajuster. Seules 6 couleurs fixes sont proposées (au lieu des 21 d'Android). Les points de toucher sont reliés par des segments droits bruts, sans lissage de courbe (pas de Chaikin ni d'équivalent).
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Non — voir CAUSE pour contexte
+CAUSE : Portage simplifié du dessin libre : réutilise le motif générique 'stroke multi-traits' de la Galerie (comme documenté en tête de fichier) sans reporter les contrôles spécifiques d'épaisseur/palette/lissage du moteur Animems d'origine.
+IMPACT : Résultat visuel des dessins libres notablement différent (traits plus anguleux, palette réduite, épaisseur non ajustable) — fonctionnalité utilisable mais visuellement et fonctionnellement appauvrie par rapport à Android.
+SUGGESTED_STATUS : PARTIAL
+RECOMMANDATION : Ajouter un slider d'épaisseur (ex. 2-40pt) et étendre la palette à un jeu de couleurs comparable à `PaintList` (21 teintes) ; appliquer un lissage de courbe (ex. un filtre Catmull-Rom/Chaikin simple sur `stroke.points`) avant le tracé final dans `flatten()`.
+CONTRE-AUDIT : trouvé par l'agent "Animems Canvas" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-091
+PRIORITÉ : P3
+DOMAINE : Animems Canvas — Sélection
+FEATURE : Tap sur une zone vide du canevas : désélection ou non de l'objet actif
+ANDROID SOURCE : MemesView2.java:1642-1659 (touchDown(event, i) — ne modifie `objectInAction` QUE si `bound.contains(x,y)`, sinon ne fait RIEN, ne le réinitialise jamais à -1) ; :1566-1570 (GestureListener.onSingleTapUp boucle sur TOUS les calques et appelle touchDown pour chacun) ; recherche exhaustive des affectations `objectInAction = -1` dans ce fichier (lignes 510, 594, 1768) : uniquement lors d'une suppression d'objet (deleteObjectById/deleteObjectDrawed/drag-to-delete), JAMAIS lors d'un tap simple sur une zone sans objet
+ANDROID BEHAVIOR : Un tap sur une zone vide du canevas NE désélectionne PAS l'objet actif (`objectInAction` conserve sa valeur précédente) : l'objet précédemment sélectionné reste actif pour les gestes de translation à un doigt (`GestureListener.onScroll`, qui ne teste que `objectInAction >= 0`, pas la position du doigt ni `moveObject`) tant qu'aucun autre objet n'a été touché ou supprimé.
+IOS FILES : AnimemesEditorState.swift:298-313 (selectObject(at:) — met explicitement `selectedId = nil` quand aucun calque ne contient le point tapé) ; AnimemesEditorView.swift:744-751 (dragGesture appelle systématiquement selectObject(at: value.startLocation) au premier callback de CHAQUE nouveau geste)
+IOS BEHAVIOR : Tapoter/glisser depuis une zone vide du canevas désélectionne immédiatement l'objet actif (`selectedId = nil`), désactivant tous les boutons dépendants de la sélection (dupliquer, supprimer, etc.) et empêchant tout geste suivant d'affecter l'ancien objet tant qu'il n'est pas re-sélectionné.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Le port a délibérément réarmé la sélection à chaque nouveau geste (voir commentaire ligne 744-748 de AnimemesEditorView.swift) pour éviter un bug de sélection bloquée, sans reproduire le fait qu'Android ne réinitialise jamais `objectInAction` sur un tap manqué — divergence de conception non documentée comme un choix assumé.
+IMPACT : Comportement différent mais pas nécessairement dégradé : iOS est plus prévisible (désélection nette), Android laisse l'objet actif "collant" même après un tap dans le vide. Peut surprendre un testeur comparant côte à côte, ou casser un scénario de test attendant la persistance Android.
+SUGGESTED_STATUS : PARTIAL
+RECOMMANDATION : Décider explicitement si la désélection sur tap vide (comportement iOS actuel, plus prévisible) est un choix assumé à documenter comme différence intentionnelle, ou s'il faut reproduire la persistance de sélection d'Android pour une parité stricte.
+CONTRE-AUDIT : trouvé par l'agent "Animems Canvas" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-092
+PRIORITÉ : P3
+DOMAINE : Animems Canvas — Déplacement (drag)
+FEATURE : Translation d'un calque déclenchée par n'importe quel glissement du doigt sur le canevas (pas seulement en partant de l'objet)
+ANDROID SOURCE : MemesView2.java:1575-1580 (GestureListener.onScroll — translate `objectInAction` sur CHAQUE glissement détecté par `GestureDetector`, sans vérifier que le glissement démarre sur l'objet ni que `moveObject==true`, seule condition : `objectInAction >= 0` et non verrouillé) ; :1598-1611 (onTouchEvent appelle `gestureDetector.onTouchEvent(event)`, qui déclenche onScroll, INDÉPENDAMMENT de la boucle `executeTouchEvent`/`touchMove` qui, elle, vérifie `moveObject`)
+ANDROID BEHAVIOR : Une fois qu'un objet a été touché au moins une fois (objectInAction pointe dessus), TOUT glissement ultérieur sur le canevas — même démarré depuis une zone vide ou au-dessus d'un AUTRE objet non sélectionné — continue à translater cet objet, via le chemin `GestureListener.onScroll` distinct du chemin `touchDown`/`touchMove` normal (qui, lui, exige que le geste démarre dans les bornes de l'objet).
+IOS FILES : AnimemesGestureController.swift:101-106 (touchMoveTranslate — exige `composer.layers[i].moveObject == true`, positionné uniquement si `touchDown` a détecté que le point de départ tombe dans `bound`) ; AnimemesEditorState.swift:340-360 (dragMoved(to:) — même garde, aucun chemin équivalent à `onScroll`)
+IOS BEHAVIOR : La translation d'un calque n'est possible QUE si le geste de glissement démarre exactement sur le calque sélectionné (`selectObject` doit d'abord retourner ce calque). Un glissement démarré ailleurs sur le canevas n'a aucun effet sur l'objet précédemment sélectionné.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Le port de `AnimemesGestureController`/`AnimemesEditorState` a reproduit uniquement le chemin `touchDown`/`touchMove`/`translation` (documenté explicitement comme le port fidèle de `MemesView2.onTouchEvent`), sans reproduire le second chemin de translation `GestureListener.onScroll`, qui coexiste dans le fichier source et a une portée différente.
+IMPACT : Impact mineur en usage normal (l'utilisateur redémarre généralement son geste sur l'objet visible), mais un scénario Android réel (glisser depuis une zone vide après avoir sélectionné un objet) ne produit aucun effet côté iOS alors qu'il déplacerait l'objet côté Android.
+SUGGESTED_STATUS : MISSING
+RECOMMANDATION : Évaluer si ce chemin `onScroll` d'Android est un comportement voulu ou un artefact de la composition GestureDetector+boucle manuelle ; s'il est voulu, ajouter un geste équivalent (translation basée sur `selectedId` seul, sans exiger que le glissement démarre sur l'objet) ou documenter la divergence comme assumée.
+CONTRE-AUDIT : trouvé par l'agent "Animems Canvas" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-093
+PRIORITÉ : P3
+DOMAINE : Animems Canvas — Import média
+FEATURE : Taille par défaut d'un média importé dans le canevas
+ANDROID SOURCE : AnimemesCompound.java:2268-2277 (onNewAddBitmap — mWidth=mView.getWidth()/CELLS, mHeight=mView.getHeight()/CELLS avec CELLS=2 (MathUtils.java:12), image insérée dimensionnée pour tenir dans LA MOITIÉ de la largeur/hauteur RÉELLE du canevas, en conservant le ratio) ; :2290-2291 (offsetX/offsetY centrés sur `mView.getMeasuredWidth()/Height()`)
+ANDROID BEHAVIOR : La taille initiale d'un média importé est proportionnelle aux dimensions RÉELLES du canevas actif (la moitié de sa largeur/hauteur), donc s'adapte automatiquement au ratio d'aspect choisi (9:16, 16:9, 3:4, 1:1) — un import sur un canevas 1:1 aura une taille par défaut différente d'un import sur un canevas 9:16.
+IOS FILES : AnimemesEditorState.swift:228 (Self.downscale(image, maxDimension: 220) — dimension maximale FIXE de 220pt, indépendante de `canvasSize`) ; :212-221 (configureNewObject — centrage correct, mais taille déjà fixée en amont)
+IOS BEHAVIOR : La taille initiale d'un média importé est plafonnée à 220pt de dimension maximale quel que soit le ratio/la taille du canevas actif — ne s'adapte pas proportionnellement au canevas comme le fait Android.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Choix d'une constante fixe simple au lieu de calculer la taille relative au `canvasSize` passé en paramètre (qui est pourtant disponible à cet endroit précis de la fonction).
+IMPACT : Sur des canevas de tailles/ratios très différents du 360×640 par défaut, la taille relative de l'image importée par rapport au canevas diffère visiblement d'Android (proportionnellement plus grande ou plus petite selon le ratio choisi).
+SUGGESTED_STATUS : VISUALLY_DIFFERENT
+RECOMMANDATION : Remplacer la constante fixe `maxDimension: 220` par un calcul proportionnel à `canvasSize` (ex. `min(canvasSize.width, canvasSize.height) / 2`), fidèle à `mView.getWidth()/CELLS` d'Android.
+CONTRE-AUDIT : trouvé par l'agent "Animems Canvas" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-094
+PRIORITÉ : P0
+DOMAINE : Animems — Export vidéo
+FEATURE : Export MP4 d'une animation (bouton "Exporter la vidéo")
+ANDROID SOURCE : engine/android/views/AnimemesCompound.java:2606-2660 (createVideosFromBitmap → encoder.onSurfaceStartEncode()/addFrame/startFrameEncoding, encoder = MP4Encoder retenu comme champ de la vue pendant toute la durée de l'encodage)
+ANDROID BEHAVIOR : L'encodeur (MP4Encoder) est un champ persistant de AnimemesCompound, retenu tant que la vue existe ; l'encodage tourne sur un executor dédié et le callback onEncodeFinished() est garanti d'être appelé tant que la vue n'est pas détruite.
+IOS FILES : Sources/TiinverSwift/Animems/AnimemesExporter.swift:41-227 ; appelé depuis Sources/TiinverSwift/Animems/AnimemesEditorState.swift:954-984
+IOS BEHAVIOR : `AnimemesEditorState.export(canvasSize:completion:)` crée `let exporter = AnimemesExporter(...)` comme variable LOCALE (pas une propriété stockée), puis appelle `exporter.export(to:completion:)`. Dans `AnimemesExporter.export`, le seul point d'entrée du pipeline vidéo asynchrone est `videoInput.requestMediaDataWhenReady(on: videoQueue) { [weak self] in guard let self else { return } ... }` (ligne 171). Comme rien d'autre ne conserve de référence forte vers l'instance `AnimemesExporter` (`self`), celle-ci est désallouée par ARC dès la fin de l'exécution synchrone de `AnimemesEditorState.export(...)` — bien avant que la closure GCD sur `videoQueue` ne soit effectivement invoquée (dispatch asynchrone sur une autre file). À chaque invocation ultérieure de la closure, `self` vaut `nil`, `guard let self else { return }` s'exécute immédiatement : aucune frame n'est jamais rendue/écrite, `videoInput.markAsFinished()` n'est jamais appelé, `writer.finishWriting` n'est jamais atteint, et donc le `completion` passé à `export(to:completion:)` — et par ricochet `AnimemesEditorState.isExporting = false` — n'est JAMAIS invoqué.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Capture `[weak self]` sur l'unique point d'entrée du pipeline d'écriture vidéo, combinée à l'absence de toute référence forte externe conservant l'instance `AnimemesExporter` vivante pendant la durée de l'export asynchrone (ni propriété stockée côté `AnimemesEditorState`, ni capture forte dans la closure elle-même — vérifié par grep, une seule occurrence de `self]` dans tout le fichier).
+IMPACT : Toute tentative d'export d'une animation (calque animé présent, `hasAnimation == true`) reste bloquée indéfiniment sur l'état "export en cours" : aucun fichier MP4 n'est produit, aucune erreur n'est remontée à l'utilisateur, `isExporting` ne repasse jamais à `false`. C'est la fonctionnalité de sortie principale d'Animems (exporter la vidéo créée) qui est totalement non fonctionnelle pour tout contenu animé — l'export d'image statique (`exportStaticImage`, chemin synchrone séparé) n'est pas affecté.
+SUGGESTED_STATUS : FUNCTIONALLY_FAILED
+RECOMMANDATION : Faire de `exporter` une propriété stockée (forte) de `AnimemesEditorState` (ex. `private var activeExporter: AnimemesExporter?`) assignée avant l'appel à `export(to:completion:)` et libérée seulement dans le `completion` (succès ou échec) — garantissant que l'instance survit à toute la durée réelle de l'écriture asynchrone. Alternativement, retirer `[weak self]` et gérer explicitement l'annulation (ex. flag `isCancelled` vérifié dans la boucle) si l'objectif était d'éviter un retain cycle.
+CONTRE-AUDIT : trouvé par l'agent "Animems — playback/audio/performance" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-095
+PRIORITÉ : P1
+DOMAINE : Animems — Audio (lecture/prévisualisation dans l'éditeur)
+FEATURE : Lecture/pause de la piste audio ajoutée ("Ajouter un son"), synchronisée avec la lecture visuelle de l'animation dans l'éditeur
+ANDROID SOURCE : engine/android/views/AnimemesCompound.java:1684-1707 (mView.setPreviewAnimationListener → onPlay(frame): mAudio.seekTo(0) puis forceResetAndPlay() si musicFilePath != null ; onPause(): pause() qui appelle mAudio.pausePlaying() ; onEnded(): stop() qui appelle mAudio.stopWithoutRelease()) + engine/android/audioRecord/MyAudioManager.java (MediaPlayer réel, joué pendant l'édition)
+ANDROID BEHAVIOR : Dès qu'une piste audio est attachée (musicFilePath non nul), chaque cycle play/pause/fin de la timeline visuelle (piloté par AnimationEngine.PlaybackListener) démarre, met en pause ou réinitialise en parallèle un vrai MediaPlayer (mAudio) : l'utilisateur ENTEND le son pendant qu'il prévisualise/scrub l'animation dans l'éditeur, pas seulement dans la vidéo exportée.
+IOS FILES : Sources/TiinverSwift/Animems/AnimemesEditorState.swift:67-71 (audioURL déclaré), 780-787 (togglePlayback), 1054-1080 (extension AnimationEnginePlaybackDelegate) ; Sources/TiinverSwift/Animems/AnimemesEditorView.swift:389 (bouton "Ajouter un son") ; aucune occurrence de AVAudioPlayer dans tout le dossier Animems
+IOS BEHAVIOR : `audioURL` est bien capturé via le bouton "Ajouter un son" (bien réel, atteignable) mais n'est utilisé QUE comme `exporter.audioURL = audioURL` au moment de l'export final (ligne 968). `togglePlayback()`, `scrub(toFrame:)` et les 4 callbacks `AnimationEnginePlaybackDelegate` (didPlayFrame/didPause/didEnd/didInvalidate) ne créent, ne démarrent, ne mettent en pause et ne resynchronisent AUCUN lecteur audio — aucun `AVAudioPlayer`/`AVPlayer` n'existe nulle part dans le module Animems.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Fonctionnalité non portée : le point d'entrée UI "Ajouter un son" a été implanté et branché sur l'export (AnimemesExporter.audioURL), mais le couplage audio ↔ AnimationEngine.PlaybackListener réalisé côté Android dans AnimemesCompound (mAudio piloté par les callbacks onPlay/onPause/onEnded) n'a pas d'équivalent côté Swift.
+IMPACT : Un utilisateur qui ajoute un son à son animeme et appuie sur Lecture dans l'éditeur ne l'entend JAMAIS pendant l'édition (silence total en prévisualisation), alors que sur Android le son est audible et synchronisé au fil de la lecture/scrub — parité fonctionnelle rompue sur exactement le point demandé par ce domaine (gestion audio + synchronisation avec la vidéo/animation en lecture). Le son n'apparaîtrait qu'à l'export final (et actuellement même pas, voir le finding P0 ci-dessus qui bloque tout export animé).
+SUGGESTED_STATUS : MISSING
+RECOMMANDATION : Ajouter un `AVAudioPlayer` (ou `AVPlayer`) piloté par les mêmes callbacks `AnimationEnginePlaybackDelegate` : le démarrer/le seeker à 0 dans `animationEngine(_:didPlayFrame:)` quand `frame == 0` et `audioURL != nil` (port de `onPlay` → `mAudio.seekTo(0)`/`forceResetAndPlay()`), le mettre en pause dans `animationEngineDidPause`/`animationEngineDidEnd` (port de `pause()`/`stop()`).
+CONTRE-AUDIT : trouvé par l'agent "Animems — playback/audio/performance" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-096
+PRIORITÉ : P2
+DOMAINE : Double action / idempotence — téléchargement de média
+FEATURE : Bouton "Télécharger" dans le menu "..." d'un post (écran Profil)
+ANDROID SOURCE : uploadPerfilPhoto/ProfileFeedFragment.java:101 (déclaration `Set<MediaObject> uniqueDowloadSet`), :748-753 (clic R.id.download), :769-773 (`addingDownloadingFileToQueue`)
+ANDROID BEHAVIOR : Au clic sur "Télécharger", `addingDownloadingFileToQueue(mo)` insère le `MediaObject` dans un `HashSet<MediaObject> uniqueDowloadSet` AVANT de lancer `checkBestQualityAndDownload()`. `Set.add()` retourne `false` si l'élément est déjà présent, donc si l'utilisateur rouvre le menu "..." et retape "Télécharger" sur le MÊME post pendant que le premier téléchargement est encore en vol (ou même après qu'il soit terminé, tant que le Fragment n'est pas recréé), le second appel est silencieusement ignoré — aucune 2e requête réseau, aucune 2e écriture dans `DownloadManager`.
+IOS FILES : Sources/TiinverSwift/Feed/FeedView.swift:628-636 (bouton "Télécharger"), Sources/TiinverSwift/Feed/FeedMediaDownloader.swift:30-55 (`FeedMediaDownloader.download`)
+IOS BEHAVIOR : `FeedMediaDownloader.download(post)` est appelé directement depuis le bouton "Télécharger" du `confirmationDialog`, sans aucun état de garde (`isDownloading`, Set d'IDs en cours, etc.) ni côté `FeedView` ni côté `FeedMediaDownloader` (fonction statique sans état partagé). Comme le menu "..." se referme après chaque tap mais peut être rouvert instantanément, un utilisateur qui retape "Télécharger" sur le même post pendant que le premier téléchargement (probe qualité 720p/480p/360p + fetch réseau + écriture `PHPhotoLibrary`) est encore en cours déclenche un DEUXIÈME téléchargement complet et indépendant, en parallèle du premier.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Absence côté iOS de l'équivalent du `Set<MediaObject> uniqueDowloadSet` Android — aucune structure de déduplication (par `post.id`) n'a été portée avec `FeedMediaDownloader`.
+IMPACT : Double téléchargement réseau (bande passante gaspillée, double sondage HEAD des 3 qualités vidéo) ET double écriture dans la photothèque de l'utilisateur (`PHAssetChangeRequest.creationRequestForAssetFromVideo/Image` appelé 2 fois) — la même vidéo/photo apparaît en double dans l'app Photos, sans qu'aucun mécanisme ne le signale ou l'empêche.
+SUGGESTED_STATUS : MISSING
+RECOMMANDATION : Ajouter un état de déduplication (ex. `Set<Int>` des `post.id` déjà téléchargés/en cours, conservé au niveau de la vue ou d'un singleton) et ignorer silencieusement (comme Android) un nouvel appel à `FeedMediaDownloader.download` pour un post déjà présent dans ce set, ou a minima désactiver/masquer l'item "Télécharger" tant que le téléchargement du même post est en cours.
+CONTRE-AUDIT : trouvé par l'agent "Double action / idempotence" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-097
+PRIORITÉ : P1
+DOMAINE : Mémoire / concurrence
+FEATURE : Retrait / transfert / conversion de pièces (argent réel) — fenêtre de double-soumission par tap rapide
+ANDROID SOURCE : app/src/main/java/com/tiinver/wallet/TransfertCoinsActivity.java:115-140 (transfert.setVisibility(View.GONE) exécuté SYNCHRONEMENT dans onClick, avant l'appel réseau td.Post) ; WithdrawActivity.java:224-260 (le clic ouvre un FireMissilesDialogFragment de confirmation, la vraie soumission réseau n'a lieu que dans onPositive()) ; ConversionActivity.java:123-133 (convert() appelé directement dans onClick)
+ANDROID BEHAVIOR : Sur `TransfertCoinsActivity`, le bouton de transfert est masqué (`setVisibility(View.GONE)`) de façon SYNCHRONE dans le gestionnaire de clic, avant même que l'appel réseau `td.Post` ne démarre — un second tap immédiat ne peut plus atteindre la vue (GONE) donc ne peut pas relancer un second transfert. Sur `WithdrawActivity`, un clic déclenche d'abord une boîte de dialogue de confirmation (résumé montant/destinataire) et seul `onPositive()` lance réellement la demande de retrait — un tap rapide répété sur le bouton d'origine ne fait qu'ouvrir/rouvrir la boîte de dialogue, pas soumettre deux fois la demande.
+IOS FILES : Sources/TiinverSwift/Wallet/TransferCoinsView.swift:78-95 (transfer()) ; Sources/TiinverSwift/Wallet/WithdrawView.swift:87-90,116-150 (submit(), AUCUNE boîte de confirmation avant l'envoi réseau) ; Sources/TiinverSwift/Wallet/ConversionView.swift:36,42-50 (convert())
+IOS BEHAVIOR : Les trois écrans suivent le même schéma : la fonction appelée par le `Button` (transfer()/submit()/convert()) fait ses validations SYNCHRONES puis lance `Task { isSubmitting = true; ... }` — `isSubmitting` (et donc `.disabled(isSubmitting)`) n'est mis à `true` qu'À L'INTÉRIEUR de la closure `Task`, qui s'exécute de façon asynchrone (tour de boucle suivant), PAS de façon synchrone dans le handler de tap comme côté Android. `WithdrawView` de surcroît ne propose AUCUNE étape de confirmation avant l'appel réseau (le bouton `Envoyer la demande de retrait` appelle `submit()` directement) — la barrière supplémentaire qu'offrait la boîte de dialogue Android a disparu.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Portage du garde anti-double-tap dans le corps de la `Task` plutôt que de façon synchrone avant sa création — écart de timing introduit par le portage vers async/await sans reproduire le `setVisibility(GONE)`/`setEnabled(false)` synchrone d'Android ; pour `WithdrawView`, simplification qui a supprimé l'étape de confirmation modale d'Android.
+IMPACT : Un double-tap rapide (avant le premier repaint SwiftUI qui refléterait `isSubmitting == true`) peut faire démarrer DEUX `Task` qui exécutent chacune `WalletRepository.shared.transferCoins`/`submitWithdrawalRequest`/`convert` en parallèle avant qu'aucune n'ait eu la chance de positionner `isSubmitting`, provoquant un double débit réel de pièces (potentiellement converties en argent réel côté retrait/conversion) sans qu'aucun verrou logique côté client ne l'empêche — plus grave sur `WithdrawView` qui, en plus, n'a plus l'étape de confirmation qui limitait ce risque côté Android.
+SUGGESTED_STATUS : FUNCTIONALLY_FAILED
+RECOMMANDATION : Positionner `isSubmitting = true` de façon SYNCHRONE dans le handler de bouton (avant la création du `Task`), avec un `guard !isSubmitting else { return }` en tout premier, sur les trois écrans (TransferCoinsView, WithdrawView, ConversionView) ; envisager de restaurer une étape de confirmation explicite sur WithdrawView avant l'envoi réseau, par fidélité et par sécurité pour une opération d'argent réel.
+CONTRE-AUDIT : trouvé par l'agent "Mémoire / concurrence" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-098
+PRIORITÉ : P1
+DOMAINE : Lifecycle
+FEATURE : Continuité d'un envoi de média chat (photo/vidéo/gift) pendant que l'app passe en arrière-plan
+ANDROID SOURCE : messagerie/ui/ChatManager.java:261-295 (enqueue WorkManager `UploadChatWork`, `NetworkType.CONNECTED`, `BackoffPolicy.EXPONENTIAL`) + service/worker/UploadChatWork.java (Worker réel) + service/TiinverSyncWorker.java:1-40 (Worker périodique qui rappelle `sendMessageFromCursor` pour relancer tout envoi resté à `isFileUploaded==0`)
+ANDROID BEHAVIOR : L'upload d'un média de chat est confié à un `OneTimeWorkRequest` WorkManager persistant (contrainte réseau + retry exponentiel). WorkManager survit à la mise en arrière-plan de l'app ET à un kill du process par l'OS — le système réveille l'app pour terminer l'upload dès que la contrainte réseau est de nouveau remplie. `TiinverSyncWorker` (autre Worker) rebalaie périodiquement les messages non uploadés pour relancer ceux qui auraient échoué.
+IOS FILES : Sources/TiinverSwift/Messagerie/ChatViewModel.swift:531-557 (`requestUpload`, `Task { … }` simple) + ChatViewModel.swift:479-496 (`handleAppear`, seul déclencheur de `requestUpload`) + Messagerie/ChatMediaUploadService.swift (upload BunnyCDN via `URLSession` standard, pas de config `.background`)
+IOS BEHAVIOR : L'upload est un `Task { }` Swift ordinaire lancé depuis `handleAppear(of:)`, elle-même appelée uniquement par `.onAppear` de la bulle de message dans `ChatView` (message posé à l'écran). Aucune configuration `URLSessionConfiguration.background`, aucun `beginBackgroundTask`, aucun mécanisme équivalent à WorkManager n'existe dans tout le projet (grep exhaustif sur `beginBackgroundTask`/`URLSessionConfiguration.background` : zéro résultat). Si l'utilisateur met l'app en arrière-plan peu après l'envoi d'une photo/vidéo, la tâche d'upload est suspendue avec le process dans les secondes qui suivent (fenêtre d'exécution limitée iOS) et le catch silencieux ne fait que laisser `isFileUploaded=0` sans replanifier — le prochain relais dépend de `.onAppear`, qui ne se redéclenche PAS simplement parce que l'app revient au premier plan (seulement si la vue est réellement réinsérée dans la hiérarchie, ex. en quittant/rouvrant la conversation).
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : Portage du mécanisme d'upload BunnyCDN lui-même fidèle (GAP-004), mais sans reproduire la couche de résilience WorkManager qui l'entoure côté Android — remplacée par un simple `Task` lié au cycle de vie de la vue SwiftUI plutôt qu'à celui de l'app.
+IMPACT : Un envoi de photo/vidéo/cadeau dans une conversation peut rester bloqué indéfiniment à `isFileUploaded=0` (bulle 'en cours d'envoi' permanente) si l'utilisateur quitte l'app juste après l'avoir déclenché, jusqu'à ce qu'il rouvre manuellement la conversation (fait sortir/rentrer la bulle de l'écran) pour redéclencher `.onAppear` — contrairement à Android où l'upload se termine de façon fiable en arrière-plan, y compris après un kill du process.
+SUGGESTED_STATUS : PARTIAL
+RECOMMANDATION : Basculer `ChatMediaUploadService`/`requestUpload` sur une `URLSessionConfiguration.background` (ou au minimum envelopper l'upload dans `UIApplication.beginBackgroundTask` avec un vrai retry programmé au retour en premier plan, pas seulement au re-`.onAppear` de la bulle), pour rapprocher la résilience du modèle WorkManager d'Android.
+CONTRE-AUDIT : trouvé par l'agent "Lifecycle" (Phase A.2, 2026-08-24)
+```
+
+```
+ID : V5-F-099
+PRIORITÉ : P2
+DOMAINE : Lifecycle
+FEATURE : Enregistrement caméra en cours interrompu par le passage de l'app en arrière-plan (bouton Accueil, notification centre, appel entrant natif)
+ANDROID SOURCE : editor/camera/BaseCameraFragment.java:339-342 (`onPause()` → `releaseCamera()`) + :351-366 (`releaseCamera()` : `GPUCameraRecorder.stop()` puis `.release()`, appelé même en pleine capture vidéo)
+ANDROID BEHAVIOR : `onPause()` est appelé par le système dès que l'app perd le focus (bouton Accueil, un appel téléphonique natif entrant en plein écran, ouverture du centre de notifications, etc.), y compris pendant un enregistrement vidéo actif. Il arrête et finalise immédiatement l'enregistrement en cours (`GPUCameraRecorder.stop()`) puis libère la caméra — l'utilisateur retrouve un fichier vidéo partiel mais VALIDE, jamais un enregistreur bloqué en arrière-plan.
+IOS FILES : Sources/TiinverSwift/Camera/CameraView.swift:71-77 (`.onAppear`/`.onDisappear`, seuls points d'arrêt de `recorder`) + :132-136 (`.onChange(of: scenePhase)`, utilisé UNIQUEMENT pour relancer après refus de permission, jamais pour arrêter) + Camera/CameraRecorder.swift (aucune référence à `scenePhase`/notification d'interruption `AVCaptureSession` dans tout le fichier, confirmé par grep)
+IOS BEHAVIOR : `CameraView` n'observe `scenePhase` que pour redémarrer la session après un retour en `.active` suite à un refus de permission — il n'y a AUCUN appel à `recorder.release()`/`recorder.stopRecording()` sur passage en `.background`/`.inactive`. `.onDisappear` (seul déclencheur de `release()`) ne se produit que si la vue est retirée de la hiérarchie SwiftUI (fermeture explicite de l'écran caméra), pas quand l'app entière passe en arrière-plan avec l'écran caméra encore monté dessous. `AVCaptureSession` est automatiquement interrompu par iOS en arrière-plan (plus de frames délivrées), mais `isRecording`/`recordingWriter` restent dans leur état 'actif' sans finalisation explicite, et aucun observateur `AVCaptureSessionWasInterrupted`/`InterruptionEnded` n'existe pour détecter/gérer cette transition.
+LOGIQUE CONFIRMÉE ATTEIGNABLE : Oui
+CAUSE : `scenePhase` n'est câblé côté caméra que pour le cas post-permission (V3-F-134), pas pour reproduire le comportement `onPause`→`releaseCamera` d'Android qui s'applique à TOUTE perte de premier plan.
+IMPACT : Si l'utilisateur enregistre une vidéo dans `CameraView` et que l'app passe en arrière-plan (Accueil, appel natif entrant, centre de notifications) avant d'avoir relâché le bouton de capture, l'enregistrement n'est ni arrêté ni finalisé proprement à cet instant : au retour au premier plan, la reprise de livraison de frames après une coupure `AVCaptureSession` peut produire un saut brutal d'horodatage dans le fichier vidéo en cours d'écriture (assemblé par `CameraRecordingWriter`/`AVAssetWriter`), avec un risque de vidéo corrompue ou de désynchronisation audio/vidéo — comportement non testé en pratique (fichier marqué '⚠️ NON COMPILÉ' en tête de `CameraRecorder.swift`), mais absence de toute gestion explicite confirmée par lecture complète.
+SUGGESTED_STATUS : MISSING
+RECOMMANDATION : Ajouter un `.onChange(of: scenePhase)` qui arrête/finalise l'enregistrement (`recorder.stopRecording()`) dès que `scenePhase` quitte `.active` pendant `isRecording == true`, symétrique à `onPause()`→`releaseCamera()` côté Android — ou a minima observer `AVCaptureSession.wasInterruptedNotification` dans `CameraCaptureController` pour finaliser proprement le fichier en cours.
+CONTRE-AUDIT : trouvé par l'agent "Lifecycle" (Phase A.2, 2026-08-24)
+```
+
+---
+
+## A.2.2 — Findings V5 existants reconfirmés indépendamment
+
+Retrouvés par un agent du contre-audit sans connaître le détail complet du finding
+original — uniquement son ID et un résumé d'une ligne. Confirme la fiabilité de ces 12
+findings de la Phase A.
+
+- **V5-F-002** (confirmé par l'agent "Socket.IO / temps réel") — Confirmé indépendamment par lecture directe : Sources/TiinverSwift/Navigation/HomeShellView.swift ne contient aucune occurrence de chatEvents (grep exhaustif du fichier), donc rien n'y souscrit au flux ChatRepository.shared.chatEvents pour rafraîchir le badge — cohérent avec le finding existant.
+- **V5-F-030** (confirmé par l'agent "Socket.IO / temps réel") — Confirmé indépendamment par lecture directe de ChatRepository.handleIncomingCall (Realtime/ChatRepository.swift:388-398) : les deux branches if !Self.isOnCall / else exécutent exactement le même callEvents.send(.onCall(...)), sans jamais établir de véritable appel entrant — confirme que l'événement ROOM.CALL reçu ne fait, dans les deux cas, que republier un événement générique.
+- **V5-F-018** (confirmé par l'agent "Chat — chaîne de messages (UI, types, pagination, cache)") — Non re-vérifié en détail cette passe (hors du fichier lu explicitement pour l'auto-scroll), mais la structure de `messageList` dans ChatView.swift (List + onAppear sur le premier item pour déclencher loadMore, pas de logique de scroll-au-fond au chargement initial) est cohérente avec un positionnement initial non garanti — pas d'infirmation trouvée.
+- **V5-F-056** (confirmé par l'agent "Chat — chaîne de messages (UI, types, pagination, cache)") — Confirmé indépendamment par lecture de ChatViewModel.swift:567-601 (`requestDownload`) — utilise `URLSession.shared.download(from:)` en un seul appel sans reprise (`resumeData`), et en cas d'erreur ne fait que laisser `isFileDownloaded=0` pour un nouvel essai complet au prochain `handleAppear`, sans aucune reprise partielle du téléchargement interrompu.
+- **V5-F-069** (confirmé par l'agent "Chat — chaîne de messages (UI, types, pagination, cache)") — Cohérent avec le comportement observé dans MediaImageBubbleBody/VideoBubbleBody (ChatBubbleViews.swift) où l'état d'upload/download est dérivé à chaque re-render de `isFileUploaded`/`isFileDownloaded` sur le message affiché — non creusé plus en détail cette passe (finding déjà bien caractérisé par V5).
+- **V5-F-056** (confirmé par l'agent "Pipeline média — Chat (image/vidéo/fichier/vocal)") — Confirmé indépendamment en lisant ChatViewModel.swift:567-600 (requestDownload) : usage de URLSession.shared.download(from:) en un seul appel, sans exploitation de resumeData/Range — aucune reprise n'est possible après coupure réseau, contrairement à un DownloadManager Android qui gère nativement la reprise des téléchargements interrompus.
+- **V5-F-036** (confirmé par l'agent "Photo Editor") — Retrouvé indépendamment en lisant PhotoToolsView.swift:174-190 (fonction undo()) et le commentaire de correctif associé (V4-F-057) : le bouton undo ne retire que le dernier élément de `strokes` (peinture), jamais un élément de `texts` (texte/sticker) — confirmé déjà corrigé au moment de cet audit (le commentaire indique que le comportement erroné originel, retirer le dernier TEXTE en premier, a été corrigé le 2026-08-24), donc ce finding correspond à l'état PRÉ-correctif documenté dans le code lui-même.
+- **V5-F-057** (confirmé par l'agent "Animems — playback/audio/performance") — Confirmé indépendamment par lecture directe : AnimationEngine.swift (playback CADisplayLink) n'a aucun deinit qui appelle stopDisplayLink(), et AnimemesEditorState.swift (grep exhaustif du fichier, ~1080 lignes) ne contient ni deinit ni .onDisappear appelant engine.pause()/stop() — le CADisplayLink créé par startPlayback() (AnimationEngine.swift:170-182) n'est donc jamais explicitement invalidé si l'utilisateur quitte l'écran pendant la lecture, comme décrit dans le finding.
+- **V5-F-057** (confirmé par l'agent "Mémoire / concurrence") — Confirmé indépendamment par lecture directe : Sources/TiinverSwift/Animems/AnimationEngine.swift n'a aucun `deinit`, et le `CADisplayLink` créé dans `startPlayback` (ligne 179, ajouté à `.main` runloop) n'est invalidé que via `stopDisplayLink()` (appelé par `pause()`/`stop()`) — AnimemesEditorState.swift n'appelle `engine.pause()` qu'à deux endroits ciblés (lignes 782, 798), jamais depuis un `onDisappear`/`deinit` — si la vue d'édition est quittée sans passer par ces chemins, le displayLink continue de tourner indéfiniment sur le run loop principal.
+- **V5-F-067** (confirmé par l'agent "Mémoire / concurrence") — Confirmé indépendamment : Sources/TiinverSwift/Notifications/NotificationCenterViewModel.swift:21-24, `fetchNotifications(userId:)` positionne `isLoading = true` mais ne contient AUCUN `guard !isLoading else { return }` en tête de fonction — deux appels concurrents s'exécutent donc sans verrou.
+- **V5-F-068** (confirmé par l'agent "Mémoire / concurrence") — Confirmé indépendamment sur un site différent mais structurellement identique : Sources/TiinverSwift/Messagerie/GroupCreationView.swift, le bouton de création (ligne 109, `Button { Task { await create() } }`) ne positionne `isCreating = true` qu'À L'INTÉRIEUR de `create()` (lignes 140-142), même schéma de fenêtre de course que celui déjà identifié pour la création de groupe payant.
+- **V5-F-061** (confirmé par l'agent "Lifecycle") — Confirmé indépendamment par lecture de App/AppDelegate.swift:39-56 : `requestAuthorization` pour les notifications est bien appelé dans `didFinishLaunchingWithOptions`, avant tout rendu du premier écran (RootRouterView ne monte qu'ensuite dans TiinverApp.swift), garde `SMOKE_TEST_MODE` déjà présente.
+
+---
+
+## A.2.3 — Domaines couverts par le contre-audit (limites honnêtes)
+
+### Socket.IO / temps réel
+
+**Couvert** : Connexion initiale (paramètres/transport/auth via payload CONNECT), reconnexion automatique (backoff, ré-émission add user/offline status/joinRoom au connect ET au reconnect), déconnexion volontaire/involontaire (émission leaveRoom, cas io server disconnect avec reconnexion manuelle à 3s), la liste exhaustive des événements écoutés des deux côtés (comparaison ligne à ligne des deux registerAllListeners — parité quasi totale confirmée, aucun événement Android reçu manquant côté iOS d'impact fonctionnel), la course REST/socket au chargement initial d'une conversation (déjà corrigée, V4-F-038, vérifiée par lecture), le changement réseau WiFi/cellulaire (NetworkMonitor.swift vs HomeActivity.onNetworkChange, déjà porté), le passage background/foreground (scenePhase vs onStart/onStop, symétrie confirmée), la fermeture/réouverture explicite au (ré)login (attachToCurrentSocket). Deux problèmes réellement nouveaux ont été identifiés en creusant l'ordre de traitement des événements et les doublons après reconnexion (absence de sérialisation dans le pipeline de réception, contrairement au pipeline Android structurellement atomique) et le nettoyage des listeners lors d'un reset de socket.
+
+**Non exploré** : Le protocole WebRTC/CallKit lui-même (module Calls, au-delà du simple routage des événements call/webrtcMessage vers callEvents) et le module Shareboard/PBS en profondeur (au-delà de la vérification que chaque événement socket PBS a bien un équivalent d'écoute) n'ont pas été audités fonctionnellement — seul le routage socket vers ces modules a été vérifié. Le comportement exact de la bibliothèque Socket.IO-Client-Swift (synchrone vs asynchrone au moment de disconnect()/handleQueue) n'a pas pu être vérifié par lecture directe de son code source (non vendored dans ce dépôt), ce qui limite la certitude du second finding remonté. La persistance Core Data (CoreDataRepository, contexte/queue exacte utilisée par MessageEntity) n'a été examinée qu'en surface, pas en profondeur ligne à ligne.
+
+### Chat — chaîne de messages (UI, types, pagination, cache)
+
+**Couvert** : Comparaison directe et exhaustive de ChatFragmentTest.java (Android, 3296 lignes, sections clés lues en entier : init, CursorLoader/pagination initiale et scroll, observer LiveData des messages entrants/statuts/présence/typing, dédup isMessageOnView, suppression, getStatusDrawable) et ChatManager.java/RosterManager.java/ChatRepository.java (Android) contre ChatViewModel.swift/ChatView.swift/ChatBubbleViews.swift/MessageRepository.swift/RosterRepository.swift/RosterListView.swift (iOS, lus en entier). Vérifiés avec preuve directe fichier+ligne des deux côtés : pagination initiale et par scroll (chargement + fusion avec messages temps réel arrivés pendant l'await, dédup par messageId), rendu de chaque type de bulle (texte/audio/photo/vidéo/gift/graphic/deletemessage/missedcall/information), statuts de livraison (4 états), suppression locale vs pour tous avec tombstone, tri et badge non-lu du roster, dénormalisation du dernier message. Deux gaps réels confirmés par lecture directe (pas de supposition) : tri manquant dans la ré-agrégation "dernier message" du roster, et absence du repli serveur pour l'historique de groupe au-delà du cache local. Un faux-positif potentiel (mise à jour temps réel du roster) a été écarté après vérification que le chemin Android correspondant (`prepare()`→`addMessage`) est lui-même du code mort (appel commenté), donc pas un écart réel.
+
+**Non exploré** : Pas de lecture ligne-à-ligne de MessageListAdapter.java/MessageListAdapter2.java (1441/1415 lignes) au-delà des méthodes ciblées par grep (getStatusDrawable, waveform) — les ViewHolders détaillés (marges, animations, long-clic multi-sélection pixel-près) n'ont pas été comparés widget par widget. Pas de vérification approfondie de RosterListAdapter/RosterViewModel.java (Android) au-delà de Roster.java, ni de ChatSearchView.swift/NewMessageView.swift. La gestion des messages envoyés PENDANT une reconnexion socket (mise en file/perte/doublon) n'a été qu'effleurée côté ChatRepository.swift (émission Socket.IO simple, buffering délégué à la lib cliente des deux côtés) — jugée hors périmètre explicite de ce domaine (couche socket confiée à un autre agent) et non creusée davantage. Les métadonnées précises (taille de fichier en octets, dimensions exactes affichées pour une image) n'ont pas été vérifiées pixel-pour-pixel, seule la présence/absence de la logique correspondante a été confirmée.
+
+### Pipeline média — Avatar (photo de profil / groupe)
+
+**Couvert** : Chaîne complète tracée des deux côtés, fichier par fichier et ligne par ligne : sélection (CustomGalleryView), recadrage (CropFragment/CroperView côté Android, absent côté iOS), upload (ProfileService.uploadImageToBunny = PUT direct BunnyCDN pour l'avatar personnel vs HttpFileUploader.uploadRequestBodyGroupPerfil = POST multipart direct serveur pour l'avatar de groupe — deux mécanismes RÉELLEMENT différents côté Android, confirmés tous deux fidèlement reproduits côté iOS dans ProfileRepository.uploadProfilePicture et GroupRepository.updatePhoto/APIClient.uploadMultipart), endpoints exacts (`user/avatar/add` vs `updategroup`), noms de champs multipart, réponse backend (`object_url`), mise à jour de l'état local, insertion du message système `groupPictureChanged`, gestion d'erreur, désactivation du bouton pendant l'upload. Confirmé que `ProfileRepository.uploadPhotoProfile` (Android, HttpFileUploader vers `{SERVER}user`) est du CODE MORT (site d'appel commenté ligne 558 d'AddPerfilFoto.java) — non comparé à iOS pour cette raison, conformément à la règle du contre-audit. Vérifié aussi l'absence de tout BroadcastReceiver Android pour ACTION_UPLOAD/ACTION_ERROR (ces broadcasts sont eux-mêmes morts), et l'absence de logique de retry automatique des deux côtés.
+
+**Non exploré** : Pas exploré : le comportement exact d'annulation Android (`httpFileUploader.cancel(true)` sur un champ jamais assigné dans ProfileService — semble lui-même inerte côté Android, non comparé faute de pertinence claire) ; les timeouts réseau précis (OkHttp par défaut vs URLSession 20s/60s) faute de preuve concrète d'impact différent ; le comportement de la sélection caméra (le sélecteur `CustomGalleryView` appartient au module moteur Animems, explicitement hors périmètre de cette mission) ; le comportement en cas de perte de connexion PENDANT le PUT BunnyCDN côté Android (IOException avalée silencieusement dans `uploadImageToBunny`, sans aucun signal UI — potentiellement un spinner bloqué indéfiniment côté Android RÉEL, non comparé car iOS gère mieux ce cas, ce qui n'est pas un gap iOS).
+
+### Pipeline média — Photo/vidéo de publication (Feed)
+
+**Couvert** : Tracé intégralement le flux réel Android (PublishFragment.java → MainFragment/FeedFragment token="publication" → ActivityRepository.saveFilebeforeTransfer → ActivityService.java : getCdnVideoId/uploadFileToBunny/uploadImageToBunny/sendMetaDate) comparé ligne à ligne au flux iOS (PublishComposeView.swift → FeedRepository.publish → FeedMediaUploader.swift) : URLs BunnyCDN exactes, headers (AccessKey stockage vs vidéo, Accept, Content-Type), ordre des 2 appels vidéo (création du guid puis PUT des octets), construction côté client de cdn_content_url/cdn_thumbnail_url, tous les champs texte envoyés à activity/add (dont metadata JSON champ par champ), le blocage de publication par catégorie de compte obligatoire, la suppression de post (deleteactivity, confirmé qu'aucun des deux côtés ne nettoie le média sur BunnyCDN), et la gestion des erreurs BunnyCDN/backend (surfacées à l'utilisateur des deux côtés, pas avalées silencieusement). Ce périmètre s'est révélé déjà très abouti (nombreux correctifs V2/V3/V4 documentés en tête de fichier, cohérents avec le code lu). A permis de découvrir et vérifier une lacune architecturale réelle et non documentée : l'absence côté iOS de tout mécanisme de résilience à la mise en arrière-plan (pas de Service/URLSession background, pas de file d'attente persistée), alors qu'Android construit précisément cette robustesse via un foreground Service + une table SQLite locale — ce point était explicitement noté "not_reached" dans le résumé du domaine de l'audit V5 existant.
+
+**Non exploré** : Pas ré-audité en profondeur cette passe : le détail interne de MediaTrimView.swift (rotation/flip/ratio de recadrage vidéo, déjà très documenté par V3-F-032/V3-F-123/V3-F-124 dans les commentaires de tête, donc probablement déjà couvert par ailleurs) ; le pré-cache/miniatures vidéo du Feed en LECTURE (V5-F-055/058/059, hors périmètre de cette passe centrée sur la PUBLICATION, pas la lecture — non re-vérifiés indépendamment cette session, donc pas listés en confirmed_existing) ; la lecture vidéo plein écran et l'affichage Grid après publication ; le comportement exact de reprise automatique au relancement de l'app côté Android (le mécanisme CursorLoader+isSavingFile n'a pas été vérifié pour un scénario précis "app tuée puis relancée", seule l'architecture Service-foreground/DB locale a été confirmée comme fondamentalement absente côté iOS, ce qui suffit à établir le finding rapporté).
+
+### Pipeline média — Chat (image/vidéo/fichier/vocal)
+
+**Couvert** : Comparaison ligne à ligne du protocole d'upload direct BunnyCDN (en-têtes AccessKey/Content-Type, dispatch vidéo vs non-vidéo, URLs storage vs CDN public) ; découverte et analyse du SECOND chemin d'upload Android (UploadChatWork.java + ChatManager.sendMessageFromCursor, appelé via WorkManager avec retry/backoff/contrainte réseau, déclenché par HttpConnectionService/TiinverSyncWorker sur reconnexion socket, changement réseau, sync périodique et notification push) comparé à l'unique mécanisme de reprise iOS (handleAppear/.onAppear) ; comparaison du téléchargement (URL, en-têtes HTTP dont Referer, destination de stockage, gestion d'erreur) au-delà de la reprise réseau déjà connue (V5-F-056, re-confirmée) ; vérification qu'aucune annulation utilisateur ni notification de progression visible n'existe des deux côtés (parité confirmée, pas de finding).
+
+**Non exploré** : Pas de test réseau live (impossible de confirmer empiriquement le code HTTP exact renvoyé par BunnyCDN sans le header Referer sur ce endpoint précis, ni de mesurer un éventuel comportement de cache CDN sur fichier expiré côté serveur) ; le flux "gift" d'UploadChatWork.sendGift n'a pas été exploré (hors périmètre média) ; V5-F-033 (vocal) et V5-F-069 (réapparition de bulle en vol) n'ont pas été revérifiés directement dans cette passe, donc non listés en confirmed_existing par prudence ; timeouts réseau exacts (OkHttp par défaut ~10s idle vs URLSession.shared ~60s) analysés mais jugés sans divergence fonctionnelle significative, donc non remontés en finding.
+
+### Pipeline média — Animems (import/export)
+
+**Couvert** : Lecture complète d'AnimemesExporter.swift (port de MP4Encoder.java) et de sa chaîne d'appel côté iOS (AnimemesEditorState.export → AnimemesEditorView → publishMedia → PublishComposeView.publish → FeedRepository.publish → FeedMediaUploader). Côté Android, tracé bout-en-bout et vérifié par grep des call sites la chaîne réelle depuis AnimemesCompound.createVideosFromBitmap (RESULT_VIDEO) jusqu'à ActivityService (upload backend) en passant par MemesFragment → CameraActivity.onArticleSelected → MediaTrim → MediasDisplay → PublishFragment → HomeActivity, ainsi que le chemin séparé de partage natif (PublishFragment.exportingVideo → ExportVideoService → MP4Encoder outro + AnimatedWatermarkComposer → UnifiedComposerFinal). Comparaison directe des paramètres d'encodage vidéo/audio (bitrate, frame rate, i-frame interval) entre MP4Encoder.java et AnimemesExporter.swift. Confirmé que le vieux HttpFileUploader.java (AsyncTask/OkHttp legacy) et le nouveau flux BunnyCDN (FeedMediaUploader côté iOS) recouvrent déjà un terrain largement couvert par des audits antérieurs (V3-F-017/019, V4-F-029) — non ré-audité en détail ici pour éviter la redite.
+
+**Non exploré** : Pas de lecture ligne-à-ligne de MediaMuxer/remux fastStart Android vs équivalent iOS pour le flux ExportVideoService (hors-scope car ce n'est pas le chemin de publication backend, seulement le partage natif) ; pas de vérification de la gestion d'erreur réseau bas niveau (retry HTTP, codes d'erreur BunnyCDN précis) qui a déjà fait l'objet d'audits V3/V4 dédiés ; pas de test réel sur device/simulateur pour confirmer visuellement la différence de bitrate audio ou l'absence de watermark (déductions faites uniquement par lecture de code, conformément aux règles) ; le flux 'Enregistrer comme modèle' (saveAndUploadTemplate, upload de template MotionTemplate) n'a pas été comparé en détail au portage iOS correspondant, faute de temps.
+
+### Photo Editor — audit complet
+
+**Couvert** : Lecture complète et comparaison ligne à ligne d'ImageEditorCompound.java, CroperView.java et des sections pertinentes d'ImageViewCanvas.java (2037 lignes : gestion tactile, transformations matricielles, undo, EXIF, dessin) côté Android, face à PhotoToolsView.swift, PhotoEditorState.swift et PhotoCropView.swift côté iOS. Vérifié explicitement et confirmé par grep de reachabilité : la manipulation post-placement des calques (glisser/pincer-zoomer/pivoter, absente côté iOS — nouveau finding P1), le bouton 'recadrer à nouveau' (ic_repeate, absent côté iOS), le fond de texte optionnel (btn_textContainer, absent côté iOS), la résolution de l'image composée finale (Android plafonne à la résolution écran, iOS exporte en pleine résolution pixel — divergence documentée de façon inexacte dans le code iOS), l'absence de filtres post-capture atteignables côté Android sur cet écran (parité de fait, pas un écart), l'absence de redo/gomme réellement câblés côté Android (parité de fait), et la gestion EXIF (déjà corrigée et alignée des deux côtés via normalizedToUpOrientation). Confirmé que le flux CropFragment.java (profil/certification/messagerie) est un flux SÉPARÉ du flux de publication photo principal (qui passe par MediaEditor/ImageEditorCompound), donc non comparé à PhotoToolsView.
+
+**Non exploré** : Comparaison fine et exhaustive du recadrage lui-même (CropImageView/CropOverlayView, ~5000 lignes de bibliothèque vendorisée côté Android, vs TOCropViewController côté iOS) — accepté comme déjà largement audité par V3 (V3-F-125, V3-F-034, V3-F-039) et jugé hors du périmètre de creusement supplémentaire ici faute de temps. Pas de test d'exécution réel (build/run) pour confirmer visuellement le rendu à l'écran des deux applications — analyse par lecture de code uniquement. RemoveBackground (deux étages, Vision vs ML Kit) non re-comparé algorithme par algorithme. AnimationComposer/Transform (structures de données sous-jacentes aux matrices Android) non explorées en détail au-delà de ce qui était nécessaire pour confirmer les gestes de manipulation.
+
+### Animems Canvas — re-vérification indépendante
+
+**Couvert** : Lecture ligne à ligne de MemesView2.java (moteur tactile réel, confirmé comme le seul réellement instancié via AnimemesCompound.java, PAS AnimemesCompound2/MemesView3 qui sont du code non branché) comparée à AnimemesGestureController.swift/AnimemesEditorState.swift/AnimemesEditorView.swift : sélection (tap, tap vide, ordre topmost), drag/pinch/rotation (avec gardes de verrouillage V4-F-050 déjà résolus, vérifiés reproduits fidèlement), duplication (offsets/label/sélection), le tap-empty-canvas et le chemin onScroll d'Android. Creusé en profondeur le dessin libre (MemesView2.drawPathProcess + PaintList/PaintSizeListAdapter côté Android vs AnimemesDrawingView.swift) et l'ajout de texte (ProTextEditorView.java vs ProTextEditorState.swift/AnimemesEditorView — découverte que le modèle riche porté côté iOS n'est jamais câblé à aucune vue). Vérifié aussi le positionnement/taille par défaut d'un import média (onNewAddBitmap vs addImage), la visibilité au rendu (les deux côtés sautent bien les calques masqués) et la non-exclusion des calques verrouillés/masqués du hit-test (parité confirmée, pas de finding). Confirmé qu'aucun des deux côtés ne dessine de bordure/poignées de sélection persistante sur le canevas (parité).
+
+**Non exploré** : Pas vérifié en détail : l'éditeur de FORMES (ShapeAddPanel/ShapePreviewEditorPanel des deux côtés, qui semble déjà avoir reçu un traitement soigné mais non audité ligne à ligne ici) ; le rendu visuel précis des MASQUES au-delà des bornes de clamp (mécanique de blur/feather réellement identique pixel-à-pixel non comparée) ; le zoom/pan du CANEVAS GLOBAL (CanvasZoomController.swift vs ZoomableCanvasContainer.java/AnimemesCompound2 — non exploré, car le zoom canevas semble porté par un contrôleur séparé non retracé jusqu'à son câblage réel dans AnimemesEditorView) ; l'ordre exact de calques après duplication/réordonnancement multiple (seul le cas simple bringLayerToFront a été vérifié) ; le rendu réel de TextRect/TextLayoutEngine (retour à la ligne, ellipsis) pour du texte long.
+
+### Animems — playback, audio, performance (complément)
+
+**Couvert** : Lecture/pause/stop et boucle de lecture (AnimationEngine.java vs .swift, comparaison ligne à ligne complète des deux fichiers) ; câblage audio d'édition côté Android retrouvé dans le VRAI module moteur `engine/src/main/java/com/animems` (AnimemesCompound.java + MyAudioManager.java, pas le module `com.tiinver` qui ne fait qu'appeler ce moteur) et comparé au module Animems iOS (aucun lecteur audio de prévisualisation trouvé, confirmé par grep exhaustif) ; ordre matriciel de rendu (Transform.java/.swift, concat unique de la matrice déjà composée — pas de recomposition scale/rotation séparée des deux côtés, donc pas de divergence d'ordre) ; coût par-frame du masquage (MaskFactory.createMaskScaled synchrone à chaque frame en lecture/scrub) vérifié IDENTIQUE des deux côtés (pas de régression iOS) ; pipeline d'export complet (AnimemesExporter.swift vs MP4Encoder.java) lu en détail, révélant un bug de cycle de vie ARC bloquant totalement l'export animé ; fond de canevas (Color.black des deux côtés éditeur/export, cohérent).
+
+**Non exploré** : Le détail bas niveau du mixage audio à l'export (AudioMixer.java/gain par piste) n'a été vérifié que pour confirmer qu'il n'est PAS le chemin réellement emprunté par l'export Animems (c'est un composant d'un autre feature, l'éditeur vidéo classique) — pas creusé plus loin faute de pertinence. Les effets non branchés déjà documentés comme TODO par l'auteur iOS lui-même (flou d'arrière-plan, FRAGMENT_EFFECT, vidéo outro) n'ont pas été re-vérifiés indépendamment. Le comportement précis "écran quitté PENDANT un export qui aurait autrement réussi" n'a pas pu être testé isolément car l'export animé ne se termine de toute façon jamais dans l'état actuel (voir finding P0) — la question devient donc sans objet tant que ce bug n'est pas corrigé. Performance frame-by-frame sur calques TEXT/STICKER (TextRect/mesure de texte à chaque frame) non comparée en détail. Comportement d'interruption sonore par un appel téléphonique/notification (AVAudioSession) non exploré des deux côtés faute de lecteur audio existant côté iOS.
+
+### Double action / idempotence — sweep systématique
+
+**Couvert** : Vérifié en détail, avec lecture directe des deux côtés (Android référence + iOS) : Like post (FeedViewModel.toggleLike vs MainFragment.OnLikeClicked — bascule locale synchrone avant l'appel réseau des deux côtés, un double-tap rapide toggle réellement deux fois, comportement fidèle, pas de bug) ; Follow profil principal (ProfileViewModel.follow + `.disabled(isFollowing)` dans ProfileView, garde réelle, plus stricte que l'Android équivalent) ; Follow recherche (SearchView.toggleFollow, garde par `guard user.isFollowed != true` en entrée) ; Subscribe créateur — recherché explicitement (`abonnement`/`subscri` côté Android) : aucune fonctionnalité d'abonnement créateur distincte du groupe payant n'existe côté Android, seul le groupe payant (déjà couvert par V5-F-068) est concerné ; Achat de pièces (BuyCoinsView, `.disabled(store.isPurchasing)`, garde réelle) et PurchaseActivity Android (garde réelle via `sendButton.setEnabled(false)` en LOADING) ; Retrait Wallet (WithdrawView.isSubmitting + `.disabled`, garde réelle, alors que l'Android `WithdrawActivity`/`WalletViewModel.submitWithdrawalRequest` n'a lui-même aucune garde — iOS est donc plus strict, pas de régression) ; Transfert Wallet (TransfertCoinsActivity Android masque le bouton `transfert.setVisibility(GONE)` avant l'appel réseau — garde réelle confirmée ; iOS TransferCoinsView réplique via `isSubmitting` + `.disabled`) ; Conversion Wallet (Android `ConversionActivity.convert` n'a AUCUNE garde — bouton jamais désactivé/masqué — mais iOS `ConversionView` ajoute une garde `isSubmitting` plus stricte que la référence, donc pas de divergence négative) ; Publication d'un post (`PublishComposeView` remplace le bouton "Publier" par un `ProgressView` pendant `isPublishing`, garde réelle) ; Envoi de message texte (`ChatViewModel.sendText` vide `inputText` immédiatement, garde par `!text.isEmpty`, cohérent avec le pattern Android de vidage de l'EditText) ; Création de groupe (Android `Group.onButtonPressed` n'a AUCUNE garde — FAB jamais désactivé — mais iOS `GroupCreationView` ajoute `isCreating` + `.disabled`, plus strict, pas de régression) ; Upload média en chat (`attachMedia`/`sendMedia`, déclenché une seule fois par sélection dans le picker, pas un bouton "Envoyer" répétable — hors du cas bulle déjà couvert par V5-F-069).
+
+**Non exploré** : Je n'ai pas vérifié en profondeur : le flux de paiement crypto Android (`submitPurchasseByCrypto`/`submitWithdrawalByCrypto`) au-delà de confirmer qu'il partage le même point d'entrée que le flux FCFA ; le comportement exact de dismiss de `FireMissilesDialogFragment` (dialog de confirmation Android) qui conditionne si un double-tap sur son bouton positif est réellement possible avant fermeture ; les autres menus "..." (`MainFragment.OnclickMoreExpand`, `FullScreenMedia`, `HashtagProfile`) où "Télécharger" n'est pas câblé côté Android — donc non comparables ; le like sur les commentaires (aucune fonctionnalité de ce type trouvée côté Android, donc hors périmètre par construction des règles de l'audit) ; l'unfollow via le menu "..." du profil (`UserProfile.java:912-934`) et son équivalent iOS (`FeedViewModel.unfollow`), où Android n'a pas de garde mais où la fermeture immédiate du `confirmationDialog` iOS rend le scénario de double-tap moins probable sans être formellement exclu — jugé insuffisamment tranché pour un finding ferme.
+
+### Mémoire / concurrence — sweep systématique
+
+**Couvert** : Recherche exhaustive par grep de tout le projet (222 fichiers Swift) sur : .sink/.assign sans [weak self] (aucun trouvé — le projet n'utilise Combine que pour @Published + 3 `.sink` dans CallCoordinator/PBSViewModel/ChatViewModel, TOUS avec `[weak self]` correct) ; Timer.scheduledTimer/CADisplayLink (2 sites au total, l'un correctement invalidé dans CameraView, l'autre = V5-F-057 déjà connu) ; NotificationCenter.addObserver (seul VideoPlayerManager, observers bien retirés à chaque `observe()`/`detach()`) ; tous les `delegate = self` du projet (11 sites, tous vers des propriétés `weak var delegate`, aucun cycle de rétention détecté) ; garde de ré-entrance sur toutes les fonctions `async` de chargement/soumission des ViewModels principaux (Feed, Profile, Wallet, Notifications, Chat, Boost) — ce qui a mené à la découverte d'une fenêtre de double-soumission sur Transfer/Withdraw/Conversion (nouveau finding), en plus de confirmer V5-F-067/V5-F-068 sur des sites additionnels ; fenêtre de préchargement Feed (±2, bornée, conforme à Android) ; CDNAsyncImage (chargement d'image annulé automatiquement via `.task(id:)`, sous-échantillonné via ImageIO, pas de fuite) ; Data(contentsOf:) sur tout le projet (aucun nouveau cas de fichier volumineux chargé intégralement en RAM au-delà des 2 déjà connus — Animems/Wallet/Feed ne chargent que des images uniques ou petits fichiers JSON de template) ; état des Task dans CallCoordinator (tous les points d'entrée gardés par `guard state == .idle`, @MainActor, pas de race détectée).
+
+**Non exploré** : Pas d'analyse approfondie de WebRTCConnection.swift (négociation SDP/ICE) au-delà de la vérification du delegate faible — les races possibles entre callbacks WebRTC natifs (thread non-main) et l'état @MainActor de CallCoordinator n'ont pas été creusées en détail. Pas de vérification runtime réelle (Instruments/Leaks) — tout est basé sur lecture statique du code. Pas d'audit complet de tous les 60 fichiers utilisant `Task {` un par un (échantillonnage ciblé sur les ViewModels/écrans les plus critiques cités dans la consigne, plus Wallet) — d'autres écrans secondaires (Boost, Shareboard PBS, Discover) n'ont été vérifiés que pour les patterns delegate/cancellables, pas pour d'éventuelles races async plus subtiles. Le comportement StoreKit 2 de `CoinStoreManager.purchase()` (absence de `guard !isPurchasing`) a été repéré mais volontairement PAS remonté en finding faute de certitude sur le comportement réel de `Product.purchase()` en cas de double appel concurrent (StoreKit peut ou non protéger nativement contre ce cas — non vérifié).
+
+### Lifecycle — cycle de vie complet
+
+**Couvert** : Lecture complète et comparaison directe App/AppDelegate.swift, App/TiinverApp.swift, Navigation/RootRouterView.swift côté iOS face à App.java (Application), HomeActivity.java (803 lignes), SplashActivity.java côté Android : ordre d'initialisation au cold start, gate de mise à jour forcée, socket au login/reconnexion réseau (NetworkMonitor.swift vs networkStateReceiver/onNetworkChange), cycle onStart/onStop/onPause/onDestroy vs scenePhase, notifications push en avant-plan/arrière-plan, logout et deep links. Creusé en profondeur deux scénarios explicitement demandés : (1) app en arrière-plan pendant un upload média de chat en cours (ChatViewModel.swift/ChatMediaUploadService.swift vs ChatManager.java/UploadChatWork.java/TiinverSyncWorker.java, reachability confirmée par grep des call sites des deux côtés) ; (2) app en arrière-plan pendant un enregistrement caméra actif (CameraView.swift/CameraRecorder.swift vs BaseCameraFragment.java). Vérifié aussi que les UIBackgroundModes (audio/voip/remote-notification) sont bien déclarés pour la continuité d'un appel WebRTC/CallKit en arrière-plan (project.yml:156-159), et qu'aucun des deux côtés n'affiche de bannière explicite de perte réseau (code mort commenté côté Android, absent côté iOS — parité, pas un gap).
+
+**Non exploré** : Non vérifié faute de temps, honnêtement : (a) le comportement RÉEL sur device d'un kill mémoire OS suivi d'une relance (restauration d'écran exact vs redémarrage à RootRouterView) — nécessite un test device, impossible à confirmer par seule lecture de code, bien que `HomeActivity.onSaveInstanceState` (ligne 417-422) ne fasse qu'appeler `super` sans état custom, suggérant une différence potentiellement mineure ; (b) le comportement exact de fermeture d'un écran non-chat pendant qu'une requête réseau qu'il a initiée est encore en vol, au-delà de ChatViewModel (les captures `[weak self]` observées y rendent le scénario globalement sûr en Swift, contrairement aux crashs classiques de binding Android — pas creusé exhaustivement sur tous les ~25 modules) ; (c) navigation rapide/spam de taps retour-suivant sur les NavigationStack SwiftUI, pas de preuve concrète de crash trouvée ni cherchée de façon systématique ; (d) session expirée en plein usage — aucune gestion 401/token expiré trouvée d'AUCUN des deux côtés (recherche exhaustive infructueuse), semble être une absence symétrique donc hors périmètre d'un finding de parité plutôt qu'un gap iOS ; (e) interruption d'un enregistrement audio (message vocal) par un appel téléphonique natif — fonctionnalité de messagerie vocale non localisée côté iOS lors de cette passe, pas confirmé si portée ou non.

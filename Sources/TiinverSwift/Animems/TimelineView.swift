@@ -45,6 +45,14 @@ struct TimelineView: View {
         /// visibilité d'une piste (`e.getX() < leftPanelWidthPx`, `TimelineView.java:852-870`) —
         /// **ajouté le 2026-08-23 (V4-F-050, Phase B P1)**.
         case iconTap
+        /// Port de `Mode.NONE` (`TimelineView.java:898-910`, branche `else` de `if (!hit.locked)`)
+        /// — **ajouté le 2026-08-24 (V5-F-042, Phase B P0)**. Un item VERROUILLÉ garde sa
+        /// sélection (comme `.dragItem`) mais n'autorise AUCUNE mutation temporelle, et
+        /// contrairement à `.pan` (zone vide) ne fait PAS non plus défiler la timeline —
+        /// `onMove` Android retourne immédiatement quand `mode==NONE`
+        /// (`if (mode == Mode.NONE && !longPressFired) return true;`), le geste est
+        /// entièrement inerte, exactement comme `.keyframeTap`/`.iconTap` ci-dessus.
+        case lockedTap(id: String)
     }
 
     var body: some View {
@@ -228,7 +236,8 @@ struct TimelineView: View {
                         let mode = Self.resolveMode(at: value.startLocation, model: model)
                         dragMode = mode
                         switch mode {
-                        case .dragItem(let id, _, _, _, _), .resizeLeft(let id, _, _, _), .resizeRight(let id, _):
+                        case .dragItem(let id, _, _, _, _), .resizeLeft(let id, _, _, _), .resizeRight(let id, _),
+                             .lockedTap(let id):
                             state.selectedId = id
                         case .pan:
                             // Port de `onDown`'s `hitTestItem == null` (`TimelineView.java:879-887`)
@@ -283,6 +292,11 @@ struct TimelineView: View {
                     // `return true` d'`onDown` qui empêche `mode` de basculer vers
                     // PAN/DRAG/RESIZE/SCRUB pour la suite de ce flux tactile.
                     break
+                case .lockedTap:
+                    // Port de `Mode.NONE` (V5-F-042) — `onMove` Android retourne immédiatement
+                    // (`if (mode == Mode.NONE && !longPressFired) return true;`) : aucune mutation,
+                    // aucun défilement de la timeline, quel que soit le mouvement du doigt.
+                    break
                 }
                 // `renderVersion`, PAS `bumpVersion()` — voir note de tête de fichier (P0-5) :
                 // ceci s'exécute à CHAQUE frame de ce geste continu. Redondant mais inoffensif pour
@@ -311,12 +325,21 @@ struct TimelineView: View {
             .onEnded { _ in lastMagnification = 1.0 }
     }
 
+    /// **Corrigé (V5-F-042, 2026-08-24)** — port de `onDown` (`TimelineView.java:898-910`) :
+    /// `if (!hit.locked) { ... choix DRAG/RESIZE_LEFT/RESIZE_RIGHT ... } else { mode = Mode.NONE; }`
+    /// — un item verrouillé garde sa sélection (`selected = hit`, juste avant ce test) mais AUCUNE
+    /// mutation temporelle n'est jamais permise. `item.locked` était lu nulle part ici avant ce
+    /// correctif ; repli sur `.lockedTap` (miroir exact de `Mode.NONE` — sélection préservée,
+    /// geste entièrement inerte) plutôt que `.dragItem`/`.resizeLeft`/`.resizeRight`.
     private static func resolveMode(at point: CGPoint, model: TimelineViewModel) -> DragMode {
         if point.y < model.rulerHeight {
             return .scrub
         }
         if let item = model.hitTestItem(x: point.x, y: point.y) {
             model.selectedId = item.id
+            guard !item.locked else {
+                return .lockedTap(id: item.id)
+            }
             let rect = model.itemRect(item, isResizingRightOn: model.selectedId)
             if model.inLeftHandle(rect, x: point.x) {
                 return .resizeLeft(id: item.id, startDown: item.startFrame, endDown: item.endFrame, startX: point.x)

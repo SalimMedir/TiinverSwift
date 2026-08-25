@@ -90,9 +90,25 @@ final class WalletRepository {
     /// Port de `WalletRepository.updateToServer`/`EarnCoinsActivity.updateToServer`/
     /// `updateGemsToServer` (les 3 variantes Android envoient sur le MÊME endpoint `rewardedCoins`,
     /// seul `type` change : `"coins"` ou `"gems"`).
+    ///
+    /// **Corrigé (V5-F-031, 2026-08-24)** — `TransportData.Post` (Android) lit le champ
+    /// applicatif `error` du corps JSON même sur une réponse HTTP 200 : si `error != "false"`,
+    /// `callBack.onError(message)` est appelé au lieu de `onResonse`, et `updateToServer`'s
+    /// `onError` ne remet JAMAIS `pendingCoinCount` à 0 — il l'incrémente au contraire du gain
+    /// courant pour un nouveau essai (`WalletRepository.java:301-328`). Avant ce correctif,
+    /// cette fonction ignorait le champ `error` (seul le status code HTTP était vérifié par
+    /// `APIClient.post`), donc un rejet applicatif serveur (fraude anti-abus, limite quotidienne,
+    /// session expirée) ne levait jamais d'exception ici : les 4 appelants (`EarnCoinsView`/
+    /// `WithdrawView`/`TransferCoinsView`/`ConversionView`) exécutaient alors leur branche `do`
+    /// (succès) à tort, remettant `pendingCoinsAmount`/`pendingGemsAmount` à 0 alors que le
+    /// serveur n'avait jamais crédité le gain — perte silencieuse et définitive. `guard
+    /// isBackendSuccess else { throw ... }` restaure exactement la sémantique retry qu'attendent
+    /// déjà les 4 appelants via leur bloc `catch` (`pendingCoinsAmount += ...`, motif déjà
+    /// utilisé ailleurs dans ce même fichier — `referralTotal`/`refreshBalance` juste en dessous).
     func creditReward(userId: String, totalAmount: Double, type: String) async throws {
         let params: [String: String] = ["id": userId, "coins": String(totalAmount), "type": type]
-        _ = try await APIClient.shared.post(params, endpoint: "rewardedCoins")
+        let value = try await APIClient.shared.post(params, endpoint: "rewardedCoins")
+        guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.backendErrorMessage ?? "rewardedCoins") }
     }
 
     // MARK: - Parrainage (port de `getReferrelTotal`)

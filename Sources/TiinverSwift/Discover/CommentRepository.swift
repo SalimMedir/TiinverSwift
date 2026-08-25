@@ -50,8 +50,16 @@ final class CommentRepository {
     }
 
     /// Port de `postComment` — `POST comment`, `parentId` présent uniquement pour une réponse.
+    ///
+    /// **Corrigé (V5-F-045, 2026-08-24)** — `MyBottomSheetDialogFragment.java:498` :
+    /// `map.put("comment", data.getCommentText())`, la clé réseau est `"comment"`. `"commentText"`
+    /// n'est qu'un nom de champ Java interne (`CommentModel.commentText`), jamais sérialisé tel
+    /// quel vers cet endpoint — confirmé distinct de `"comment_text"` (snake_case), la clé lue par
+    /// `NotificationRepository.java:176` sur un endpoint DIFFÉRENT. Envoyer la mauvaise clé
+    /// laissait le texte du commentaire probablement vide/absent côté serveur, sans qu'aucune
+    /// erreur ne soit levée (seul `isBackendSuccess` est vérifié, pas le contenu retourné).
     func post(activityId: Int, text: String, parentId: Int?) async throws {
-        var params = ["activityId": String(activityId), "commentText": text, "userId": UserSession.shared.myId ?? ""]
+        var params = ["activityId": String(activityId), "comment": text, "userId": UserSession.shared.myId ?? ""]
         if let parentId { params["parentId"] = String(parentId) }
         _ = try await APIClient.shared.post(params, endpoint: "comment")
     }

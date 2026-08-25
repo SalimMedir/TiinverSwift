@@ -879,6 +879,45 @@ CAUSE : Même cause racine que le finding précédent : `APIClient.post`/`reques
 IMPACT : Pour le retrait : l'utilisateur voit "Retrait envoyé" alors que sa demande a été rejetée par le serveur (ex. seuil dépassé) — aucune indication qu'il doit corriger le montant, aucune trace dans son historique d'un retrait réellement traité. Pour le transfert P2P : le solde local `coinsAmount` est décrémenté et un message "Vous avez transféré X pièces à Y" s'affiche alors qu'AUCUNE pièce n'a quitté le compte côté serveur — l'utilisateur voit son solde baisser pour rien, un vrai bug de perte de solde perçue. Pour la conversion : "Envoyé avec succès" s'affiche alors qu'aucune gemme n'a été créditée.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Ajouter `guard response.isBackendSuccess else { throw JSONError.typeMismatch(response.backendErrorMessage ?? endpoint) }` dans `submitWithdrawalRequest`, `submitWithdrawalByCrypto`, `convert` et `transferCoins` de `WalletRepository.swift`, au même endroit où `referralTotal`/`refreshBalance` le font déjà dans ce même fichier. Envisager aussi de propager `backendErrorMessage` jusqu'à l'UI pour reproduire le mapping spécifique `WITHDRAWAL_THRESHOLD_EXCEEDED` → libellé dédié (`WithdrawActivity.java:152-153`).
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B V5, Lot P0-4) — **Vérification financière DOUBLE**
+effectuée (voir aussi V5-F-031, même méthodologie) : (1) `WithdrawActivity.java:151-157` confirmé
+mappant explicitement `WITHDRAWAL_THRESHOLD_EXCEEDED` sur un libellé dédié, preuve que ce chemin
+d'erreur applicatif HTTP-200 est réellement emprunté en production ; `TransfertCoinsActivity.java:
+128-150` confirmé : la déduction locale du solde (`coinCount - Integer.parseInt(m)`) n'a lieu QUE
+dans `onResonse`, jamais dans `onError` (aucun rollback nécessaire côté iOS puisqu'aucune
+déduction ne doit avoir lieu avant confirmation serveur). (2) `submitWithdrawalByCrypto` vérifié
+séparément : `TransportData.postToVPS` (`:683-712`, serveur VPS crypto DISTINCT) applique le même
+contrat `error`/`onError` que `Post` — même correctif requis et appliqué. Les 3 vues appelantes
+(`WithdrawView.submit`/`TransferCoinsView.transfer`/`ConversionView.convert`) vérifiées : succès
+UI et déduction de solde déjà placés APRÈS le `try await`, à l'intérieur du bloc `do` — aucune
+modification de leur côté nécessaire, le correctif est entièrement contenu à
+`WalletRepository.swift`.
+
+Correctif : `guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.
+backendErrorMessage ?? endpoint) }` ajouté aux 4 méthodes, motif identique à V5-F-031/
+`referralTotal`/`refreshBalance`.
+
+**Gap mineur restant, documenté plutôt que corrigé** : le mapping spécifique
+`WITHDRAWAL_THRESHOLD_EXCEEDED` → libellé dédié français (`R.string.withdrawal_threshold_exceeded`
+côté Android) n'est PAS reproduit — `WithdrawView`'s `catch` affiche `error.localizedDescription`
+générique (`"Type JSON inattendu pour: WITHDRAWAL_THRESHOLD_EXCEEDED"`, motif d'erreur générique
+déjà établi dans tout le projet). La RECOMMANDATION de l'audit qualifiait elle-même cet ajout
+d'optionnel ("envisager aussi") — la divergence CRITIQUE (faux succès affiché) est intégralement
+corrigée ; ce gap de libellé est une amélioration UX secondaire, pas la divergence fonctionnelle
+visée par ce finding P0.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Wallet/WalletRepository.swift`.
+
+**Résultat CI** : commit `b170c2b`, push confirmé (`6719e1a..b170c2b main -> main`), run
+`32891699920` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis (aucun accès backend de test permettant de simuler
+un rejet applicatif) : provoquer un retrait dépassant le seuil serveur, confirmer qu'aucun message
+de succès ne s'affiche et que le solde local n'est pas altéré ; provoquer un rejet de transfert P2P,
+confirmer que le solde local n'est PAS décrémenté ; provoquer un rejet de conversion, confirmer
+qu'aucune gemme n'est créditée localement.
 ```
 
 ```

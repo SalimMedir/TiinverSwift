@@ -12,7 +12,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos, **cycle V4 ENTIÈREMENT CLOS (75/75 findings)**,
 **cycle V5 EN COURS** : Phase A [69 findings] + Phase A.2 contre-audit ciblé [30 findings
 supplémentaires, V5-F-070 à V5-F-099] TERMINÉES, **99 findings au total**, Phase B DÉMARRÉE —
-backlog P0 EN COURS [3/7 clos : **Lot P0-1 : V5-F-094 BUILD_VALIDATED** (export MP4 Animems
+backlog P0 EN COURS [4/7 clos : **Lot P0-1 : V5-F-094 BUILD_VALIDATED** (export MP4 Animems
 bloqué indéfiniment — `AnimemesExporter` variable locale désallouée par ARC avant l'exécution de
 son callback async, corrigé via une propriété stockée forte `activeExporter`) ; **Lot P0-2 :
 V5-F-018 BUILD_VALIDATED** (chat ouvert sur les messages les plus ANCIENS au lieu des plus récents,
@@ -22,9 +22,13 @@ pagination puisque `loadMore()` insère exclusivement en tête de liste) ; **Lot
 BUILD_VALIDATED** (Wallet `rewardedCoins` — un rejet applicatif serveur, HTTP 200 avec
 `error≠"false"`, était traité comme un succès, `pendingCoinsAmount` remis à 0 à tort, gain perdu
 en silence — `WalletRepository.creditReward` vérifiait uniquement le status HTTP, jamais le champ
-`error`, corrigé par `guard isBackendSuccess else { throw }`, vérifié financièrement DEUX FOIS)] —
-reste à traiter dans
-l'ordre du document : V5-F-032, V5-F-042, V5-F-045, V5-F-064 [4 P0], puis 40 P1, 31 P2,
+`error`, corrigé par `guard isBackendSuccess else { throw }`, vérifié financièrement DEUX FOIS) ;
+**Lot P0-4 : V5-F-032 BUILD_VALIDATED** (même classe de bug appliquée aux 4 méthodes
+`submitWithdrawalRequest`/`submitWithdrawalByCrypto`/`convert`/`transferCoins` — un rejet serveur
+[ex. `WITHDRAWAL_THRESHOLD_EXCEEDED`] affichait un faux succès, et pour le transfert P2P le solde
+local était même décrémenté sans qu'aucune pièce n'ait quitté le compte serveur ; vérifié
+financièrement DEUX FOIS, correctif entièrement contenu au repository)] — reste à traiter dans
+l'ordre du document : V5-F-042, V5-F-045, V5-F-064 [3 P0], puis 40 P1, 31 P2,
 21 P3. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
@@ -124,20 +128,32 @@ ignorait entièrement ce champ. Correctif : `guard isBackendSuccess else { throw
 un rejet serveur réel, confirmer que `pendingCoinsAmount` ne repasse pas à 0). Détail complet dans
 `PROGRESS_V5.md`, Lot P0-3.
 
+**Lot P0-4 traité (V5-F-032)** — Wallet, même classe de bug que V5-F-031 appliquée à 4 méthodes
+distinctes de `WalletRepository` (`submitWithdrawalRequest`, `submitWithdrawalByCrypto` [endpoint
+VPS distinct, vérifié : `TransportData.postToVPS` applique le même contrat `error`/`onError` que
+`Post`], `convert`, `transferCoins`). Vérification financière DOUBLE : `WithdrawActivity.java:
+151-157` confirme le mapping `WITHDRAWAL_THRESHOLD_EXCEEDED` réellement emprunté en production ;
+`TransfertCoinsActivity.java:128-150` confirme que la déduction locale du solde n'a lieu QUE dans
+`onResonse`, jamais `onError` ; les 3 vues appelantes déjà correctement structurées (succès/
+déduction après le `try await`, dans le `do`), aucune modification nécessaire de leur côté.
+Correctif entièrement contenu à `WalletRepository.swift`, même motif que V5-F-031. Gap mineur
+documenté (pas corrigé, explicitement optionnel dans l'audit) : le libellé dédié
+`WITHDRAWAL_THRESHOLD_EXCEEDED` n'est pas reproduit, un message générique s'affiche à la place —
+la divergence critique (faux succès) est intégralement corrigée. **Commit `b170c2b`, CI verte
+confirmée (run `32891699920`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel
+requis : provoquer un rejet de retrait/transfert/conversion, confirmer qu'aucun faux succès ni
+altération de solde local ne se produit). Détail complet dans `PROGRESS_V5.md`, Lot P0-4.
+
 **PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur le prochain P0 dans l'ordre du
-document : **V5-F-032** (Wallet — retrait/transfert/conversion : MÊME classe de bug que V5-F-031,
-appliquée à 4 méthodes distinctes de `WalletRepository` [`submitWithdrawalRequest`,
-`submitWithdrawalByCrypto` (endpoint VPS distinct, déjà vérifié : même contrat `error`/`message`),
-`convert`, `transferCoins`] — aucune ne vérifie `isBackendSuccess`, un rejet serveur [ex.
-`WITHDRAWAL_THRESHOLD_EXCEEDED`] s'affiche comme un succès ; pour le transfert P2P, le solde local
-est même décrémenté alors qu'aucune pièce n'a quitté le compte serveur. **Déjà vérifié
-financièrement DEUX FOIS lors de cette session** : les 3 vues appelantes (`WithdrawView`/
-`TransferCoinsView`/`ConversionView`) ont déjà leur logique de succès/déduction de solde
-correctement placée APRÈS le `try await`, à l'intérieur du bloc `do` — le correctif sera donc
-entièrement contenu à `WalletRepository.swift`, même motif que V5-F-031, aucune modification des 3
-vues nécessaire), puis continuer AUTOMATIQUEMENT V5-F-042, V5-F-045, V5-F-064 (3 P0 restants après
-V5-F-032), puis tous les P1 (40), P2 (31), P3 (21) dans l'ordre du document, SANS s'arrêter entre
-les lots (instruction
+document : **V5-F-042** (Animems - Timeline : le verrouillage d'une piste [icône cadenas] ne
+bloque pas le glisser/redimensionnement du bloc côté iOS — Android [`TimelineView.java:898-910`,
+`onDown`] force `mode = Mode.NONE` dès que `hit.locked` est vrai, bloquant toute mutation dans
+`onMove`, mais laissant la sélection possible ; `TimelineView.resolveMode(at:model:)` côté iOS ne
+lit JAMAIS `item.locked` — déjà vérifié Android en détail, correctif prévu : retourner `.pan(...)`
+au lieu de `.dragItem`/`.resizeLeft`/`.resizeRight` quand `item.locked == true`, tout en préservant
+`model.selectedId = item.id`), puis continuer AUTOMATIQUEMENT V5-F-045, V5-F-064 (2 P0 restants
+après V5-F-042), puis tous les P1 (40), P2 (31), P3 (21) dans l'ordre du document, SANS s'arrêter
+entre les lots (instruction
 explicite de l'utilisateur), en respectant à chaque fois : preuve Android vérifiée personnellement
 → code Swift vérifié → chaîne complète tracée (UI → State/ViewModel → Repository/API/Socket →
 réponse → rendu, des deux côtés) → correction minimale → diff revu → commit → push → CI → attente

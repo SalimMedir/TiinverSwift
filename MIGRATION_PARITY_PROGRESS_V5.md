@@ -203,6 +203,49 @@ tous.
 un rejet applicatif) : provoquer un rejet serveur réel, confirmer que `pendingCoinsAmount`/
 `pendingGemsAmount` ne repasse pas à 0 et qu'un nouveau crédit est retenté au prochain gain.
 
+## 2026-08-24 — Phase B V5 — Lot P0-4 : V5-F-032 (BUILD_VALIDATED)
+
+### Vérification financière DOUBLE (même méthodologie que V5-F-031)
+
+**Android** : `WithdrawActivity.java:151-157` mappe explicitement `WITHDRAWAL_THRESHOLD_EXCEEDED`
+sur un libellé dédié — preuve que ce chemin d'erreur applicatif HTTP-200 est réellement emprunté en
+production. `TransfertCoinsActivity.java:128-150` : la déduction locale du solde
+(`coinCount - Integer.parseInt(m)`) n'a lieu QUE dans `onResonse`, jamais dans `onError`.
+`submitWithdrawalByCrypto` vérifié séparément : `TransportData.postToVPS` (serveur VPS crypto
+DISTINCT) applique le MÊME contrat `error`/`onError` que `Post`.
+
+**iOS avant correctif** : les 4 méthodes de `WalletRepository` (`submitWithdrawalRequest`,
+`submitWithdrawalByCrypto`, `convert`, `transferCoins`) ne vérifiaient jamais `isBackendSuccess` —
+un rejet serveur applicatif se traduisait par un faux message de succès, et pour le transfert P2P,
+une déduction de solde local alors qu'aucune pièce n'avait quitté le compte serveur.
+
+**Vérification des 3 vues appelantes** : succès UI et déduction de solde déjà placés APRÈS le
+`try await`, à l'intérieur du bloc `do` — aucune modification nécessaire de leur côté.
+
+### Correctif appliqué
+
+`guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.backendErrorMessage ??
+endpoint) }` ajouté aux 4 méthodes, motif identique à V5-F-031.
+
+**Gap mineur documenté, non corrigé** : le mapping `WITHDRAWAL_THRESHOLD_EXCEEDED` → libellé
+dédié français n'est pas reproduit (texte générique affiché à la place) — explicitement optionnel
+dans la RECOMMANDATION de l'audit ("envisager aussi"), la divergence critique (faux succès) est
+intégralement corrigée.
+
+### Flux frères vérifiés
+
+4 méthodes, 5 sites d'appel (3 vues + 2 transports `post`/`postToVPS`) tous couverts par ce lot.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Wallet/WalletRepository.swift`.
+
+**Résultat CI** : commit `b170c2b`, push confirmé (`6719e1a..b170c2b main -> main`), run
+`32891699920` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : provoquer un retrait dépassant le seuil serveur,
+un rejet de transfert P2P, et un rejet de conversion ; confirmer dans chaque cas qu'aucun message
+de succès ne s'affiche et qu'aucun solde local n'est altéré.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

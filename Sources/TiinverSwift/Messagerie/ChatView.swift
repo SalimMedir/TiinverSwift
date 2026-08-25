@@ -67,13 +67,23 @@ struct ChatView: View {
         // les 3080 lignes lues, probablement ailleurs dans la barre d'outils XML non fournie).
         // Câblé ici directement sur `CallCoordinator.startOutgoingCall`, module 12, plutôt que
         // deviné à partir d'un fichier non lu.
-        .fullScreenCover(isPresented: Binding(get: { callCoordinator.state != .idle }, set: { _ in })) {
-            CallView(coordinator: callCoordinator)
-        }
+        //
+        // **Corrigé (V5-F-001, 2026-08-24)** — la présentation de `CallView` elle-même
+        // (`.fullScreenCover(isPresented: callCoordinator.state != .idle)`) a été déplacée vers
+        // `RootRouterView.swift`, seul point TOUJOURS monté quel que soit l'écran affiché
+        // (`AndroidManifest.xml:347-353`/`CallService.java:571-617` : `CallActivity`/
+        // `IncomingCallActivity` sont des Activities système lancées par un Service via
+        // `FLAG_ACTIVITY_NEW_TASK`, donc atteignables depuis N'IMPORTE QUEL écran, jamais
+        // dépendantes d'un Fragment particulier). La présenter seulement ici la rendait
+        // inatteignable dès que l'utilisateur n'était pas précisément sur LE ChatView de la
+        // conversation en cours d'appel.
+        //
         // Port de `PermissionRequest.java:62-99` (refus explicite signalé à l'utilisateur) — l'appel
         // sortant refusé pour permission micro ne quitte jamais `.idle` (voir
-        // `CallCoordinator.startOutgoingCall`), donc `CallView` (gardé par `state != .idle`
-        // ci-dessus) ne s'affiche jamais pour ce cas : l'alerte doit vivre ICI, pas dans `CallView`.
+        // `CallCoordinator.startOutgoingCall`), donc `CallView` ne s'affiche jamais pour ce cas :
+        // cette alerte reste ICI (pas dans `CallView`/`RootRouterView`) car le bouton d'appel
+        // sortant qui la déclenche vit sur CET écran — l'utilisateur regarde déjà ChatView au
+        // moment du refus.
         .alert(
             "Micro requis", isPresented: Binding(
                 get: { callCoordinator.micPermissionDenied },

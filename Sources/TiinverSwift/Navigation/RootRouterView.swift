@@ -27,6 +27,8 @@ struct RootRouterView: View {
     @State private var forceUpdateRequired = false
     @State private var configChecked = false
     @Environment(\.scenePhase) private var scenePhase
+    /// **Ajouté (V5-F-001, 2026-08-24)** — voir `.fullScreenCover` dans `body` ci-dessous.
+    @ObservedObject private var callCoordinator: CallCoordinator = .shared
 
     var body: some View {
         Group {
@@ -98,6 +100,19 @@ struct RootRouterView: View {
         // la scène est déjà `.active` avant le premier rendu) — port explicite du PREMIER
         // `onStart()` d'Android, qui enregistre le receiver dès le lancement de l'Activity.
         .onAppear { startNetworkMonitor() }
+        // **Corrigé (V5-F-001, 2026-08-24)** — déplacé depuis `ChatView.swift`, où `CallView`
+        // n'était présenté que si l'instance SwiftUI de LA conversation en cours d'appel était
+        // montée. Port de `CallActivity`/`IncomingCallActivity` (`AndroidManifest.xml:347-353`),
+        // des Activities système lancées par `CallService` via `FLAG_ACTIVITY_NEW_TASK`
+        // (`CallService.java:571-617`) — atteignables depuis N'IMPORTE QUEL écran de l'app,
+        // jamais dépendantes d'un Fragment particulier. `RootRouterView` est le seul point
+        // TOUJOURS monté (force-update, chargement, session mise en cache, pré-authentification
+        // via `AuthCoordinatorView`, ou `HomeShellView` une fois connecté) — voir le commentaire
+        // sur `ChatRepository.shared.attachToCurrentSocket()` ci-dessus confirmant que
+        // `CallCoordinator.start()` peut déjà être actif AVANT authentification.
+        .fullScreenCover(isPresented: Binding(get: { callCoordinator.state != .idle }, set: { _ in })) {
+            CallView(coordinator: callCoordinator)
+        }
     }
 
     private func startNetworkMonitor() {

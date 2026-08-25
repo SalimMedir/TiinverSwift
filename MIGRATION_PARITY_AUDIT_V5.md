@@ -832,6 +832,37 @@ CAUSE : `APIClient.request()` ne lit que le status code HTTP et jamais le champ 
 IMPACT : Un rejet serveur du crédit de récompense pub (fraude anti-abus, limite quotidienne, session expirée, etc.) — un scénario réel puisque c'est exactement pour cela que le mécanisme `pendingCoinCount`/retry existe côté Android — se traduit sur iOS par : (1) un solde local `coinsAmount`/`gemsAmount` gonflé qui ne correspond plus au solde serveur, (2) aucune tentative de nouvelle synchronisation car `pendingCoinsAmount` est remis à 0 à tort, (3) aucun message d'erreur affiché à l'utilisateur — la récompense est perdue en silence côté serveur tout en restant visible côté client.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Dans `WalletRepository.creditReward`, vérifier `response.isBackendSuccess` après le POST et lever une erreur (`throw JSONError.typeMismatch(response.backendErrorMessage ?? "rewardedCoins")`) si `error` ≠ "false", exactement comme le fait `TransportData.Post` côté Android avant d'invoquer `onError`. Cela restaure la sémantique retry de `pendingCoinsAmount`/`pendingGemsAmount` dans les 4 appelants (`EarnCoinsView`, `WithdrawView`, `TransferCoinsView`, `ConversionView`) qui l'attendent déjà correctement via leur bloc `catch`.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B V5, Lot P0-3) — **Vérification financière DOUBLE**
+effectuée : (1) `TransportData.Post` (`Http/TransportData.java:614-634`) confirmé lisant le champ
+`error` du corps JSON MÊME sur HTTP 200, `onError` appelé si `error != "false"` ; (2)
+`WalletRepository.updateToServer` (`:301-328`) confirmé ne remettant JAMAIS `pendingCoinCount` à 0
+sur `onError` — il l'incrémente au contraire pour retry. Paramètres envoyés, calcul du delta
+(`pendingCoinCount + currenGainCoins`) et crédit local optimiste vérifiés INCHANGÉS et déjà
+corrects (fix antérieur V4-F-065/066) — seul le contrôle de la réponse serveur manquait. Vérifié
+que les 4 appelants (`EarnCoinsView`/`WithdrawView`/`TransferCoinsView`/`ConversionView`) ont déjà
+un bloc `catch` correctement structuré (`pendingCoinsAmount += ...`) prêt à recevoir l'erreur
+nouvellement levée — aucune modification nécessaire de leur côté. Vérifié aussi qu'Android lui-même
+NE fait PAS de rollback du crédit optimiste local sur erreur (`EarnCoinsActivity.updateToServer`/
+`updateGemsToServer`, seul `pendingCoinCount`/`PENDING_COINS_AMOUNT` change) — confirmant qu'aucun
+rollback supplémentaire n'était nécessaire côté iOS (qui ne le faisait déjà pas non plus).
+
+Correctif : `guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.
+backendErrorMessage ?? "rewardedCoins") }` ajouté après le POST — motif identique à
+`referralTotal`/`refreshBalance` (même fichier) et au reste du projet (`AdsRepository`,
+`FeedRepository`). Un seul point de correction pour les 5 sites d'appel (4 vues + la fonction
+elle-même).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Wallet/WalletRepository.swift`.
+
+**Résultat CI** : commit `23b40af`, push confirmé (`c232bed..23b40af main -> main`), run
+`32890639113` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis (aucun accès backend de test permettant de simuler
+un rejet applicatif) : provoquer un rejet serveur réel de `rewardedCoins` (ex. limite quotidienne
+atteinte), confirmer que `pendingCoinsAmount`/`pendingGemsAmount` NE repasse PAS à 0 et qu'un
+nouveau crédit est retenté au prochain gain.
 ```
 
 ```

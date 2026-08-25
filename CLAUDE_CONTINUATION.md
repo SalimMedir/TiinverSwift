@@ -12,14 +12,19 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos, **cycle V4 ENTIÈREMENT CLOS (75/75 findings)**,
 **cycle V5 EN COURS** : Phase A [69 findings] + Phase A.2 contre-audit ciblé [30 findings
 supplémentaires, V5-F-070 à V5-F-099] TERMINÉES, **99 findings au total**, Phase B DÉMARRÉE —
-backlog P0 EN COURS [2/7 clos : **Lot P0-1 : V5-F-094 BUILD_VALIDATED** (export MP4 Animems
+backlog P0 EN COURS [3/7 clos : **Lot P0-1 : V5-F-094 BUILD_VALIDATED** (export MP4 Animems
 bloqué indéfiniment — `AnimemesExporter` variable locale désallouée par ARC avant l'exécution de
 son callback async, corrigé via une propriété stockée forte `activeExporter`) ; **Lot P0-2 :
 V5-F-018 BUILD_VALIDATED** (chat ouvert sur les messages les plus ANCIENS au lieu des plus récents,
 + cascade de pagination runaway au chargement — `ChatView.messageList` sans `ScrollViewReader`,
 corrigé en scrollant vers `items.last?.id`, signal qui ne se déclenche jamais pendant la
-pagination puisque `loadMore()` insère exclusivement en tête de liste)] — reste à traiter dans
-l'ordre du document : V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 [5 P0], puis 40 P1, 31 P2,
+pagination puisque `loadMore()` insère exclusivement en tête de liste) ; **Lot P0-3 : V5-F-031
+BUILD_VALIDATED** (Wallet `rewardedCoins` — un rejet applicatif serveur, HTTP 200 avec
+`error≠"false"`, était traité comme un succès, `pendingCoinsAmount` remis à 0 à tort, gain perdu
+en silence — `WalletRepository.creditReward` vérifiait uniquement le status HTTP, jamais le champ
+`error`, corrigé par `guard isBackendSuccess else { throw }`, vérifié financièrement DEUX FOIS)] —
+reste à traiter dans
+l'ordre du document : V5-F-032, V5-F-042, V5-F-045, V5-F-064 [4 P0], puis 40 P1, 31 P2,
 21 P3. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
@@ -104,17 +109,35 @@ longue, confirmer affichage des messages récents sans scroll manuel, absence de
 préservation de position en remontant l'historique, auto-scroll sur envoi/réception en direct).
 Détail complet dans `PROGRESS_V5.md`, Lot P0-2.
 
+**Lot P0-3 traité (V5-F-031)** — Wallet, crédit récompense pub `rewardedCoins` traité comme un
+succès malgré un rejet serveur applicatif. **Vérification financière DOUBLE effectuée** :
+(1) paramètres envoyés/delta/crédit local optimiste confirmés inchangés et déjà corrects (fix
+antérieur V4-F-065/066) ; (2) confirmé qu'Android lui-même NE fait PAS de rollback du crédit
+optimiste sur erreur (seul `pendingCoinCount` change), donc aucun rollback supplémentaire requis
+côté iOS ; confirmé que les 4 appelants ont déjà un bloc `catch` correctement structuré prêt à
+recevoir l'erreur. Cause : `TransportData.Post` (Android) lit le champ `error` du JSON même sur
+HTTP 200 — `onError` appelé si `error≠"false"`, et `updateToServer`'s `onError` ne remet JAMAIS
+`pendingCoinCount` à 0 (il l'incrémente pour retry) ; côté iOS, `WalletRepository.creditReward`
+ignorait entièrement ce champ. Correctif : `guard isBackendSuccess else { throw }`, motif identique
+à `referralTotal`/`refreshBalance` (même fichier). **Commit `23b40af`, CI verte confirmée (run
+`32890639113`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis : provoquer
+un rejet serveur réel, confirmer que `pendingCoinsAmount` ne repasse pas à 0). Détail complet dans
+`PROGRESS_V5.md`, Lot P0-3.
+
 **PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur le prochain P0 dans l'ordre du
-document : **V5-F-031** (Wallet — crédit récompense pub `rewardedCoins` : un échec applicatif du
-serveur, HTTP 200 avec `error≠"false"` dans le corps JSON, est traité comme un succès —
-`WalletRepository.creditReward` n'appelle jamais `isBackendSuccess` contrairement à la quasi-
-totalité des autres repositories du projet ; `pendingCoinsAmount` est remis à 0 à tort, aucune
-resynchronisation ultérieure, aucune erreur affichée, le solde local diverge silencieusement et
-définitivement du solde serveur réel — voir `MIGRATION_PARITY_AUDIT_V5.md` pour la citation
-Android/iOS complète ; **vérification financière DOUBLE requise** avant tout correctif : paramètres
-envoyés, delta, solde, réponse serveur, rollback UI, idempotence, erreur réseau), puis continuer
-AUTOMATIQUEMENT V5-F-032, V5-F-042, V5-F-045, V5-F-064 (4 P0 restants après V5-F-031), puis tous
-les P1 (40), P2 (31), P3 (21) dans l'ordre du document, SANS s'arrêter entre les lots (instruction
+document : **V5-F-032** (Wallet — retrait/transfert/conversion : MÊME classe de bug que V5-F-031,
+appliquée à 4 méthodes distinctes de `WalletRepository` [`submitWithdrawalRequest`,
+`submitWithdrawalByCrypto` (endpoint VPS distinct, déjà vérifié : même contrat `error`/`message`),
+`convert`, `transferCoins`] — aucune ne vérifie `isBackendSuccess`, un rejet serveur [ex.
+`WITHDRAWAL_THRESHOLD_EXCEEDED`] s'affiche comme un succès ; pour le transfert P2P, le solde local
+est même décrémenté alors qu'aucune pièce n'a quitté le compte serveur. **Déjà vérifié
+financièrement DEUX FOIS lors de cette session** : les 3 vues appelantes (`WithdrawView`/
+`TransferCoinsView`/`ConversionView`) ont déjà leur logique de succès/déduction de solde
+correctement placée APRÈS le `try await`, à l'intérieur du bloc `do` — le correctif sera donc
+entièrement contenu à `WalletRepository.swift`, même motif que V5-F-031, aucune modification des 3
+vues nécessaire), puis continuer AUTOMATIQUEMENT V5-F-042, V5-F-045, V5-F-064 (3 P0 restants après
+V5-F-032), puis tous les P1 (40), P2 (31), P3 (21) dans l'ordre du document, SANS s'arrêter entre
+les lots (instruction
 explicite de l'utilisateur), en respectant à chaque fois : preuve Android vérifiée personnellement
 → code Swift vérifié → chaîne complète tracée (UI → State/ViewModel → Repository/API/Socket →
 réponse → rendu, des deux côtés) → correction minimale → diff revu → commit → push → CI → attente

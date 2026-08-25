@@ -155,6 +155,54 @@ toute interaction ; remonter manuellement l'historique et confirmer que la posit
 préservée pendant le chargement d'anciens messages ; envoyer/recevoir un message en direct et
 confirmer le scroll automatique vers le bas.
 
+## 2026-08-24 — Phase B V5 — Lot P0-3 : V5-F-031 (BUILD_VALIDATED)
+
+### Vérification financière DOUBLE (règle explicite du cycle)
+
+**Android** : `TransportData.Post` (`Http/TransportData.java:614-634`) lit le champ `error` du
+corps JSON MÊME sur une réponse HTTP 200 — si `error != "false"`, `onError(message)` est appelé au
+lieu de `onResonse`. `WalletRepository.updateToServer` (`:301-328`) : `onError` NE remet JAMAIS
+`pendingCoinCount` à 0 — il l'incrémente au contraire du gain courant pour retry au prochain crédit.
+
+**iOS avant correctif** : `WalletRepository.creditReward` ignorait entièrement le champ `error`
+(seul le status code HTTP était vérifié par `APIClient.post`). Un rejet applicatif serveur (fraude
+anti-abus, limite quotidienne, session expirée) ne levait jamais d'exception : les 4 appelants
+exécutaient leur branche `do` (succès) à tort, remettant `pendingCoinsAmount`/`pendingGemsAmount` à
+0 alors que le serveur n'avait jamais crédité le gain — perte silencieuse et définitive.
+
+**Vérification 1 (paramètres/delta/solde inchangés)** : confirmé que le calcul du delta
+(`pendingCoinCount + currenGainCoins`) et le crédit local optimiste étaient déjà corrects (fix
+antérieur V4-F-065/066) — seul le contrôle de la réponse serveur manquait.
+
+**Vérification 2 (rollback/idempotence/erreur réseau)** : confirmé qu'Android lui-même NE fait PAS
+de rollback du crédit local optimiste sur erreur (seul `pendingCoinCount`/`PENDING_COINS_AMOUNT`
+change côté Android) — donc aucun rollback supplémentaire n'était nécessaire côté iOS (déjà
+absent, correctement fidèle). Confirmé que les 4 appelants (`EarnCoinsView`/`WithdrawView`/
+`TransferCoinsView`/`ConversionView`) ont déjà un bloc `catch` correctement structuré
+(`pendingCoinsAmount += ...`) prêt à recevoir l'erreur nouvellement levée.
+
+### Correctif appliqué
+
+`guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.backendErrorMessage ??
+"rewardedCoins") }` ajouté après le POST dans `WalletRepository.creditReward` — motif identique à
+`referralTotal`/`refreshBalance` (même fichier) et au reste du projet (`AdsRepository`,
+`FeedRepository`).
+
+### Flux frères vérifiés
+
+5 sites d'appel confirmés (4 vues + la fonction elle-même) — un seul point de correction couvre
+tous.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Wallet/WalletRepository.swift`.
+
+**Résultat CI** : commit `23b40af`, push confirmé (`c232bed..23b40af main -> main`), run
+`32890639113` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis (aucun accès backend de test permettant de simuler
+un rejet applicatif) : provoquer un rejet serveur réel, confirmer que `pendingCoinsAmount`/
+`pendingGemsAmount` ne repasse pas à 0 et qu'un nouveau crédit est retenté au prochain gain.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

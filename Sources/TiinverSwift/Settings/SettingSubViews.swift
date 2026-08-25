@@ -6,6 +6,14 @@ struct SettingAccountView: View {
     @State private var showLogoutConfirm = false
     @State private var showDeleteConfirm = false
     @State private var isBusy = false
+    /// **Ajouté (V5-F-064, 2026-08-24)** — port du repli `onErrorResponse` d'Android
+    /// (`transportDataBackground.java:110-116`), qui laisse l'utilisateur sur cet écran, toujours
+    /// connecté, sans purge. Android lui-même n'affiche AUCUN texte d'erreur pour ces 2 cas précis
+    /// (juste `dialog.dismiss()`, contrairement à `"Logout1"` qui montre un Toast) — un message
+    /// minimal est affiché ici pour éviter qu'un tap sans effet visible ne semble être un bug côté
+    /// iOS, écart volontaire mineur au bénéfice de l'utilisateur, la garde essentielle (PAS de
+    /// purge/déconnexion locale tant que le serveur n'a pas confirmé) restant fidèle.
+    @State private var errorMessage: String?
 
     var body: some View {
         List {
@@ -30,13 +38,29 @@ struct SettingAccountView: View {
         .confirmationDialog("Supprimer définitivement le compte ?", isPresented: $showDeleteConfirm, titleVisibility: .visible) { // R.string.deleteaccount_message_confirme
             Button("Supprimer", role: .destructive) { Task { await deleteAccount() } }
         }
+        .alert("Erreur", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
+    /// **Corrigé (V5-F-064/V5-F-005, 2026-08-24)** — `try?` avalait silencieusement toute erreur
+    /// réseau, laissant `LocalDataPurger.purgeAll()`/`UserSession.shared.clear()`/`.userDidLogout`
+    /// s'exécuter INCONDITIONNELLEMENT, même si le serveur n'avait jamais confirmé la déconnexion.
+    /// Android (`transportDataBackground.java:90-116`) ne purge/ne navigue QUE dans `onResponse`
+    /// (succès réseau) — `onErrorResponse` pour `"logout"` ne fait que `dialog.dismiss()`, la
+    /// session locale reste intacte. `do/catch` restaure cette même garde stricte.
     private func logout() async {
         guard let userId = UserSession.shared.myId else { return }
         isBusy = true
         defer { isBusy = false }
-        try? await ProfileRepository.shared.logout(userId: userId)
+        do {
+            try await ProfileRepository.shared.logout(userId: userId)
+        } catch {
+            errorMessage = "La déconnexion a échoué. Vérifiez votre connexion et réessayez."
+            return
+        }
         // Port de `transportDataBackground.deleteaccount()` — Android route "logout" ET
         // "deleteaccount" vers la MÊME méthode, qui purge aussi tout le cache local
         // (messages/roster/notifications), pas seulement les identifiants de session — voir
@@ -50,11 +74,20 @@ struct SettingAccountView: View {
         NotificationCenter.default.post(name: .userDidLogout, object: nil)
     }
 
+    /// **Corrigé (V5-F-064/V5-F-005, 2026-08-24)** — même garde que `logout()` ci-dessus, encore
+    /// plus critique ici : sur un échec réseau, le compte N'EST PAS supprimé côté serveur, mais
+    /// tout le cache local était quand même détruit et l'utilisateur éjecté en croyant son compte
+    /// supprimé, sans aucune indication que la suppression n'a en réalité jamais eu lieu.
     private func deleteAccount() async {
         guard let userId = UserSession.shared.myId else { return }
         isBusy = true
         defer { isBusy = false }
-        try? await ProfileRepository.shared.deleteAccount(userId: userId)
+        do {
+            try await ProfileRepository.shared.deleteAccount(userId: userId)
+        } catch {
+            errorMessage = "La suppression du compte a échoué. Vérifiez votre connexion et réessayez."
+            return
+        }
         await LocalDataPurger.purgeAll()
         UserSession.shared.clear()
         NotificationCenter.default.post(name: .userDidLogout, object: nil)

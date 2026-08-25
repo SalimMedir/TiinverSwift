@@ -47,6 +47,17 @@ final class AnimemesEditorState: ObservableObject {
     @Published private(set) var renderVersion = 0
     @Published var isExporting = false
     @Published var exportError: String?
+    /// Référence forte retenant `AnimemesExporter` pendant toute la durée de son pipeline vidéo
+    /// asynchrone (**corrigé V5-F-094, 2026-08-24**) — sans elle, `exporter` n'était qu'une
+    /// variable locale de `export(canvasSize:completion:)` : ARC la désallouait dès le retour
+    /// (synchrone) de cette fonction, avant que `videoInput.requestMediaDataWhenReady` (callback
+    /// ASYNCHRONE rappelé plus tard sur une autre file) ne s'exécute — la capture `[weak self]`
+    /// à l'intérieur d'`AnimemesExporter.export` retrouvait alors `self == nil` à chaque rappel,
+    /// aucune frame n'était jamais écrite et `completion` n'était jamais invoquée, laissant
+    /// `isExporting` bloqué à `true` indéfiniment. Fidèle à `AnimemesCompound.encoder` côté
+    /// Android (champ persistant de la vue pendant toute la durée de l'encodage,
+    /// `AnimemesCompound.java:259,3317`) : libérée uniquement dans la completion (succès ou échec).
+    private var activeExporter: AnimemesExporter?
     @Published var selectedId: String?
     @Published private(set) var isPlaying = false
     /// Port du mode d'édition de masque (`MaskAddPanel`/`MaskPreviewEditorPanel` →
@@ -966,12 +977,14 @@ final class AnimemesEditorState: ObservableObject {
         exporter.outputSize = canvasSize
         exporter.viewSize = canvasSize
         exporter.audioURL = audioURL // port de "Ajouter un son" — déjà pris en charge par l'exporteur.
+        activeExporter = exporter // V5-F-094 : retenu fortement pour toute la durée du pipeline async.
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString).appendingPathExtension("mp4")
         exporter.export(to: url) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isExporting = false
+                self.activeExporter = nil
                 switch result {
                 case .success(let outputURL):
                     completion(outputURL)

@@ -1078,6 +1078,36 @@ CAUSE : Le portage de la state-machine tactile de `TimelineView.java` (bien docu
 IMPACT : Verrouiller un calque via l'icône cadenas de la timeline (fonctionnalité elle-même correctement portée, `V4-F-050`) donne une fausse sécurité côté iOS : l'utilisateur peut toujours glisser le bloc, redimensionner son début/sa fin, et ces changements sont appliqués à l'`AnimationObjectData` réel puis au moteur — contrairement à Android où le verrou bloque strictement toute manipulation temporelle du bloc.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Dans `TimelineView.resolveMode(at:model:)`, retourner `.pan(scrollFramesAtDown:)` (comme pour un tap dans le vide) au lieu de `.dragItem`/`.resizeLeft`/`.resizeRight` quand `item.locked == true`, tout en laissant `model.selectedId = item.id` pour préserver la sélection — miroir exact de `mode = Mode.NONE` côté Android qui laisse `selected = hit` mais bloque toute mutation dans `onMove`.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B V5, Lot P0-5) — Vérifié directement dans
+`onDown` (`TimelineView.java:898-910`) : `selected = hit` s'exécute AVANT le test `!hit.locked`
+(sélection toujours mise à jour), puis `mode = Mode.NONE` si verrouillé — `onMove` retourne
+immédiatement pour `Mode.NONE` (`:922-1008`, `if (mode == Mode.NONE && !longPressFired) return
+true;`), geste totalement inerte, PAS de défilement de la timeline non plus.
+
+**Écart avec la RECOMMANDATION de l'audit** : réutiliser `.pan` (comme suggéré) aurait en réalité
+introduit 2 régressions : (1) le dispatch initial de `.pan` désélectionne désormais explicitement
+(`state.selectedId = nil`/`model.selectedId = nil`, correctif V4-F-053 de ce même cycle) — items
+verrouillés se seraient donc désélectionnés au toucher, contrairement à Android ; (2) le handler
+par frame de `.pan` appelle `model.pan(...)`, faisant défiler la TIMELINE elle-même au glissement —
+Android ne fait STRICTEMENT rien en `Mode.NONE`. Ajouté à la place un cas `DragMode.lockedTap(id:)`
+dédié, miroir exact de `Mode.NONE` : sélection préservée, geste entièrement inerte (aucune
+mutation, aucun scroll).
+
+**Flux frère vérifié** : la Phase A.2 (contre-audit ciblé) avait déjà re-vérifié indépendamment le
+geste de manipulation directe sur le CANEVAS (drag/pinch/rotation d'un objet, distinct de la
+timeline) et confirmé sa garde de verrouillage fidèle ("parité confirmée, pas de finding",
+`MIGRATION_PARITY_AUDIT_V5.md` §Animems Canvas) — pas de bug sœur à corriger de ce côté.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/TimelineView.swift`.
+
+**Résultat CI** : commit `76da082`, push confirmé (`40c0fc1..76da082 main -> main`), run
+`32892903483` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : verrouiller une piste via l'icône cadenas,
+confirmer que le bloc reste sélectionnable (tap) mais ni glissable ni redimensionnable, et que la
+timeline elle-même ne défile pas pendant la tentative.
 ```
 
 ```

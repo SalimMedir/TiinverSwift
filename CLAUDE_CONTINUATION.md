@@ -12,7 +12,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 # CURRENT HANDOFF (2026-08-24 — cycle V3 clos, **cycle V4 ENTIÈREMENT CLOS (75/75 findings)**,
 **cycle V5 EN COURS** : Phase A [69 findings] + Phase A.2 contre-audit ciblé [30 findings
 supplémentaires, V5-F-070 à V5-F-099] TERMINÉES, **99 findings au total**, Phase B DÉMARRÉE —
-backlog P0 EN COURS [4/7 clos : **Lot P0-1 : V5-F-094 BUILD_VALIDATED** (export MP4 Animems
+backlog P0 EN COURS [5/7 clos : **Lot P0-1 : V5-F-094 BUILD_VALIDATED** (export MP4 Animems
 bloqué indéfiniment — `AnimemesExporter` variable locale désallouée par ARC avant l'exécution de
 son callback async, corrigé via une propriété stockée forte `activeExporter`) ; **Lot P0-2 :
 V5-F-018 BUILD_VALIDATED** (chat ouvert sur les messages les plus ANCIENS au lieu des plus récents,
@@ -27,8 +27,13 @@ en silence — `WalletRepository.creditReward` vérifiait uniquement le status H
 `submitWithdrawalRequest`/`submitWithdrawalByCrypto`/`convert`/`transferCoins` — un rejet serveur
 [ex. `WITHDRAWAL_THRESHOLD_EXCEEDED`] affichait un faux succès, et pour le transfert P2P le solde
 local était même décrémenté sans qu'aucune pièce n'ait quitté le compte serveur ; vérifié
-financièrement DEUX FOIS, correctif entièrement contenu au repository)] — reste à traiter dans
-l'ordre du document : V5-F-042, V5-F-045, V5-F-064 [3 P0], puis 40 P1, 31 P2,
+financièrement DEUX FOIS, correctif entièrement contenu au repository) ; **Lot P0-5 : V5-F-042
+BUILD_VALIDATED** (Animems Timeline — le verrouillage d'une piste ne bloquait pas le glisser/
+redimensionnement du bloc ; `resolveMode` ne lisait jamais `item.locked` — corrigé par un nouveau
+cas `DragMode.lockedTap(id:)` dédié plutôt que la réutilisation de `.pan` suggérée par l'audit
+[qui aurait désélectionné l'item et fait défiler la timeline, 2 régressions vérifiées et évitées])]
+— reste à traiter dans
+l'ordre du document : V5-F-045, V5-F-064 [2 P0], puis 40 P1, 31 P2,
 21 P3. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
@@ -144,16 +149,32 @@ confirmée (run `32891699920`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VAL
 requis : provoquer un rejet de retrait/transfert/conversion, confirmer qu'aucun faux succès ni
 altération de solde local ne se produit). Détail complet dans `PROGRESS_V5.md`, Lot P0-4.
 
+**Lot P0-5 traité (V5-F-042)** — Animems Timeline, le verrouillage d'une piste ne bloquait pas le
+glisser/redimensionnement du bloc. Vérifié `onDown` (`TimelineView.java:898-910`) :
+`selected = hit` avant le test `!hit.locked`, puis `mode = Mode.NONE` si verrouillé ; `onMove`
+retourne immédiatement pour `Mode.NONE`, geste totalement inerte (pas de mutation, pas de
+défilement timeline non plus). **Écart avec la RECOMMANDATION de l'audit** (réutiliser `.pan`) :
+vérification personnelle a montré que ça aurait introduit 2 régressions — `.pan` désélectionne
+désormais (fix V4-F-053, même cycle) et fait défiler la timeline au geste, aucun des deux n'est le
+comportement Android pour un item verrouillé. Ajouté à la place un cas dédié
+`DragMode.lockedTap(id:)`, miroir exact de `Mode.NONE`. Flux frère déjà vérifié : la Phase A.2 avait
+confirmé indépendamment que la garde de verrouillage du CANEVAS (glisser/pincer/pivoter un objet
+directement) était déjà fidèle, pas de bug sœur. **Commit `76da082`, CI verte confirmée (run
+`32892903483`)** — `BUILD_VALIDATED`, PAS `COMPLETE_PARITY_VALIDATED` (test réel requis :
+verrouiller une piste, confirmer sélection possible mais glisser/redimensionner bloqués). Détail
+complet dans `PROGRESS_V5.md`, Lot P0-5.
+
 **PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur le prochain P0 dans l'ordre du
-document : **V5-F-042** (Animems - Timeline : le verrouillage d'une piste [icône cadenas] ne
-bloque pas le glisser/redimensionnement du bloc côté iOS — Android [`TimelineView.java:898-910`,
-`onDown`] force `mode = Mode.NONE` dès que `hit.locked` est vrai, bloquant toute mutation dans
-`onMove`, mais laissant la sélection possible ; `TimelineView.resolveMode(at:model:)` côté iOS ne
-lit JAMAIS `item.locked` — déjà vérifié Android en détail, correctif prévu : retourner `.pan(...)`
-au lieu de `.dragItem`/`.resizeLeft`/`.resizeRight` quand `item.locked == true`, tout en préservant
-`model.selectedId = item.id`), puis continuer AUTOMATIQUEMENT V5-F-045, V5-F-064 (2 P0 restants
-après V5-F-042), puis tous les P1 (40), P2 (31), P3 (21) dans l'ordre du document, SANS s'arrêter
-entre les lots (instruction
+document : **V5-F-045** (Commentaires : envoi d'un commentaire/réponse envoie un mauvais nom de
+paramètre JSON au serveur — Android [`MyBottomSheetDialogFragment.java:498`] envoie
+`map.put("comment", data.getCommentText())`, la clé réseau est `"comment"`, jamais `"commentText"`
+[confirmé : `commentText` est seulement un nom de champ Java interne] ; iOS
+[`CommentRepository.swift:54`] envoie `"commentText": text` — déjà vérifié Android en détail,
+correctif trivial : renommer la clé du dictionnaire `params` de `"commentText"` à `"comment"`,
+aucun site frère trouvé [`grep "commentText"` ne remonte que ce site + des attributs Core Data
+locaux sans rapport]), puis continuer AUTOMATIQUEMENT V5-F-064 (1 P0 restant après V5-F-045), puis
+tous les P1 (40), P2 (31), P3 (21) dans l'ordre du document, SANS s'arrêter entre les lots
+(instruction
 explicite de l'utilisateur), en respectant à chaque fois : preuve Android vérifiée personnellement
 → code Swift vérifié → chaîne complète tracée (UI → State/ViewModel → Repository/API/Socket →
 réponse → rendu, des deux côtés) → correction minimale → diff revu → commit → push → CI → attente

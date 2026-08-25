@@ -246,6 +246,43 @@ intégralement corrigée.
 un rejet de transfert P2P, et un rejet de conversion ; confirmer dans chaque cas qu'aucun message
 de succès ne s'affiche et qu'aucun solde local n'est altéré.
 
+## 2026-08-24 — Phase B V5 — Lot P0-5 : V5-F-042 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `onDown` (`TimelineView.java:898-910`) — `selected = hit` s'exécute AVANT le test
+`!hit.locked` (sélection toujours mise à jour au toucher), puis `mode = Mode.NONE` si verrouillé.
+`onMove` (`:922-1008`) retourne immédiatement pour `Mode.NONE` — geste totalement inerte, y compris
+pas de défilement de la timeline.
+
+**iOS avant correctif** : `TimelineView.resolveMode(at:model:)` ne lisait jamais `item.locked` —
+un calque verrouillé restait glissable/redimensionnable, la mutation atteignant
+`AnimationObjectData` réel puis le moteur de lecture via `applyTimelineItemsToLayers()`.
+
+### Correctif appliqué — et écart avec la RECOMMANDATION de l'audit
+
+La RECOMMANDATION suggérait de réutiliser `.pan` pour un item verrouillé. Vérification personnelle
+: cela aurait introduit 2 régressions — (1) le dispatch `.pan` désélectionne désormais
+explicitement (correctif V4-F-053, même cycle), un item verrouillé se serait désélectionné au
+toucher ; (2) le handler par frame de `.pan` fait défiler la TIMELINE elle-même, ce qu'Android ne
+fait STRICTEMENT PAS en `Mode.NONE`. Ajouté à la place un cas dédié `DragMode.lockedTap(id:)` —
+sélection préservée, geste entièrement inerte, miroir exact de `Mode.NONE`.
+
+### Flux frère vérifié
+
+La Phase A.2 (contre-audit ciblé) avait déjà re-vérifié indépendamment le geste de manipulation
+directe sur le CANEVAS (distinct de la timeline) et confirmé sa garde de verrouillage fidèle
+("parité confirmée, pas de finding") — pas de bug sœur à corriger de ce côté.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/TimelineView.swift`.
+
+**Résultat CI** : commit `76da082`, push confirmé (`40c0fc1..76da082 main -> main`), run
+`32892903483` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : verrouiller une piste, confirmer sélection
+possible mais glisser/redimensionner bloqués, et absence de défilement de la timeline.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

@@ -49,6 +49,12 @@ final class WalletRepository {
 
     // MARK: - Retrait (port de `submitWithdrawalRequest`/`submitWithdrawalByCrypto`)
 
+    /// **Corrigé (V5-F-032, 2026-08-24)** — même cause que V5-F-031 : `TransportData.Post`
+    /// (Android) n'appelle `onResonse`/`Result.SUCCESS` que si `error=="false"` ; tout rejet
+    /// applicatif HTTP-200 (ex. `WITHDRAWAL_THRESHOLD_EXCEEDED`, testé explicitement par
+    /// `WithdrawActivity.java:151-153`) déclenche `onError` → `Result.ERROR`, jamais affiché comme
+    /// un succès. Cette fonction ignorait le champ `error`, faisant passer `WithdrawView.submit`
+    /// dans sa branche succès (`didSubmit = true`) même sur rejet serveur.
     func submitWithdrawalRequest(
         userId: String, currentBalance: Double, requestedAmount: Double, calculatedMoney: Double, operatorName: String, country: String,
         phoneNumber: String, currency: String
@@ -58,11 +64,16 @@ final class WalletRepository {
             "calculatedMoney": String(calculatedMoney), "operator": operatorName, "country": country, "phoneNumber": phoneNumber,
             "currency": currency,
         ]
-        _ = try await APIClient.shared.post(params, endpoint: "withdrawalrequests")
+        let value = try await APIClient.shared.post(params, endpoint: "withdrawalrequests")
+        guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.backendErrorMessage ?? "withdrawalrequests") }
     }
 
     /// Port de `submitWithdrawalByCrypto` — passe par `postToVPS` (serveur crypto DISTINCT du
     /// backend principal, `TransportData.postToVPS` cible une base URL différente).
+    ///
+    /// **Corrigé (V5-F-032, 2026-08-24)** — `TransportData.postToVPS` applique EXACTEMENT le même
+    /// contrat `error`/`onError` que `Post` (vérifié : `Http/TransportData.java:683-712`), donc le
+    /// même bug affectait ce chemin distinct — même correctif.
     func submitWithdrawalByCrypto(
         userId: String, currentBalance: Double, requestedAmount: Double, calculatedMoney: Double, operatorName: String, country: String,
         destAddress: String, currency: String
@@ -72,17 +83,23 @@ final class WalletRepository {
             "calculatedMoney": String(calculatedMoney), "operator": operatorName, "country": country, "destAddress": destAddress,
             "currency": currency,
         ]
-        _ = try await APIClient.shared.postToVPS(params, endpoint: "crypto/withdraw")
+        let value = try await APIClient.shared.postToVPS(params, endpoint: "crypto/withdraw")
+        guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.backendErrorMessage ?? "crypto/withdraw") }
     }
 
     // MARK: - Conversion pièces → gemmes (port de `convert`)
 
+    /// **Corrigé (V5-F-032, 2026-08-24)** — même cause que `submitWithdrawalRequest` ci-dessus :
+    /// `WalletRepository.convert` (Android, `:166-195`) n'envoie `Result.SUCCESS` que sur
+    /// `error=="false"` ; sans ce contrôle, `ConversionView.convert` affichait "Envoyé avec succès"
+    /// même si aucune gemme n'avait été créditée côté serveur.
     func convert(userId: String, currentBalance: Double, requestedAmount: Double, gems: Double) async throws {
         let params: [String: String] = [
             "userId": userId, "currentBalance": String(currentBalance), "requestedAmount": String(requestedAmount),
             "requestedGems": String(gems),
         ]
-        _ = try await APIClient.shared.post(params, endpoint: "convert")
+        let value = try await APIClient.shared.post(params, endpoint: "convert")
+        guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.backendErrorMessage ?? "convert") }
     }
 
     // MARK: - Récompense pub rewarded (port de `updateToServer`)
@@ -130,9 +147,17 @@ final class WalletRepository {
     }
 
     /// Port de `transfert.setOnClickListener` — émet `sender`/`receiver`/`column="coins"`/`quantity`.
+    ///
+    /// **Corrigé (V5-F-032, 2026-08-24)** — `TransfertCoinsActivity.java:128-150` : la déduction
+    /// locale du solde (`coinCount - Integer.parseInt(m)`) n'a lieu QUE dans `onResonse` (succès) ;
+    /// `onError` affiche un message d'erreur SANS toucher au solde. Sans ce contrôle,
+    /// `TransferCoinsView.transfer` déduisait `UserSession.shared.coinsAmount` même sur rejet
+    /// serveur — l'utilisateur voyait son solde baisser pour rien, alors qu'aucune pièce n'avait
+    /// quitté le compte côté serveur.
     func transferCoins(senderId: String, receiverId: String, quantity: Int) async throws {
         let params: [String: String] = ["sender": senderId, "receiver": receiverId, "column": "coins", "quantity": String(quantity)]
-        _ = try await APIClient.shared.post(params, endpoint: "transfert") // Faute d'orthographe RÉELLE côté serveur, préservée.
+        let value = try await APIClient.shared.post(params, endpoint: "transfert") // Faute d'orthographe RÉELLE côté serveur, préservée.
+        guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.backendErrorMessage ?? "transfert") }
     }
 
     /// Port de `notifyUser` — déclenche une notification push générique côté serveur pour le

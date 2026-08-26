@@ -118,8 +118,18 @@ private struct NotificationRow: View {
                 let name = GiftCatalog.resolve(noti.commentText)?.name ?? "cadeau"
                 return "vous a envoyé un cadeau \(emoji) \(name) en tant que commenter"
             }
-            if let text = noti.commentText, !text.isEmpty { return "a commenté : « \(text) »" }
-            return "a commenté votre publication"
+            // **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-027, Phase B P3)** — port
+            // du `switch(type)` de `CommentVH.bind` (`AdapterNoti.java:301-327`) : `noti.type` était
+            // déjà décodé/persisté (`NotificationCenterViewModel.swift:98`) mais jamais consulté
+            // ici, un commentaire normal, une réponse à un commentaire, et une réponse à la
+            // publication affichaient tous le même texte générique.
+            switch noti.type {
+            case "reply": return "a répondu à votre commentaire « \(noti.commentText ?? "") »"
+            case "reply_on_my_post": return "a répondu à votre publication"
+            default:
+                if let text = noti.commentText, !text.isEmpty { return "a commenté : « \(text) »" }
+                return "a commenté votre publication"
+            }
         case "follow": return "a commencé à te suivre"
         case "transfert":
             // **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-025, Phase B P2)** — port

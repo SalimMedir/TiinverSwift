@@ -1832,6 +1832,46 @@ manuel de ce workflow par l'utilisateur (onglet Actions → "iOS build (compilat
 Checkpoint)" → Run workflow → branche `main`), soit une session future disposant de `gh`/d'un
 jeton configuré, avant de pouvoir passer à `BUILD_VALIDATED`.
 
+## 2026-08-26 — Phase B V5 — Lot P1-36 : V5-F-095 (Animems — audio de prévisualisation dans l'éditeur)
+
+**Commit** : `88b6023` — poussé sur `main` (`afaa1ca..88b6023`). **CI non déclenchée par cette
+session** (même blocage d'outillage que Lot P1-35, voir "Statut honnête").
+
+**Cause exacte** : `MyAudioManager.java` lu en entier — `AnimemesCompound.
+setPreviewAnimationListener` (`:1684-1704`) pilote un vrai `MediaPlayer` (`mAudio`) depuis les
+mêmes callbacks `onPlay(frame)`/`onPause()`/`onEnded()` que le playhead visuel :
+`onPlay` fait `seekTo(0)` si `frame==0` puis `forceResetAndPlay()` inconditionnellement — les deux
+étant NO-OP dès que `mAudio.isPlaying==true` (vérifié dans `MyAudioManager`), donc l'effet net est
+"repositionner+démarrer une fois au début du cycle, ne rien refaire ensuite". Côté iOS,
+`audioURL` n'alimentait QUE `AnimemesExporter.audioURL` à l'export final — aucun `AVAudioPlayer`
+n'existait dans tout le module Animems, silence total pendant l'édition/prévisualisation.
+
+**Correction appliquée** : `AnimemesEditorState.audioURL` gagne un `didSet` → nouvelle
+`prepareAudioPlayer()` (port de `setFileName`+`preparePlayer()`, catégorie `AVAudioSession`
+`.playback`/`.mixWithOthers`) ; `didPlayFrame(frame:)`/`animationEngineDidPause`/
+`animationEngineDidEnd` pilotent maintenant `audioPlayer` (seek+play / pause en place /
+pause+seek(0) sans relâcher), port fidèle des 3 callbacks Android. Ces 3 callbacks couvrent tous
+les chemins play/pause/end existants (`togglePlayback`, fin naturelle, `.onDisappear` de
+V5-F-057) — vérifié directement dans `AnimationEngine.swift`, aucun site supplémentaire à câbler.
+
+**Écart mineur assumé et documenté** : le scrub manuel de la timeline
+(`onPlayheadMoved`→`mAudio.seekTo((int) seconds)`) n'est pas reproduit — hors périmètre de la
+RECOMMANDATION de l'audit (play/pause/end uniquement), et le cast Android `(int) seconds` sur un
+`seekTo` attendant des millisecondes ressemble à un bug latent non confirmé (pas assez de
+confiance pour porter fidèlement un comportement à l'intention douteuse).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorState.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que Lot P1-35 (V5-F-089) : `gh` CLI et jeton API GitHub tous deux absents de cette
+session locale Windows ; `.github/workflows/ios-build.yml` est `workflow_dispatch`-only (aucun
+déclenchement automatique au push). Revue manuelle approfondie faite à la place (relecture ligne à
+ligne, vérification des 3 points d'appel du délégué dans `AnimationEngine.swift`, vérification
+`AVAudioSession`/`AVAudioPlayer` contre l'API publique connue) — ne remplace pas une compilation
+réelle. En attente d'un déclenchement manuel du workflow par l'utilisateur (accord donné en cours
+de session : accumuler plusieurs correctifs, CI lancée en lots par l'utilisateur plutôt qu'après
+chaque finding) avant `BUILD_VALIDATED`.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

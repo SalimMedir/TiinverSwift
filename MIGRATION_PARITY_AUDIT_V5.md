@@ -2919,6 +2919,48 @@ IMPACT : Un utilisateur qui ajoute un son à son animeme et appuie sur Lecture d
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter un `AVAudioPlayer` (ou `AVPlayer`) piloté par les mêmes callbacks `AnimationEnginePlaybackDelegate` : le démarrer/le seeker à 0 dans `animationEngine(_:didPlayFrame:)` quand `frame == 0` et `audioURL != nil` (port de `onPlay` → `mAudio.seekTo(0)`/`forceResetAndPlay()`), le mettre en pause dans `animationEngineDidPause`/`animationEngineDidEnd` (port de `pause()`/`stop()`).
 CONTRE-AUDIT : trouvé par l'agent "Animems — playback/audio/performance" (Phase A.2, 2026-08-24)
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P1-36) — Vérifié directement :
+`MyAudioManager.java` lu en entier (372 lignes) pour confirmer le comportement RÉEL de
+`forceResetAndPlay()`/`seekTo(int)` (tous deux NO-OP quand `isPlaying == true`, donc l'effet net
+d'`onPlay(frame)` appelé à CHAQUE frame est : repositionner+démarrer une seule fois au début d'un
+cycle [frame 0], ne rien refaire ensuite tant que la lecture continue) — confirme que la
+RECOMMANDATION est correctement transposable telle quelle. Correctif appliqué exactement comme
+recommandé :
+- `AnimemesEditorState.audioURL` gagne un `didSet` (port de `mAudio.setFileName(path);
+  mAudio.preparePlayer();`, les 2 sites Android qui fixent `musicFilePath`) → nouvelle
+  `prepareAudioPlayer()` crée l'`AVAudioPlayer` immédiatement au choix du fichier (pas seulement au
+  premier play), catégorie `AVAudioSession` `.playback`/`.mixWithOthers`.
+- `didPlayFrame(frame:)` : `audioPlayer?.currentTime = 0` si `frame == 0`, puis `audioPlayer?.play()`
+  si pas déjà en lecture (port fidèle de `seekTo(0)` + `forceResetAndPlay()` guardés par
+  `isPlaying`).
+- `animationEngineDidPause` : `audioPlayer?.pause()` (position conservée, port de
+  `mAudio.pausePlaying()`).
+- `animationEngineDidEnd` : `audioPlayer?.pause()` + `audioPlayer?.currentTime = 0` (port de
+  `mAudio.stopWithoutRelease()` — remis à 0 et en pause, PAS relâché/détruit, réutilisé tel quel au
+  prochain play).
+- Ces 3 callbacks couvrent TOUS les chemins play/pause/end existants (`togglePlayback()`, fin
+  naturelle de la timeline, `.onDisappear { engine.stop() }` de V5-F-057) — vérifié directement
+  dans `AnimationEngine.swift` (`pause()`/`stop()`/`tick()` appellent bien le délégué à chaque
+  point pertinent), aucun site d'appel supplémentaire à câbler.
+
+**Écart mineur assumé, documenté (hors périmètre de la RECOMMANDATION)** :
+`TimelineView.OnTimelineListener.onPlayheadMoved` (`AnimemesCompound.java:1418-1425`) appelle
+AUSSI `mAudio.seekTo((int) seconds)` au scrub manuel de la timeline — non reproduit ici. Deux
+raisons : (1) hors du périmètre couvert par la RECOMMANDATION de l'audit, qui ne cite que les 3
+callbacks play/pause/end ; (2) le cast Android `(int) seconds` semble lui-même être un bug latent
+non confirmé (`MediaPlayer.seekTo` attend des MILLISECONDES, `seconds` est un flottant en
+SECONDES non multiplié par 1000 — un scrub à 2.7s appellerait `seekTo(2)`, soit 2ms) : pas assez
+de confiance pour improviser un portage fidèle à un comportement dont l'intention réelle n'est pas
+claire, conformément à la politique de ce dépôt (reproduire le comportement confirmé, pas deviner
+une correction).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorState.swift`.
+
+**Commit `88b6023`, poussé sur `main`** (`afaa1ca..88b6023`). **CI NON déclenchée par cette
+session** — même blocage d'outillage que V5-F-089 (Lot P1-35) : `gh` CLI/jeton API absents de
+cette session locale Windows, workflow `ios-build.yml` `workflow_dispatch`-only. **PAS
+`BUILD_VALIDATED`** tant qu'une CI verte n'est pas confirmée par un moyen externe à cette session.
 ```
 
 ```

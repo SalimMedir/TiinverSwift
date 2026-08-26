@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [36/40 BUILD_VALIDATED + 1 CODE_COMPLETE/CI_PENDING (V5-F-089) : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [36/40 BUILD_VALIDATED + 2 CODE_COMPLETE/CI_PENDING (V5-F-089, V5-F-095) : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -121,7 +121,17 @@ construit JAMAIS `Type.TEXT`, seulement `Type.BITMAP`, grep exhaustif] ; `addTex
 **commit `4ba5b08` poussé sur `main`, CI PAS déclenchée** — `gh` CLI/jeton API absents de cette
 session locale Windows, workflow `ios-build.yml` étant `workflow_dispatch`-only [aucun
 déclenchement auto au push] ; nécessite déclenchement manuel par l'utilisateur ou une session avec
-accès `gh` avant `BUILD_VALIDATED`)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
+accès `gh` avant `BUILD_VALIDATED`) ; Lot P1-36 V5-F-095 CODE_COMPLETE/CI_PENDING (piste audio
+Animems ajoutée jamais audible pendant l'édition/prévisualisation, `audioURL` n'alimentait que
+l'export final ; nouveau `AVAudioPlayer` piloté par les 3 callbacks `AnimationEnginePlaybackDelegate`
+déjà existants [`didPlayFrame`/`didPause`/`didEnd`], port fidèle de `mAudio.seekTo`/
+`forceResetAndPlay`/`pausePlaying`/`stopWithoutRelease` [`MyAudioManager.java` lu en entier pour
+confirmer les guards `isPlaying` qui rendent l'appel par-frame idempotent] ; écart mineur assumé :
+le scrub manuel timeline [`onPlayheadMoved`→`mAudio.seekTo`] non reproduit, hors périmètre +
+cast Android `(int) seconds` douteux non porté sans preuve d'intention. **Commit `88b6023` poussé
+sur `main`, CI PAS déclenchée** — même blocage d'outillage que P1-35 ; **utilisateur a validé en
+cours de session** : continuer les correctifs sans s'arrêter, il déclenchera la CI par lots
+lui-même et communiquera le résultat)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

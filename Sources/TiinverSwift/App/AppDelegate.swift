@@ -37,23 +37,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
         Messaging.messaging().delegate = self
         UNUserNotificationCenter.current().delegate = self
-        // `SMOKE_TEST_MODE=1` : UNIQUEMENT injecté par le workflow Codemagic `visual-smoke-test`
-        // (`codemagic.yaml`, via `SIMCTL_CHILD_SMOKE_TEST_MODE=1` exporté avant `xcrun simctl
-        // launch` — mécanisme réel de `simctl` pour propager une variable d'environnement au
-        // process lancé dans le simulateur, vérifié contre un fil de discussion Apple Developer
-        // Forums avant utilisation, pas deviné). JAMAIS présent en production (absent de tout
-        // schéma de build/target réel, uniquement positionné par ce workflow CI de diagnostic
-        // visuel) — saute la demande de permission notifications, dont la boîte de dialogue
-        // système BLOQUE tout le reste de l'écran et empêche le smoke-test (passif, aucune
-        // interaction simulée par conception) d'atteindre le premier écran réel de l'app.
-        if ProcessInfo.processInfo.environment["SMOKE_TEST_MODE"] != "1" {
-            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-                guard granted else { return }
-                DispatchQueue.main.async {
-                    application.registerForRemoteNotifications()
-                }
-            }
-        }
+        // **Déplacé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-061, Phase B P2)** vers
+        // `RootRouterView.onAppear` — voir sa doc pour le détail complet. Avant ce correctif, la
+        // demande d'autorisation notifications était déclenchée ICI, de façon inconditionnelle et
+        // synchrone, AVANT que la fenêtre/le premier écran (splash, onboarding OU home) n'ait été
+        // rendu — Android ne montre JAMAIS ce dialogue avant qu'au moins un écran de l'app soit
+        // visible (`OnboardingFragment.onViewCreated`/`HomeActivity`, tous deux APRÈS rendu).
 
         // Module 12 (Appels WebRTC/CallKit) — port du point d'enregistrement de `CallService`
         // (Android le démarre à la demande, `startForegroundService` — iOS a besoin d'un

@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 /// Port de `SplashActivity.navigateAfterConfig` — décision `goToLogin()` vs `goToHome(user)` sur
 /// la seule base de `SessionManager.getUser(context) != null` (présence d'une session locale,
@@ -102,6 +103,23 @@ struct RootRouterView: View {
         // la scène est déjà `.active` avant le premier rendu) — port explicite du PREMIER
         // `onStart()` d'Android, qui enregistre le receiver dès le lancement de l'Activity.
         .onAppear { startNetworkMonitor() }
+        // **Déplacé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-061, Phase B P2)** depuis
+        // `AppDelegate.didFinishLaunchingWithOptions` — vérifié directement : `OnboardingFragment.
+        // onViewCreated` (utilisateurs non connectés) ET `HomeActivity` (utilisateurs déjà
+        // connectés, `SplashActivity` les route directement vers Home, jamais vers l'onboarding)
+        // déclenchent TOUS DEUX la demande de permission notifications APRÈS que leur écran
+        // respectif ait été rendu — jamais avant que l'app n'ait affiché quoi que ce soit.
+        // `RootRouterView` est le point commun aux deux chemins (`HomeShellView` ET
+        // `AuthCoordinatorView`, voir `body` ci-dessus) : son `.onAppear` se déclenche une fois la
+        // branche réellement choisie insérée dans la hiérarchie de vues, jamais avant — fidèle aux
+        // 2 points Android, unifiés en un seul ici plutôt que dupliqués par écran.
+        .onAppear {
+            guard ProcessInfo.processInfo.environment["SMOKE_TEST_MODE"] != "1" else { return }
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                guard granted else { return }
+                DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+            }
+        }
         // **Corrigé (V5-F-001, 2026-08-24)** — déplacé depuis `ChatView.swift`, où `CallView`
         // n'était présenté que si l'instance SwiftUI de LA conversation en cours d'appel était
         // montée. Port de `CallActivity`/`IncomingCallActivity` (`AndroidManifest.xml:347-353`),

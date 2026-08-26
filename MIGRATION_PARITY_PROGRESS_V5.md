@@ -5,11 +5,12 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [25/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+temps). Backlog P1 (40 findings) EN COURS [26/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
 V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022,
 V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037 (IOS_INTENTIONAL_DIFFERENCE),
-V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060 (DIFFÉRÉ)], démarré
-automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-062. Puis 31 P2, 21 P3.**
+V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060 (DIFFÉRÉ), V5-F-062],
+démarré automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-063. Puis 31 P2,
+21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -1297,6 +1298,36 @@ implémentation et un test dédiés, pas un correctif bundlé dans un balayage a
 **Statut honnête** : `DIFFÉRÉ`. Nécessite une décision produit (capability Background Modes) et
 une session dédiée pour vérifier/implémenter séparément les 3 comportements + le câblage de
 `ViewEventRepository`.
+
+## 2026-08-25 — Phase B V5 — Lot P1-25 : V5-F-062 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `NotiLikecmt/ShowNoti.java:107-142` (`setupObservers`) — Observer 1 "Room LiveData"
+(`:110-122`, `messageEmpty` = `notifNetworkDone && itemCount==0`) et Observer 2 "état réseau"
+(`:125-142`, `messageError` = résultat réseau `MyResult.ERROR`, affiché uniquement si
+`itemCount==0`) — 2 états visuels INDÉPENDANTS, `messageError` rendu `VISIBLE` dès que le type
+réseau est `ERROR`, indépendamment de l'observateur 1.
+
+**iOS avant correctif** : `NotificationsListView.body` testait `notifications.isEmpty` (branche
+vide) AVANT `errorMessage != nil && notifications.isEmpty` (branche erreur) — la garde vide étant
+un sur-ensemble strict de la garde erreur, la branche erreur était strictement inatteignable dès
+que `isLoading` repassait à `false` (le `defer` de `fetchNotifications` s'exécute toujours).
+
+### Correctif appliqué
+
+Cause : erreur d'ordonnancement des conditions `if/else if`. Correctif : branches réordonnées —
+erreur testée AVANT vide, même motif déjà correct dans
+`FeedView.emptyOrStatusState`/`ProfileView.header`. Diff strictement limité au réordonnancement.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/NotificationsListView.swift`.
+
+**Résultat CI** : commit `aa922ad`, push confirmé (`d45a95b..aa922ad main -> main`), run
+`32929729728` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : ouvrir le centre de notifications sans réseau/session expirée, confirmer le message
+d'erreur.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [25/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [26/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -74,8 +74,11 @@ BUILD_VALIDATED (`CADisplayLink` de l'éditeur Animems jamais invalidé en quitt
 la lecture, fuite non bornée, `.onDisappear { state.engine.stop() }` + `deinit` sur
 `AnimationEngine`) ; Lot P1-24 V5-F-058 BUILD_VALIDATED (téléchargement/pré-cache vidéo
 chargeaient le fichier entier en RAM, `URLSession.shared.data(for:)`/`dataTask` basculés vers
-`download(for:)`/`downloadTask`, streaming disque)]**. Voir section "Cycle V5" plus bas pour le
-détail complet.)
+`download(for:)`/`downloadTask`, streaming disque) ; V5-F-060 DIFFÉRÉ (BGTaskScheduler,
+synchronisation en arrière-plan, capability build + 3 comportements distincts + endpoint payant,
+précédent V3-F-095) ; Lot P1-25 V5-F-062 BUILD_VALIDATED (branche erreur du centre de
+notifications inatteignable, ordre des conditions inversé)]**. Voir section "Cycle V5" plus bas
+pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -550,11 +553,34 @@ explicitement différé ; (4) la partie livraison de boost touche de l'ARGENT R�
 l'utilisateur — mérite une implémentation et un test dédiés, pas un correctif bundlé dans un
 balayage automatisé. **Aucun fichier modifié, aucun commit de code, aucune CI.**
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-062** (lire d'abord
-`MIGRATION_PARITY_AUDIT_V5.md` pour la citation Android/iOS complète de ce finding avant de
-coder — non résumée ici, se référer au document source), puis continuer AUTOMATIQUEMENT
-V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082,
-V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (14 P1 restants après V5-F-062, dans l'ordre
+**Lot P1-25 traité (V5-F-062)** — Notifications, état d'erreur du centre de notifications rendu
+inatteignable par l'ordre des conditions. Vérifié `ShowNoti.java:107-142` : `messageEmpty`
+(vide ET réseau terminé) et `messageError` (résultat réseau `ERROR`) sont 2 états INDÉPENDANTS.
+`NotificationsListView.body` testait `notifications.isEmpty` (sur-ensemble strict) AVANT
+`errorMessage != nil && notifications.isEmpty` — la branche erreur était strictement
+inatteignable dès que `isLoading` repassait à `false`. Correctif : branches réordonnées, erreur
+testée AVANT vide, même motif que `FeedView.emptyOrStatusState`/`ProfileView.header`. **Commit
+`aa922ad`, CI verte (run `32929729728`)** — `BUILD_VALIDATED`. Détail des 26 lots dans
+`PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-063** (Wallet — erreur de
+chargement de l'historique des transactions jamais affichée, aucun mécanisme de reprise. Android
+[`wallet/WalletActivity.java:124-186`, observer `getLiveData()`, branche `Result.ERROR`
+`:128-129` → `attemptReconnect()` `:178-186`, relance automatique `executeBackTask()` toutes les
+5s via `Handler.postDelayed`] — sur échec réseau, Android ne montre PAS de message d'erreur mais
+relance AUTOMATIQUEMENT la même requête après 5s, indéfiniment, jusqu'à succès. iOS
+[`Wallet/WalletViewModel.swift:37-52`, `loadMore`, `errorMessage = error.localizedDescription` —
+peuplé mais jamais lu ; `Wallet/WalletView.swift`, aucune lecture de `errorMessage`, pas de
+`.refreshable`] — si l'échec survient au chargement INITIAL, aucune cellule n'existe pour
+déclencher un nouvel essai, l'écran reste vide et figé en permanence, sans texte d'erreur, sans
+bouton, sans reprise. Plan : afficher `errorMessage` [bandeau + bouton "Réessayer"] et ajouter
+`.refreshable` — NE PAS reproduire la reprise automatique silencieuse à 5s d'Android [nécessiterait
+un timer géré par le cycle de vie de la vue, même classe de risque de fuite que V5-F-057/
+CADisplayLink] — lire `WalletView.swift`/`WalletViewModel.swift` en entier avant de coder ; domaine
+Wallet, vérification financière double N/A ici [lecture seule, pas de mouvement d'argent]), puis
+continuer AUTOMATIQUEMENT V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078,
+V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (13 P1 restants après V5-F-063, dans
+l'ordre
 exact du document ; V5-F-060 déjà clos DIFFÉRÉ), puis tous les P2 (31), P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →

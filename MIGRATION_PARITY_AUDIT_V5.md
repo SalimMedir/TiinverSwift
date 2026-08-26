@@ -2007,6 +2007,22 @@ CAUSE : Erreur d'ordonnancement des conditions `if/else if` : la garde de la bra
 IMPACT : Au premier lancement de l'écran Notifications sans réseau (ou session expirée), l'utilisateur voit toujours « Aucune notification » — un message neutre qui laisse croire qu'il n'a simplement aucune notification — au lieu du vrai message d'erreur (`error.localizedDescription`) qu'Android affiche distinctement via `messageError`. Aucun moyen de distinguer un compte réellement sans notification d'un échec réseau, contrairement à Android.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Inverser l'ordre des deux branches (tester `errorMessage != nil` avant `notifications.isEmpty`), ou fusionner en un seul bloc qui priorise explicitement l'erreur sur le vide, comme le fait `FeedView.emptyOrStatusState`/`ProfileView.header` (déjà corrects) pour le même pattern.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-25) — Vérifié directement :
+`ShowNoti.java:107-142` confirme 2 observateurs indépendants (`messageEmpty` = liste vide ET
+réseau terminé ; `messageError` = résultat réseau `ERROR`, priorité propre). Correctif : branches
+`if/else if` réordonnées dans `NotificationsListView.body` — erreur testée AVANT vide, même motif
+déjà correct dans `FeedView.emptyOrStatusState`/`ProfileView.header`. Diff strictement limité au
+réordonnancement (aucune logique de garde modifiée).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/NotificationsListView.swift`.
+
+**Résultat CI** : commit `aa922ad`, push confirmé (`d45a95b..aa922ad main -> main`), run
+`32929729728` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : ouvrir le centre de notifications sans réseau ou
+avec une session expirée, confirmer l'affichage du message d'erreur au lieu de "Aucune notification".
 ```
 
 ```

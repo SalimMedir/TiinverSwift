@@ -168,14 +168,24 @@ s'afficher pour un nouvel utilisateur sur appareil partagé. Corrigé : `UserSes
 supprime aussi `coinsAmount`/`gemsAmount`/`pendingCoinsAmount`/`pendingGemsAmount` ;
 nouveau `PushTokenRegistrar.clearToken()` pour `fcmId`. Vérifié qu'Android perd de la même façon
 un solde en attente non synchronisé au logout — pas un nouveau risque financier introduit.
-**Commit `b880a01` poussé sur `main`, CI PAS déclenchée** — même blocage d'outillage).
-**Prochain finding à traiter : V5-F-008** (3ᵉ P2 dans l'ordre du document — V5-F-005/006/007 déjà
-traités en P1 : 005=DUPLICATE de V5-F-064, 006/007=BUILD_VALIDATED. Vérifier avec `grep
-"^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc `STATUT :` à sa suite dans
-`MIGRATION_PARITY_AUDIT_V5.md`, comme fait pour identifier chaque finding restant tout au long de
-cette session). Si l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING`
-listés ci-dessus et communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou
-traiter l'échec le cas échéant) avant de continuer le P2.
+**Commit `b880a01` poussé sur `main`, CI PAS déclenchée** — même blocage d'outillage) ; Lot P2-3
+V5-F-008 CODE_COMPLETE/CI_PENDING (publicités natives absentes de la grille Home — Android insère
+une carte pub tous les 7 posts via `SpanSizeLookup`/`span=2`, le pager plein écran portait déjà
+cette logique mais pas la grille, l'écran le plus consulté. Corrigé : `isAdPosition` partagé en
+portée fichier entre pager et grille [même constante `ADS_ON_FEED_POST=7`] ; `LazyVGrid` unique
+remplacé par des tronçons [`feedGridSegments`] séparés par un nouveau `FeedGridAdCell()` pleine
+largeur [placeholder discret 48pt, distinct du `FeedAdCell` plein écran du pager, fidèle au
+commentaire Android sur `AdsViewHolder.setPlaceholder`] — réutilise `NativeAdContentView`/
+`NativeAdLoader` déjà portés. **Commit `5c98813` poussé sur `main`, CI PAS déclenchée** — même
+blocage d'outillage). **Prochain finding à traiter : V5-F-014** (V5-F-009/010/013 déjà traités en
+P1 [BUILD_VALIDATED], V5-F-011/012 sont P3 [pas encore leur tour] — V5-F-014 confirmé P2 par
+lecture directe de son bloc dans `MIGRATION_PARITY_AUDIT_V5.md`. Vérifier avec `grep "^PRIORITÉ :
+P2"` puis chercher lequel n'a pas encore de bloc `STATUT :` à sa suite, comme fait pour identifier
+chaque finding restant tout au long de cette session — NE PAS supposer que "prochain ID numérique"
+= "prochain P2", les priorités sont entrelacées dans le document). Si l'utilisateur a entre-temps
+déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre
+à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer
+le P2.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

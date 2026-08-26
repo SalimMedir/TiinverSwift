@@ -545,6 +545,31 @@ CAUSE : Le portage de `isAdPosition`/`NativeAdLoader` (`FeedAdCell`) n'a été f
 IMPACT : Perte d'inventaire publicitaire sur l'écran le plus consulté de l'app (impact revenu), et différence visuelle constatable par l'utilisateur (grille Android interrompue par des blocs pub que la grille iOS n'a jamais).
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter une cellule publicitaire pleine largeur tous les 7 éléments dans le `LazyVGrid` de `FeedView.swift`, réutilisant `FeedAdCell`/`NativeAdLoader` déjà existants pour le plein écran.
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-3) — Vérifié directement :
+`ActivityAdapter.java:158-161` (`isAdPosition`) ; `:179-181` (`getItemCount() = mediaObjects.
+size() + 2` — confirme que l'annonce REMPLACE un post plutôt que d'agrandir la liste, comme le
+pager) ; `:205,217-231` (`AdsViewHolder.setPlaceholder` — commentaire Android explicite confirmant
+que la grille utilise un placeholder DISCRET à hauteur réduite [48dp], pas le rendu plein écran du
+pager). Correctif :
+- `isAdPosition` extrait en fonction de PORTÉE FICHIER (était `private static func` sur
+  `FeedDetailPagerView` seul) — partagée maintenant par le pager (déjà câblé) ET la grille, même
+  constante `ADS_ON_FEED_POST=7` des deux côtés Android.
+- `LazyVGrid` unique remplacé par un découpage en tronçons (`feedGridSegments`) : chaque tronçon
+  de posts consécutifs dans son propre `LazyVGrid` 2 colonnes, séparé par un nouveau
+  `FeedGridAdCell()` pleine largeur à chaque position publicitaire — `LazyVGrid` n'exposant aucun
+  span par-item (contrairement au `SpanSizeLookup` Android), plusieurs grilles successives dans le
+  même `ScrollView` produisent le même effet visuel observable (retour à la ligne forcé).
+- `FeedGridAdCell` (nouveau, DISTINCT de `FeedAdCell` pleine écran) — placeholder discret
+  (rectangle 48pt, faible opacité, PAS de spinner) fidèle au commentaire Android cité ci-dessus ;
+  réutilise `NativeAdContentView`/`NativeAdLoader` déjà portés (le "small template" compact
+  d'`AdMobManager.swift` correspond déjà au rendu attendu, aucun nouveau composant de rendu créé).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedView.swift`.
+
+**Commit `5c98813`, poussé sur `main`** (`c02df79..5c98813`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé (`gh` CLI/jeton API absents, workflow
+`workflow_dispatch`-only). **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas confirmée.
 ```
 
 ```

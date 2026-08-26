@@ -1994,6 +1994,37 @@ fidèlement.
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
 
+## 2026-08-26 — Phase B V5 — Lot P2-3 : V5-F-008 (Feed — publicités natives absentes de la grille Home)
+
+**Commit** : `5c98813` — poussé sur `main` (`c02df79..5c98813`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `ActivityAdapter.isAdPosition`/`getItemViewType` insère une publicité native
+tous les 7 posts dans la grille 2 colonnes Android (`SpanSizeLookup` force `span=2`, ligne pleine
+largeur). `getItemCount() = mediaObjects.size() + 2` confirme que l'annonce REMPLACE un post (même
+mécanisme que le pager plein écran, déjà porté), pas une insertion qui agrandirait la liste. Le
+pager (`FeedDetailPagerView`) portait déjà cette logique (`isAdPosition`/`FeedAdCell`), mais la
+grille Home — l'écran le plus consulté — n'affichait jamais aucune publicité.
+
+**Correction appliquée** : `isAdPosition` extrait en fonction de portée fichier, partagée par le
+pager ET la grille. `LazyVGrid` unique remplacé par un découpage en tronçons
+(`feedGridSegments`) : chaque tronçon de posts dans son propre `LazyVGrid` 2 colonnes, séparé par
+un nouveau `FeedGridAdCell()` pleine largeur — reproduit le même effet visuel que le `span=2`
+Android sans span par-item (non exposé par `LazyVGrid`). `FeedGridAdCell` (distinct de `FeedAdCell`
+plein écran) a un placeholder discret (48pt, faible opacité, sans spinner), fidèle au commentaire
+Android explicite sur `AdsViewHolder.setPlaceholder` ("la grille tolère une hauteur réduite, pas
+de shimmer") ; réutilise `NativeAdContentView`/`NativeAdLoader` déjà portés.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+Test réel à confirmer en plus de la CI : faire défiler la grille Home au-delà de 7 posts,
+confirmer qu'une carte publicitaire pleine largeur apparaît (ou le placeholder discret le temps du
+chargement), et que le tap sur les posts environnants ouvre toujours le bon post en plein écran
+(`detailStartIndex` doit rester l'index RÉEL dans `viewModel.posts`, pas la position visuelle dans
+le tronçon).
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

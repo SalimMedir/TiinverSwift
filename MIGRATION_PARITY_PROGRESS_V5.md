@@ -1716,6 +1716,54 @@ lecture du source Android, seulement d'une session de conception AVFoundation d�
 
 **Statut honnête** : `DIFFÉRÉ`. Aucun fichier modifié, aucun commit, aucune CI.
 
+## 2026-08-26 — Phase B V5 — Lot P1-34 : V5-F-085 (Photo Editor — manipulation des calques placés)
+
+**Commit** : `df853b8` — CI **success** (run `32938280334`).
+
+**Cause exacte** : `ImageViewCanvas.java:1156-1358` (`GestureListener.onSingleTapUp`/`onScroll`,
+`ScaleListener.onScale`, rotation à deux doigts) permet de sélectionner puis glisser, pincer-zoomer
+(bornes `MIN_SCALE`/`MAX_SCALE` = 0.3/5.0) et pivoter librement TOUT calque non verrouillé de type
+!= PATH après son ajout au canevas (texte, emoji, image ajoutée) — comportement standard de tout
+éditeur type Stories/mèmes. Côté iOS, `PhotoToolsView` ne portait que le sous-ensemble "ajout" de
+chaque type de calque : `drawGesture` (le seul geste du fichier) n'est actif qu'en mode peinture et
+attaché au `ZStack` entier, jamais à un élément individuel ; `addText`/`addSticker` fixaient la
+position une seule fois à l'ajout sans aucun moyen ultérieur de la modifier. Le commentaire de tête
+du fichier signalait ce manque comme "périmètre volontairement réduit" mais sans jamais l'avoir
+formalisé en finding numéroté ni évalué.
+
+**Correction appliquée** : `PlacedText` gagne `scale: CGFloat = 1`/`rotation: Angle = .zero`.
+Nouvelle vue `PlacedItemView` (prend un `Binding<PlacedText>`) enveloppe chaque calque du
+`ForEach($texts)` avec 3 gestes composés : `DragGesture` (translation de `position`),
+`MagnificationGesture` (clampée EN TEMPS RÉEL aux bornes 0.3...5.0, fidèle à `ScaleListener.
+onScale` qui corrige `scaleFactor` dès que la borne est dépassée, pas seulement au relâché),
+`RotationGesture` (rotation libre, aucune borne côté Android, reproduite à l'identique) — les 3 via
+`.gesture()`+`.simultaneousGesture()` pour reconnaissance simultanée (pincer+pivoter+glisser en
+même temps, comme Android). `flatten()` applique `scaleEffect(item.scale)`/`rotationEffect(item.
+rotation)` avant `.position()` lors de la composition finale, dans le même ordre que le rendu live.
+Les gestes sont désactivés pendant le mode peinture (`allowsHitTesting(!isDrawMode)`) pour ne pas
+concurrencer `drawGesture`.
+
+**Écart mineur assumé et documenté** : pas d'indicateur visuel de sélection dédié (`objectInAction`
+côté Android). SwiftUI route déjà chaque geste au calque effectivement touché via son propre
+hit-testing (`ForEach($texts)`, un geste par vue) — comportement observable équivalent
+(glisser/pincer/pivoter fonctionne directement sur l'élément touché), simplement sans surbrillance
+pendant la manipulation.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/PhotoEditor/PhotoToolsView.swift`.
+
+**Flux frère vérifié** : `flatten()` (composition finale avant publication, déjà correctement
+fidèle après V3-F-126) mis à jour en cohérence — mêmes valeurs `scale`/`rotation` appliquées dans
+le même ordre de transformation que le rendu live, pour que le résultat final corresponde
+exactement à ce que l'utilisateur voyait à l'écran.
+
+**Résultat CI** : commit `df853b8`, push confirmé (`7fa46a2..df853b8 main -> main`), run
+`32938280334` → **`conclusion: success`**.
+
+**Statut honnête** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test réel requis :
+ajouter plusieurs textes/stickers superposés, confirmer que glisser/pincer-zoomer/pivoter
+fonctionnent indépendamment sur chacun sans interférence, confirmer que le rendu final
+(`flatten()`) reflète fidèlement la position/échelle/rotation finale de chaque calque.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

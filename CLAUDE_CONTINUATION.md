@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [35/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [36/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -107,8 +107,11 @@ reconnexion socket reproduit via `ChatRepository.resumePendingUploads`, verrou
 `ChatViewModel.requestUpload`) ; V5-F-082 DIFFÉRÉ (habillage promotionnel export Animems — outro
 4s + watermark animé bézier, ~900+ lignes de code natif MediaCodec/MediaMuxer Android à redesigner
 en compositeur `AVVideoCompositing` personnalisé, asset logo + chaîne localisée à porter, risque de
-régression élevé sur le flux cœur d'export si précipité)]**. Voir section "Cycle V5" plus bas pour
-le détail complet.)
+régression élevé sur le flux cœur d'export si précipité) ; Lot P1-34 V5-F-085 BUILD_VALIDATED
+(calques texte/sticker placés dans Photo Editor totalement figés après ajout, `PlacedItemView`
+ajoutée avec `DragGesture`+`MagnificationGesture`(bornes 0.3...5.0)+`RotationGesture` composés via
+`simultaneousGesture`, `flatten()` mis à jour en cohérence, écart mineur assumé : pas de
+surbrillance de sélection dédiée)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -741,13 +744,35 @@ chirurgical. Valeurs exactes (keyframes/durée/ratios) déjà toutes documentée
 `MIGRATION_PARITY_AUDIT_V5.md`/`PROGRESS_V5.md` — implémentation future n'a pas besoin d'une
 nouvelle lecture Android. **Aucun fichier modifié, aucun commit, aucune CI.**
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-085** (prochain P1 dans
-l'ordre exact du document `MIGRATION_PARITY_AUDIT_V5.md`, ligne ~2634 — lire sa fiche complète en
+**Lot P1-34 traité (V5-F-085)** — Photo Editor, manipulation interactive (glisser, pincer-zoomer,
+pivoter à deux doigts) des calques placés (texte, sticker/emoji) après leur ajout au canevas.
+Vérifié `ImageViewCanvas.java:1156-1358` (`GestureListener.onSingleTapUp`/`onScroll`,
+`ScaleListener.onScale` bornée `MIN_SCALE`/`MAX_SCALE` = 0.3/5.0 EXACTES lignes 73-74, rotation
+libre à deux doigts) — Android permet de sélectionner puis glisser/pincer-zoomer/pivoter TOUT
+calque non verrouillé après placement, comportement standard type Stories/mèmes. Côté iOS,
+`PhotoToolsView` ne portait que le sous-ensemble "ajout" : `drawGesture` (seul geste du fichier)
+n'est actif qu'en mode peinture et attaché au `ZStack` entier, jamais à un élément individuel ;
+`addText`/`addSticker` fixaient la position une seule fois sans aucun moyen ultérieur de la
+modifier — signalé en tête de fichier comme "périmètre volontairement réduit" mais jamais formalisé
+en finding numéroté avant cet audit. Correction : `PlacedText` gagne `scale`/`rotation` ; nouvelle
+`PlacedItemView` (`Binding<PlacedText>`) enveloppe chaque calque avec `DragGesture` +
+`MagnificationGesture` (clampée EN TEMPS RÉEL aux bornes 0.3...5.0, fidèle à `ScaleListener.
+onScale` qui corrige dès que la borne est dépassée, pas seulement au relâché) + `RotationGesture`
+(rotation libre, aucune borne côté Android), composés via `.gesture()`+`.simultaneousGesture()`
+pour reconnaissance simultanée comme Android. `flatten()` applique les mêmes transformations dans
+le même ordre pour que le résultat final corresponde exactement au rendu live. Gestes désactivés
+pendant le mode peinture (`allowsHitTesting(!isDrawMode)`). Écart mineur assumé : pas de
+surbrillance de sélection dédiée (`objectInAction`) — SwiftUI route déjà chaque geste au bon calque
+via son propre hit-testing, comportement observable équivalent. **Commit `df853b8`, CI verte (run
+`32938280334`)** — `BUILD_VALIDATED`. Détail des 36 lots dans `PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-089** (prochain P1 dans
+l'ordre exact du document `MIGRATION_PARITY_AUDIT_V5.md`, ligne ~2703 — lire sa fiche complète en
 premier : ID, PRIORITÉ, DOMAINE, FEATURE, ANDROID SOURCE, ANDROID BEHAVIOR, IOS FILES, IOS
-BEHAVIOR, CAUSE, IMPACT, RECOMMANDATION), puis continuer AUTOMATIQUEMENT V5-F-089, V5-F-095,
-V5-F-097, V5-F-098 (4 P1 restants après V5-F-085, dans l'ordre exact du document ; V5-F-060 et
-V5-F-082 déjà clos DIFFÉRÉ), puis tous les P2 (31), P3 (21), SANS s'arrêter entre les lots
-(instruction explicite de l'utilisateur), en respectant à chaque fois : preuve Android
+BEHAVIOR, CAUSE, IMPACT, RECOMMANDATION), puis continuer AUTOMATIQUEMENT V5-F-095, V5-F-097,
+V5-F-098 (3 P1 restants après V5-F-089, dans l'ordre exact du document ; V5-F-060 et V5-F-082 déjà
+clos DIFFÉRÉ), puis tous les P2 (31), P3 (21), SANS s'arrêter entre les lots (instruction
+explicite de l'utilisateur), en respectant à chaque fois : preuve Android
 vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI → State/ViewModel →
 Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale → diff revu →
 commit → push → CI → attente OBLIGATOIRE du résultat → mise à jour des 3 documents

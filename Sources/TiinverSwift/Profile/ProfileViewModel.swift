@@ -202,12 +202,22 @@ final class ProfileViewModel: ObservableObject {
     }
 
     /// Port de `UserProfile.block`/`actionOnMenuItem` — bascule bloquer/débloquer.
+    ///
+    /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-013, Phase B P1-7)** — Android
+    /// (`UserProfile.java:1118-1124`, branche `USER_UNBLOCKED`) appelle explicitement
+    /// `loadInitialData()` après un déblocage réussi, republiant immédiatement la grille. Seul le
+    /// cas symétrique "bloquer" (vider `posts`) avait été porté ; ajouté ici le rechargement sur
+    /// déblocage pour ne pas laisser la grille vide jusqu'à la sortie/retour de l'écran.
     func toggleBlock() async {
         guard let myUsername = UserSession.shared.username, let myId = UserSession.shared.myId, let targetUsername = profile?.username
         else { return }
         let blocked = (try? await repository.toggleBlock(myUsername: myUsername, myId: myId, targetUsername: targetUsername, targetUserId: userId)) ?? isBlocked
         isBlocked = blocked
         UserDefaults.standard.set(blocked, forKey: targetUsername + "_blocked")
-        if blocked { posts = [] }
+        if blocked {
+            posts = []
+        } else {
+            await loadInitialPosts()
+        }
     }
 }

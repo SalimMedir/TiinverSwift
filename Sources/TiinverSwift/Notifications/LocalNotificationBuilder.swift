@@ -17,6 +17,24 @@ import UserNotifications
 /// - `displaySuggestNotification` — notification de réengagement avec messages choisis
 ///   aléatoirement dans des `R.array` localisés (matin/après-midi/soir/nuit) : le contenu textuel
 ///   source (`strings.xml`) n'a pas été lu, DIFFÉRÉ plutôt qu'inventé.
+/// - `NotificationUtils.requestUpdate`/`MyFirebaseMessagingService.notifyUpdate` (notification
+///   locale "Mise à jour") — **décision explicite prise le 2026-08-26
+///   (MIGRATION_PARITY_AUDIT_V5.md V5-F-026, Phase B P2)**, PAS un oubli. Vérifié
+///   directement : `TiinverSyncWorker.visiteServeur:75-88` déclenche cette notification quand
+///   `currentTime > lastTime - 604800`, où `lastTime` dérive de `infoContract.EXPIRE_DAY/MONTH/
+///   YEAR` — **ces 3 constantes valent `0`** (`infoContract.java:77-79`), les valeurs réelles
+///   prévues (`DAY=1, MONTH=6, YEAR=2026`) étant intégralement COMMENTÉES juste au-dessus. Avec
+///   ces constantes à 0, `lastTime` est dégénéré (proche de 0/négatif) et la condition est donc
+///   VRAIE À CHAQUE SYNC déclenchée par push (`MyFirebaseMessagingService.onMessageReceived`
+///   enqueue systématiquement ce worker) — soit un rappel "Mise à jour" spammé à quasi chaque
+///   notification push reçue côté Android actuellement. Il s'agit très vraisemblablement d'une
+///   configuration cassée/oubliée (date de "vraie" expiration commentée, jamais réactivée) plutôt
+///   que d'un comportement produit intentionnel — porter fidèlement produirait un spam de
+///   notifications parasites côté iOS, une régression UX, pas une parité utile. Conformément à la
+///   politique de ce portage ("ne pas porter du code Android incorrect pour une parité
+///   artificielle"), NON porté. À reconsidérer seulement si un futur correctif Android RÉEL
+///   restaure des constantes `EXPIRE_*` sensées (auquel cas porter un équivalent minimal
+///   redeviendrait pertinent).
 ///
 /// Les textes ci-dessous sont des équivalents français directs des chaînes `R.string.*`
 /// d'origine (mêmes clés en commentaire) — à remplacer par un vrai catalogue de chaînes

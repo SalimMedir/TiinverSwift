@@ -3448,6 +3448,13 @@ IMPACT : Double téléchargement réseau (bande passante gaspillée, double sond
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter un état de déduplication (ex. `Set<Int>` des `post.id` déjà téléchargés/en cours, conservé au niveau de la vue ou d'un singleton) et ignorer silencieusement (comme Android) un nouvel appel à `FeedMediaDownloader.download` pour un post déjà présent dans ce set, ou a minima désactiver/masquer l'item "Télécharger" tant que le téléchargement du même post est en cours.
 CONTRE-AUDIT : trouvé par l'agent "Double action / idempotence" (Phase A.2, 2026-08-24)
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-30). RECOMMANDATION appliquée telle quelle
+(première option) : nouveau `FeedDetailPagerView.queuedDownloadPostIds: Set<Int>`, gardé par
+`queuedDownloadPostIds.insert(post.id).inserted` — même sémantique que `Set.add()` Android,
+JAMAIS retiré (pas de retrait au succès/échec, fidèle à Android qui ne vide le `Set` qu'en
+recréant le Fragment). Seul appelant de `FeedMediaDownloader.download`, partagé par `ProfileView`
+ET `FeedView` [grille Home] via `includesDownload`. Fichier modifié : `Feed/FeedView.swift`.
+Commit `eb27c20`, poussé sur `main`. CI non déclenchée par cette session.
 ```
 
 ```

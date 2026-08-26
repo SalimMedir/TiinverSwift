@@ -11,7 +11,7 @@ V5-F-002, V5-F-004, V5-F-008, V5-F-014, V5-F-024, V5-F-025, V5-F-026
 (IOS_INTENTIONAL_DIFFERENCE), V5-F-030, V5-F-035, V5-F-038, V5-F-039, V5-F-040, V5-F-048,
 V5-F-049, V5-F-051, V5-F-054, V5-F-055 (partiel, écart architectural documenté), V5-F-059,
 V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071, V5-F-073 (DUPLICATE de V5-F-020), V5-F-074,
-V5-F-079, V5-F-083, V5-F-086, V5-F-090]. Prochain : V5-F-096. Puis 21 P3.**
+V5-F-079, V5-F-083, V5-F-086, V5-F-090, V5-F-096]. Prochain : V5-F-099 (DERNIER P2). Puis 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2636,6 +2636,30 @@ tracé live (`Canvas`) ET à la rasterisation finale (`flatten()`) ; capture des
 **Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesDrawingView.swift` (interface externe
 — `canvasSize`/`onDone`/`onCancel` — inchangée, seul appelant `AnimemesEditorView.swift` non
 touché).
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P2-30 : V5-F-096 (Double téléchargement du même post via retap "Télécharger")
+
+**Commit** : `eb27c20` — poussé sur `main` (`11cce87..eb27c20`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `ProfileFeedFragment.addingDownloadingFileToQueue` garde le clic via
+`uniqueDowloadSet.add(media)` — `Set.add()` retourne `false` si déjà présent, un second tap sur
+"Télécharger" pour le même post (pendant le téléchargement en vol OU même après qu'il soit
+terminé/ait échoué) est silencieusement ignoré, pour toute la durée de vie du Fragment.
+`FeedDetailPagerView`'s bouton "Télécharger" appelait `FeedMediaDownloader.download(post)`
+directement, sans aucune garde — rouvrir le menu "..." et retaper pendant un téléchargement en vol
+démarrait un second téléchargement complet et indépendant, écrivant deux fois la même vidéo/photo
+dans la photothèque.
+
+**Correction appliquée** : nouveau `FeedDetailPagerView.queuedDownloadPostIds: Set<Int>`, gardé par
+`queuedDownloadPostIds.insert(post.id).inserted` — même sémantique que `Set.add()` Android, jamais
+retiré (pas de retrait au succès/échec). Seul appelant de `FeedMediaDownloader.download`, partagé
+par `ProfileView` ET `FeedView` (grille Home) via `includesDownload`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedView.swift`.
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.

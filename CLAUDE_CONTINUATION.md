@@ -366,14 +366,22 @@ lissage. Le moteur réel `MemesView2.java` offre un `SeekBar` réglable 0-100 [`
 21 couleurs réelles [`PaintList.getPaintList()`], et un lissage Chaikin 1 itération après filtre
 `MIN_DIST=4`. Corrigé : `Slider(1...100)`, palette étendue aux 21 hex réels [lus dans `colors.xml`],
 nouveau `chaikin(_:)` fidèle à `AnimationEngine.chaikin` appliqué au tracé live ET à `flatten()`,
-capture filtrée par `MIN_DIST=4`. **Commit `22c2716` poussé sur `main`, CI PAS déclenchée**).
-**Prochain finding à traiter : V5-F-096** (grep `"^ID : V5-F-096"` dans
-`MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe avant tout correctif,
-comme fait pour chaque finding tout au long de cette session ; identifier les findings P2 restants
-avec `grep "^PRIORITÉ : P2"` puis chercher lesquels n'ont pas encore de bloc `STATUT :` à leur
-suite). Si l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés
-ci-dessus et communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter
-l'échec le cas échéant) avant de continuer le P2.
+capture filtrée par `MIN_DIST=4`. **Commit `22c2716` poussé sur `main`, CI PAS déclenchée**) ; Lot P2-30 V5-F-096
+CODE_COMPLETE/CI_PENDING (double téléchargement du même post via retap "Télécharger" —
+`uniqueDowloadSet.add(media)` garde le clic côté Android [`Set.add()` retourne `false` si déjà
+présent, ignoré silencieusement pour toute la durée de vie du Fragment] ; `FeedDetailPagerView`
+appelait `FeedMediaDownloader.download(post)` sans aucune garde, un retap pendant un téléchargement
+en vol démarrait un second téléchargement complet, écrivant deux fois le média dans la photothèque.
+Corrigé : nouveau `queuedDownloadPostIds: Set<Int>`, gardé par `.insert(post.id).inserted` [même
+sémantique que `Set.add()`, jamais retiré]. **Commit `eb27c20` poussé sur `main`, CI PAS
+déclenchée**). **Prochain finding à traiter : V5-F-099 (DERNIER P2 du backlog)** (grep
+`"^ID : V5-F-099"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe
+avant tout correctif, comme fait pour chaque finding tout au long de cette session). Une fois
+V5-F-099 traité, le backlog P2 (31 findings) sera ENTIÈREMENT clos — passer ensuite au backlog P3
+(21 findings), dans l'ordre du document, SAUF instruction contraire de l'utilisateur. Si
+l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et
+communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas
+échéant) avant de continuer.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

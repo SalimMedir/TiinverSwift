@@ -15,12 +15,12 @@ import Foundation
 /// P0-6 : le fichier contient un `import com.animems.engine.Utils.media.VideoTransformer` réel et
 /// un appel réel `VideoTransformer.process(params, callback)` à la ligne 700, à l'intérieur de
 /// `startTrimWithCrop()` — méthode active, appelée depuis le bouton de validation de l'écran de
-/// trim réellement monté en production. Une seconde méthode, `startTrimWithCrop2()`
-/// (`VideoTrimmerView.java:807-854`), existe en parallèle comme repli RAPIDE sans transformation
-/// (trim temporel seul, pas de recadrage/rotation) — architecture à deux chemins, pas un vestige
-/// mort. `MediaTrimView.swift` porte maintenant les deux chemins à l'identique : export rapide
-/// (`AVAssetExportPresetPassthrough`) quand aucune transformation n'est active, export
-/// ré-encodé (`AVMutableComposition`+`AVMutableVideoComposition`, `.presetHighestQuality`) sinon.
+/// trim réellement monté en production. **`startTrimWithCrop2()` citée ici comme "repli rapide en
+/// parallèle" — confirmée code MORT par le correctif V3-F-124 suivant (grep exhaustif, zéro
+/// appelant)** : `next.setOnClickListener` appelle TOUJOURS `startTrimWithCrop()`, jamais son
+/// homonyme. Le VRAI fast path Android n'est PAS `startTrimWithCrop2()` mais interne à
+/// `VideoTransformer.process()` lui-même — voir `MediaTrimView.swift` (V5-F-037, 2026-08-25) pour
+/// le détail complet et le choix assumé de ne pas le reproduire côté iOS.
 /// `Utils/media/VideoFrameExtractorCodecAsync.java` (355 lignes, extraction de vignettes) reste à
 /// part, avec un équivalent natif direct `AVAssetImageGenerator` — non porté ligne à ligne, ceci
 /// n'est pas remis en cause par la correction ci-dessus (fichier distinct, rôle distinct).

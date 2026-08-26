@@ -7,13 +7,7 @@ import SwiftUI
 /// filmstrip + poignées début/fin, limite `setTrimeLimitMax(60000)` = 60s, callback `onVideo
 /// (videoPath, isTrimmed)` → écran suivant). Republie le fichier source tel quel UNIQUEMENT quand
 /// AUCUNE modification n'est demandée (ni trim temporel ni transformation) ; dans tous les autres
-/// cas, ré-encode systématiquement via `AVMutableComposition`/`AVMutableVideoComposition` — fidèle
-/// à Android, où `next.setOnClickListener` (`VideoTrimmerView.java:232-257`) appelle TOUJOURS
-/// `startTrimWithCrop()` (re-encodage frame-exact) sauf `noTrim && noTransform`. **Il n'existe
-/// AUCUN chemin `presetPassthrough`** : un précédent correctif en introduisait un pour le cas
-/// "trim temporel seul", mais Android lui-même ne fait jamais de simple remux/copie dans ce cas
-/// (`startTrimWithCrop2()`, qui l'aurait fait, confirmé par grep exhaustif à ZÉRO appelant — code
-/// mort) ; voir `MIGRATION_PARITY_AUDIT_V3.md V3-F-124` pour la correction de cette architecture.
+/// cas, ré-encode systématiquement via `AVMutableComposition`/`AVMutableVideoComposition`.
 ///
 /// **Corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-032 GALERIE-01, Phase B P0-6)** —
 /// avant ce correctif, cet écran ne portait QUE le trim temporel : aucun bouton pivot/flip/ratio,
@@ -27,10 +21,41 @@ import SwiftUI
 /// depuis l'écran de trim actif). `VideoTrimState.swift` (état pur, déjà écrit, jamais monté)
 /// pilote maintenant ces 3 contrôles.
 ///
-/// **Corrigé le 2026-08-20 (V3-F-124, Phase B P1)** — voir `trim()` : le chemin
-/// `AVAssetExportPresetPassthrough` (imprécis, calé keyframe) qu'utilisait le correctif précédent
-/// pour "aucune transformation géométrique" a été supprimé ; ce cas est désormais couvert par le
-/// même ré-encodage frame-exact que tous les autres, avec une transformation identité.
+/// **Corrigé le 2026-08-20 (V3-F-124, Phase B P1)** — le chemin `AVAssetExportPresetPassthrough`
+/// (imprécis, calé keyframe) qu'utilisait le correctif précédent pour "aucune transformation
+/// géométrique" a été supprimé ; ce cas est désormais couvert par le même ré-encodage frame-exact
+/// que tous les autres. **Affirmation FAUSSE de ce correctif, invalidée le 2026-08-25 (voir
+/// ci-dessous, V5-F-037)** : "Android ne fait JAMAIS de remux/copie pour un trim temporel seul" —
+/// l'analyse s'était arrêtée à `VideoTrimmerView.java` (qui ne fait qu'appeler
+/// `VideoTransformer.process`) sans descendre dans `VideoTransformer.java`/`SimpleTrimmer.java`
+/// pour voir le branchement interne réel.
+///
+/// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-037, Phase B P1-18)** — lecture
+/// directe de `Utils/media/VideoTransformer.java:122-157` (`process()`) confirme un VRAI FAST PATH :
+/// `needsTransform = (cropNorm != null) || (rotation != 0) || flipH` — cette condition NE TIENT PAS
+/// COMPTE de `startMs`/`endMs`, donc pour l'immense majorité des trims (coupe temporelle seule,
+/// sans rotation/flip/ratio), Android emprunte `SimpleTrimmer.trim()` (`SimpleTrimmer.java:26-66`,
+/// `:107-127`) : remux SANS ré-encodage (<1s, aucune perte), calant le point de départ sur la
+/// keyframe vidéo PRÉCÉDENTE la plus proche (`correctTimeToSyncSample`, potentiellement décalé de
+/// tout un intervalle GOP, PAS frame-exact) — et ce MÊME point corrigé est appliqué À TOUTES LES
+/// PISTES y compris audio (`SimpleTrimmer.java:124`, commentaire de code explicite : "c'est le
+/// design voulu", garantissant vidéo/audio synchronisés au même instant redémarré — vérifié en
+/// lisant le code, PAS le commentaire de tête de fichier de `SimpleTrimmer.java` lui-même, qui
+/// affirme à tort/de façon obsolète que "l'audio, lui, démarre pile à startMs", contredit par le
+/// code 25 lignes plus bas). Le SLOW PATH (ré-encodage OpenGL frame-exact) n'est utilisé QUE si
+/// rotation≠0, flipH ou un crop est actif.
+///
+/// **Choix assumé pour iOS, PAS une fidélité Android (correction de la fausse affirmation
+/// ci-dessus)** : reproduire fidèlement ce fast path exigerait de localiser les limites GOP/sync
+/// sample réelles de l'asset source via l'introspection d'échantillons `AVAssetReader` (aucun
+/// équivalent direct simple à `correctTimeToSyncSample` n'existe dans AVFoundation à haut niveau),
+/// puis de synchroniser piste vidéo ET audio sur ce même point corrigé — un chantier à part entière,
+/// avec un risque réel de désynchronisation audio/vidéo si mal implémenté. Le ré-encodage
+/// frame-exact systématique déjà en place produit un résultat plus précis (coupe exacte au
+/// timestamp demandé par l'utilisateur, jamais de contenu avant le point choisi) au prix d'un export
+/// plus lent — CONSERVÉ délibérément comme compromis qualité > vitesse, documenté honnêtement ici
+/// comme un écart assumé plutôt que la fausse "fidélité Android" affirmée par les 2 correctifs
+/// précédents (V3-F-032/V3-F-124) sur ce fichier.
 struct MediaTrimView: View {
     let sourceURL: URL
     var onTrimmed: (URL) -> Void

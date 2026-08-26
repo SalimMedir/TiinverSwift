@@ -5,9 +5,9 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [10/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
-V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020], démarré automatiquement à
-V5-F-001, dans l'ordre du document. Prochain : V5-F-021. Puis 31 P2, 21 P3.**
+temps). Backlog P1 (40 findings) EN COURS [11/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021], démarré
+automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-022. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -718,6 +718,43 @@ du périmètre de ce finding (Socket.IO/historique, pas Calls). Seule la branche
 **Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
 réel requis : conversation de groupe avec historique local incomplet, scroller au-delà du cache
 local, confirmer le chargement depuis le serveur sans troncature silencieuse.
+
+## 2026-08-25 — Phase B V5 — Lot P1-11 : V5-F-021 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `back_sync/NotificationUtils.java:290-338` (`displayNoMessageNotification`) et
+`:103-153` (`displayNotificationOrPushMessage`) — les deux construisent la destination via
+`String destination = "MainActivity";` puis `show()` fait `new Intent(mContext,
+activityMap.get(destination))` où `activityMap.put("MainActivity", SplashActivity.class)` — le
+tap sur N'IMPORTE QUELLE notification (activité OU message de chat) ouvre l'écran d'accueil
+générique, jamais un centre de notifications.
+
+**iOS avant correctif** : `AppDelegate.userNotificationCenter(_:didReceive:)` appelait
+systématiquement `DeepLinkCenter.shared.route(.notifications)`, y compris pour les notifications
+de message de chat (`LocalNotificationBuilder.chatMessageNotificationContent`, sans
+`categoryIdentifier` distinct) — ouvrant une sheet `NotificationsListView` sans AUCUNE trace des
+messages de chat.
+
+### Correctif appliqué
+
+Cause : le commentaire de justification affirmait à tort que router vers `.notifications`
+reproduisait `activityMap.get("MainActivity")` par défaut côté Android — mais ce mapping pointe
+vers l'écran d'accueil, pas un centre de notifications. Correctif : `content.categoryIdentifier =
+"activity"` ajouté dans `activityNotificationContent`, `"chat_message"` dans
+`chatMessageNotificationContent` (les deux écrasés par `"missed_call"` pour la branche existante,
+inchangée). `didReceive` route désormais `.notifications` UNIQUEMENT pour `categoryIdentifier ==
+"activity"`, `.home` (déjà câblé, `HomeShellView.swift:283`) pour tout le reste.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/App/AppDelegate.swift`,
+`Sources/TiinverSwift/Notifications/LocalNotificationBuilder.swift`.
+
+**Résultat CI** : commit `846eae1`, push confirmé (`648d4fc..846eae1 main -> main`), run
+`32919120599` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : taper sur une notification de chat (ouvre l'accueil) et sur une notification
+d'activité (ouvre le centre de notifications).
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

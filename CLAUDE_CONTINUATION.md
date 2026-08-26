@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [10/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [11/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -38,8 +38,11 @@ suffixe "2" Android, blocage composeur jamais déclenché, endpoint corrigé dan
 `GroupRepository.checkSubscription`) ; Lot P1-9 V5-F-019 BUILD_VALIDATED (tap sur bulle "appel
 manqué" sans effet, `onTap` câblé vers `callCoordinator.startOutgoingCall`) ; Lot P1-10 V5-F-020
 BUILD_VALIDATED (repli REST manquant pour l'historique de groupe quand le cache local est épuisé,
-`GroupRepository.fetchOlderGroupMessages` ajouté + câblé dans `ChatViewModel.loadMore()`)]**. Voir
-section "Cycle V5" plus bas pour le détail complet.)
+`GroupRepository.fetchOlderGroupMessages` ajouté + câblé dans `ChatViewModel.loadMore()`) ; Lot
+P1-11 V5-F-021 BUILD_VALIDATED (tap notification routait toujours vers le centre de notifications
+même pour un message de chat, `categoryIdentifier` "activity"/"chat_message" ajouté +
+`didReceive` distingue maintenant .notifications/.home)]**. Voir section "Cycle V5" plus bas pour
+le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -301,39 +304,47 @@ addGroupMessage` (déjà existant) ; résultats triés chronologiquement puis in
 d'`items`. **Portée délibérément limitée** : les branches `voicecall`/`missedvoicecall` de
 `prepareOldGroupMessage` (effets de bord `CallService`, sans équivalent 1:1 `CallCoordinator`)
 NON portées, hors périmètre de ce finding Socket.IO/historique, documenté explicitement. **Commit
-`d136a68`, CI verte (run `32918138299`)** — `BUILD_VALIDATED`. Détail des 10 lots dans
-`PROGRESS_V5.md`.
+`d136a68`, CI verte (run `32918138299`)** — `BUILD_VALIDATED`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-021** (Notifications — tap
-sur une notification locale iOS route toujours vers le centre de notifications, y compris pour
-les messages de chat. Android [`back_sync/NotificationUtils.java:290-338`
-`displayNoMessageNotification` et `:103-153` `displayNotificationOrPushMessage`] construisent
-TOUJOURS la destination via `String destination = "MainActivity";`, puis `show()` fait `new
-Intent(mContext, activityMap.get(destination))` où `activityMap.put("MainActivity",
-SplashActivity.class)` — le tap sur N'IMPORTE QUELLE notification [activité like/comment/follow OU
-message de chat] ouvre SplashActivity/HomeActivity [écran d'accueil générique], JAMAIS un centre
-de notifications dédié. iOS [`App/AppDelegate.swift:153-163`
-`userNotificationCenter(_:didReceive:)`] appelle SYSTÉMATIQUEMENT
-`DeepLinkCenter.shared.route(.notifications)` quel que soit le type de notification tapée [y
-compris les notifications de MESSAGE DE CHAT construites par
-`LocalNotificationBuilder.chatMessageNotificationContent`/`ChatRepository.swift:341`, qui n'ont
-pas de `categoryIdentifier` distinct], ouvrant la sheet `NotificationsListView` qui ne contient
-AUCUNE trace des messages de chat [seulement les entités `NotiEntity` de
-`notification2/{userId}`]. Cause : le commentaire de justification dans `AppDelegate.swift:
-148-151` confond "écran d'accueil par défaut" [ce que fait réellement `activityMap.get(
-"MainActivity")`] et "centre de notifications" [ce que fait le code iOS actuel] — dérive de
-compréhension, pas un choix délibéré. Plan : router vers l'accueil [TabView, onglet 0] par défaut
-pour les notifications de type chat/inconnues, réserver `.notifications` [ouverture de la sheet]
-aux seules notifications d'activité [like/comment/follow/etc.], en s'appuyant sur
-`categoryIdentifier` pour distinguer les deux familles au moment de la construction du contenu —
-lire `AppDelegate.swift` en entier autour de `didReceive`, `LocalNotificationBuilder.swift` pour
-voir tous les sites de construction de contenu de notification et leurs `categoryIdentifier`
-actuels le cas échéant, et `DeepLinkCenter.swift`/`HomeShellView.swift` pour la route vers
-l'accueil), puis continuer AUTOMATIQUEMENT V5-F-022, V5-F-023, V5-F-029, V5-F-033, V5-F-034,
-V5-F-036, V5-F-037, V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060,
-V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078,
-V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (29 P1 restants après V5-F-021, dans
-l'ordre exact du document), puis tous les P2 (31), P3 (21), SANS s'arrêter
+**Lot P1-11 traité (V5-F-021)** — Notifications, tap sur une notification locale routait toujours
+vers le centre de notifications, y compris pour les messages de chat. Vérifié `back_sync/
+NotificationUtils.java:290-338`/`:103-153` : les deux construisent TOUJOURS `destination =
+"MainActivity"`, qui mappe vers `SplashActivity` (accueil), pas un centre de notifications — pour
+une notification d'activité COMME pour un message de chat. `AppDelegate.userNotificationCenter(
+_:didReceive:)` appelait systématiquement `.route(.notifications)`, ouvrant `NotificationsListView`
+même pour les messages de chat (aucune trace de chat dans cet écran). Cause : le commentaire de
+justification confondait "écran d'accueil par défaut" et "centre de notifications". Correctif :
+`content.categoryIdentifier = "activity"`/`"chat_message"` ajouté dans
+`LocalNotificationBuilder.activityNotificationContent`/`chatMessageNotificationContent` ;
+`didReceive` route désormais `.notifications` uniquement pour `"activity"`, `.home` (déjà câblé,
+`HomeShellView.swift:283`) pour tout le reste. **Commit `846eae1`, CI verte (run
+`32919120599`)** — `BUILD_VALIDATED`. Détail des 11 lots dans `PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-022** (Notifications —
+bouton "Suivre en Retour" du centre de notifications appelle un endpoint backend différent
+d'Android. Android [`NotiLikecmt/AdapterNoti.java:420-441`, `FollowVH.bind`,
+`td.Post(map, "followback", ...)`] — SEUL appelant de l'endpoint `followback` dans tout le code
+Android, à comparer avec `Http/TransportData.java:1428-1430` [`Following()` →
+`volleyPost(..., "follow")`], utilisé lui par `AdapterNoti.java:511` dans `SuggestionVH` [la ligne
+"suggestions de comptes", pas la ligne "follow-back"] : le bouton de follow-back affiché sur une
+notification `verb=="follow"` poste sur l'endpoint `followback`, distinct de l'endpoint générique
+`follow` utilisé partout ailleurs [profil, suggestions]. iOS
+[`Notifications/NotificationsListView.swift:135-146`, bouton "Suivre en Retour"] appelle
+`ProfileRepository.shared.follow(...)` [`Profile/ProfileRepository.swift:88-90`], qui poste TOUJOURS
+sur l'endpoint générique `follow` — jamais `followback`. Cause : portage a réutilisé le repository
+de follow générique déjà existant au lieu de reproduire l'appel réseau spécifique de `FollowVH`.
+Impact : si le backend traite `followback` différemment de `follow` [suppression d'une entrée
+"vous devriez suivre en retour" côté serveur, notification spécifique à l'autre utilisateur,
+comptabilisation différente], l'action de follow-back depuis le centre de notifications iOS peut
+réussir en apparence tout en laissant un état serveur incohérent. Plan : ajouter une méthode dédiée
+[ex. `ProfileRepository.followBack`] postant sur l'endpoint `followback` avec les mêmes paramètres
+`{userId, followId}`, l'utiliser spécifiquement depuis le bouton "Suivre en Retour" de
+`NotificationsListView`, en laissant `follow()` inchangée pour les autres points d'entrée [profil,
+suggestions]), puis continuer AUTOMATIQUEMENT V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036,
+V5-F-037, V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062,
+V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082,
+V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (28 P1 restants après V5-F-022, dans l'ordre
+exact du document), puis tous les P2 (31), P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →
 State/ViewModel → Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale

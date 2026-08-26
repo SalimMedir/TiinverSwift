@@ -885,6 +885,30 @@ CAUSE : Le commentaire de justification dans AppDelegate.swift (lignes 148-151) 
 IMPACT : Un utilisateur qui reçoit une notification de nouveau message de chat et tape dessus se retrouve projeté dans une liste de likes/commentaires/follows sans aucun rapport avec le message reçu, au lieu d'atterrir sur l'écran d'accueil (comportement Android, déjà imparfait mais au moins neutre).
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Router vers l'accueil (TabView, onglet 0) par défaut pour les notifications de type chat/inconnues, et réserver `.notifications` (ouverture de la sheet) aux seules notifications d'activité (like/comment/follow/etc.), en s'appuyant sur `categoryIdentifier` pour distinguer les deux familles au moment de la construction du contenu.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-11) — Vérifié directement :
+`back_sync/NotificationUtils.java:290-338`/`:103-153` confirment `destination = "MainActivity"`
+TOUJOURS construit, pour une notification d'activité COMME pour un message de chat ;
+`activityMap.get("MainActivity")` mappe vers `SplashActivity` (accueil), pas un centre de
+notifications. Correctif : `content.categoryIdentifier = "activity"` ajouté dans
+`LocalNotificationBuilder.activityNotificationContent`, `"chat_message"` dans
+`chatMessageNotificationContent` (les deux écrasés par `"missed_call"` pour la branche
+`missedvoicecall` existante, inchangée). `AppDelegate.userNotificationCenter(_:didReceive:)`
+route désormais `.notifications` UNIQUEMENT pour `categoryIdentifier == "activity"`, `.home`
+(déjà câblé dans `HomeShellView.swift:283`, `selectedTab = 0`) pour tout le reste (chat, appel
+manqué, catégorie inconnue) — corrigeant au passage le commentaire de justification erroné qui
+confondait "écran d'accueil par défaut" et "centre de notifications".
+
+**Fichiers modifiés** : `Sources/TiinverSwift/App/AppDelegate.swift`,
+`Sources/TiinverSwift/Notifications/LocalNotificationBuilder.swift`.
+
+**Résultat CI** : commit `846eae1`, push confirmé (`648d4fc..846eae1 main -> main`), run
+`32919120599` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : recevoir une notification de message de chat et
+taper dessus, confirmer l'ouverture de l'accueil (pas le centre de notifications) ; recevoir une
+notification d'activité (like/comment/follow) et confirmer l'ouverture du centre de notifications.
 ```
 
 ```

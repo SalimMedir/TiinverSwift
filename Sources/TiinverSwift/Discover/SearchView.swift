@@ -222,6 +222,10 @@ struct SearchView: View {
     /// (`UserProfile.java:507-508` : `onFollowingError() { labelSeguir.setText(R.string.seguir) }`)
     /// — reproduit ici : `isFollowed` repasse à `false` en cas d'échec, réactivant le bouton pour
     /// un nouvel essai, plutôt que de reproduire le blocage "pending" ou le faux "Abonné" permanent.
+    /// **Étendu le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-014, Phase B P2 — portée
+    /// élargie au-delà des 2 sites cités par l'audit)** — vérifié directement :
+    /// `UniversalSearchAdapter.java:230-234` (`OnFollowingSuccess` → `TransportData.notifyUser`),
+    /// même gap que `ProfileViewModel.follow()`/`FollowListView.toggleFollow()` (voir leur doc).
     private func toggleFollow(_ user: SearchUserResult) async {
         guard user.isFollowed != true, let myId = UserSession.shared.myId else { return }
         if let index = results.users.firstIndex(where: { $0.id == user.id }) {
@@ -229,6 +233,7 @@ struct SearchView: View {
         }
         do {
             try await ProfileRepository.shared.follow(userId: String(user.id), followerId: myId)
+            try? await FeedRepository().notifyPostAuthor(userId: String(user.id))
         } catch {
             if let index = results.users.firstIndex(where: { $0.id == user.id }) {
                 results.users[index].isFollowed = false

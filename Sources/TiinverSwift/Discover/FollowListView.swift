@@ -73,12 +73,18 @@ struct FollowListView: View {
     /// `SearchView.toggleFollow` (suivre uniquement, pas de bascule) et même correctif de rollback
     /// (V3-F-107) sur échec réseau, plutôt que le blocage "pending" permanent d'Android en cas
     /// d'erreur (`onFollowingError` ne fait que masquer le spinner, sans jamais réafficher "Suivre").
+    /// **Étendu le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-014, Phase B P2)** — même
+    /// correctif que `ProfileViewModel.follow()` (voir sa doc) : `Adapter.java:142-148`
+    /// (`OnFollowingSuccess`, partagé par `FollowList.java`) appelle aussi `TransportData.
+    /// notifyUser` après un follow réussi depuis la liste abonnés/abonnements — pas seulement
+    /// depuis le bouton "Suivre" du profil.
     private func toggleFollow(_ user: SearchUserResult) async {
         guard user.isFollowed != true, let myId = UserSession.shared.myId else { return }
         guard let index = users.firstIndex(where: { $0.id == user.id }) else { return }
         users[index].isFollowed = true
         do {
             try await ProfileRepository.shared.follow(userId: String(user.id), followerId: myId)
+            try? await FeedRepository().notifyPostAuthor(userId: String(user.id))
         } catch {
             users[index].isFollowed = false
         }

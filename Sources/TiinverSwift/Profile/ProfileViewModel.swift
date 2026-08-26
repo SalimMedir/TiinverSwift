@@ -173,11 +173,18 @@ final class ProfileViewModel: ObservableObject {
     /// qui remet explicitement le libellé à "Suivre" (et réactive le bouton, `.disabled(isFollowing)`
     /// dans `ProfileView.swift`) en cas d'échec. Avant ce correctif, un échec réseau laissait le
     /// bouton bloqué sur "Abonné"/désactivé en permanence, sans moyen de réessayer.
+    /// **Étendu le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-014, Phase B P2)** — port de
+    /// `UserProfile.java:501-504` (`OnFollowingSuccess` → `TransportData.notifyUser(context,
+    /// metas.getId())`, en plus de la mise à jour du libellé déjà portée) : Android déclenche
+    /// TOUJOURS un `POST push {userId}` (notification "quelqu'un vous suit") après un follow
+    /// réussi, fire-and-forget (`data.Post(map,"push",null)`, callback null côté Android — reproduit
+    /// ici par `try?`, échec silencieux sans affecter `isFollowing`).
     func follow() async {
         guard let myId = UserSession.shared.myId else { return }
         isFollowing = true
         do {
             try await repository.follow(userId: userId, followerId: myId)
+            try? await FeedRepository().notifyPostAuthor(userId: userId)
         } catch {
             isFollowing = false
         }

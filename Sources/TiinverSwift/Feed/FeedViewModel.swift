@@ -275,6 +275,15 @@ final class FeedViewModel: ObservableObject {
     /// `ProfileViewModel.follow`, trouvé en vérifiant tous les appelants de
     /// `ProfileRepository.follow`)** — rollback ajouté, fidèle au vrai comportement Android
     /// (`UserProfile.java:507-508`).
+    /// **Étendu le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-014, Phase B P2 — portée élargie
+    /// au-delà des 2 sites cités par l'audit)** — vérifié directement : `CustomCardView.
+    /// java:270-296` (`followBtn.OnClickListener` → `OnFollowingSuccess` →
+    /// `TransportData.notifyUser`), même gap que `ProfileViewModel.follow()`/`FollowListView.
+    /// toggleFollow()` (voir leur doc). **`unfollow(_:)` ci-dessus N'A PAS besoin du même
+    /// correctif** — vérifié séparément : `MainFragment.java:1299-1315` (branche `unfollow` de
+    /// `OnclickMoreExpand`) ne fait qu'un `Toast`+fermeture de feuille dans `OnFollowingSuccess`,
+    /// AUCUN appel à `notifyUser` (cohérent : on ne notifie pas "vous êtes suivi" en se
+    /// désabonnant).
     func followFromDetail(_ post: FeedActivity) async {
         guard post.isFollowed != true, let index = posts.firstIndex(where: { $0.id == post.id }),
             let myId = UserSession.shared.myId, let actorId = post.actor
@@ -282,6 +291,7 @@ final class FeedViewModel: ObservableObject {
         posts[index].isFollowed = true
         do {
             try await profileRepository.follow(userId: actorId, followerId: myId)
+            try? await repository.notifyPostAuthor(userId: actorId)
         } catch {
             if let index = posts.firstIndex(where: { $0.id == post.id }) {
                 posts[index].isFollowed = false

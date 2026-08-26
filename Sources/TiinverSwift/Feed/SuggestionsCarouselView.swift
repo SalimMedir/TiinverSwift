@@ -111,11 +111,16 @@ struct SuggestionsCarouselView: View {
     /// d'échec) plutôt que de reproduire le blocage "pending" permanent de
     /// `AdapterSuggestContact.java:150-153` (`onFollowingError` masque juste le spinner, ne
     /// réinitialise jamais le libellé), pour ne jamais laisser un faux "Abonné" permanent.
+    /// **Étendu le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-014, Phase B P2 — portée élargie
+    /// au-delà des 2 sites cités par l'audit)** — vérifié directement :
+    /// `AdapterSuggestContact.java:139-143` (`OnFollowingSuccess` → `TransportData.notifyUser`),
+    /// même gap que `ProfileViewModel.follow()`/`FollowListView.toggleFollow()` (voir leur doc).
     private func follow(_ user: User) async {
         guard let myId = UserSession.shared.myId, let targetId = user.id else { return }
         followedIds.insert(targetId)
         do {
             try await ProfileRepository.shared.follow(userId: String(targetId), followerId: myId)
+            try? await FeedRepository().notifyPostAuthor(userId: String(targetId))
         } catch {
             followedIds.remove(targetId)
         }

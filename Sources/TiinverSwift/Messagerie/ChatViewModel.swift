@@ -38,6 +38,13 @@ final class ChatViewModel: ObservableObject {
     private var previousDayComponents: DateComponents?
     private var typingResetTask: Task<Void, Never>?
     private var isTypingFlag = false
+    /// Port de `uniqueDowloadSet` (`ChatFragmentTest.java:2937-2963`, V5-F-069) — même motif que
+    /// `ChatMediaUploadService.uploadingMessageIds`/`reserveUpload` côté upload (V5-F-078) : empêche
+    /// un second téléchargement concurrent du même message si sa bulle redevient visible (scroll)
+    /// pendant qu'un premier est déjà en vol. Classe `@MainActor`, accès synchrone sans `await`
+    /// entre le test et l'insertion — pas besoin d'un verrou dédié, même raisonnement que
+    /// `reserveUpload`.
+    private var downloadingMessageIds: Set<String> = []
 
     private var currentUsername: String { UserSession.shared.username ?? "" }
     private var myId: String { UserSession.shared.myId ?? "" }
@@ -681,12 +688,23 @@ final class ChatViewModel: ObservableObject {
     /// CDN Tiinver confirmée par test. `URLSession.shared.download(from:)` (sans `URLRequest` ni
     /// en-tête) manquait cet en-tête ; basculé vers `download(for:)` avec un `URLRequest` portant
     /// `Referer: https://tiinver.com`, à l'identique des autres chemins CDN du projet.
+    ///
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-069, Phase B P2)** — aucune garde
+    /// n'empêchait un second téléchargement concurrent du MÊME message si sa bulle redevenait
+    /// visible (scroll) pendant qu'un premier était déjà en vol (`.onAppear` se redéclenche à
+    /// chaque réapparition, contrairement à `requestUpload` qui avait déjà reçu ce correctif via
+    /// `ChatMediaUploadService.reserveUpload`, V5-F-078) — deux `URLSession.download` concurrents
+    /// sur le même fichier, deux écritures Core Data non ordonnées. `downloadingMessageIds` ajouté,
+    /// même motif que `reserveUpload`/`uniqueDowloadSet`.
     private func requestDownload(_ mlib: MessageLib) {
         guard let messageId = mlib.messageId, let remoteURLString = mlib.objectUrl,
-              let remoteURL = URL(string: remoteURLString), remoteURL.scheme?.hasPrefix("http") == true
+              let remoteURL = URL(string: remoteURLString), remoteURL.scheme?.hasPrefix("http") == true,
+              !downloadingMessageIds.contains(messageId)
         else { return }
+        downloadingMessageIds.insert(messageId)
         Task { [weak self] in
             guard let self else { return }
+            defer { self.downloadingMessageIds.remove(messageId) }
             do {
                 var request = URLRequest(url: remoteURL)
                 request.setValue("https://tiinver.com", forHTTPHeaderField: "Referer")

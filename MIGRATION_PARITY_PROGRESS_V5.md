@@ -15,7 +15,7 @@ V5-F-079, V5-F-083, V5-F-086, V5-F-090, V5-F-096, V5-F-099]. **BACKLOG P2 ENTIÈ
 (31/31)**. Backlog P3 (21 findings) EN COURS [3/21 clos : V5-F-003 (DUPLICATE de V5-F-050),
 V5-F-011, V5-F-012, V5-F-015 (DUPLICATE de V5-F-065), V5-F-017, V5-F-027, V5-F-028, V5-F-041,
 V5-F-044 (DOCUMENTÉ), V5-F-052, V5-F-053 (DIFFÉRÉ), V5-F-056, V5-F-075 (IOS_INTENTIONAL_DIFFERENCE), V5-F-080, V5-F-081 (IOS_INTENTIONAL_DIFFERENCE),
-V5-F-084]. Prochain : V5-F-087.**
+V5-F-084, V5-F-087, V5-F-088 (IOS_INTENTIONAL_DIFFERENCE)]. Prochain : V5-F-091.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2938,6 +2938,34 @@ audio perceptiblement inférieure sans justification.
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P3-15 : V5-F-087 (Photo Editor — fond opaque derrière le texte absent)
+
+**Commit** : `dc23492` — poussé sur `main` (`fc9130b..dc23492`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `btn_textContainer` bascule entre texte noir sur fond blanc plein et texte blanc
+sur fond transparent, AVANT validation — le fond fait partie du bitmap final aplati.
+`PlacedText`/`PhotoToolsView` ne modélisaient que la couleur de premier plan, jamais de fond.
+
+**Correction appliquée** : nouveau `PlacedText.hasContainer`, bascule toolbar persistante
+`textHasContainer` (bouton toolbar plutôt que dans l'alerte, `.alert` ne pouvant pas héberger de
+`Toggle`), `addText()` force noir-sur-blanc quand actif (ignore la palette libre, fidèle à
+Android), fond rendu dans `PlacedItemView` ET `flatten()`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/PhotoEditor/PhotoToolsView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P3-16 : V5-F-088 (IOS_INTENTIONAL_DIFFERENCE) — résolution d'export Photo Editor, commentaire factuellement faux corrigé
+
+**Aucun changement fonctionnel** (commit `beb9eb8`, commentaire uniquement). Le commentaire de
+`flatten()` affirmait à tort que l'export pleine résolution pixel est "fidèle à Android" — vérifié
+par lecture directe : `fitBitmapToView`/`createImage` exportent TOUJOURS à la résolution d'AFFICHAGE
+côté Android, jamais à la résolution pixel native. Comportement iOS actuel (meilleure
+qualité/résolution) conservé, documenté comme divergence intentionnelle plutôt qu'une fausse
+fidélité.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

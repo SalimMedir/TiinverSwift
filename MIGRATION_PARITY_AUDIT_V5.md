@@ -3249,6 +3249,13 @@ IMPACT : Perte d'une option de lisibilité mineure : sur une photo à fond clair
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter un bouton bascule dans l'alerte ou la barre d'outils qui applique un `.background(Capsule().fill(.white))`/couleur pleine derrière le `Text`, avec un `PlacedText.containerColor: Color?` optionnel reporté dans `flatten()`.
 CONTRE-AUDIT : trouvé par l'agent "Photo Editor" (Phase A.2, 2026-08-24)
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-15). RECOMMANDATION appliquée (bouton
+toolbar plutôt que dans l'alerte, `.alert` ne pouvant pas héberger de `Toggle`) : nouveau
+`PlacedText.hasContainer`, bascule toolbar persistante `textHasContainer` [comme `v.isSelected()`
+Android], `addText()` FORCE noir-sur-blanc quand actif [ignore la palette libre, fidèle à Android],
+fond rendu dans `PlacedItemView` [canevas interactif] ET `flatten()` [composition finale]. Fichier
+modifié : `PhotoEditor/PhotoToolsView.swift`. Commit `dc23492`, poussé sur `main`. CI non
+déclenchée par cette session.
 ```
 
 ```
@@ -3266,6 +3273,12 @@ IMPACT : Divergence réelle non régressive pour l'utilisateur (iOS produit une 
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Corriger le commentaire de `flatten()` pour refléter le comportement Android réel (résolution plafonnée à la largeur d'affichage, pas la résolution pixel source) ; décider consciemment si le comportement iOS actuel (export haute résolution) est le comportement souhaité (probablement oui, c'est une amélioration) et le documenter comme divergence intentionnelle assumée plutôt que comme une 'fidélité' à Android.
 CONTRE-AUDIT : trouvé par l'agent "Photo Editor" (Phase A.2, 2026-08-24)
+STATUT : IOS_INTENTIONAL_DIFFERENCE (2026-08-26, Phase B P3) — RECOMMANDATION appliquée telle
+quelle : commentaire de `flatten()` corrigé (l'ancienne affirmation "fidèle à Android" était
+factuellement fausse, vérifié par lecture directe de `fitBitmapToView`/`createImage`), comportement
+iOS actuel (export pleine résolution pixel) conservé et documenté comme divergence intentionnelle
+assumée. Aucun changement fonctionnel. Fichier modifié : `PhotoEditor/PhotoToolsView.swift`
+(commentaire uniquement). Commit `beb9eb8`, poussé sur `main`.
 ```
 
 ```

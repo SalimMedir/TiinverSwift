@@ -454,13 +454,19 @@ code en dur `application/octet-stream`, incohérent avec sa propre branche vidé
 jamais identifiée ; iOS envoie le vrai MIME, jugé correct et non reproduit. **Commit `79751e9`**) ;
 Lot P3-14 V5-F-084 CODE_COMPLETE/CI_PENDING (débit audio export Animems divisé par deux — Android
 128kbps, iOS 64kbps. Corrigé : `AVEncoderBitRateKey` aligné. **Commit `da9d371` poussé sur `main`,
-CI PAS déclenchée**). **Prochain finding à traiter : V5-F-087** (grep `"^ID : V5-F-087"` dans
-`MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe avant tout correctif,
-comme fait pour chaque finding tout au long de cette session ; identifier les P3 restants avec
-`grep "^PRIORITÉ : P3"` puis chercher lesquels n'ont pas encore de bloc `STATUT :` à leur suite).
-Si l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et
-communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas
-échéant) avant de continuer le P3.
+CI PAS déclenchée**) ; Lot P3-15 V5-F-087 CODE_COMPLETE/CI_PENDING (fond opaque derrière le texte
+absent — nouveau `PlacedText.hasContainer` + bascule toolbar persistante, `addText()` force
+noir-sur-blanc quand actif. **Commit `dc23492` poussé sur `main`, CI PAS déclenchée**) ; Lot
+P3-16 V5-F-088 **IOS_INTENTIONAL_DIFFERENCE, pas de correctif fonctionnel** (résolution d'export
+Photo Editor — commentaire de `flatten()` affirmait à tort "fidèle à Android" [Android exporte
+TOUJOURS à la résolution d'affichage, jamais pixel native, vérifié] ; comportement iOS actuel
+[meilleure résolution] conservé, commentaire corrigé. **Commit `beb9eb8`**). **Prochain finding à
+traiter : V5-F-091** (grep `"^ID : V5-F-091"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à
+confirmer par lecture directe avant tout correctif, comme fait pour chaque finding tout au long de
+cette session ; identifier les P3 restants avec `grep "^PRIORITÉ : P3"` puis chercher lesquels
+n'ont pas encore de bloc `STATUT :` à leur suite). Si l'utilisateur a entre-temps déclenché la CI
+pour les findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur
+statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P3.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

@@ -1620,6 +1620,64 @@ recevoir une pièce jointe chat (photo/vidéo/audio/document) d'un correspondant
 qu'elle se télécharge avec succès (absence de 403), si la zone CDN bloque effectivement les
 requêtes sans Referer comme le suggèrent les autres correctifs déjà validés pour la même raison.
 
+## 2026-08-26 — Phase B V5 — Lot P1-33 : V5-F-078 (Chat — reprise d'upload de pièce jointe indépendante de l'UI)
+
+**Commit** : `d5b583c` — CI **success** (run `32937077298`).
+
+**Cause exacte** : Android dispose de DEUX mécanismes de reprise d'upload de pièce jointe chat
+indépendants : (1) `checkAndUploadFile`/`onBindViewHolder` (rebind de vue, seul mécanisme déjà
+porté côté iOS via `ChatViewModel.handleAppear`) ; (2) `ChatManager.sendMessageFromCursor`, balayage
+de TOUS les messages locaux `status=0` avec `isFileUploaded==0`, ré-enfilant un
+`OneTimeWorkRequest<UploadChatWork>` (WorkManager, contrainte réseau + backoff exponentiel),
+déclenché par 4 sources distinctes : reconnexion réseau (`NetworkStateReceiver`), job planifié
+(`MyJobService`), synchronisation périodique (`SyncAdapter`/`SyncWorker`), et à CHAQUE notification
+push reçue (`MyFirebaseMessagingService`). Seul le mécanisme (1) avait été porté côté iOS — un
+upload interrompu (app tuée en cours d'envoi, coupure réseau prolongée) ne reprenait JAMAIS sans
+que l'utilisateur rouvre la conversation ET fasse défiler jusqu'à la bulle concernée.
+
+**Correction appliquée** : portée réduite documentée — seul le déclencheur reconnexion socket est
+reproduit (`ChatRepository.onConnected()`, déjà appelé sur `.connect` ET `.reconnect`), ni scan
+périodique en arrière-plan (`BGTaskScheduler`, même famille d'infrastructure déjà écartée dans
+V5-F-060 DIFFÉRÉ) ni scan à la réception d'une notification push, ni politique de retry/backoff
+dédiée (contrairement à `UploadChatWork`+`WorkManager` — un échec laisse `isFileUploaded=0`,
+retenté au prochain `onConnected()`/`handleAppear`, à l'identique de la politique déjà en place
+côté `requestUpload`). Ajouté `MessageRepository.pendingUploads(currentUsername:)` (scan
+`isFileUploaded==0 AND usernameFrom==currentUsername`, TOUTES conversations confondues, pas de
+filtre `conversationId`) et `ChatRepository.resumePendingUploads(currentUsername:)` (ré-upload via
+`ChatMediaUploadService` + persistance `updateFileUploaded` + ré-émission socket
+`sendPrivateMessage`/`sendGroupMessage` pour chaque message trouvé, appelé depuis `onConnected()`).
+
+**Risque identifié et corrigé pendant la correction** : ce nouveau chemin (`resumePendingUploads`,
+déclenché par reconnexion socket) peut désormais courir CONCURREMMENT avec `ChatViewModel.
+requestUpload` (déclenché par une bulle visible) pour le MÊME message, si une conversation est
+ouverte au moment d'une reconnexion — risque de double PUT BunnyCDN et surtout de double
+`sendPrivateMessage`/`sendGroupMessage` pour le même `messageId` (doublon perçu par le
+destinataire, même famille de risque que V5-F-070). Corrigé par un verrou synchrone partagé :
+`ChatMediaUploadService.reserveUpload(messageId:)`/`releaseUpload(messageId:)`, un simple
+`Set<String>` protégé par le fait que les DEUX appelants (`ChatViewModel`, `ChatRepository`) sont
+`@MainActor`-isolés et que la réservation elle-même ne contient AUCUN `await` interne entre le
+test et l'insertion — donc atomique du point de vue MainActor, sans nécessiter d'`actor` dédié
+(contrairement à `SerialTaskQueue`, V5-F-070, dont le problème venait justement d'un `await`
+interne à l'opération protégée).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Storage/MessageRepository.swift`,
+`Sources/TiinverSwift/Realtime/ChatRepository.swift`,
+`Sources/TiinverSwift/Messagerie/ChatViewModel.swift`,
+`Sources/TiinverSwift/Messagerie/ChatMediaUploadService.swift`.
+
+**Flux frère vérifié** : `requestDownload` (téléchargement, V5-F-077 corrigé juste avant dans ce
+même lot P1) non concerné — mécanisme de reprise distinct, pas de risque de concurrence
+équivalent identifié côté téléchargement (pas de second déclencheur ajouté sur cette branche).
+
+**Résultat CI** : commit `d5b583c`, push confirmé (`fde9608..d5b583c main -> main`), run
+`32937077298` → **`conclusion: success`**.
+
+**Statut honnête** : `BUILD_VALIDATED`, portée réduite documentée. PAS `COMPLETE_PARITY_VALIDATED`
+— test réel requis : envoyer une pièce jointe chat, tuer l'app (ou couper le réseau) avant la fin
+de l'upload, rouvrir l'app SANS revenir sur la conversation concernée, confirmer que l'upload et
+l'envoi du message reprennent automatiquement dès la reconnexion socket ; confirmer aussi l'absence
+de doublon si la conversation est rouverte pendant qu'une reprise est en cours.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

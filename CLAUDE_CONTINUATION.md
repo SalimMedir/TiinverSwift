@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [33/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [34/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -99,8 +99,12 @@ supprimée entièrement, `rosterAll()` retourne `[RosterEntity]` brut, `RosterLi
 reprise après échec réseau complet non traitée) ; Lot P1-32 V5-F-077 BUILD_VALIDATED (en-tête
 Referer manquant au téléchargement de pièce jointe chat, seul chemin CDN du projet à ne pas
 l'attacher, `requestDownload` basculé vers `download(for:)` avec `Referer: https://tiinver.com`,
-commentaire stale affirmant à tort qu'Android n'attache aucun header corrigé au passage)]**. Voir
-section "Cycle V5" plus bas pour le détail complet.)
+commentaire stale affirmant à tort qu'Android n'attache aucun header corrigé au passage) ; Lot
+P1-33 V5-F-078 BUILD_VALIDATED — portée réduite documentée (second mécanisme de reprise d'upload
+Android — WorkManager sur reconnexion/sync/push — absent côté iOS, seul le déclencheur
+reconnexion socket reproduit via `ChatRepository.resumePendingUploads`, verrou
+`ChatMediaUploadService.reserveUpload/releaseUpload` ajouté pour éviter une course avec
+`ChatViewModel.requestUpload`)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -691,13 +695,37 @@ par la lecture directe du source. Correction : `requestDownload` construit déso
 passage. **Commit `fde9608`, CI verte (run `32936140166`)** — `BUILD_VALIDATED`. Détail des 33
 lots dans `PROGRESS_V5.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-078** (prochain P1 dans
-l'ordre exact du document `MIGRATION_PARITY_AUDIT_V5.md`, ligne ~2482 — lire sa fiche complète en
-premier : ID, PRIORITÉ, DOMAINE, FEATURE, ANDROID SOURCE, ANDROID BEHAVIOR, IOS FILES, IOS
-BEHAVIOR, CAUSE, IMPACT, RECOMMANDATION), puis continuer AUTOMATIQUEMENT V5-F-082, V5-F-085,
-V5-F-089, V5-F-095, V5-F-097, V5-F-098 (6 P1 restants après V5-F-078, dans l'ordre exact du
-document ; V5-F-060 déjà clos DIFFÉRÉ), puis tous les P2 (31), P3 (21), SANS s'arrêter entre les
-lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve Android
+**Lot P1-33 traité (V5-F-078)** — Chat, pipeline média BunnyCDN (upload, reprise en arrière-plan),
+absence de reprise automatique des uploads de pièces jointes chat bloqués, déclenchée par
+reconnexion socket/changement réseau/sync périodique/notification push côté Android. Vérifié
+`messagerie/ui/ChatManager.java:261-296` (`sendMessageFromCursor`, branche `isFileUploaded==0` →
+`OneTimeWorkRequest<UploadChatWork>` avec `Constraints.setRequiredNetworkType(CONNECTED)` +
+backoff exponentiel) + `service/HttpConnectionService.java:44-90` déclenché par 4 sources
+distinctes (`NetworkStateReceiver`, `MyJobService`, `SyncAdapter`/`SyncWorker`,
+`MyFirebaseMessagingService` à CHAQUE push) — Android dispose de DEUX mécanismes de reprise
+indépendants ; seul le rebind de vue (`checkAndUploadFile`→`ChatViewModel.handleAppear`) avait été
+porté côté iOS. Un upload interrompu (app tuée en cours d'envoi, coupure réseau prolongée) ne
+reprenait donc JAMAIS sans réouverture manuelle de la conversation ET défilement jusqu'à la bulle
+concernée. **Portée réduite documentée** : seul le déclencheur reconnexion socket reproduit
+(`ChatRepository.onConnected()`), ni `BGTaskScheduler` (même famille que V5-F-060 DIFFÉRÉ) ni scan
+sur notification push, ni retry/backoff dédié. Ajouté `MessageRepository.pendingUploads
+(currentUsername:)` (scan `isFileUploaded==0`, toutes conversations) et `ChatRepository.
+resumePendingUploads()`. **Risque de course identifié et corrigé pendant la correction** : ce
+nouveau chemin peut désormais courir concurremment avec `ChatViewModel.requestUpload` pour le même
+message (même famille de risque que V5-F-070) — verrou synchrone partagé
+`ChatMediaUploadService.reserveUpload/releaseUpload` ajouté, sûr sans `actor` dédié car les deux
+appelants sont `@MainActor` et la réservation ne contient aucun `await` interne. **Commit
+`d5b583c`, CI verte (run `32937077298`)** — `BUILD_VALIDATED`, portée réduite documentée. Détail
+des 34 lots dans `PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-082** (prochain P1 dans
+l'ordre exact du document `MIGRATION_PARITY_AUDIT_V5.md`, ligne ~2551 — V5-F-079/080/081 sont P2,
+déjà sautés à raison — lire sa fiche complète en premier : ID, PRIORITÉ, DOMAINE, FEATURE, ANDROID
+SOURCE, ANDROID BEHAVIOR, IOS FILES, IOS BEHAVIOR, CAUSE, IMPACT, RECOMMANDATION), puis continuer
+AUTOMATIQUEMENT V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (5 P1 restants après V5-F-082,
+dans l'ordre exact du document ; V5-F-060 déjà clos DIFFÉRÉ), puis tous les P2 (31), P3 (21), SANS
+s'arrêter entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois :
+preuve Android
 vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI → State/ViewModel →
 Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale → diff revu →
 commit → push → CI → attente OBLIGATOIRE du résultat → mise à jour des 3 documents

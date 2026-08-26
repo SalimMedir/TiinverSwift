@@ -13,7 +13,8 @@ V5-F-049, V5-F-051, V5-F-054, V5-F-055 (partiel, écart architectural documenté
 V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071, V5-F-073 (DUPLICATE de V5-F-020), V5-F-074,
 V5-F-079, V5-F-083, V5-F-086, V5-F-090, V5-F-096, V5-F-099]. **BACKLOG P2 ENTIÈREMENT CLOS
 (31/31)**. Backlog P3 (21 findings) EN COURS [3/21 clos : V5-F-003 (DUPLICATE de V5-F-050),
-V5-F-011, V5-F-012, V5-F-015 (DUPLICATE de V5-F-065), V5-F-017]. Prochain : V5-F-027.**
+V5-F-011, V5-F-012, V5-F-015 (DUPLICATE de V5-F-065), V5-F-017, V5-F-027, V5-F-028]. Prochain :
+V5-F-041.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2764,6 +2765,46 @@ membre dès `lucrative==1`, juste après l'en-tête. Seul appelant (`ChatView.sw
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/GroupDetailView.swift`,
 `Sources/TiinverSwift/Messagerie/ChatView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P3-6 : V5-F-027 (Notifications de réponse à un commentaire non différenciées)
+
+**Commit** : `4d9a325` — poussé sur `main` (`f587b15..4d9a325`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `CommentVH.bind` (`AdapterNoti.java:301-327`) distingue 3 textes pour une
+notification `verb=="comment"` selon `noti.type` : commentaire normal, réponse à un commentaire,
+réponse à la publication. `NotificationsListView.bodyText` ne testait jamais `noti.type` (pourtant
+déjà décodé/persisté, `NotificationCenterViewModel.swift:98`) — toute notification-commentaire
+affichait le même texte générique.
+
+**Correction appliquée** : `switch noti.type` imbriqué dans le `case "comment"`, 3 branches
+`reply`/`reply_on_my_post`/défaut avec le texte EXACT Android.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/NotificationsListView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P3-7 : V5-F-028 (Boutons d'action rapide "Quitter"/"Répondre" absents)
+
+**Commit** : `60000ec` — poussé sur `main` (`4d9a325..60000ec`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `NotificationUtils.show()` (`:359-360`) ajoute systématiquement 2 `addAction`
+("Quitter"/"Répondre") sur toute notification d'activité, tous deux liés au MÊME `PendingIntent`
+que le tap simple (aucune action réellement distincte). iOS n'enregistrait aucune
+`UNNotificationCategory`/action nulle part dans le projet.
+
+**Correction appliquée** : `LocalNotificationBuilder.registerNotificationCategories()` enregistre
+la catégorie "activity" avec 2 `UNNotificationAction` `.foreground`, appelée une fois au lancement.
+Aucun changement requis au handler `didReceive` (déjà routé par `categoryIdentifier` seul) — fidèle
+au même comportement pour les 2 actions ET le tap simple.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/LocalNotificationBuilder.swift`,
+`Sources/TiinverSwift/App/AppDelegate.swift`.
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.

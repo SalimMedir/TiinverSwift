@@ -1232,6 +1232,10 @@ CAUSE : Le champ `type` est décodé et persisté (Core Data) mais son utilisati
 IMPACT : Perte d'une nuance d'information (réponse à un commentaire vs commentaire direct vs réponse à la publication) visible côté Android, sans conséquence fonctionnelle bloquante.
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Ajouter la même distinction par `noti.type` dans `bodyText` (case "comment") qu'Android (CommentVH.bind).
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-6). RECOMMANDATION appliquée telle quelle :
+`switch noti.type` imbriqué dans le `case "comment"`, 3 branches `reply`/`reply_on_my_post`/défaut
+avec le texte EXACT Android. Fichier modifié : `Notifications/NotificationsListView.swift`.
+Commit `4d9a325`, poussé sur `main`. CI non déclenchée par cette session.
 ```
 
 ```
@@ -1248,6 +1252,14 @@ CAUSE : Absence de portage de la présentation visuelle des actions de notificat
 IMPACT : Différence purement visuelle dans le tiroir de notifications système ; impact fonctionnel nul puisque les deux actions Android sont déjà des no-op fonctionnels (même PendingIntent que le tap).
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Impact faible — à ne traiter qu'après les gaps fonctionnels ci-dessus ; si traité, enregistrer une `UNNotificationCategory` avec deux `UNNotificationAction` factices reproduisant le même no-op.
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-7). RECOMMANDATION appliquée telle quelle :
+`LocalNotificationBuilder.registerNotificationCategories()` enregistre la catégorie "activity" avec
+2 `UNNotificationAction` `.foreground` ("Quitter"/"Répondre", libellés Android exacts), appelée une
+fois au lancement (`AppDelegate`). Aucun changement requis au handler `didReceive` (déjà routé par
+`categoryIdentifier` seul, pas par `actionIdentifier`) — fidèle au même `PendingIntent` pour les 2
+actions ET le tap simple côté Android. Fichiers modifiés :
+`Notifications/LocalNotificationBuilder.swift`, `App/AppDelegate.swift`. Commit `60000ec`, poussé
+sur `main`. CI non déclenchée par cette session.
 ```
 
 ```

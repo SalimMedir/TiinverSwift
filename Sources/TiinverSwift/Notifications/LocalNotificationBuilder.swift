@@ -36,6 +36,11 @@ enum LocalNotificationBuilder {
     static func activityNotificationContent(_ payload: ActivityPayload) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = payload.title
+        // Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-021, Phase B P1-11) — permet à
+        // `AppDelegate.userNotificationCenter(_:didReceive:)` de distinguer une notification
+        // d'activité (routée vers le centre de notifications) d'un message de chat (routé vers
+        // l'accueil), là où toutes les notifications routaient à tort vers le centre.
+        content.categoryIdentifier = "activity"
 
         switch payload.verb {
         case "like":
@@ -85,6 +90,9 @@ enum LocalNotificationBuilder {
     static func chatMessageNotificationContent(_ payload: ChatMessagePayload) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = payload.title
+        // Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-021, Phase B P1-11) — voir
+        // `activityNotificationContent` ci-dessus pour le contexte complet.
+        content.categoryIdentifier = "chat_message"
 
         switch payload.object {
         case "text":

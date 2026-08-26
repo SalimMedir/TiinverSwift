@@ -148,15 +148,31 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     /// (`Intent` vers `ActivityMsg`/`HomeActivity`/...) — ici, publication sur `DeepLinkCenter`
     /// (module 5) plutôt qu'un `Intent` direct, `HomeShellView` observant la destination pour
     /// ouvrir le bon écran. Seules les catégories déjà portées (`missed_call` exclu, VoIP/CallKit
-    /// = module 12) sont routées ; tout le reste ouvre le centre de notifications par défaut,
-    /// comme le fait `activityMap.get("MainActivity")` par défaut côté Android.
+    /// = module 12) sont routées.
+    ///
+    /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-021, Phase B P1-11)** — le
+    /// commentaire précédent affirmait à tort que router SYSTÉMATIQUEMENT vers `.notifications`
+    /// reproduisait `activityMap.get("MainActivity")` par défaut côté Android — mais
+    /// `activityMap.get("MainActivity")` mappe vers `SplashActivity` (écran d'accueil), PAS vers un
+    /// centre de notifications (confirmé : `back_sync/NotificationUtils.java:290-338`/`:103-153`
+    /// construisent TOUJOURS `destination = "MainActivity"`, pour une notification d'activité
+    /// COMME pour un message de chat). `categoryIdentifier` (`LocalNotificationBuilder.
+    /// activityNotificationContent`/`chatMessageNotificationContent`) distingue maintenant les deux
+    /// familles : seule une notification d'activité (like/comment/follow/etc.) ouvre le centre de
+    /// notifications ; un message de chat, un appel manqué, ou toute catégorie inconnue ouvre
+    /// l'accueil, fidèle à Android.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         Task { @MainActor in
-            DeepLinkCenter.shared.route(.notifications)
+            switch response.notification.request.content.categoryIdentifier {
+            case "activity":
+                DeepLinkCenter.shared.route(.notifications)
+            default:
+                DeepLinkCenter.shared.route(.home)
+            }
             completionHandler()
         }
     }

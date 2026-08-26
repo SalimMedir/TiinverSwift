@@ -10,7 +10,8 @@ lot par lot complet. **Backlog P2 (31 findings) EN COURS [20/31 clos, dans l'ord
 V5-F-002, V5-F-004, V5-F-008, V5-F-014, V5-F-024, V5-F-025, V5-F-026
 (IOS_INTENTIONAL_DIFFERENCE), V5-F-030, V5-F-035, V5-F-038, V5-F-039, V5-F-040, V5-F-048,
 V5-F-049, V5-F-051, V5-F-054, V5-F-055 (partiel, écart architectural documenté), V5-F-059,
-V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071]. Prochain : V5-F-073. Puis 21 P3.**
+V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071, V5-F-073 (DUPLICATE de V5-F-020), V5-F-074].
+Prochain : V5-F-079. Puis 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2496,6 +2497,38 @@ enregistré nulle part dans ce projet (grep exhaustif) — les 3 `EVENT_RECONNEC
 Android n'ont pas d'équivalent à nettoyer côté iOS.
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Realtime/TiinverSocket.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P2-24 : V5-F-073 (DUPLICATE de V5-F-020)
+
+**Aucun code modifié, aucun commit.** Vérifié par lecture directe : `ChatViewModel.loadMore()`
+appelle déjà `loadOlderGroupMessagesFromServer()` → `GroupRepository.fetchOlderGroupMessages` dès
+que la page Core Data locale est vide — exactement la RECOMMANDATION de ce finding, déjà
+implémentée sous V5-F-020 (Lot P1-10, 2026-08-25). Trouvé indépendamment par 2 agents d'audit
+différents (Phase A originale + contre-audit Phase A.2) sans se recouper.
+
+## 2026-08-26 — Phase B V5 — Lot P2-25 : V5-F-074 (Aucun aperçu optimiste de l'avatar pendant l'upload)
+
+**Commit** : `d9a966a` — poussé sur `main` (`21a54d2..d9a966a`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `AddPerfilFoto.onFileReady`/`SettingGroupMessageFragmant.onUriResult` affichent
+le bitmap local IMMÉDIATEMENT, avant même le début de l'upload réseau. iOS convertissait l'image
+choisie directement en `Data` JPEG réseau sans jamais l'assigner à l'affichage local ; comme
+`CDNAsyncImage` ne recharge que sur changement d'URL (`.task(id: url)`), le placeholder
+`isUploadingPhoto` restait inatteignable tant que l'ancien avatar CDN était déjà chargé (cas de la
+quasi-totalité des utilisateurs) — aucun retour visuel (ni nouvelle photo, ni spinner) pendant tout
+l'upload.
+
+**Correction appliquée** : `pendingAvatarImage`/`pendingGroupAvatarImage` peuplés AVANT l'appel
+d'upload, affichés en priorité par `avatar(_:)`/`groupAvatar` tant que non-nil, effacés à la fin de
+l'upload (succès ou échec). Portée étendue au-delà du seul `ProfileView` cité par l'audit :
+`GroupDetailView.groupAvatar` avait le même gap, corrigé de façon symétrique.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Profile/ProfileView.swift`,
+`Sources/TiinverSwift/Messagerie/GroupDetailView.swift`.
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.

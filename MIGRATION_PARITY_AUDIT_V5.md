@@ -2818,6 +2818,14 @@ IMPACT : Dans une conversation de groupe, dès que l'utilisateur scrolle au-del�
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter dans `ChatViewModel.loadMore()` (ou dans `MessageRepository`/un nouveau service réseau dédié) un repli vers l'endpoint REST `/group/{groupId}/messages?lastDate=...&limit=...` quand `target.isGroup` et que la page locale est vide, insérer les résultats via `MessageRepository.addGroupMessage` (déjà existant) puis les injecter dans `items`, à l'image de `loadMoreFromServeur`/`prepareOldGroupMessage` côté Android.
 CONTRE-AUDIT : trouvé par l'agent "Chat — chaîne de messages (UI, types, pagination, cache)" (Phase A.2, 2026-08-24)
+STATUT : DUPLICATE de V5-F-020 (2026-08-26, Lot P2-24) — trouvé indépendamment par 2 agents
+d'audit différents (Phase A originale ET contre-audit Phase A.2) sans se recouper. Vérifié par
+lecture directe : `ChatViewModel.loadMore()` (Sources/TiinverSwift/Messagerie/ChatViewModel.swift:
+224-238) appelle déjà `loadOlderGroupMessagesFromServer()` dès que la page Core Data locale est
+vide, laquelle appelle `GroupRepository.fetchOlderGroupMessages(groupId:lastDate:limit:)` — EXACT
+équivalent de la RECOMMANDATION ci-dessus, déjà implémenté et poussé sous V5-F-020 (Lot P1-10,
+2026-08-25, commit antérieur à cette session). Aucun code modifié, aucune régression : le repli
+serveur pour l'historique de groupe fonctionne déjà.
 ```
 
 ```
@@ -2835,6 +2843,14 @@ IMPACT : Sur un réseau lent ou une image volumineuse, l'utilisateur qui vient d
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Convertir la `Data` sélectionnée en `UIImage` et l'assigner à un état local (`@State private var pendingAvatarImage: UIImage?`) affiché en overlay/remplacement PENDANT `isUploadingPhoto`, avant même l'appel réseau — reproduit l'aperçu optimiste immédiat d'Android sans dépendre du changement d'URL CDN.
 CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Avatar" (Phase A.2, 2026-08-24)
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-25). RECOMMANDATION appliquée telle quelle,
+étendue au groupe (même gap confirmé sur `GroupDetailView.groupAvatar`, pas seulement `ProfileView`
+citée par l'audit) : `pendingAvatarImage`/`pendingGroupAvatarImage` peuplés dans
+`.onChange(of: avatarPickerItem)`/`.onChange(of: photoPickerItem)` AVANT l'appel d'upload,
+affichés en priorité par `avatar(_:)`/`groupAvatar` tant que non-nil, effacés à la fin de l'upload
+(succès ou échec). Fichiers modifiés : `Profile/ProfileView.swift`,
+`Messagerie/GroupDetailView.swift`. Commit `d9a966a`, poussé sur `main`. CI non déclenchée par
+cette session.
 ```
 
 ```

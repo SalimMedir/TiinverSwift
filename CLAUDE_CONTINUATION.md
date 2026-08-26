@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [20/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [22/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -65,7 +65,12 @@ inconditionnellement, câblé vers l'ouverture du panneau de propriétés — mo
 porté côté iOS, seul comportement Android atteignable) ; Lot P1-20 V5-F-046 BUILD_VALIDATED
 (réponses imbriquées aux commentaires jamais chargées/affichées, `CommentRepository.replies`
 existait déjà mais 0 appelant, `repliesSection(for:)`/`commentLine(_:)` ajoutés dans
-`CommentsView`)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
+`CommentsView`) ; Lot P1-21 V5-F-047 BUILD_VALIDATED (commentaire-cadeau rendu cassé, `Comment`
+supposait des champs serveur pré-résolus jamais confirmés, résolution basculée côté client via
+`GiftCatalog`) ; Lot P1-22 V5-F-050 BUILD_VALIDATED (alerte d'échec de lien profond invisible
+avant authentification, même `.alert` que `HomeShellView` ajoutée sur `RootRouterView`,
+`routeToGroup` ne retourne plus silencieusement si `myId == nil`)]**. Voir section "Cycle V5" plus
+bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -469,38 +474,71 @@ nouvelle `repliesSection(for:)` ("Afficher N commentaire(s)") câblée sur `load
 `ff728a9`, CI verte (run `32925870270`)** — `BUILD_VALIDATED`. Détail des 20 lots dans
 `PROGRESS_V5.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-047** (Commentaires —
-cadeaux : affichage d'un commentaire-cadeau reçu rendu CASSÉ (ID technique brut au lieu du badge
-emoji). Android [`models/activity/comments/CommentModel.java:300-330`, commentaire explicite dans
-le code : "Les champs existants suffisent : comments → stocke gift_thumb_name, object → stocke
-gift" ; `resolveGift(Context)` résout LOCALEMENT emoji/nom/prix depuis `commentText` via
-`GiftCatalogHelper`, ne lit JAMAIS `getGiftEmoji()`/`getGiftName()`/`getGiftPrice()` pour
-l'affichage ; `CommentAdapter.java:197-198,276-281` `bindGiftView` appelle
-`elts.resolveGift(context)`, PAS les getters directs ; `GiftCatalogHelper.java`, catalogue
-statique complet emoji/prix/nom localisé] — le serveur n'envoie, pour un commentaire-cadeau, QUE
-`object="gift"` et `comments="gift_thumb_name"` [l'identifiant technique] — AUCUNE preuve que le
-backend envoie des champs séparés `giftEmoji`/`giftName`/`giftPrice`/`hasGift` ; Android résout
-ENTIÈREMENT l'affichage côté CLIENT via `GiftCatalogHelper`, à partir de ces 2 seuls champs. iOS
-[`Discover/CommentModels.swift:26-33`, `giftEmoji`/`giftName`/`giftPrice`/`hasGift` décodés
-directement depuis des clés JSON SUPPOSÉES du serveur, AUCUN champ `object` décodé ;
-`Discover/CommentsView.swift:79-82`, `if comment.hasGift == true, let emoji = comment.giftEmoji
-{ Label(...) }` sinon texte brut ; `Models/GiftCatalog.swift:3-8`, commentaire de tête du fichier
-LUI-MÊME : "CommentModel.resolveGift (commentaires, module 18, pas encore atteint)"] — Comment ne
-décode aucun champ `object`, s'appuie entièrement sur des clés qu'Android démontre ne JAMAIS être
-envoyées par le serveur pour cet endroit [preuve inverse : Android calcule tout en local exprès].
-Résultat probable : un commentaire-cadeau reçu s'affiche comme texte brut "gift_thumb_name" [ID
-technique non résolu] au lieu d'un badge "👍 ... 5". Cause : le port iOS suppose que le serveur
-envoie des champs de cadeau pré-résolus, alors qu'Android démontre que la résolution est
-intégralement client-side via un catalogue statique JAMAIS branché côté iOS pour ce module. Plan :
-ajouter un champ `object` à `Comment`, détecter `object == "gift"`, résoudre l'affichage via
-`GiftCatalog.resolve(comment.commentText)` [déjà porté et disponible, déjà utilisé pour le chat]
-plutôt que de dépendre des champs serveur non confirmés — lire `Models/GiftCatalog.swift` en
-entier pour l'API exacte de `resolve(_:)`/`emoji(for:)` avant de coder, et vérifier tous les sites
-consommant `comment.hasGift`/`giftEmoji`/`giftName`/`giftPrice` avant de les remplacer), puis
-continuer AUTOMATIQUEMENT V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063, V5-F-067,
-V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089,
-V5-F-095, V5-F-097, V5-F-098 (19 P1 restants après V5-F-047, dans l'ordre exact du document), puis
-tous les P2 (31), P3 (21), SANS s'arrêter
+**Lot P1-21 traité (V5-F-047)** — Commentaires/cadeaux, affichage d'un commentaire-cadeau reçu
+rendu CASSÉ (ID technique brut au lieu du badge emoji). Vérifié `CommentModel.java:300-330`
+(commentaire de code explicite : "comments → gift_thumb_name, object → gift") et
+`resolveGift(Context)` résolvant ENTIÈREMENT côté client via `GiftCatalogHelper` — AUCUNE preuve
+que le backend envoie des champs `giftEmoji`/`giftName`/`giftPrice`/`hasGift` pré-résolus. `Comment`
+décodait ces 4 champs depuis des clés JSON supposées, aucun champ `object` décodé. Correctif : les
+4 champs retirés, remplacés par `object: String?` + `isGiftComment` ; `CommentsView.commentLine`
+résout via `GiftCatalog.emoji(for:)`/`price(for:)` depuis `commentText` (l'id du cadeau), repli 🎁
+pour un id inconnu (même motif que `LocalNotificationBuilder`, V4-F-071). **Commit `d9d8a8c`, CI
+verte (run `32926668287`)** — `BUILD_VALIDATED`.
+
+**Lot P1-22 traité (V5-F-050)** — Deep links, alerte d'échec de résolution invisible avant
+authentification. Vérifié `ShareActivity.java:264-268,366-376` : `onError` → `showDialog()` monté
+sur `ShareActivity` elle-même, INDÉPENDAMMENT de tout état de connexion. `.onOpenURL` monté sur
+`RootRouterView` (délibérément, pour capter un lien pré-authentification), mais
+`DeepLinkCenter.errorMessage` n'était consommé que dans `HomeShellView` — un lien échouant pendant
+`AuthCoordinatorView` ne montrait RIEN. `routeToGroup` retournait en plus silencieusement (aucune
+erreur) si `myId` était `nil`. Correctif : même `.alert` que `HomeShellView` ajoutée sur
+`RootRouterView` (mutuellement exclusifs, pas de double-affichage) ; `routeToGroup` appelle
+désormais `showError()` sur `myId == nil` au lieu de retourner silencieusement. **Commit
+`65db96d`, CI verte (run `32927383114`)** — `BUILD_VALIDATED`.
+
+**Lot P1-23 traité (V5-F-057)** — Animems/Performance, `CADisplayLink` de l'éditeur jamais
+invalidé si l'écran est quitté pendant la lecture. Vérifié `MemesFragment.java:144-176` :
+`onPause`/`onStop`/`onDestroyView` appellent TOUS `pause()` + `stopView()`. `AnimemesEditorState`
+n'avait aucun `deinit`, `AnimemesEditorView` aucun `.onDisappear` — le `CADisplayLink` n'était
+arrêté que par un second tap explicite sur pause. `RunLoop.main` retient fortement le
+`CADisplayLink`/son target `DisplayLinkProxy` INDÉPENDAMMENT de `AnimationEngine` (capturé `[weak
+self]`), donc quitter l'écran pendant `isPlaying == true` laissait un timer actif indéfiniment
+(jusqu'à 60-120Hz), un par session play-puis-sortie-sans-pause — fuite non bornée. Correctif :
+`.onDisappear { state.engine.stop() }` sur la vue racine de l'éditeur (port direct de
+`onPause`/`onStop`/`onDestroyView`, déterministe) + `deinit` sur `AnimationEngine` invalidant le
+lien comme filet de sécurité supplémentaire. **Commit `7bbca19`, CI dispatchée** (poll en cours).
+
+**PROCHAINE TÂCHE EXACTE** : Une fois V5-F-057 confirmé vert et documenté (STATUT/Lot déjà
+rédigés dans `AUDIT_V5.md`/`PROGRESS_V5.md`, cette section à mettre à jour avec le commit/run
+final si pas encore fait), enchaîner **automatiquement** sur **V5-F-058** (Performance/mémoire —
+téléchargement et pré-cache vidéo : vidéo ENTIÈRE chargée en RAM avant écriture disque
+(téléchargement Profil + pré-cache Feed), risque réel de jetsam/crash mémoire sur un simple
+défilement. Android [`Activity/service/CacheWorker.java:66-69,231-234`,
+`CacheDataSource.Factory`+`CacheWriter(dataSource, dataSpec, buffer, ...)` — écrit en FLUX, par
+blocs bornés, directement dans `SimpleCache` sur disque ; téléchargement utilisateur via
+`android.app.DownloadManager`, streaming disque système, JAMAIS chargé en tas Java] — le pré-cache
+ExoPlayer ET le téléchargement utilisateur écrivent TOUS DEUX la vidéo progressivement sur disque
+via un buffer de taille bornée, sans jamais retenir le fichier complet en mémoire, quelle que soit
+sa durée/poids. iOS [`Feed/FeedMediaDownloader.swift:36-45`, `download`, via
+`URLSession.shared.data(for:)` ; `Media/VideoCacheManager.swift:53-71`, `precache`, via
+`URLSession.shared.dataTask`] — `FeedMediaDownloader.download` charge la TOTALITÉ du fichier vidéo
+en mémoire comme un `Data` unique avant `data.write(to:)` ; `VideoCacheManager.precache` [appelé
+automatiquement en arrière-plan par `VideoPlayerManager.preload` pour chaque vidéo de la fenêtre
+`currentIndex±2` PENDANT le défilement du Feed] fait de même. Cause : `URLSession.shared.data(for:)`/
+`dataTask` [API haut niveau] chargent SYSTÉMATIQUEMENT tout le corps HTTP en RAM, contrairement à
+`URLSession.shared.download(for:)` [téléchargement en flux direct vers un fichier temporaire]
+qui aurait été l'équivalent réel. Impact : pour une vidéo longue/haute qualité [pré-cache cible
+spécifiquement les URLs 720p], ce chargement peut atteindre plusieurs centaines de Mo D'UN COUP —
+pendant un simple scroll du Feed [precache SILENCIEUX, sans action utilisateur visible], cumulé
+avec la vidéo en lecture et d'autres médias déjà en mémoire — scénario d'usage NORMAL, pas un cas
+limite. Plan : remplacer `URLSession.shared.data(for:)`/`dataTask` par
+`URLSession.shared.download(for:)` [ou `URLSessionDownloadTask`] dans les deux fonctions, qui
+écrit directement sur disque par blocs sans charger le fichier complet en RAM, fidèle au streaming
+disque Android — lire `FeedMediaDownloader.swift` et `VideoCacheManager.swift` en entier avant de
+coder pour la structure exacte des appelants/callbacks), puis continuer AUTOMATIQUEMENT V5-F-060,
+V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078,
+V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (16 P1 restants après V5-F-058, dans
+l'ordre exact du document), puis tous les P2 (31), P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →
 State/ViewModel → Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale

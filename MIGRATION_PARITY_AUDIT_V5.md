@@ -1660,6 +1660,28 @@ CAUSE : Le port iOS suppose que le serveur envoie des champs de cadeau pré-rés
 IMPACT : Tout commentaire-cadeau visible dans le flux (envoyé par un utilisateur Android) s'affiche de façon cassée/illisible pour l'utilisateur iOS, au lieu du badge emoji + nom localisé attendu — fonctionnalité explicitement dans le périmètre de cet audit ("cadeaux en commentaire").
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Ajouter un champ object à Comment, détecter object == "gift", et résoudre l'affichage via GiftCatalog.resolve(comment.commentText) (déjà porté et disponible) plutôt que de dépendre de champs serveur non confirmés.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-21) — Vérifié directement :
+`CommentModel.java:300-330` confirme le commentaire de code explicite ("Les champs existants
+suffisent : comments → gift_thumb_name, object → gift") et `resolveGift(Context)` résolvant
+ENTIÈREMENT côté client via `GiftCatalogHelper` ; `CommentAdapter.java:197-198,276-281`
+`bindGiftView` confirmé appeler `resolveGift`, jamais des getters gift directs. Correctif : les 4
+champs `giftEmoji`/`giftName`/`giftPrice`/`hasGift` (supposant un serveur pré-résolu jamais
+confirmé) retirés de `Comment`, remplacés par `object: String?` + `isGiftComment` calculé ;
+`CommentsView.commentLine` résout désormais l'affichage via `GiftCatalog.emoji(for:)`/`price(for:)`
+à partir de `commentText` (l'id du cadeau) quand `isGiftComment`, avec repli 🎁 pour un id inconnu
+(même motif que `LocalNotificationBuilder`, V4-F-071) plutôt qu'un texte brut. Vérifié par grep
+qu'aucun autre site du projet ne consommait les 4 champs retirés.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/CommentModels.swift`,
+`Sources/TiinverSwift/Discover/CommentsView.swift`.
+
+**Résultat CI** : commit `d9d8a8c`, push confirmé (`1087db0..d9d8a8c main -> main`), run
+`32926668287` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : afficher un commentaire-cadeau reçu (envoyé
+depuis un compte Android), confirmer le rendu du badge emoji + prix au lieu de l'id technique brut.
 ```
 
 ```
@@ -1708,6 +1730,26 @@ CAUSE : L'alerte d'erreur des liens profonds n'est câblée que sur `HomeShellVi
 IMPACT : Un utilisateur qui ouvre un lien partagé (tiinver://user/xxx, tiinver://post/xxx, tiinver://group/xxx) via un lien invalide ou une coupure réseau AVANT de s'être connecté ne voit RIEN se passer — pas de message, pas de redirection — l'app semble ignorer le lien. Pour les liens de groupe spécifiquement, aucune erreur n'est même levée en interne (retour silencieux avant tout appel réseau).
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Monter un `.alert` consommant `DeepLinkCenter.shared.errorMessage` également sur `RootRouterView`/`AuthCoordinatorView` (pas seulement `HomeShellView`), et faire appeler `DeepLinkCenter.shared.showError()` par `routeToGroup` aussi dans le cas `myId == nil`, fidèle au comportement Android qui affiche toujours `errorLoad` sur échec, connecté ou non.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-22) — Vérifié directement :
+`ShareActivity.java:264-268,366-376` confirme `onError` → `showDialog()` (`errorLoad`) monté sur
+`ShareActivity` elle-même, INDÉPENDAMMENT de tout état de connexion. Correctif : même `.alert`
+que `HomeShellView` (V3-F-138) ajouté sur `RootRouterView` (`@ObservedObject deepLinks:
+DeepLinkCenter = .shared`) — sans risque de double-affichage puisque `RootRouterView` et
+`HomeShellView` sont mutuellement exclusifs dans la hiérarchie. `routeToGroup` appelle désormais
+`DeepLinkCenter.shared.showError()` au lieu de retourner silencieusement quand `myId == nil` —
+l'endpoint exigeant réellement `myId`, l'erreur est affichée directement plutôt que de tenter un
+appel réseau voué à l'échec.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Navigation/RootRouterView.swift`,
+`Sources/TiinverSwift/Navigation/DeepLinkRouter.swift`.
+
+**Résultat CI** : commit `65db96d`, push confirmé (`d9d8a8c..65db96d main -> main`), run
+`32927383114` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : ouvrir un lien profond invalide (user/post/groupe
+inexistant) AVANT connexion, confirmer l'affichage de l'alerte d'erreur sur l'écran d'authentification.
 ```
 
 ```

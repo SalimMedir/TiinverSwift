@@ -5,11 +5,11 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [20/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+temps). Backlog P1 (40 findings) EN COURS [22/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
 V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022,
 V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037 (IOS_INTENTIONAL_DIFFERENCE),
-V5-F-043, V5-F-046], démarré automatiquement à V5-F-001, dans l'ordre du document. Prochain :
-V5-F-047. Puis 31 P2, 21 P3.**
+V5-F-043, V5-F-046, V5-F-047, V5-F-050], démarré automatiquement à V5-F-001, dans l'ordre du
+document. Prochain : V5-F-057. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -1116,6 +1116,75 @@ rendus imbriqués (indentation 40pt, alignée sous le texte du parent) via `comm
 **Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
 réel requis : commentaire avec réponses existantes, taper "Afficher N commentaires", confirmer
 l'affichage correct.
+
+## 2026-08-25 — Phase B V5 — Lot P1-21 : V5-F-047 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `models/activity/comments/CommentModel.java:300-330` — commentaire de code explicite
+: "Les champs existants suffisent : comments → stocke gift_thumb_name, object → stocke gift" ;
+`resolveGift(Context)` résout LOCALEMENT emoji/nom/prix depuis `commentText` via
+`GiftCatalogHelper`, ne lit JAMAIS `getGiftEmoji()`/`getGiftName()`/`getGiftPrice()`.
+`CommentAdapter.java:197-198,276-281` `bindGiftView` appelle `elts.resolveGift(context)`, pas les
+getters directs. Le serveur n'envoie, pour un commentaire-cadeau, QUE `object="gift"` et
+`comments="gift_thumb_name"` — aucune preuve de champs séparés pré-résolus envoyés par le backend.
+
+**iOS avant correctif** : `Comment` décodait `giftEmoji`/`giftName`/`giftPrice`/`hasGift`
+directement depuis des clés JSON supposées du serveur, AUCUN champ `object` décodé.
+`GiftCatalog.swift` documentait lui-même explicitement que son intégration au module Commentaires
+n'était "pas encore" faite.
+
+### Correctif appliqué
+
+Cause : le port iOS suppose que le serveur envoie des champs de cadeau pré-résolus, contredit par
+la preuve Android (résolution intégralement client-side). Correctif : les 4 champs retirés de
+`Comment`, remplacés par `object: String?` + `isGiftComment` calculé.
+`CommentsView.commentLine` résout l'affichage via `GiftCatalog.emoji(for:)`/`price(for:)` à
+partir de `commentText` (l'id du cadeau) quand `isGiftComment`, avec repli 🎁 pour un id inconnu
+(même motif que `LocalNotificationBuilder`, V4-F-071). Vérifié par grep qu'aucun autre site ne
+consommait les 4 champs retirés.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/CommentModels.swift`,
+`Sources/TiinverSwift/Discover/CommentsView.swift`.
+
+**Résultat CI** : commit `d9d8a8c`, push confirmé (`1087db0..d9d8a8c main -> main`), run
+`32926668287` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : commentaire-cadeau reçu, confirmer le badge emoji + prix au lieu d'un id brut.
+
+## 2026-08-25 — Phase B V5 — Lot P1-22 : V5-F-050 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `partage/ShareActivity.java:264-268,366-376` — `onError` → `showDialog()`
+(`R.string.errorLoad`), monté sur `ShareActivity` elle-même, INDÉPENDAMMENT de tout état de
+connexion — aucune logique de redirection vers un login avant de traiter le lien.
+
+**iOS avant correctif** : `.onOpenURL` monté sur `RootRouterView` (délibérément, pour capter un
+lien reçu AVANT authentification), mais `DeepLinkCenter.errorMessage` n'était consommé que dans
+`HomeShellView`. Un lien échouant à se résoudre pendant `AuthCoordinatorView` (non connecté) ne
+montrait RIEN à l'écran. `routeToGroup` retournait en plus silencieusement (aucune erreur) si
+`myId` était `nil`.
+
+### Correctif appliqué
+
+Cause : l'alerte d'erreur n'était câblée que sur `HomeShellView`, incohérent avec le placement
+délibéré de `.onOpenURL` sur `RootRouterView` pour le cas pré-authentification. Correctif : même
+`.alert("Erreur", ...)` que `HomeShellView` (V3-F-138) ajouté sur `RootRouterView`
+(`@ObservedObject deepLinks: DeepLinkCenter = .shared`) — sans risque de double-affichage,
+`RootRouterView`/`HomeShellView` mutuellement exclusifs dans la hiérarchie. `routeToGroup` appelle
+désormais `showError()` au lieu de retourner silencieusement quand `myId == nil` (l'endpoint
+exige réellement `myId`, donc affichage direct de l'erreur plutôt qu'un appel voué à l'échec).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Navigation/RootRouterView.swift`,
+`Sources/TiinverSwift/Navigation/DeepLinkRouter.swift`.
+
+**Résultat CI** : commit `65db96d`, push confirmé (`d9d8a8c..65db96d main -> main`), run
+`32927383114` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : lien profond invalide avant connexion, confirmer l'alerte visible.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

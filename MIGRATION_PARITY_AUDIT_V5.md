@@ -1338,6 +1338,37 @@ CAUSE : Le conteneur paintLayers a été porté fidèlement dans AnimationCompos
 IMPACT : Perte de données silencieuse et surprenante lors de toute session d'édition mélangeant dessin libre et calques (photo de profil, message de discussion, demande de certification, création Animems complète) : l'utilisateur qui pense annuler un trait de pinceau supprime en réalité son dernier sticker/texte/image sans confirmation ni moyen de distinguer les deux cas ; à l'inverse, si aucun trait n'a été dessiné, le bouton reste actif sur iOS et supprime un calque là où Android n'aurait rien fait (bouton même invisible).
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Faire écrire addFreehandDrawing() dans composer.addPaintLayer() (pas addLayer), et faire opérer removeLast() sur composer.paintLayers (composer.setPaintLayers(Array(composer.paintLayers.dropLast()))) avec garde si vide — comme deletePrecedenteDraw() côté Android ; et ne montrer/activer le bouton undo que lorsque l'outil pinceau est actif (miroir de Visibility.show/gone(btn_undo) dans les handlers ic_paint d'AnimemesCompound.java et ImageEditorCompound.java), au lieu de .disabled(state.layers.isEmpty) dans la barre du bas toujours visible.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-17) — Vérifié directement :
+`ImageViewCanvas.java:317-326` (`deletePrecedenteDraw`, opère sur `composer.getPaintLayers()`) et
+`core/AnimationComposer.java:10,46-47` (`paintLayers` ArrayList SÉPARÉE de `layers`) confirmés.
+`drawPath(canvas)` confirmé appelé AVANT la boucle sur `getLayers()` dans `startDraw` — Android
+compose les traits TOUJOURS en arrière-plan, jamais animés (pas de lookup de transform indexé par
+frame pour `paintLayers`, contrairement à `getLayers()`).
+**Écart architectural assumé** : reproduire la séparation de conteneur RÉELLE (+ composition
+toujours en arrière-plan) exigerait de toucher 3 sites de rendu distincts (canevas live, miniature,
+export MP4/image `AnimemesExporter.swift`) — hors périmètre de ce correctif P1 unique. Correctif
+appliqué : nouveau champ `AnimationObjectData.isFreehandStroke` (propagé dans `duplicate()`), posé
+`true` par `addFreehandDrawing` (reste un calque `.bitmap` ordinaire dans `composer.layers`, rendu/
+animation/export inchangés) ; `removeLast()` retrouve et retire spécifiquement le DERNIER calque
+marqué (`lastIndex(where:)`, pas positionnellement le dernier élément du tableau), garde `nil` si
+aucun trait présent (fidèle à la garde `paintLayers` vide d'Android), et efface `selectedId` s'il
+pointait vers le calque retiré. Bouton undo : `.disabled` basculé de `state.layers.isEmpty` vers
+`!state.layers.contains { $0.isFreehandStroke }` — ne s'active plus que s'il existe un trait
+undoable, empêchant la suppression silencieuse du dernier sticker/image/texte en son absence.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimationObjectData.swift`,
+`Sources/TiinverSwift/Animems/AnimemesEditorState.swift`,
+`Sources/TiinverSwift/Animems/AnimemesEditorView.swift`.
+
+**Résultat CI** : commit `1d3ad22`, push confirmé (`34457d9..1d3ad22 main -> main`), run
+`32923611967` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée), écart architectural
+documenté ci-dessus (mode-gated visibility et composition "toujours en arrière-plan" non
+reproduits). PAS `COMPLETE_PARITY_VALIDATED` — test réel requis : sticker → trait de dessin libre
+→ sticker, confirmer qu'undo retire le trait (pas le 2e sticker) ; sans aucun trait dessiné,
+confirmer que le bouton reste désactivé et ne supprime rien.
 ```
 
 ```
@@ -1354,6 +1385,34 @@ CAUSE : Erreur d'analyse d'un cycle d'audit précédent : la lecture s'est arrê
 IMPACT : Deux divergences opposées coexistent : (1) iOS est désormais bien plus lent/coûteux (décodage+ré-encodage complet, risque de perte de qualité par génération) pour le cas le plus courant (trim seul) là où Android termine en <1s par un remux sans perte de qualité ; (2) le résultat n'est PAS non plus identique en précision : Android cale le début sur la keyframe précédente (écart possible jusqu'à ~1-2s selon le GOP, et l'audio est forcé au même point corrigé que la vidéo, donc potentiellement décalé du timestamp demandé par l'utilisateur), alors qu'iOS produit toujours une coupe frame-exacte au timestamp exact demandé. La même action utilisateur produit donc un fichier sensiblement différent (durée, cadrage temporel, temps d'export) selon la plateforme, sans qu'aucune des deux ne soit une reproduction fidèle de l'autre malgré l'intention affichée dans les commentaires de code.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Réintroduire côté iOS un chemin rapide pour le cas 'trim temporel seul, sans transformation géométrique', fidèle au comportement RÉEL d'Android (remux + calage sur la keyframe précédente identique pour vidéo et audio, pas une simple passe AVAssetExportPresetPassthrough sans calage). Si le choix de garder un ré-encodage frame-exact systématique est assumé comme une amélioration délibérée, corriger la documentation en tête de VideoTrimState.swift/MediaTrimView.swift qui affirme à tort qu'il s'agit d'une 'fidélité' à Android.
+
+STATUT : IOS_INTENTIONAL_DIFFERENCE (2026-08-25, Phase B V5, Lot P1-18) — Vérifié directement,
+option 2 de la RECOMMANDATION retenue : `VideoTransformer.java:122-157` (`process()`) confirme
+`needsTransform` ignorant `startMs`/`endMs` — tout trim sans rotation/flip/crop emprunte le fast
+path `SimpleTrimmer.trim()` (`SimpleTrimmer.java:26-66,107-127`) : remux SANS ré-encodage, calé sur
+la keyframe précédente, MÊME point corrigé appliqué à toutes les pistes y compris audio
+(`SimpleTrimmer.java:124`, commentaire de code explicite "c'est le design voulu" — contredisant le
+commentaire de tête de CE MÊME fichier qui affirme à tort que l'audio démarre pile à `startMs`,
+incohérence interne au code source Android lui-même, confirmée par lecture directe). Décision :
+reproduire fidèlement ce fast path exigerait une introspection sync-sample via `AVAssetReader`
+(aucun équivalent direct simple dans AVFoundation) et une synchronisation vidéo/audio manuelle —
+risque réel de désynchronisation si mal implémenté, pour un gain de vitesse sur une opération déjà
+non critique en latence. Le ré-encodage frame-exact existant produit un résultat PLUS précis
+(coupe exacte au timestamp demandé, jamais de contenu avant le point choisi) — CONSERVÉ
+délibérément comme compromis qualité > vitesse. Seule action : correction des commentaires de tête
+de `MediaTrimView.swift`/`VideoTrimState.swift`, qui affirmaient à tort (2 correctifs précédents,
+V3-F-032/V3-F-124) une "fidélité Android" inexacte — corrigés pour documenter honnêtement cet
+écart assumé. **AUCUN changement fonctionnel** — diff strictement limité aux commentaires.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/MediaTrimView.swift`,
+`Sources/TiinverSwift/Media/VideoTrimState.swift` (commentaires uniquement).
+
+**Résultat CI** : commit `df62da7`, push confirmé (`1d3ad22..df62da7 main -> main`), run
+`32924295725` → **`conclusion: success`**.
+
+**Statut honnête** : `IOS_INTENTIONAL_DIFFERENCE` — divergence délibérée et justifiée (précision
+> vitesse), documentation corrigée pour refléter ce choix honnêtement. Aucun test réel requis
+(aucun changement de comportement).
 ```
 
 ```

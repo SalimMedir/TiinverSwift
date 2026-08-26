@@ -5,10 +5,10 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [16/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+temps). Backlog P1 (40 findings) EN COURS [18/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
 V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022,
-V5-F-023, V5-F-029, V5-F-033, V5-F-034], démarré automatiquement à V5-F-001, dans l'ordre du
-document. Prochain : V5-F-036. Puis 31 P2, 21 P3.**
+V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037 (IOS_INTENTIONAL_DIFFERENCE)], démarré
+automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-043. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -953,6 +953,98 @@ fiable — non tenté ce tour, pas deviné.
 **Statut honnête après correction** : `BUILD_VALIDATED`, portée réduite documentée (pas le
 portage complet). PAS `COMPLETE_PARITY_VALIDATED` — test réel requis : choisir une vidéo depuis la
 galerie Animems, confirmer l'alerte au lieu d'un échec silencieux.
+
+## 2026-08-25 — Phase B V5 — Lot P1-17 : V5-F-036 (BUILD_VALIDATED, écart architectural documenté)
+
+### Vérification
+
+**Android** : `ImageViewCanvas.java:317-326` (`deletePrecedenteDraw`, opère sur
+`composer.getPaintLayers()`, garde vide) ; `core/AnimationComposer.java:10,46-47` (`paintLayers`
+ArrayList SÉPARÉE de `layers`) ; câblage bouton `ImageEditorCompound.java:353,458-460`/
+`AnimemesCompound.java:341,460,1939` ; visibilité limitée au mode peinture
+(`ImageEditorCompound.java:565` show/`:590,761` gone, même pattern `AnimemesCompound.java:
+2085/2099/1809`) ; traits ajoutés via `composer.addPaintLayer()` (`ImageViewCanvas.java:
+1795-1798,1022-1024`), JAMAIS dans `getLayers()`. `startDraw()` : `drawPath(canvas)` appelé AVANT
+la boucle sur `getLayers()` — traits toujours composités en arrière-plan, JAMAIS animés (pas de
+lookup transform indexé par frame pour `paintLayers`).
+
+**iOS avant correctif** : `AnimationComposer.swift` — `paintLayers`/`addPaintLayer()` portés
+fidèlement mais JAMAIS appelés/lus ailleurs dans tout le module (vérifié exhaustivement).
+`AnimemesEditorState.removeLast()` : commentaire de tête affirmant À TORT la fidélité, faisait
+`composer.setLayers(Array(composer.layers.dropLast()))` — retire le DERNIER calque TOUTES
+catégories confondues. `addFreehandDrawing` ajoute le trait comme calque `.bitmap` ORDINAIRE via
+`composer.addLayer()`. Bouton undo toujours visible (`bottomToolbar`, aucune condition de mode),
+`.disabled(state.layers.isEmpty)`.
+
+### Correctif appliqué
+
+**Écart architectural assumé, documenté explicitement** : reproduire la séparation de conteneur
+RÉELLE + composition "toujours en arrière-plan" exigerait de toucher 3 sites de rendu distincts
+(canevas live `AnimemesEditorView.swift` ~485-499, miniature/preview ~644-655, export MP4/image
+`AnimemesExporter.swift` ~292-312) — hors périmètre d'un correctif P1 unique, risque réel de
+rendre des traits invisibles dans un contexte oublié si mal exécuté. Correctif appliqué à la
+place : nouveau champ `AnimationObjectData.isFreehandStroke: Bool` (propagé dans `duplicate()`),
+posé `true` par `addFreehandDrawing` — reste un calque `.bitmap` ordinaire dans `composer.layers`
+(rendu/animation/export inchangés, zéro risque sur ces chemins). `removeLast()` retrouve et
+retire spécifiquement le DERNIER calque marqué via `lastIndex(where:)` (pas positionnellement le
+dernier élément du tableau, laissant tout le reste — stickers/images/texte ajoutés APRÈS le
+trait — intact), garde `nil` si aucun trait présent (fidèle à la garde `paintLayers` vide
+Android), efface `selectedId` s'il pointait vers le calque retiré (sécurité ajoutée, cohérente
+avec `deleteSelected()`). Bouton undo : `.disabled` basculé vers
+`!state.layers.contains { $0.isFreehandStroke }` — ne s'active plus que s'il existe un trait
+undoable, empêchant la suppression silencieuse du dernier sticker/image/texte en son absence
+(fidèle au comportement OBSERVABLE d'Android, sans reproduire le mode-gating de visibilité).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimationObjectData.swift`,
+`Sources/TiinverSwift/Animems/AnimemesEditorState.swift`,
+`Sources/TiinverSwift/Animems/AnimemesEditorView.swift`.
+
+**Résultat CI** : commit `1d3ad22`, push confirmé (`34457d9..1d3ad22 main -> main`), run
+`32923611967` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`, écart architectural documenté (mode-gated
+visibility et composition "toujours en arrière-plan" non reproduits). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : sticker → trait → sticker, confirmer qu'undo
+retire le trait ; sans trait dessiné, confirmer que le bouton reste désactivé.
+
+## 2026-08-25 — Phase B V5 — Lot P1-18 : V5-F-037 (IOS_INTENTIONAL_DIFFERENCE)
+
+### Vérification
+
+**Android** : `Utils/media/VideoTransformer.java:122-157` (`process()`) — `needsTransform =
+(cropNorm != null) || (rotation != 0) || flipH`, IGNORE `startMs`/`endMs`. Pour tout trim sans
+transformation géométrique, fast path `SimpleTrimmer.trim()` (`SimpleTrimmer.java:26-66,107-127`) :
+remux SANS ré-encodage (<1s, aucune perte), calé sur la keyframe précédente la plus proche
+(`correctTimeToSyncSample`), MÊME point corrigé appliqué à TOUTES les pistes y compris audio
+(ligne 124, commentaire de code : "c'est le design voulu"). Incohérence interne notée : le
+commentaire de TÊTE de `SimpleTrimmer.java` affirme à tort que l'audio démarre pile à `startMs` —
+contredit par le code 25 lignes plus bas, confirmé par lecture directe plutôt que confiance au
+commentaire.
+
+**iOS avant correctif** : 2 correctifs précédents (V3-F-032, V3-F-124) affirmaient à tort qu'
+"Android ne fait jamais de remux/copie pour un trim temporel seul" et avaient supprimé un chemin
+passthrough sur cette base — affirmation invalidée par cette vérification directe.
+
+### Correctif appliqué (documentation uniquement, AUCUN changement fonctionnel)
+
+Décision : conserver le ré-encodage frame-exact existant (résultat plus précis — coupe exacte au
+timestamp demandé, jamais de contenu avant le point choisi — au prix d'un export plus lent) plutôt
+que de reproduire le fast path Android, dont la réplication fidèle exigerait une introspection
+sync-sample via `AVAssetReader` (aucun équivalent direct simple dans AVFoundation) et une
+synchronisation vidéo/audio manuelle — risque réel de désynchronisation si mal implémenté, pour un
+gain de vitesse sur une opération non critique en latence. Correction des commentaires de tête de
+`MediaTrimView.swift`/`VideoTrimState.swift` pour documenter honnêtement ce choix comme un écart
+assumé plutôt que la fausse "fidélité Android" affirmée précédemment.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/MediaTrimView.swift`,
+`Sources/TiinverSwift/Media/VideoTrimState.swift` (commentaires uniquement, diff vérifié comme ne
+touchant aucune ligne de code fonctionnel).
+
+**Résultat CI** : commit `df62da7`, push confirmé (`1d3ad22..df62da7 main -> main`), run
+`32924295725` → **`conclusion: success`**.
+
+**Statut honnête** : `IOS_INTENTIONAL_DIFFERENCE`. Aucun test réel requis (aucun changement de
+comportement).
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

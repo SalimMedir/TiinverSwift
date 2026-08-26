@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [15/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [18/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -52,8 +52,15 @@ côté iOS, `VoiceRecorder.swift` créé, bouton morphant mic/envoi câblé dans
 écart codec AAC vs AMR_NB Android documenté, test croisé réel iOS→Android requis) ; Lot P1-16
 V5-F-034 BUILD_VALIDATED — portée réduite documentée (import vidéo galerie Animems : alerte
 explicite au lieu de fermeture silencieuse, portage complet trim+extraction de trames reporté,
-géométrie canevas non suffisamment confirmée pour improviser sans risque)]**. Voir section
-"Cycle V5" plus bas pour le détail complet.)
+géométrie canevas non suffisamment confirmée pour improviser sans risque) ; Lot P1-17 V5-F-036
+BUILD_VALIDATED — écart architectural documenté (undo Animems retirait le mauvais type de calque,
+`AnimationObjectData.isFreehandStroke` ajouté, `removeLast()` cible désormais uniquement le
+dernier trait de dessin, séparation de conteneur/composition "toujours en arrière-plan" non
+reproduite) ; Lot P1-18 V5-F-037 IOS_INTENTIONAL_DIFFERENCE — 2 correctifs V3 antérieurs
+affirmaient à tort qu'Android ne remuxe jamais un trim temporel seul (faux, vérifié directement :
+vrai fast path `SimpleTrimmer` keyframe-snappé existe), ré-encodage frame-exact iOS conservé
+délibérément (précision > vitesse), commentaires corrigés, AUCUN changement fonctionnel]**. Voir
+section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -403,46 +410,73 @@ appliqué : repli EXPLICITEMENT autorisé par la RECOMMANDATION de l'audit elle-
 ("Vidéo non prise en charge") au lieu de fermeture silencieuse. **Portage complet reporté** (trim
 temporel + extraction de trames + intégration calque — nécessite lecture complète de
 `AnimemesEditorState.swift` avant implémentation fiable, non deviné). **Commit `f49cafc`, CI
-verte (run `32922541422`)** — `BUILD_VALIDATED`, portée réduite documentée. Détail des 16 lots
-dans `PROGRESS_V5.md`.
+verte (run `32922541422`)** — `BUILD_VALIDATED`, portée réduite documentée.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-036** (Éditeur photo —
-undo : le bouton "undo" retire le MAUVAIS type de calque et reste visible en dehors du mode
-dessin. Android [`ImageViewCanvas.java:317-326` `deletePrecedenteDraw`, opère sur
-`composer.getPaintLayers()` — ArrayList SÉPARÉE des `layers` normaux, `AnimationComposer.java:
-10,46-47` ; câblage `ImageEditorCompound.java:353,458-460`/`AnimemesCompound.java:341,460,1939`
-`mView.deletePrecedenteDraw()` ; visibilité du bouton LIMITÉE au mode peinture actif
-`ImageEditorCompound.java:565` show/`:590,761` gone, même pattern
-`AnimemesCompound.java:2085/2099/1809` ; les traits de dessin libre sont ajoutés via
-`initPathDraw()`/`composer.addPaintLayer()` [`ImageViewCanvas.java:1795-1798,1022-1024`], JAMAIS
-dans `composer.getLayers()` [bitmaps/texte/stickers, ajoutés via `addData()`/`composer.addLayer()`,
-`:1017-1020`]] — "undo" ne retire QUE le dernier trait de dessin libre, jamais une image/sticker/
-texte, et le bouton n'est visible qu'en mode pinceau actif. iOS
-[`AnimationComposer.swift:8-31`, `paintLayers` porté fidèlement mais `addPaintLayer()`/
-`paintLayers` JAMAIS appelés/lus ailleurs dans tout le module — vérifié exhaustivement ;
-`AnimemesEditorState.swift:648-655` `removeLast()`, commentaire de tête affirmant À TORT la
-fidélité, fait `composer.setLayers(Array(composer.layers.dropLast()))` — retire le DERNIER calque
-TOUTES catégories confondues ; `:724-735` `addFreehandDrawing` ajoute le trait comme calque
-`.bitmap` ORDINAIRE via `composer.addLayer()`, PAS `composer.addPaintLayer()` ; câblage bouton
-TOUJOURS visible [`AnimemesEditorView.swift:906-980` `bottomToolbar`, aucune condition de mode,
-`:979-980` `.disabled(state.layers.isEmpty)`]] — résultat INVERSÉ d'Android (sticker→trait→sticker,
-undo iOS retire le 2e sticker au lieu du trait) ; si aucun trait dessiné, undo Android ne fait RIEN
-[garde `paintLayers` vide] alors qu'iOS supprime silencieusement le dernier élément placé. Cause :
-`paintLayers` porté fidèlement dans `AnimationComposer.swift` mais JAMAIS relié (ni le point
-d'ajout des traits, ni le bouton undo) — "existing-but-never-called logic", pattern à surveiller
-spécifiquement en Animems selon la directive Phase B. Plan : `addFreehandDrawing()` écrit dans
-`composer.addPaintLayer()` [pas `addLayer`] ; `removeLast()` opère sur `composer.paintLayers`
-[`composer.setPaintLayers(Array(composer.paintLayers.dropLast()))`, garde si vide, comme
-`deletePrecedenteDraw()`] ; bouton undo visible/actif UNIQUEMENT quand l'outil pinceau est actif
-[miroir `Visibility.show/gone(btn_undo)` dans les handlers `ic_paint`], au lieu de
-`.disabled(state.layers.isEmpty)` toujours visible — lire `AnimationComposer.swift`,
-`AnimemesEditorState.swift` [autour de 648-735] et `AnimemesEditorView.swift` [autour de 906-980,
-+ repérer l'état de "mode pinceau actif" existant] en entier avant de coder, domaine Animems
-attention particulière requise), puis continuer AUTOMATIQUEMENT V5-F-037, V5-F-043, V5-F-046,
-V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063, V5-F-067, V5-F-068,
-V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095,
-V5-F-097, V5-F-098 (23 P1 restants après V5-F-036, dans l'ordre exact du document), puis tous les
-P2 (31), P3 (21), SANS s'arrêter
+**Lot P1-17 traité (V5-F-036)** — Éditeur Animems, le bouton "undo" retirait le MAUVAIS type de
+calque et restait actif en dehors du mode dessin. Vérifié `ImageViewCanvas.java:317-326`
+(`deletePrecedenteDraw`, opère sur `composer.getPaintLayers()`, ArrayList SÉPARÉE de `layers`) et
+`core/AnimationComposer.java:10,46-47`. `AnimemesEditorState.removeLast()` faisait
+`composer.setLayers(Array(composer.layers.dropLast()))` — retirait le DERNIER calque TOUTES
+catégories confondues (sticker/image/texte inclus) ; `addFreehandDrawing` ajoutait le trait via
+`composer.addLayer()`, jamais `addPaintLayer()` (existant, jamais relié — "existing-but-never-
+called logic"). **Écart architectural assumé** : reproduire la vraie séparation de conteneur +
+composition "toujours en arrière-plan" d'Android exigerait de toucher 3 sites de rendu (canevas
+live, miniature, export) — hors périmètre. Correctif appliqué à la place : nouveau champ
+`AnimationObjectData.isFreehandStroke` (propagé dans `duplicate()`), posé par `addFreehandDrawing`
+; `removeLast()` retire spécifiquement le DERNIER calque marqué (`lastIndex(where:)`), laissant le
+reste intact ; bouton undo `.disabled` basculé vers `!state.layers.contains { $0.isFreehandStroke }`.
+**Commit `1d3ad22`, CI verte (run `32923611967`)** — `BUILD_VALIDATED`, écart documenté.
+
+**Lot P1-18 traité (V5-F-037)** — Éditeur vidéo, 2 correctifs V3 antérieurs (V3-F-032/V3-F-124)
+affirmaient à tort qu'"Android ne fait jamais de remux/copie pour un trim temporel seul". Vérifié
+directement `VideoTransformer.java:122-157` : `needsTransform` ignore `startMs`/`endMs`, tout trim
+sans rotation/flip/crop emprunte le fast path `SimpleTrimmer.trim()` (remux keyframe-snappé,
+même point corrigé pour vidéo ET audio, `SimpleTrimmer.java:124`). Décision : conserver le
+ré-encodage frame-exact iOS existant (précision > vitesse, reproduire fidèlement exigerait une
+introspection sync-sample `AVAssetReader` sans équivalent simple, risque de désync si mal fait) —
+correction des commentaires de tête de `MediaTrimView.swift`/`VideoTrimState.swift` qui
+affirmaient à tort une "fidélité Android". **AUCUN changement fonctionnel, diff commentaires
+uniquement**. **Commit `df62da7`, CI verte (run `32924295725`)** —
+`IOS_INTENTIONAL_DIFFERENCE`. Détail des 18 lots dans `PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-043** (Animems - Keyframes —
+le bouton ◆ (keyframe) capture TOUJOURS un keyframe matriciel côté iOS, alors qu'en mode timeline
+PAR DÉFAUT Android ouvre le panneau de propriétés SANS créer aucun keyframe. Android
+[`AnimemesCompound.java:859-871` `onKeyframeButtonClicked`, branche `if
+(controller_mode_activate) captureTransformKeyframe(); else showPanelEditor(sel);` ; `:1321-1348`
+`captureTransformKeyframe` ; `:873-901` `showPanelEditor` ; `:1857-1877`
+`controller_mode_activate` piloté par un bouton SÉPARÉ `R.id.controlle_movement`, `false` par
+défaut et remis à `false` par `R.id.timelineTabs` ; `:420-436,1390` `btn_keyframe` masqué par
+défaut, VISIBLE dès qu'un item timeline est sélectionné dans `onSelectionChanged` — donc
+atteignable en mode timeline NORMAL, pas seulement en mode "controller"] — le bouton diamant est
+visible dès qu'un calque est sélectionné dans la timeline classique [mode par défaut,
+`controller_mode_activate == false`] ; dans cet état, le tap appelle `showPanelEditor(sel)`
+[ouverture du panneau de réglages, sliders opacité/couleur/rayon de coin, etc.], SANS créer le
+moindre keyframe — `captureTransformKeyframe()` n'est appelée QUE si le mode "controller de
+mouvement" [panneau de curseurs séparé, zoom/rotation/skew/ancrage] a été explicitement activé
+par un AUTRE bouton. iOS [`AnimemesEditorView.swift:662-665`, bouton ◆ dans `playbackBar` ;
+`AnimemesEditorState.swift:823-833` `recordKeyframe` ; `MovementControllerState.swift:1-48`, mode
+"controller" ENTIÈREMENT non branché — AUCUN appelant `MovementControllerState(...)` dans tout le
+projet] — le bouton ◆ [visible dès que `state.selectedId != nil`, équivalent exact du mode
+timeline par défaut Android] appelle INCONDITIONNELLEMENT `state.recordKeyframe()`, ajoutant/
+écrasant un keyframe matriciel à chaque appui — aucune branche équivalente à
+`controller_mode_activate` n'existe côté iOS. Cause : le commentaire de `recordKeyframe()`
+[`:816-822`] cite avoir audité les 2 méthodes Android mais ne retient QUE `captureTransformKeyframe`
+sans reproduire la condition `controller_mode_activate` qui l'encadre. Impact : dans le SEUL flux
+possible côté iOS [le mode "controller" n'existe pas], taper ◆ insère silencieusement un keyframe
+à chaque appui — effet de bord réel, taps répétés/exploratoires créent/écrasent des keyframes non
+voulus [`KeyframeTrack.addKeyframe` remplace en place tout keyframe déjà présent au même
+timestamp]. Plan : faire pointer ◆ vers l'ouverture du panneau de propriétés déjà porté ailleurs
+sous le bouton "propriétés" [`AnimemesEditorView.swift:968-973`, `state.snapshotLayerEditor()`/
+`showLayerEditor`] par défaut, réserver `recordKeyframe()`/l'icône diamant "active" au futur mode
+"controller" s'il est un jour porté [NE PAS construire ce mode maintenant — `MovementControllerState`
+confirmé jamais instancié, hors périmètre de ce finding unique] — lire
+`AnimemesEditorView.swift` autour de 662-665 et 968-973, et `AnimemesEditorState.swift` autour de
+816-833 en entier avant de coder, domaine Animems attention particulière requise), puis continuer
+AUTOMATIQUEMENT V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063,
+V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085,
+V5-F-089, V5-F-095, V5-F-097, V5-F-098 (21 P1 restants après V5-F-043, dans l'ordre exact du
+document), puis tous les P2 (31), P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →
 State/ViewModel → Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale

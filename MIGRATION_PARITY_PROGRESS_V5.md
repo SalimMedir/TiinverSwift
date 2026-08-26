@@ -2297,6 +2297,24 @@ regex déjà portée pour l'affichage) appelé depuis `publish()` à la place du
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
 
+## 2026-08-26 — Phase B V5 — Lot P2-15 : V5-F-051 (Settings — entrée "Mise à jour" absente du menu racine)
+
+**Commit** : `7f97584` — poussé sur `main` (`4c1e0f3..7f97584`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `item_headers_of_settings.xml` place `header_updateapp` en DERNIER élément du
+menu racine Android (après `header_about`), toujours visible, ouvrant la fiche Play Store.
+`UpdateAppView` (port fidèle) existait déjà côté iOS mais son seul appelant était le blocage forcé
+de `RootRouterView` — aucun accès manuel possible depuis les Réglages.
+
+**Correction appliquée** : `NavigationLink("Mise à jour") { UpdateAppView() }` ajouté en fin de
+liste `SettingsView`, réutilisant `UpdateAppView` tel quel.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Settings/SettingsView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

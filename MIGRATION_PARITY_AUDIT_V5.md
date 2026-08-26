@@ -2085,6 +2085,18 @@ CAUSE : Portage incomplet du menu racine des Réglages — l'entrée `header_upd
 IMPACT : Fonctionnalité utilisateur manquante : impossible de vérifier/ouvrir manuellement la fiche App Store depuis les Réglages iOS, contrairement à Android où ce raccourci est toujours visible dans le menu racine.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter une entrée « Mise à jour » dans `SettingsView.swift` qui réutilise `UpdateAppView` (ou directement `UIApplication.shared.open` vers la fiche App Store une fois `appStoreId` renseigné — actuellement `nil` dans `DeepLinkRouter.swift:77`, autre gap déjà documenté par le portage lui-même).
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-15) — Vérifié directement
+`item_headers_of_settings.xml` (`header_updateapp` = DERNIER élément, après `header_about`).
+Correctif appliqué exactement comme recommandé : `NavigationLink("Mise à jour") { UpdateAppView()
+}` ajouté en fin de liste, réutilisant `UpdateAppView` déjà porté tel quel (son URL App Store
+placeholder est un gap séparé déjà documenté dans ce fichier, hors périmètre de ce finding).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Settings/SettingsView.swift`.
+
+**Commit `7f97584`, poussé sur `main`** (`4c1e0f3..7f97584`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé. **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas
+confirmée.
 ```
 
 ```

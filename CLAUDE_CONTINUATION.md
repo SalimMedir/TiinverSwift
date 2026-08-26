@@ -256,9 +256,14 @@ CODE_COMPLETE/CI_PENDING (hashtags de publication extraits par split-par-espace 
 regex `#(\w+)` Android — ponctuation de fin collée au hashtag envoyé au serveur, hashtag sans
 espace précédent jamais détecté. Corrigé : nouveau `HashtagMentionText.extractHashtags(from:)`
 [réutilise la regex déjà portée], appelé depuis `publish()`. **Commit `8211bb9` poussé sur `main`,
-CI PAS déclenchée** — même blocage d'outillage pour les deux). **Prochain finding à traiter :
-V5-F-051** (V5-F-050 déjà traité en P1 — V5-F-051 confirmé P2 par lecture directe, domaine
-Settings. Vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc
+CI PAS déclenchée** — même blocage d'outillage pour les deux) ; Lot P2-15 V5-F-051
+CODE_COMPLETE/CI_PENDING (entrée "Mise à jour" absente du menu racine Settings —
+`item_headers_of_settings.xml` place `header_updateapp` en dernier, toujours visible ;
+`UpdateAppView` déjà porté mais seul appelant = blocage forcé `RootRouterView`, aucun accès manuel.
+Corrigé : `NavigationLink("Mise à jour") { UpdateAppView() }` ajouté en fin de liste. **Commit
+`7f97584` poussé sur `main`, CI PAS déclenchée**). **Prochain finding à traiter : V5-F-054**
+(V5-F-052/053 sont P3 — V5-F-054 confirmé P2 par lecture directe, domaine Cache/téléchargement/
+hors-ligne. Vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc
 `STATUT :` à sa suite, comme fait pour identifier chaque finding restant tout au long de cette
 session). Si l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés
 ci-dessus et communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter

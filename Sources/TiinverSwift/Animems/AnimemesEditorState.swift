@@ -246,15 +246,29 @@ final class AnimemesEditorState: ObservableObject {
         version += 1
     }
 
-    func addText(_ text: String, canvasSize: CGSize) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+    /// **Remplace le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-089, Phase B P1)** l'ancien
+    /// `addText(_:canvasSize:)` qui créait un calque `.text` dynamique (police/couleur codées en
+    /// dur, aucun style utilisateur) via l'alerte système minimale. Port fidèle de
+    /// `ProTextEditorView.onTextConfirmed(Bitmap, String)` (`AnimemesCompound.java:471-480`) : côté
+    /// Android, le bouton texte ouvre TOUJOURS `ProTextEditorView` (police/couleur/taille/
+    /// alignement/fond réglables), et le résultat confirmé est un bitmap DÉJÀ rastérisé
+    /// (`editText.draw(canvas)`) ajouté via `onNewAddBitmap(textBitmap, "text", true, false)` — un
+    /// calque BITMAP comme n'importe quel autre, PAS le type `AnimationObjectData.Type.TEXT`
+    /// (confirmé par grep exhaustif : `setObjectType(...TEXT)` n'est appelé NULLE PART dans le
+    /// moteur Android actuel — ce type existe mais est mort côté source). `isBackgroundTrans=true`
+    /// pour ce chemin : le bitmap texte est ajouté à sa taille NATIVE (pas de redimensionnement
+    /// canevas/2 comme pour une image importée), fidèlement reproduit ici en passant `image.size`
+    /// telle quelle à `configureNewObject`, sans passer par `Self.downscale` (réservé à
+    /// `addImage`). Le rendu du bitmap lui-même (police/couleur/fond/arrondi/alignement) est fait
+    /// par l'appelant (`ProTextEditorView.swift`, nouvelle vue SwiftUI qui consomme
+    /// `ProTextEditorState` déjà porté) — cette méthode ne fait qu'insérer le résultat comme
+    /// calque, comme `addFreehandDrawing`/`addCapturedPaintFrames` ci-dessous.
+    func addStyledText(_ image: UIImage, canvasSize: CGSize) {
+        guard let cgImage = image.cgImage else { return }
         let obj = AnimationObjectData()
-        obj.objectType = .text
-        obj.text = trimmed
-        obj.backgroundColor = 0xB300_0000
-        obj.objectColor = 0xFFFF_FFFF
-        configureNewObject(obj, canvasSize: canvasSize, size: CGSize(width: 160, height: 60))
+        obj.objectType = .bitmap
+        obj.addBitmap(cgImage)
+        configureNewObject(obj, canvasSize: canvasSize, size: image.size)
         composer.addLayer(obj)
         syncTimeline()
         version += 1
@@ -643,7 +657,7 @@ final class AnimemesEditorState: ObservableObject {
     /// `duplicateTimeline(dup, item)`, qui ajoute le duplicata comme nouveau calque avec le MÊME
     /// label/couleur/plage de frames que la source, SANS le sélectionner automatiquement (fidèle :
     /// aucun `itemSelected.put(0, item)` dans `duplicateTimeline`, et aucune des fonctions
-    /// `addImage`/`addText`/`addShape`/`addSticker` de ce fichier ne sélectionne non plus le calque
+    /// `addImage`/`addStyledText`/`addShape`/`addSticker` de ce fichier ne sélectionne non plus le calque
     /// qu'elle vient de créer — cohérence avec le reste du fichier, pas une omission). **Ajouté le
     /// 2026-08-19 (ANIMEMS_PARITY_AUDIT_V1.md F-30, Phase B Lot 4)** : `AnimationObjectData.
     /// duplicate(_:)` existait déjà (copie profonde complète, jamais appelée) — seul le point

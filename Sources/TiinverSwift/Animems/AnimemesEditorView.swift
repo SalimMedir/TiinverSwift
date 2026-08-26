@@ -46,7 +46,6 @@ struct AnimemesEditorView: View {
     // d'une fermeture silencieuse.
     @State private var showVideoImportUnsupportedAlert = false
     @State private var showTextPrompt = false
-    @State private var newText = ""
     @State private var showStickerPrompt = false
     @State private var newSticker = ""
     @State private var showDrawing = false
@@ -211,10 +210,14 @@ struct AnimemesEditorView: View {
         } message: {
             Text("L'ajout d'une vidéo comme calque animé n'est pas encore disponible sur iOS. Choisissez une image à la place.")
         }
-        .alert("Ajouter du texte", isPresented: $showTextPrompt) {
-            TextField("Texte", text: $newText)
-            Button("Ajouter") { state.addText(newText, canvasSize: canvasSize); newText = "" }
-            Button("Annuler", role: .cancel) { newText = "" }
+        .fullScreenCover(isPresented: $showTextPrompt) {
+            ProTextEditorView(
+                onConfirm: { image in
+                    state.addStyledText(image, canvasSize: canvasSize)
+                    showTextPrompt = false
+                },
+                onCancel: { showTextPrompt = false }
+            )
         }
         .alert("Ajouter un emoji", isPresented: $showStickerPrompt) {
             TextField("Emoji", text: $newSticker)

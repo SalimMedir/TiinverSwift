@@ -7,11 +7,15 @@ import SwiftUI
 /// **Portée réduite délibérément** : la quasi-totalité du fichier original (~850 des 923 lignes)
 /// est de la construction de vue Android pure (`LinearLayout`/`RecyclerView`/`FrameLayout`
 /// programmatiques, `ColorAdapter`/`FontAdapter`/`ColorDot`) — sans logique réutilisable au-delà de
-/// ce qui est repris ci-dessous. Contrairement à `BezierEditorView`/`PaintPreviewEditorPanel`
-/// (auto-contenus, portés en entier avec leur rendu), la construction de la vue texte réelle
-/// nécessite un vrai champ de texte SwiftUI (`TextField`/`TextEditor`) et un rendu final adapté aux
-/// polices système iOS (`Typeface.SANS_SERIF/SERIF/MONOSPACE` Android n'ont pas d'équivalent 1:1 —
-/// mapping vers `Font`/`UIFont` à décider visuellement, pas devinable sans Xcode) — différé.
+/// ce qui est repris ci-dessous.
+///
+/// **Câblé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-089, Phase B P1)** — jusque-là ce
+/// modèle existait mais n'était référencé nulle part (`ProTextEditorView.swift` n'existait pas
+/// encore) : `AnimemesEditorState.addText` utilisait une simple alerte `TextField` sans aucune de
+/// ces options. `ProTextEditorView.swift` (nouvelle vue SwiftUI, sheet plein écran) consomme
+/// maintenant cet état pour reproduire les 6 onglets Android (couleur texte/fond, police, taille,
+/// alignement, fond+arrondi) et rastérise le résultat en bitmap au moment de la confirmation,
+/// fidèle à `renderBitmap()`/`onTextConfirmed` (voir doc d'`AnimemesEditorState.addStyledText`).
 ///
 /// `darkenFor` n'est PAS reporté ici : identique à `ShapeFactory.darken` (même formule HSV,
 /// `V *= 0.45`/`S *= 1.1` au lieu de `V -= 0.25`, mais même mécanisme) — dupliquer serait une
@@ -55,7 +59,8 @@ struct ProTextEditorState: Equatable {
 
 /// Port de `FONT_NAME`/`typefaces` — 7 combinaisons police/style. Mapping SF Pro / SF Pro Serif /
 /// SF Mono à confirmer visuellement (pas d'équivalent garanti 1:1 avec Sans-Serif/Serif/Mono
-/// Android — à ajuster une fois un simulateur disponible).
+/// Android — approximation assumée, cohérente avec le reste du portage : comportement reproduit
+/// [7 styles distincts sélectionnables], pas les valeurs de police bit-exactes).
 enum ProTextFont: Int, CaseIterable {
     case normal, bold, italic, serif, mono, boldItalic, serifItalic
 
@@ -71,6 +76,7 @@ enum ProTextFont: Int, CaseIterable {
         }
     }
 
+    /// Utilisé pour l'aperçu SwiftUI en direct (`ProTextEditorView`).
     func font(size: CGFloat) -> Font {
         switch self {
         case .normal: return .system(size: size)
@@ -81,5 +87,30 @@ enum ProTextFont: Int, CaseIterable {
         case .boldItalic: return .system(size: size, weight: .bold).italic()
         case .serifItalic: return .system(size: size, design: .serif).italic()
         }
+    }
+
+    /// Même mapping que `font(size:)` ci-dessus mais en `UIFont` — nécessaire pour la rastérisation
+    /// finale via `CGContext`/`NSAttributedString` (`ProTextEditorView.renderBitmap`, `Font`
+    /// SwiftUI n'expose aucune API de dessin Core Graphics directe).
+    func uiFont(size: CGFloat) -> UIFont {
+        switch self {
+        case .normal: return .systemFont(ofSize: size)
+        case .bold: return .boldSystemFont(ofSize: size)
+        case .italic: return .italicSystemFont(ofSize: size)
+        case .serif: return Self.designed(size: size, design: .serif, bold: false, italic: false)
+        case .mono: return .monospacedSystemFont(ofSize: size, weight: .regular)
+        case .boldItalic: return Self.designed(size: size, design: .default, bold: true, italic: true)
+        case .serifItalic: return Self.designed(size: size, design: .serif, bold: true, italic: true)
+        }
+    }
+
+    private static func designed(size: CGFloat, design: UIFontDescriptor.SystemDesign, bold: Bool, italic: Bool) -> UIFont {
+        var descriptor = UIFontDescriptor.preferredFontDescriptor(withTextStyle: .body)
+            .withDesign(design)?.withSize(size) ?? UIFontDescriptor().withSize(size)
+        var traits: UIFontDescriptor.SymbolicTraits = []
+        if bold { traits.insert(.traitBold) }
+        if italic { traits.insert(.traitItalic) }
+        if let withTraits = descriptor.withSymbolicTraits(traits) { descriptor = withTraits }
+        return UIFont(descriptor: descriptor, size: size)
     }
 }

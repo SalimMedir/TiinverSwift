@@ -196,6 +196,7 @@ final class ChatRepository {
         socket.emit(SocketEvent.offlineStatus, ["id": myId, "username": username])
         socket.emit(SocketEvent.joinRoom, ["id": myId, "username": username])
         resumePendingUploads(currentUsername: username)
+        resumePendingDownloads(currentUsername: username)
     }
 
     /// **Ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-078, Phase B P1-33)** — second
@@ -241,6 +242,42 @@ final class ChatRepository {
                     }
                 } catch {
                     // `isFileUploaded` reste à 0 — retenté au prochain `onConnected()`/`handleAppear`.
+                }
+            }
+        }
+    }
+
+    /// **Ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-056, Phase B P3)** — symétrique de
+    /// `resumePendingUploads` ci-dessus, côté téléchargement. Android délègue les deux sens
+    /// (upload ET téléchargement) au même `android.app.DownloadManager`/`DownloadReceiver`, un
+    /// service SYSTÈME persistant hors du process de l'app — le téléchargement survit à un kill
+    /// d'app ou une coupure réseau, indépendamment de toute vue affichée. Avant ce correctif, le
+    /// SEUL déclencheur de reprise de téléchargement côté iOS était `ChatViewModel.handleAppear`
+    /// (bulle redevenue visible à l'écran) : un téléchargement en échec restait bloqué
+    /// indéfiniment tant que l'utilisateur ne quittait/rentrait pas dans la conversation, même
+    /// réseau revenu, app toujours ouverte. **Portée réduite documentée**, même politique que
+    /// `resumePendingUploads`/V5-F-078 : seul le déclencheur reconnexion socket est reproduit (pas
+    /// de vraie `URLSession` `background` survivant à un kill complet du process — écarté pour la
+    /// même raison de risque/ampleur que le choix déjà fait pour l'upload en V5-F-098), pas de
+    /// rafraîchissement visuel immédiat d'une bulle actuellement affichée dans une autre instance
+    /// de `ChatViewModel` (Core Data est mis à jour, mais cette instance-ci n'a pas de référence à
+    /// `items` d'un autre écran — un `handleAppear` ultérieur ou une réouverture de conversation le
+    /// reflète). Réservation partagée via `ChatMediaDownloadService.reserveDownload` — évite une
+    /// course avec `ChatViewModel.requestDownload` (bulle visible) sur le même message.
+    private func resumePendingDownloads(currentUsername: String) {
+        Task { [weak self] in
+            guard let self, let pending = try? await self.messages.pendingDownloads(currentUsername: currentUsername)
+            else { return }
+            for mlib in pending {
+                guard let messageId = mlib.messageId, let remoteURLString = mlib.objectUrl,
+                      let remoteURL = URL(string: remoteURLString), remoteURL.scheme?.hasPrefix("http") == true
+                else { continue }
+                guard ChatMediaDownloadService.shared.reserveDownload(messageId: messageId) else { continue }
+                defer { ChatMediaDownloadService.shared.releaseDownload(messageId: messageId) }
+                do {
+                    _ = try await ChatMediaDownloadService.shared.download(messageId: messageId, remoteURL: remoteURL, messages: self.messages)
+                } catch {
+                    // `isFileDownloaded` reste à 0 — retenté au prochain `onConnected()`/`handleAppear`.
                 }
             }
         }

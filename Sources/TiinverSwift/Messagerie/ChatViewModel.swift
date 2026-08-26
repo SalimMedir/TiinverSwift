@@ -38,13 +38,11 @@ final class ChatViewModel: ObservableObject {
     private var previousDayComponents: DateComponents?
     private var typingResetTask: Task<Void, Never>?
     private var isTypingFlag = false
-    /// Port de `uniqueDowloadSet` (`ChatFragmentTest.java:2937-2963`, V5-F-069) — même motif que
-    /// `ChatMediaUploadService.uploadingMessageIds`/`reserveUpload` côté upload (V5-F-078) : empêche
-    /// un second téléchargement concurrent du même message si sa bulle redevient visible (scroll)
-    /// pendant qu'un premier est déjà en vol. Classe `@MainActor`, accès synchrone sans `await`
-    /// entre le test et l'insertion — pas besoin d'un verrou dédié, même raisonnement que
-    /// `reserveUpload`.
-    private var downloadingMessageIds: Set<String> = []
+    /// **Retiré le 2026-08-26 (V5-F-056, Phase B P3)** — `downloadingMessageIds` (local à cette
+    /// instance, ajouté sous V5-F-069) remplacé par `ChatMediaDownloadService.shared` (réservation
+    /// PARTAGÉE), pour ne pas rater une course entre CE déclencheur (bulle visible) et le nouveau
+    /// `ChatRepository.resumePendingDownloads` (reconnexion socket) sur le même message — même
+    /// motif que `ChatMediaUploadService.reserveUpload` côté upload (V5-F-078).
 
     private var currentUsername: String { UserSession.shared.username ?? "" }
     private var myId: String { UserSession.shared.myId ?? "" }
@@ -715,32 +713,14 @@ final class ChatViewModel: ObservableObject {
     /// nouveau champ pour porter une URL distante qu'Android lui-même ne conserve pas non plus.
     private func requestDownload(_ mlib: MessageLib) {
         guard let messageId = mlib.messageId, let remoteURLString = mlib.objectUrl,
-              let remoteURL = URL(string: remoteURLString), remoteURL.scheme?.hasPrefix("http") == true,
-              !downloadingMessageIds.contains(messageId)
+              let remoteURL = URL(string: remoteURLString), remoteURL.scheme?.hasPrefix("http") == true
         else { return }
-        downloadingMessageIds.insert(messageId)
+        guard ChatMediaDownloadService.shared.reserveDownload(messageId: messageId) else { return }
         Task { [weak self] in
             guard let self else { return }
-            defer { self.downloadingMessageIds.remove(messageId) }
+            defer { ChatMediaDownloadService.shared.releaseDownload(messageId: messageId) }
             do {
-                var request = URLRequest(url: remoteURL)
-                request.setValue("https://tiinver.com", forHTTPHeaderField: "Referer")
-                let (tempURL, response) = try await URLSession.shared.download(for: request)
-                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                    try? FileManager.default.removeItem(at: tempURL)
-                    return
-                }
-                let mediaDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                    .appendingPathComponent("ChatMedia", isDirectory: true)
-                try FileManager.default.createDirectory(at: mediaDirectory, withIntermediateDirectories: true)
-                let ext = remoteURL.pathExtension.isEmpty ? "bin" : remoteURL.pathExtension
-                let localURL = mediaDirectory.appendingPathComponent(messageId).appendingPathExtension(ext)
-                if FileManager.default.fileExists(atPath: localURL.path) {
-                    try FileManager.default.removeItem(at: localURL)
-                }
-                try FileManager.default.moveItem(at: tempURL, to: localURL)
-
-                try await self.messages.updateFileDownloaded(messageId: messageId, localURL: localURL)
+                let localURL = try await ChatMediaDownloadService.shared.download(messageId: messageId, remoteURL: remoteURL, messages: self.messages)
                 guard let index = self.items.firstIndex(where: { $0.messageId == messageId }),
                       case .message(var updated) = self.items[index]
                 else { return }

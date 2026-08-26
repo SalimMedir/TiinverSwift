@@ -344,6 +344,19 @@ final class MessageRepository {
             .filter { ["audio", "photo", "video", "sticker", "gif"].contains($0.object ?? "") }
     }
 
+    /// Symétrique de `pendingUploads` ci-dessus, côté téléchargement — port du même principe de
+    /// scan indépendant de l'UI (**V5-F-056, 2026-08-26, Phase B P3**), pour la reprise de
+    /// téléchargement d'une pièce jointe reçue. Messages REÇUS d'autrui
+    /// (`usernameFrom != currentUsername`), média pas encore téléchargé, TOUTES conversations
+    /// confondues.
+    func pendingDownloads(currentUsername: String) async throws -> [MessageLib] {
+        let predicate = NSPredicate(format: "isFileDownloaded == 0 AND usernameFrom != %@", currentUsername)
+        let rows = try await messages.query(predicate: predicate)
+        return rows
+            .map { Self.toMessageLib($0, currentUsername: currentUsername) }
+            .filter { ["audio", "photo", "video", "sticker", "gif"].contains($0.object ?? "") }
+    }
+
     /// Port de `ChatFragmentTest.onCreateLoader`/`displayMessageOnInicialPage`/
     /// `displayMoreMessageOnScroll` (les 3, lus en entier) — CursorLoader `MSG_URI` filtré
     /// `conversationId=?`, trié `stamp DESC`, paginé `LIMIT 100 OFFSET n`. `belongsToCurrentUser`

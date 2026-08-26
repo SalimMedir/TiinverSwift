@@ -2714,6 +2714,55 @@ IMPACT : Toute personnalisation de texte (police, couleur, taille, alignement, f
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Construire une vue SwiftUI (sheet/fullScreenCover) qui consomme le modèle `ProTextEditorState` déjà porté — sélecteur de police (7 `ProTextFont`), palette de couleurs, toggle fond + coin arrondi, alignement — et appeler `addText` avec ces valeurs au lieu du `TextField` d'alerte actuel.
 CONTRE-AUDIT : trouvé par l'agent "Animems Canvas" (Phase A.2, 2026-08-24)
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P1-35) — Vérifié directement
+côté Android : `ProTextEditorView.java` lu en entier (923 lignes) ; `AnimemesCompound.java:
+470-480` confirme que `onTextConfirmed(Bitmap, String)` ajoute le résultat via
+`onNewAddBitmap(textBitmap, "text", true, false)` → `AnimationObjectData.Type.BITMAP`
+(`onNewAddBitmap` ligne 2255-2300), **PAS** `Type.TEXT` — confirmé par grep exhaustif sur tout
+`engine/src/main/java/com/animems/engine` : `setObjectType(...Type.TEXT)` n'est appelé NULLE
+PART, ce type existe et a du code de rendu (`MemesView2`/`MemesView3`/`ImageViewCanvas`) mais est
+mort côté source actuel. Correctif fidèle à ce mécanisme réel (pas à la RECOMMANDATION au mot
+près, qui supposait à tort que `addText`/`.text` restait le bon point d'insertion) :
+- Nouveau `Sources/TiinverSwift/Animems/ProTextEditorView.swift` — sheet plein écran consommant
+  `ProTextEditorState` déjà porté, reproduisant les 6 onglets Android (couleur texte, couleur
+  fond, police [7 `ProTextFont`], taille, alignement, fond+arrondi), aperçu en direct via
+  `TextField(axis: .vertical)` stylé.
+- `ProTextFont.uiFont(size:)` ajouté (mapping `UIFont`, à côté du `font(size:)` SwiftUI déjà
+  existant) — nécessaire pour la rastérisation finale (`Font` SwiftUI n'expose aucune API Core
+  Graphics).
+- Rendu final : `ProTextEditorView.renderBitmap` reconstruit `editText.draw(canvas)` via
+  `NSAttributedString` dans un `UIGraphicsImageRenderer` cadré `scale = 1` (pixel = point, même
+  convention que `LayerRenderer`/`ShapeFactory`), largeur FIXE 300pt (port fidèle de
+  `FrameLayout.LayoutParams((int) dp(300), WRAP)` — l'`EditText` Android n'est PAS
+  `WRAP_CONTENT` en largeur), hauteur au contenu.
+- `AnimemesEditorState.addText(_:canvasSize:)` (créait un calque `.text` dynamique, police/
+  couleur codées en dur) **remplacé** par `addStyledText(_ image: UIImage, canvasSize:)` — insère
+  le bitmap déjà stylé comme calque `.bitmap` (même famille que `addFreehandDrawing`/
+  `addCapturedPaintFrames`), taille NATIVE non downscalée (fidèle à `isBackgroundTrans=true` côté
+  Android). Aucune modification nécessaire à `LayerRenderer`/`AnimemesExporter` : le pipeline
+  `.bitmap` (export vidéo, aperçu figé, flatten "répéter fond") gère déjà ce type de calque
+  intégralement — vérifié directement dans les 3 fichiers.
+- `AnimemesEditorView.swift` : bouton texte (`ic_text`) bascule de `.alert` à
+  `.fullScreenCover(ProTextEditorView(...))`.
+- Écart mineur assumé, documenté : pas de plafond à 6 lignes (`maxLines` Android limite la
+  CROISSANCE visuelle mais ne tronque jamais — un défilement interne n'a pas de sens pour un
+  rendu figé en bitmap, donc simplement pas reproduit).
+
+**Commit `4ba5b08`, poussé sur `main`** (`ca52523..4ba5b08`). **CI NON déclenchée par cette
+session** : le workflow `iOS build (compilation seule — Checkpoint)` (`.github/workflows/
+ios-build.yml`) est `workflow_dispatch` UNIQUEMENT (pas de déclenchement automatique au push) et
+cette session, exécutée en local sur la machine Windows de l'utilisateur (pas d'environnement
+cloud), n'a ni `gh` CLI installé (vérifié : absent du `PATH`, absent de
+`Program Files`/`WinGet`/emplacements standards) ni jeton d'API GitHub accessible en variable
+d'environnement — impossible de déclencher `workflow_dispatch` ni d'interroger l'état d'un run
+depuis cet environnement. **PAS `BUILD_VALIDATED`** tant que la CI n'a pas été confirmée verte
+par un moyen externe à cette session (déclenchement manuel par l'utilisateur via l'onglet Actions
+de GitHub, ou une session future disposant de `gh`/d'un jeton configuré). Revue manuelle
+approfondie effectuée à la place (relecture ligne à ligne du diff final, vérification des
+signatures d'API SwiftUI/UIKit utilisées contre leur disponibilité iOS 16+ déjà établie ailleurs
+dans ce fichier, vérification que `.bitmap` est déjà intégralement pris en charge par les 3
+consommateurs du pipeline de rendu) — mais ceci ne remplace PAS une compilation réelle.
 ```
 
 ```

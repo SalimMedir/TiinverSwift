@@ -1764,6 +1764,74 @@ ajouter plusieurs textes/stickers superposés, confirmer que glisser/pincer-zoom
 fonctionnent indépendamment sur chacun sans interférence, confirmer que le rendu final
 (`flatten()`) reflète fidèlement la position/échelle/rotation finale de chaque calque.
 
+## 2026-08-26 — Phase B V5 — Lot P1-35 : V5-F-089 (Animems Canvas — édition de texte riche)
+
+**Commit** : `4ba5b08` — poussé sur `main` (`ca52523..4ba5b08`). **CI non déclenchée par cette
+session** (voir "Statut honnête" ci-dessous — blocage d'outillage, pas de code).
+
+**Cause exacte** : `ProTextEditorState.swift`/`ProTextFont` (police/couleur/taille/alignement/
+fond+arrondi, 16 couleurs, 7 polices) étaient déjà entièrement portés mais référencés NULLE PART
+(grep exhaustif confirmé) — `AnimemesEditorState.addText(_:canvasSize:)` utilisait une alerte
+système `TextField` minimale, texte toujours blanc sur fond noir semi-transparent, taille fixe,
+aucune option. Vérification Android approfondie AU-DELÀ de la citation de l'audit :
+`AnimemesCompound.java:470-480` (`onTextConfirmed(Bitmap, String)`) ajoute le résultat via
+`onNewAddBitmap(textBitmap, "text", true, false)` → `onNewAddBitmap` (lignes 2255-2300) crée
+TOUJOURS un calque `AnimationObjectData.Type.BITMAP`, jamais `Type.TEXT` — confirmé par grep
+exhaustif sur tout `engine/src/main/java/com/animems/engine` : `setObjectType(...Type.TEXT)`
+n'est appelé NULLE PART dans le moteur Android actuel (ce type existe et a du code de rendu dans
+`MemesView2`/`MemesView3`/`ImageViewCanvas`/`AnimationScreen`/`AnimationPreView`, mais est mort
+côté source — jamais construit). La RECOMMANDATION de l'audit ("appeler `addText` avec ces
+valeurs") supposait à tort que `.text`/`TextRect` restait le bon mécanisme d'insertion ; le
+correctif suit plutôt le mécanisme Android RÉEL (bake immédiat en bitmap), plus fidèle et qui
+évite de devoir étendre `AnimationObjectData`/`TextRect`/`LayerRenderer`/`AnimemesExporter` pour
+un style par-calque.
+
+**Correction appliquée** :
+- Nouveau `Sources/TiinverSwift/Animems/ProTextEditorView.swift` — sheet plein écran (port de
+  `ProTextEditorView.java`), 6 onglets (couleur texte, couleur fond, police, taille, alignement,
+  fond+arrondi), aperçu en direct stylé (`TextField(axis: .vertical)`).
+- `ProTextFont.uiFont(size:)` ajouté dans `ProTextEditorState.swift` (mapping `UIFont`, à côté du
+  `font(size:)` SwiftUI déjà existant) — nécessaire à la rastérisation finale.
+- `ProTextEditorView.renderBitmap` : port de `renderBitmap()`/`editText.draw(canvas)` via
+  `NSAttributedString` dans un `UIGraphicsImageRenderer` cadré `scale = 1` (pixel = point, même
+  convention que `LayerRenderer`/`ShapeFactory`), largeur FIXE 300pt (port fidèle de
+  `FrameLayout.LayoutParams((int) dp(300), WRAP)` — l'`EditText` Android n'est PAS
+  `WRAP_CONTENT` en largeur, seule la hauteur s'ajuste), hauteur au contenu.
+- `AnimemesEditorState.addText(_:canvasSize:)` **remplacé** par
+  `addStyledText(_ image: UIImage, canvasSize:)` — insère le bitmap déjà stylé comme calque
+  `.bitmap` (même famille que `addFreehandDrawing`/`addCapturedPaintFrames`), taille NATIVE non
+  downscalée (fidèle à `isBackgroundTrans=true` côté Android, contrairement à `addImage` qui
+  downscale à 220pt max pour une image importée).
+- `AnimemesEditorView.swift` : bouton texte (`ic_text`) bascule de `.alert` à
+  `.fullScreenCover(ProTextEditorView(...))`.
+
+**Flux frère vérifié** : `.bitmap` est déjà intégralement pris en charge par les 3 consommateurs
+du pipeline (`LayerRenderer.drawObjectFrame` pour le canevas live, `AnimemesExporter` pour
+l'export vidéo, le flatten "répéter l'image de fond" dans `AnimemesEditorView`) — vérifié
+directement dans les 3 fichiers, aucune modification nécessaire.
+
+**Écart mineur assumé et documenté** : pas de plafond à 6 lignes (`maxLines` Android limite la
+CROISSANCE visuelle de l'`EditText` mais ne tronque jamais le texte, resterait défilable en
+interne — un défilement interne n'a pas de sens pour un rendu figé en bitmap une fois confirmé).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorState.swift`,
+`Sources/TiinverSwift/Animems/AnimemesEditorView.swift`,
+`Sources/TiinverSwift/Animems/ProTextEditorState.swift`,
+`Sources/TiinverSwift/Animems/ProTextEditorView.swift` (nouveau).
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Le workflow
+`.github/workflows/ios-build.yml` (`iOS build (compilation seule — Checkpoint)`) est
+`workflow_dispatch` UNIQUEMENT (aucun déclenchement automatique au push). Cette session tourne en
+LOCAL sur la machine Windows de l'utilisateur (pas d'environnement cloud) : `gh` CLI absent
+(vérifié `PATH`/`Program Files`/`WinGet`), aucun jeton d'API GitHub accessible en variable
+d'environnement — impossible de déclencher `workflow_dispatch` ni de lire l'état d'un run depuis
+cette session. Revue manuelle approfondie faite à la place (relecture ligne à ligne du diff final,
+vérification des API SwiftUI/UIKit employées, vérification que `.bitmap` est déjà pris en charge
+partout) mais **ceci ne remplace pas une compilation réelle**. Nécessite soit un déclenchement
+manuel de ce workflow par l'utilisateur (onglet Actions → "iOS build (compilation seule —
+Checkpoint)" → Run workflow → branche `main`), soit une session future disposant de `gh`/d'un
+jeton configuré, avant de pouvoir passer à `BUILD_VALIDATED`.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

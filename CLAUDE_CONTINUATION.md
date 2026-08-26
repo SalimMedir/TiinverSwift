@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [36/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [36/40 BUILD_VALIDATED + 1 CODE_COMPLETE/CI_PENDING (V5-F-089) : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -111,7 +111,17 @@ régression élevé sur le flux cœur d'export si précipité) ; Lot P1-34 V5-F-
 (calques texte/sticker placés dans Photo Editor totalement figés après ajout, `PlacedItemView`
 ajoutée avec `DragGesture`+`MagnificationGesture`(bornes 0.3...5.0)+`RotationGesture` composés via
 `simultaneousGesture`, `flatten()` mis à jour en cohérence, écart mineur assumé : pas de
-surbrillance de sélection dédiée)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
+surbrillance de sélection dédiée) ; Lot P1-35 V5-F-089 CODE_COMPLETE/CI_PENDING (édition de texte
+Animems réduite à une alerte `TextField` blanc-sur-noir sans aucune option, `ProTextEditorState`
+déjà porté mais jamais référencé ; nouveau `ProTextEditorView.swift` — sheet plein écran, 6
+onglets Android [couleur texte/fond, police, taille, alignement, fond+arrondi] — rastérise le
+résultat en bitmap au confirm, fidèle à `onTextConfirmed`→`onNewAddBitmap` [confirmé : Android ne
+construit JAMAIS `Type.TEXT`, seulement `Type.BITMAP`, grep exhaustif] ; `addText` remplacé par
+`addStyledText` [insère le bitmap comme calque `.bitmap` natif, comme `addFreehandDrawing`] ;
+**commit `4ba5b08` poussé sur `main`, CI PAS déclenchée** — `gh` CLI/jeton API absents de cette
+session locale Windows, workflow `ios-build.yml` étant `workflow_dispatch`-only [aucun
+déclenchement auto au push] ; nécessite déclenchement manuel par l'utilisateur ou une session avec
+accès `gh` avant `BUILD_VALIDATED`)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

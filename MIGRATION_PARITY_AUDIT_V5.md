@@ -2370,6 +2370,10 @@ CAUSE : Le point d'accroche choisi pour porter la demande de permission est le p
 IMPACT : Pour un tout nouvel utilisateur, la toute première chose que l'app affiche est potentiellement une boîte de dialogue système opaque demandant l'autorisation de notifications, sans aucun contexte (pas de splash, pas d'onboarding, pas d'explication) — Android ne montre jamais ce dialogue avant qu'au moins un écran de l'app soit visible. Cela réduit le taux d'acceptation (bonne pratique Apple documentée : contextualiser la demande) et diffère du comportement Android réel.
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Déplacer l'appel à `requestAuthorization` hors de `didFinishLaunchingWithOptions`, vers un point après le premier rendu d'écran (ex. `.onAppear` de l'écran d'onboarding ou de Home, à l'image d'Android), pour ne plus interrompre le lancement du process avant tout affichage.
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-19). Déplacé vers `RootRouterView.onAppear`
+(garde `SMOKE_TEST_MODE` préservée), point commun aux 2 chemins Android (`HomeShellView`/
+`AuthCoordinatorView`). Fichiers modifiés : `App/AppDelegate.swift`, `Navigation/RootRouterView.swift`.
+Commit `3df2b47`, poussé sur `main`. CI non déclenchée par cette session.
 ```
 
 ```
@@ -2517,6 +2521,12 @@ CAUSE : `try?` sur l'appel réseau de blocage sans branche d'erreur exposée à 
 IMPACT : Un utilisateur qui tente de bloquer/débloquer quelqu'un avec une coupure réseau momentanée ne voit RIEN se passer (pas de Toast, pas d'alerte, pas de changement d'état) — contrairement à Android qui informe explicitement de l'échec, laissant l'utilisateur sans indication s'il doit réessayer ou si l'action a simplement été ignorée.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter une propriété d'erreur publiée (ex. `blockError: String?`) sur les deux ViewModels, alimentée dans la branche `catch`, et une alerte dans `FeedView`/`FeedDetailPagerView`/`ProfileView` reprenant le texte `errorLoad` (« pas de connexion internet, réessayer plus tard »), même motif que `deleteError` déjà câblé pour la suppression de post.
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-20). `blockError: String?` ajouté aux 2
+ViewModels, `block()`/`toggleBlock()` passés en `do/catch` (le `try?` avalait aussi l'échec réseau,
+distinct du cas légitime "déblocage" déjà géré) ; alerte "Échec du blocage" ajoutée dans `FeedView`
+(grille + `FeedDetailPagerView`) et `ProfileView`, même motif que `deleteError`. Fichiers modifiés :
+`Feed/FeedViewModel.swift`, `Feed/FeedView.swift`, `Profile/ProfileViewModel.swift`,
+`Profile/ProfileView.swift`. Commit `fa391e9`, poussé sur `main`. CI non déclenchée par cette session.
 ```
 
 ```

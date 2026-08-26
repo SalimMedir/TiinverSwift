@@ -2,15 +2,15 @@
 
 Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 
-**État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
+**État actuel (2026-08-26) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [30/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
-V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022,
-V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037 (IOS_INTENTIONAL_DIFFERENCE),
-V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060 (DIFFÉRÉ), V5-F-062,
-V5-F-063, V5-F-067, V5-F-068, V5-F-070], démarré automatiquement à V5-F-001, dans l'ordre du
-document. Prochain : V5-F-072. Puis 31 P2, 21 P3.**
+temps). **BACKLOG P1 ENTIÈREMENT TRAITÉ (40/40)** — voir `CLAUDE_CONTINUATION.md` pour le détail
+lot par lot complet. **Backlog P2 (31 findings) EN COURS [20/31 clos, dans l'ordre du document :
+V5-F-002, V5-F-004, V5-F-008, V5-F-014, V5-F-024, V5-F-025, V5-F-026
+(IOS_INTENTIONAL_DIFFERENCE), V5-F-030, V5-F-035, V5-F-038, V5-F-039, V5-F-040, V5-F-048,
+V5-F-049, V5-F-051, V5-F-054, V5-F-055 (partiel, écart architectural documenté), V5-F-059,
+V5-F-061, V5-F-065]. Prochain : V5-F-066. Puis 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2373,6 +2373,54 @@ générateurs.
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Feed/MediaTrimView.swift`,
 `Sources/TiinverSwift/Messagerie/ChatViewModel.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P2-19 : V5-F-061 (Permission notifications demandée avant tout rendu d'écran)
+
+**Commit** : `3df2b47` — poussé sur `main` (`c021a55..3df2b47`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `OnboardingFragment.onViewCreated` (utilisateurs non connectés) et
+`Activity/ui/HomeActivity.java:571-577` (utilisateurs déjà connectés, routés directement par
+`SplashActivity`) demandent TOUS DEUX la permission notifications seulement APRÈS que leur écran
+respectif ait été rendu. `AppDelegate.didFinishLaunchingWithOptions` appelait
+`UNUserNotificationCenter.requestAuthorization` de façon inconditionnelle et synchrone, avant tout
+rendu — à chaque lancement à froid, pour tout utilisateur.
+
+**Correction appliquée** : appel déplacé vers `RootRouterView.onAppear` (garde `SMOKE_TEST_MODE`
+préservée à l'identique), point commun aux 2 chemins Android (`HomeShellView`/
+`AuthCoordinatorView`) — se déclenche une fois l'écran réel inséré dans la hiérarchie de vues.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/App/AppDelegate.swift`,
+`Sources/TiinverSwift/Navigation/RootRouterView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P2-20 : V5-F-065 (Échec de blocage/déblocage sans retour visuel)
+
+**Commit** : `fa391e9` — poussé sur `main` (`3df2b47..fa391e9`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `MainFragment.block()`/`UserProfile.block()` (`onError`, tous deux) affichent un
+`Toast` explicite `R.string.errorLoad` sur échec réseau du blocage/déblocage.
+`FeedViewModel.block()` utilisait `guard let blocked = try? ..., blocked else { return }` — échec
+réseau ET déblocage légitime retournaient silencieusement, sans distinction.
+`ProfileViewModel.toggleBlock()` utilisait `(try? ...) ?? isBlocked` — même repli silencieux sur
+échec réseau.
+
+**Correction appliquée** : `ProfileRepository.toggleBlock` levait déjà distinctement sur échec
+réseau (transport, `APIClient.request`), indépendamment du résultat légitime `blocked == false` —
+`block()`/`toggleBlock()` passés en `do/catch`, nouveau `blockError: String?` publié UNIQUEMENT
+dans la branche `catch` (jamais pour un déblocage légitime, comportement état/grille inchangé sur
+erreur). Alerte "Échec du blocage" ajoutée dans `FeedView` (grille + `FeedDetailPagerView`) et
+`ProfileView`, même motif que `deleteError` déjà câblé pour la suppression de post.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedViewModel.swift`,
+`Sources/TiinverSwift/Feed/FeedView.swift`, `Sources/TiinverSwift/Profile/ProfileViewModel.swift`,
+`Sources/TiinverSwift/Profile/ProfileView.swift`.
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.

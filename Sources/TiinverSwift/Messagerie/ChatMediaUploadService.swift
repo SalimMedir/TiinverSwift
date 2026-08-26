@@ -60,6 +60,18 @@ final class ChatMediaUploadService {
     /// sont clairement accidentels (incohérents entre les 2 branches, pas un protocole voulu) —
     /// reconstruites ici PROPREMENT et UNIFORMÉMENT pour les 2 branches plutôt que de répliquer une
     /// incohérence involontaire.
+    ///
+    /// **Vérifié le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-081, Phase B P3)** — `Content-Type`
+    /// : `uploadMediaToBunny` (branche non-vidéo Android) code en dur `application/octet-stream`
+    /// pour TOUTE pièce jointe photo/audio, quel que soit son MIME réel — seule
+    /// `uploadMediaAndThumbnail` (branche vidéo) envoie le vrai MIME. `put()` ci-dessous envoie
+    /// systématiquement `kind.mimeType` (le MIME réel) pour les 2 branches — DÉLIBÉRÉMENT NON
+    /// aligné sur la valeur générique Android. `SUGGESTED_STATUS` de l'audit lui-même :
+    /// `IOS_INTENTIONAL_DIFFERENCE` — reproduire fidèlement une valeur générique probablement NON
+    /// intentionnelle côté Android (incohérente entre ses 2 propres branches, cause racine jamais
+    /// identifiée) serait porter un défaut protocolaire, pas une parité utile ; le MIME réel envoyé
+    /// ici est strictement correct et sans effet observable négatif identifié dans l'app (chargement
+    /// basé sur l'extension/les données, pas sur ce header).
     func upload(
         messageId: String, object: String, fileURL: URL, thumbnailFileURL: URL?,
         progress: (@Sendable (Double) -> Void)? = nil

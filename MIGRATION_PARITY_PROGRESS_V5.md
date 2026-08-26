@@ -5,12 +5,12 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [26/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+temps). Backlog P1 (40 findings) EN COURS [27/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
 V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022,
 V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037 (IOS_INTENTIONAL_DIFFERENCE),
-V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060 (DIFFÉRÉ), V5-F-062],
-démarré automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-063. Puis 31 P2,
-21 P3.**
+V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060 (DIFFÉRÉ), V5-F-062,
+V5-F-063], démarré automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-067.
+Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -1328,6 +1328,41 @@ erreur testée AVANT vide, même motif déjà correct dans
 **Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
 réel requis : ouvrir le centre de notifications sans réseau/session expirée, confirmer le message
 d'erreur.
+
+## 2026-08-25 — Phase B V5 — Lot P1-26 : V5-F-063 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `wallet/WalletActivity.java:124-186` — observer `getLiveData()`, branche
+`Result.ERROR` (`:128-129`) → `attemptReconnect()` (`:178-186`), relance automatiquement
+`executeBackTask()` toutes les 5s via `Handler.postDelayed`, indéfiniment, jusqu'à succès — sans
+jamais afficher de message d'erreur visible.
+
+**iOS avant correctif** : `WalletViewModel.errorMessage` peuplé sur échec
+(`catch { errorMessage = error.localizedDescription }`) mais jamais lu par `WalletView` (grep
+confirmé). Si l'échec survenait au chargement INITIAL, `transactions` restait vide — aucune
+cellule pour déclencher `.onAppear`, pas de `.refreshable` — écran vide et figé en permanence,
+sans texte, sans bouton, sans reprise.
+
+### Correctif appliqué
+
+Cause : `errorMessage` publié côté ViewModel mais jamais consommé côté vue ; absence du
+mécanisme `attemptReconnect`. Correctif (option "visible + reprise manuelle", PAS la reprise
+automatique à 5s — nécessiterait un timer géré par le cycle de vie de la vue, même classe de
+risque de fuite que V5-F-057/`CADisplayLink`) : bandeau `Text(errorMessage)` + bouton "Réessayer"
+affiché dans la section Historique quand `transactions.isEmpty && errorMessage != nil` ;
+`.refreshable { await viewModel.loadInitial() }` ajouté sur la `List`. `errorMessage` désormais
+effacé au DÉBUT de chaque tentative (`loadMore()`), pas seulement en cas de succès, pour éviter
+qu'un ancien message persiste après une reprise réussie.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Wallet/WalletView.swift`,
+`Sources/TiinverSwift/Wallet/WalletViewModel.swift`.
+
+**Résultat CI** : commit `a7f4c8f`, push confirmé (`aa922ad..a7f4c8f main -> main`), run
+`32930424123` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : Portefeuille avec réseau instable, confirmer message d'erreur + bouton "Réessayer".
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

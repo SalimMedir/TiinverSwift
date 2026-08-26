@@ -2039,6 +2039,27 @@ CAUSE : `errorMessage` publié côté ViewModel mais jamais consommé côté vue
 IMPACT : Un utilisateur ouvrant Portefeuille avec un réseau instable au moment précis du chargement voit un écran d'historique vide en permanence (solde/gemmes toujours visibles car lus depuis le cache local `UserSession`, mais aucune transaction, aucune explication, aucun moyen de relancer sans quitter/rouvrir l'écran), alors qu'Android se rétablirait automatiquement dans les secondes suivantes.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Afficher `viewModel.errorMessage` (bandeau + bouton « Réessayer », même motif que `FeedView`/`ProfileView`) et/ou ajouter `.refreshable { await viewModel.loadInitial() }`, voire reproduire la reprise automatique à 5s d'Android.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-26) — Vérifié directement :
+`WalletActivity.java:124-186` confirme la reprise automatique silencieuse toutes les 5s
+(`attemptReconnect`), sans jamais afficher de message d'erreur. Correctif appliqué (option
+"visible + reprise manuelle" de la RECOMMANDATION, PAS la reprise automatique à 5s — nécessiterait
+un timer géré par le cycle de vie de la vue, même classe de risque de fuite que
+V5-F-057/`CADisplayLink`) : bandeau `Text(errorMessage)` + bouton "Réessayer" affiché dans
+`WalletView` quand `transactions.isEmpty && errorMessage != nil` ; `.refreshable` ajouté sur la
+`List` pour un second mécanisme de reprise manuelle ; `WalletViewModel.errorMessage` désormais
+effacé au DÉBUT de chaque tentative (pas seulement en cas de succès), pour qu'un ancien message ne
+persiste pas après une reprise réussie, maintenant qu'il est réellement consommé par la vue.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Wallet/WalletView.swift`,
+`Sources/TiinverSwift/Wallet/WalletViewModel.swift`.
+
+**Résultat CI** : commit `a7f4c8f`, push confirmé (`aa922ad..a7f4c8f main -> main`), run
+`32930424123` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : ouvrir Portefeuille avec un réseau instable,
+confirmer l'affichage du message d'erreur + bouton "Réessayer" au lieu d'un écran vide figé.
 ```
 
 ```

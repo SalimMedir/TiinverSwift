@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [26/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [27/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -77,8 +77,10 @@ chargeaient le fichier entier en RAM, `URLSession.shared.data(for:)`/`dataTask` 
 `download(for:)`/`downloadTask`, streaming disque) ; V5-F-060 DIFFÉRÉ (BGTaskScheduler,
 synchronisation en arrière-plan, capability build + 3 comportements distincts + endpoint payant,
 précédent V3-F-095) ; Lot P1-25 V5-F-062 BUILD_VALIDATED (branche erreur du centre de
-notifications inatteignable, ordre des conditions inversé)]**. Voir section "Cycle V5" plus bas
-pour le détail complet.)
+notifications inatteignable, ordre des conditions inversé) ; Lot P1-26 V5-F-063 BUILD_VALIDATED
+(erreur de chargement de l'historique Wallet jamais affichée, bandeau + bouton "Réessayer" +
+`.refreshable` ajoutés, reprise auto silencieuse à 5s d'Android non reproduite)]**. Voir section
+"Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -563,24 +565,44 @@ testée AVANT vide, même motif que `FeedView.emptyOrStatusState`/`ProfileView.h
 `aa922ad`, CI verte (run `32929729728`)** — `BUILD_VALIDATED`. Détail des 26 lots dans
 `PROGRESS_V5.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-063** (Wallet — erreur de
-chargement de l'historique des transactions jamais affichée, aucun mécanisme de reprise. Android
-[`wallet/WalletActivity.java:124-186`, observer `getLiveData()`, branche `Result.ERROR`
-`:128-129` → `attemptReconnect()` `:178-186`, relance automatique `executeBackTask()` toutes les
-5s via `Handler.postDelayed`] — sur échec réseau, Android ne montre PAS de message d'erreur mais
-relance AUTOMATIQUEMENT la même requête après 5s, indéfiniment, jusqu'à succès. iOS
-[`Wallet/WalletViewModel.swift:37-52`, `loadMore`, `errorMessage = error.localizedDescription` —
-peuplé mais jamais lu ; `Wallet/WalletView.swift`, aucune lecture de `errorMessage`, pas de
-`.refreshable`] — si l'échec survient au chargement INITIAL, aucune cellule n'existe pour
-déclencher un nouvel essai, l'écran reste vide et figé en permanence, sans texte d'erreur, sans
-bouton, sans reprise. Plan : afficher `errorMessage` [bandeau + bouton "Réessayer"] et ajouter
-`.refreshable` — NE PAS reproduire la reprise automatique silencieuse à 5s d'Android [nécessiterait
-un timer géré par le cycle de vie de la vue, même classe de risque de fuite que V5-F-057/
-CADisplayLink] — lire `WalletView.swift`/`WalletViewModel.swift` en entier avant de coder ; domaine
-Wallet, vérification financière double N/A ici [lecture seule, pas de mouvement d'argent]), puis
-continuer AUTOMATIQUEMENT V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078,
-V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (13 P1 restants après V5-F-063, dans
-l'ordre
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-067** (Notifications —
+concurrence transversale : rafraîchissements concurrents de `fetchNotifications()` sans verrou
+global → notifications système DUPLIQUÉES. Android
+[`back_sync/MyFirebaseMessagingService.java:109-119`, `onMessageReceived` →
+`WorkManager.enqueueUniqueWork("FCM_SYNC_WORK", ExistingWorkPolicy.KEEP, syncWork)` ;
+`NotiLikecmt/NotificationRepository.java:89-120`, `fetchNotifications`, appelé par
+`TiinverSyncWorker.visiteServeur`, UN SEUL exécutant garanti par la clé unique WorkManager] —
+chaque push FCM entrant enfile un travail sous la clé unique "FCM_SYNC_WORK" avec
+`ExistingWorkPolicy.KEEP` : si une synchro est déjà en file/en cours, le nouveau est IGNORÉ —
+`fetchNotifications`/`triggerSystemNotifications` [affiche les notifications système] ne peut
+JAMAIS s'exécuter deux fois en parallèle, même en rafale de push. iOS
+[`App/AppDelegate.swift:120-134`, `didReceiveRemoteNotification`, instancie un
+`NotificationCenterViewModel()` FRAIS à CHAQUE appel puis appelle `fetchNotifications` ;
+`Notifications/NotificationCenterViewModel.swift:21-52`, `fetchNotifications`, AUCUNE garde
+`isLoading` avant de lancer le fetch, et `:96-115` `triggerSystemNotifications` lit
+`row.isRead == 0` sans jamais l'écrire à 1 dans ce chemin ;
+`Notifications/LocalNotificationBuilder.swift:128-129`, `present(_:identifier:)` — identifiant
+par défaut = `UUID().uuidString` ALÉATOIRE à chaque appel, AUCUNE déduplication système possible ;
+`Notifications/NotificationsListView.swift:43-46`, `.task` appelle AUSSI `fetchNotifications` sur
+SA PROPRE instance `@StateObject`, indépendante de celle d'`AppDelegate`] — chaque push distant
+crée une NOUVELLE instance (donc `isLoading` toujours `false` au départ, sans mémoire des appels
+précédents) ; si l'écran Notifications est ouvert [sa propre instance a déjà un fetch en vol] ou
+si plusieurs push arrivent en rafale, PLUSIEURS exécutions tournent en parallèle sans aucune
+synchronisation — chaque exécution concurrente relit `isRead == 0` pour les mêmes lignes AVANT
+qu'aucune ne l'ait marquée lue, et appelle `present` avec un UUID distinct à chaque fois → AUCUNE
+déduplication système, la même notification serveur déclenche plusieurs bannières identiques.
+Cause : absence de verrou/garde "single-flight" côté iOS — contrairement à
+`WorkManager.enqueueUniqueWork(..., KEEP, ...)`, rien n'empêche deux exécutions concurrentes, et
+`AppDelegate` recrée une instance différente du ViewModel à chaque appel, rendant même un simple
+`isLoading` sur l'instance inefficace comme protection. Plan : ajouter une sérialisation globale
+[ex. un `Task` unique partagé/`actor` avec déduplication par identifiant, ou un flag STATIQUE
+partagé entre TOUTES les instances, pas un flag d'instance] autour de `fetchNotifications`, et/ou
+faire écrire `triggerSystemNotifications` un marqueur "déjà notifié" AVANT de présenter — lire
+`AppDelegate.swift`, `NotificationCenterViewModel.swift`, `LocalNotificationBuilder.swift` et
+`NotificationsListView.swift` en entier avant de coder ; domaine mémoire/concurrence, attention
+particulière requise selon la directive Phase B), puis continuer AUTOMATIQUEMENT V5-F-068,
+V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095,
+V5-F-097, V5-F-098 (12 P1 restants après V5-F-067, dans l'ordre
 exact du document ; V5-F-060 déjà clos DIFFÉRÉ), puis tous les P2 (31), P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →

@@ -887,6 +887,17 @@ struct AnimemesEditorView: View {
                 // qu'une seule fois, sinon `selectedId` resterait bloqué sur le premier calque
                 // touché et tous les gestes suivants continueraient à le déplacer, même après un
                 // toucher ailleurs sur le canevas.
+                //
+                // **Vérifié le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-091, Phase B P3)** —
+                // `IOS_INTENTIONAL_DIFFERENCE` assumée, PAS un oubli de portage. Android
+                // (`MemesView2.touchDown`, `:1642-1659`) ne réinitialise JAMAIS `objectInAction` sur
+                // un tap dans le vide (grep exhaustif de `objectInAction = -1` : uniquement lors
+                // d'une suppression, jamais lors d'un tap manqué) — la sélection reste "collante"
+                // indéfiniment. `selectObject(at:)` (`AnimemesEditorState.swift`) désélectionne
+                // explicitement dès qu'aucun calque ne contient le point tapé, PRÉCISÉMENT pour
+                // éviter le bug de sélection bloquée décrit ci-dessus, découvert lors du portage —
+                // reproduire la persistance Android réintroduirait ce même bug déjà corrigé.
+                // Comportement iOS jugé plus prévisible, conservé délibérément.
                 if value.translation == .zero {
                     _ = state.selectObject(at: value.startLocation)
                 }

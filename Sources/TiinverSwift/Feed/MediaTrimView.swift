@@ -70,6 +70,13 @@ struct MediaTrimView: View {
     @State private var isProcessing = false
     @State private var player: AVPlayer?
     @State private var trimState = VideoTrimState()
+    /// Aspect ratio (largeur/hauteur) de la vidéo APRÈS correction d'orientation native
+    /// (`preferredTransform`), AVANT toute rotation manuelle (`trimState.rotationDegrees`) —
+    /// même première étape que `composeTransform`. **Ajouté le 2026-08-26
+    /// (MIGRATION_PARITY_AUDIT_V5.md V5-F-038, Phase B P2)** pour l'aperçu de recadrage
+    /// interactif — voir `cropOverlay`/`currentPreviewAspect`.
+    @State private var orientedVideoAspect: CGFloat?
+    @State private var cropCenterAtDragBegin: CGPoint = .zero
     /// **Ajouté le 2026-08-20 (MIGRATION_PARITY_AUDIT_V3.md V3-F-123, Phase B P0)** — voir `trim()` :
     /// tout échec réel bloque désormais l'écran avec un message, fidèle à Android
     /// (`VideoTrimmerView.startTrimWithCrop`, Toast d'erreur, `callback.onVideo()` JAMAIS appelé en
@@ -88,6 +95,7 @@ struct MediaTrimView: View {
             VStack(spacing: 20) {
                 if let player {
                     VideoPlayer(player: player).frame(height: 240).background(Color.black)
+                        .overlay { cropOverlay }
                 } else {
                     Color.black.frame(height: 240)
                 }
@@ -164,6 +172,87 @@ struct MediaTrimView: View {
         } message: {
             Text(errorText ?? "")
         }
+    }
+
+    /// Port de `CropOverlayView` (`:1-266`, montée par `setBtnCropRatioVisibility`/`applyRatio` —
+    /// visible dès qu'un ratio ≠ Libre est sélectionné, PAS seulement pendant que le menu de choix
+    /// est ouvert) — **ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-038, Phase B P2)**.
+    /// Assombrit la zone hors recadrage, dessine le rectangle de recadrage (taille par défaut 90%,
+    /// port de `resetCropRect`) et le rend déplaçable au doigt, clampé dans `videoRect` (port de
+    /// `onTouchEvent`/`moveCropRect`) — jusqu'ici entièrement absent : le recadrage vidéo était
+    /// invisible et toujours centré à 100%, sans aucune interaction possible.
+    @ViewBuilder
+    private var cropOverlay: some View {
+        if case .ratio(let w, let h) = trimState.cropRatio, w > 0, h > 0 {
+            GeometryReader { geo in
+                let targetRatio = CGFloat(w) / CGFloat(h)
+                let videoAspect = currentPreviewAspect
+                let videoRect = Self.letterboxedRect(in: geo.size, aspect: videoAspect)
+                let cropSizeNorm = VideoTrimState.cropNormSize(forTargetRatio: targetRatio, videoAspect: videoAspect)
+                let cropSize = CGSize(width: cropSizeNorm.width * videoRect.width, height: cropSizeNorm.height * videoRect.height)
+                let cropOrigin = CGPoint(
+                    x: videoRect.minX + trimState.cropCenter.x * videoRect.width - cropSize.width / 2,
+                    y: videoRect.minY + trimState.cropCenter.y * videoRect.height - cropSize.height / 2
+                )
+                ZStack {
+                    // Assombrit tout SAUF le rectangle de recadrage (règle de remplissage
+                    // pair-impair : le rectangle "trou" ajouté en second annule le premier là où
+                    // ils se superposent) — technique SwiftUI standard, pas de dépendance externe.
+                    Path { path in
+                        path.addRect(CGRect(origin: .zero, size: geo.size))
+                        path.addRect(CGRect(origin: cropOrigin, size: cropSize))
+                    }
+                    .fill(Color.black.opacity(0.5), style: FillStyle(eoFill: true))
+                    .allowsHitTesting(false)
+                    Rectangle()
+                        .strokeBorder(Color.white, lineWidth: 2)
+                        .frame(width: cropSize.width, height: cropSize.height)
+                        .position(x: cropOrigin.x + cropSize.width / 2, y: cropOrigin.y + cropSize.height / 2)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            // Port de `onTouchEvent` — un geste ne PEUT démarrer que si le doigt
+                            // touche D'ABORD à l'intérieur du rectangle de recadrage
+                            // (`ACTION_DOWN: if (cropRect.contains(x,y))`) : attacher le geste
+                            // directement à la forme du rectangle (`.contentShape` bornée à sa
+                            // propre taille) reproduit cette contrainte nativement, sans state
+                            // supplémentaire.
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    if value.translation == .zero { cropCenterAtDragBegin = trimState.cropCenter }
+                                    guard videoRect.width > 0, videoRect.height > 0 else { return }
+                                    let dx = value.translation.width / videoRect.width
+                                    let dy = value.translation.height / videoRect.height
+                                    trimState.cropCenter = cropCenterAtDragBegin
+                                    trimState.moveCropCenter(dx: dx, dy: dy, cropSize: cropSizeNorm)
+                                }
+                        )
+                }
+            }
+            .allowsHitTesting(true)
+        }
+    }
+
+    /// Aspect ratio actuellement AFFICHÉ dans l'aperçu, après la rotation manuelle
+    /// (`trimState.rotationDegrees` échange largeur/hauteur à 90°/270°, même logique que l'étape 2
+    /// de `composeTransform`).
+    private var currentPreviewAspect: CGFloat {
+        let base = orientedVideoAspect ?? 1
+        return (trimState.rotationDegrees == 90 || trimState.rotationDegrees == 270) ? 1 / base : base
+    }
+
+    /// Port de `calculateVideoRect` (`CropOverlayView.java`) — rectangle vidéo réellement affiché
+    /// (hors bandes noires pillarbox/letterbox) à l'intérieur d'un conteneur de taille `size`.
+    private static func letterboxedRect(in size: CGSize, aspect: CGFloat) -> CGRect {
+        guard aspect > 0, size.width > 0, size.height > 0 else { return CGRect(origin: .zero, size: size) }
+        let containerAspect = size.width / size.height
+        let drawSize: CGSize
+        if aspect > containerAspect {
+            drawSize = CGSize(width: size.width, height: size.width / aspect)
+        } else {
+            drawSize = CGSize(width: size.height * aspect, height: size.height)
+        }
+        let origin = CGPoint(x: (size.width - drawSize.width) / 2, y: (size.height - drawSize.height) / 2)
+        return CGRect(origin: origin, size: drawSize)
     }
 
     private var filmstrip: some View {
@@ -255,6 +344,17 @@ struct MediaTrimView: View {
         }
         player = AVPlayer(url: sourceURL)
         await generateThumbnails(asset: asset)
+        // Port de `calculateVideoRect` (`CropOverlayView.java`) — nécessaire à l'aperçu de
+        // recadrage interactif (`cropOverlay`). Même calcul d'orientation que l'étape 1 de
+        // `composeTransform` ci-dessous (mais fait une seule fois ici, pas à chaque frame rendue).
+        if let track = try? await asset.loadTracks(withMediaType: .video).first,
+            let naturalSize = try? await track.load(.naturalSize),
+            let preferredTransform = try? await track.load(.preferredTransform)
+        {
+            let oriented = naturalSize.applying(preferredTransform)
+            let width = abs(oriented.width), height = abs(oriented.height)
+            if height > 0 { orientedVideoAspect = width / height }
+        }
     }
 
     private func generateThumbnails(asset: AVURLAsset) async {
@@ -387,7 +487,8 @@ struct MediaTrimView: View {
     }
 
     /// Calcule la transformation combinée (orientation native du track + rotation utilisateur +
-    /// miroir + recadrage centré vers le ratio choisi) et la taille de rendu finale — **ajouté le
+    /// miroir + recadrage positionné par l'utilisateur vers le ratio choisi, `state.cropCenter`)
+    /// et la taille de rendu finale — **ajouté le
     /// 2026-08-19, Phase B P0-6**. Port de la composition géométrique de `VideoTransformer`
     /// (`Params.rotation`/`flipH`/`cropNorm`, non lu ligne à ligne — reconstruit via l'API native
     /// `AVMutableVideoCompositionLayerInstruction.setTransform`, équivalent fonctionnel documenté
@@ -436,26 +537,28 @@ struct MediaTrimView: View {
             transform = transform.concatenating(pivotFlip)
         }
 
-        // 4. Recadrage centré vers le ratio choisi — calcule le rectangle de recadrage dans le
-        // cadre courant, puis translate pour que ce rectangle devienne le nouveau cadre de rendu
-        // (0,0)→(renderSize). Port de `showRatioMenu`/`applyRatio` (préréglages, pas de recadrage
-        // libre interactif pour la vidéo côté Android, contrairement à la photo).
+        // 4. Recadrage vers le ratio choisi — calcule le rectangle de recadrage dans le cadre
+        // courant, puis translate pour que ce rectangle devienne le nouveau cadre de rendu
+        // (0,0)→(renderSize). Port de `showRatioMenu`/`applyRatio`/`CropOverlayView.
+        // getCropNormRelativeToVideo` — **corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md
+        // V5-F-038, Phase B P2)** : utilisait auparavant TOUJOURS un rectangle centré à 100% de la
+        // dimension contraignante (le commentaire précédent affirmait à tort "pas de recadrage
+        // libre interactif pour la vidéo côté Android" — faux, `CropOverlayView.java` lu en entier
+        // confirme un vrai recadrage déplaçable, marge par défaut 90%, voir `VideoTrimState.
+        // cropNormSize`/`cropCenter`). `state.cropCenter`/`cropNormSize` (déjà normalisés
+        // `[0,1]×[0,1]` relatifs à `size`, exactement l'espace dans lequel `size` vit ici) donnent
+        // directement le rectangle final, sans recalcul de ratio séparé.
         guard case .ratio(let w, let h) = state.cropRatio, w > 0, h > 0 else {
             return (transform, size)
         }
         let targetRatio = CGFloat(w) / CGFloat(h)
-        let currentRatio = size.width / size.height
-        let cropSize: CGSize
-        let cropOrigin: CGPoint
-        if currentRatio > targetRatio {
-            let newWidth = size.height * targetRatio
-            cropSize = CGSize(width: newWidth, height: size.height)
-            cropOrigin = CGPoint(x: (size.width - newWidth) / 2, y: 0)
-        } else {
-            let newHeight = size.width / targetRatio
-            cropSize = CGSize(width: size.width, height: newHeight)
-            cropOrigin = CGPoint(x: 0, y: (size.height - newHeight) / 2)
-        }
+        let videoAspect = size.width / size.height
+        let cropSizeNorm = VideoTrimState.cropNormSize(forTargetRatio: targetRatio, videoAspect: videoAspect)
+        let cropSize = CGSize(width: cropSizeNorm.width * size.width, height: cropSizeNorm.height * size.height)
+        let cropOrigin = CGPoint(
+            x: state.cropCenter.x * size.width - cropSize.width / 2,
+            y: state.cropCenter.y * size.height - cropSize.height / 2
+        )
         transform = transform.concatenating(CGAffineTransform(translationX: -cropOrigin.x, y: -cropOrigin.y))
         return (transform, cropSize)
     }

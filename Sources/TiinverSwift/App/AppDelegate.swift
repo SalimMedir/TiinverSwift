@@ -37,6 +37,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
         Messaging.messaging().delegate = self
         UNUserNotificationCenter.current().delegate = self
+        // Port des actions "Quitter"/"Répondre" (V5-F-028) — enregistrement de catégorie
+        // indépendant de l'autorisation notifications (peut être appelé avant qu'elle soit
+        // accordée), fait ici plutôt qu'au moment de `RootRouterView.onAppear` (V5-F-061) pour
+        // rester disponible dès la toute première notification affichée.
+        LocalNotificationBuilder.registerNotificationCategories()
         // **Déplacé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-061, Phase B P2)** vers
         // `RootRouterView.onAppear` — voir sa doc pour le détail complet. Avant ce correctif, la
         // demande d'autorisation notifications était déclenchée ICI, de façon inconditionnelle et

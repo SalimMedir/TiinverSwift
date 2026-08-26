@@ -41,6 +41,20 @@ import UserNotifications
 /// localisées quand ce sujet sera traité (pas encore un module de l'ordre de portage).
 enum LocalNotificationBuilder {
 
+    /// Port des 2 `addAction` systématiques de `NotificationUtils.show()` (`:359-360`, V5-F-028) —
+    /// "Quitter"/"Répondre" (`R.string.quitter`/`R.string.repondre`), tous deux liés au MÊME
+    /// `PendingIntent` que le tap sur la notification elle-même (`resultPendingIntent`, aucune
+    /// action réellement distincte) : `.foreground` reproduit cette ouverture d'app identique,
+    /// et `AppDelegate.userNotificationCenter(_:didReceive:)` route déjà par `categoryIdentifier`
+    /// seul (pas par `actionIdentifier`), donc les 2 actions ET le tap simple produisent déjà le
+    /// même comportement routé sans modification supplémentaire de ce handler.
+    static func registerNotificationCategories() {
+        let quit = UNNotificationAction(identifier: "quit", title: "Quitter", options: [.foreground])
+        let reply = UNNotificationAction(identifier: "reply", title: "Répondre", options: [.foreground])
+        let activity = UNNotificationCategory(identifier: "activity", actions: [quit, reply], intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([activity])
+    }
+
     struct ActivityPayload {
         var title: String
         var verb: String // like | share | comment | follow | transfert | post | missedvoicecall

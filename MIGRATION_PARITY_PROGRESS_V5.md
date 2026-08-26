@@ -14,7 +14,7 @@ V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071, V5-F-073 (DUPLICATE de V5-F-02
 V5-F-079, V5-F-083, V5-F-086, V5-F-090, V5-F-096, V5-F-099]. **BACKLOG P2 ENTIÈREMENT CLOS
 (31/31)**. Backlog P3 (21 findings) EN COURS [3/21 clos : V5-F-003 (DUPLICATE de V5-F-050),
 V5-F-011, V5-F-012, V5-F-015 (DUPLICATE de V5-F-065), V5-F-017, V5-F-027, V5-F-028, V5-F-041,
-V5-F-044 (DOCUMENTÉ), V5-F-052, V5-F-053 (DIFFÉRÉ)]. Prochain : V5-F-056.**
+V5-F-044 (DOCUMENTÉ), V5-F-052, V5-F-053 (DIFFÉRÉ), V5-F-056]. Prochain : V5-F-075.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2862,6 +2862,34 @@ jamais lue par le pipeline de téléchargement média réel — écran purement 
 lui-même. Construire les 3 dialogues à sélection multiple pour une parité purement cosmétique (zéro
 impact comportemental des deux côtés) jugé disproportionné. Décision documentée dans
 `Settings/SettingSubViews.swift`.
+
+## 2026-08-26 — Phase B V5 — Lot P3-12 : V5-F-056 (Téléchargement pièce jointe chat sans reprise réelle après interruption)
+
+**Commit** : `6ae581c` — poussé sur `main` (`30b7bb7..6ae581c`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : Android délègue les téléchargements de pièces jointes à
+`android.app.DownloadManager`, service système persistant hors process — survit à un kill d'app,
+reprend après coupure réseau. Le seul déclencheur de reprise iOS était `ChatViewModel.handleAppear`
+(bulle visible) : un téléchargement en échec restait bloqué indéfiniment sans ré-appairage visuel de
+la bulle, même réseau revenu, app toujours ouverte.
+
+**Correction appliquée** : symétrique exact de `resumePendingUploads`/V5-F-078 côté téléchargement
+(2ᵉ volet de la RECOMMANDATION — reconnexion socket comme déclencheur, PAS de vraie `URLSession`
+`background`, même arbitrage que V5-F-098). Nouveau `ChatMediaDownloadService` factorise la logique
++ réservation partagée `reserveDownload`/`releaseDownload` (remplace le `downloadingMessageIds`
+local à l'instance `ChatViewModel` de V5-F-069, insuffisant contre ce nouveau chemin concurrent) ;
+`MessageRepository.pendingDownloads` symétrique de `pendingUploads` ; `ChatRepository.
+resumePendingDownloads` appelé depuis `onConnected()`. Portée réduite documentée : pas de
+rafraîchissement visuel immédiat d'une bulle déjà affichée dans une autre instance `ChatViewModel`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatMediaDownloadService.swift` (nouveau),
+`Sources/TiinverSwift/Messagerie/ChatViewModel.swift`,
+`Sources/TiinverSwift/Storage/MessageRepository.swift`,
+`Sources/TiinverSwift/Realtime/ChatRepository.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

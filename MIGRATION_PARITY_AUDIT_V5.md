@@ -2285,6 +2285,20 @@ CAUSE : Le portage utilise un `URLSession.download(from:)` lié au cycle de vie 
 IMPACT : Un utilisateur qui ouvre une conversation contenant une photo/vidéo non encore téléchargée alors que le réseau est instable peut voir le téléchargement échouer silencieusement et rester bloqué indéfiniment tant qu'il ne quitte pas puis ne revient pas sur ce message précis (scroll, navigation) — contrairement à Android où le téléchargement, une fois lancé, se termine de façon fiable indépendamment de l'état de l'app ou de la vue, y compris après un kill complet de l'app.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Envisager une URLSession de configuration `background` pour les téléchargements de pièces jointes de chat (comme pour tout téléchargement iOS destiné à survivre à la mise en arrière-plan/au kill de l'app), et/ou déclencher un nouvel essai automatique sur le retour de NetworkMonitor.shared à `.satisfied` pour les messages dont isFileDownloaded reste à 0, sans attendre un ré-appairage visuel de la bulle.
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-12). 2ᵉ volet de la RECOMMANDATION appliqué
+(reconnexion socket comme déclencheur, symétrique exact de `resumePendingUploads`/V5-F-078) — 1er
+volet (vraie `URLSession` `background`) écarté, même arbitrage risque/ampleur que le choix déjà
+fait côté upload en V5-F-098. Nouveau `ChatMediaDownloadService` (mirroir de
+`ChatMediaUploadService`) factorise la logique de téléchargement + réservation PARTAGÉE
+`reserveDownload`/`releaseDownload` (remplace le `downloadingMessageIds` local à l'instance
+`ChatViewModel` ajouté sous V5-F-069, insuffisant pour éviter une course avec ce nouveau chemin) ;
+`MessageRepository.pendingDownloads` symétrique de `pendingUploads` ; `ChatRepository.
+resumePendingDownloads` appelé depuis `onConnected()`. Portée réduite documentée : pas de
+rafraîchissement visuel immédiat d'une bulle déjà affichée dans une autre instance `ChatViewModel`
+(Core Data mis à jour, UI reflétée au prochain `handleAppear`/réouverture). Fichiers modifiés :
+`Messagerie/ChatMediaDownloadService.swift` (nouveau), `Messagerie/ChatViewModel.swift`,
+`Storage/MessageRepository.swift`, `Realtime/ChatRepository.swift`. Commit `6ae581c`, poussé sur
+`main`. CI non déclenchée par cette session.
 ```
 
 ```

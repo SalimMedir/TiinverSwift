@@ -434,13 +434,20 @@ préférences concernées [3 listes + 3 bascules maîtresses déjà portées] ne
 pipeline de téléchargement média réel côté Android — écran purement décoratif des DEUX côtés.
 Construire 3 dialogues à sélection multiple pour une parité cosmétique sans aucun effet
 comportemental jugé disproportionné. Décision documentée dans `SettingSubViews.swift`. **Commit
-`2766fb9` poussé sur `main`**). **Prochain finding à traiter : V5-F-056** (grep
-`"^ID : V5-F-056"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe
-avant tout correctif, comme fait pour chaque finding tout au long de cette session ; identifier les
-P3 restants avec `grep "^PRIORITÉ : P3"` puis chercher lesquels n'ont pas encore de bloc
-`STATUT :` à leur suite). Si l'utilisateur a entre-temps déclenché la CI pour les findings
-`CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur statut vers
-`BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P3.
+`2766fb9` poussé sur `main`**) ; Lot P3-12 V5-F-056 CODE_COMPLETE/CI_PENDING (téléchargement pièce
+jointe chat sans reprise réelle après interruption — seul déclencheur iOS était `handleAppear`
+[bulle visible], Android délègue à `DownloadManager` [service système persistant]. Corrigé :
+nouveau `ChatMediaDownloadService` [mirroir de `ChatMediaUploadService`] + réservation partagée,
+`MessageRepository.pendingDownloads` symétrique de `pendingUploads`, `ChatRepository.
+resumePendingDownloads` appelé depuis `onConnected()` — symétrique exact de V5-F-078 côté upload.
+`downloadingMessageIds` local à l'instance `ChatViewModel` [V5-F-069] remplacé par la réservation
+partagée. **Commit `6ae581c` poussé sur `main`, CI PAS déclenchée**). **Prochain finding à
+traiter : V5-F-075** (grep `"^ID : V5-F-075"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à
+confirmer par lecture directe avant tout correctif, comme fait pour chaque finding tout au long de
+cette session ; identifier les P3 restants avec `grep "^PRIORITÉ : P3"` puis chercher lesquels
+n'ont pas encore de bloc `STATUT :` à leur suite). Si l'utilisateur a entre-temps déclenché la CI
+pour les findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur
+statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P3.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

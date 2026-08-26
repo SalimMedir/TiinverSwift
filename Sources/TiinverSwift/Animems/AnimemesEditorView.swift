@@ -88,6 +88,8 @@ struct AnimemesEditorView: View {
     /// immobile déclenche bien `longPressGesture` SANS que le mouvement minimal du doigt pendant la
     /// pression ne fasse dévier `dragGesture` vers un déplacement de calque non désiré.
     @State private var lastTouchLocation: CGPoint = .zero
+    /// Port de `onFingerMoving` — voir doc de `deleteDropZoneIcon`/`isInDeleteDropZone` (V5-F-040).
+    @State private var isDraggingSelectedObject = false
     @State private var lastMaskDragTranslation: CGSize = .zero
     @State private var lastMaskMagnification: CGFloat = 1.0
     @State private var lastMaskRotationDegrees: CGFloat = 0
@@ -582,6 +584,14 @@ struct AnimemesEditorView: View {
                 // qu'Android fixe explicitement.
                 .scaleEffect(zoomState.currentScale)
 
+                // Port de `drawDeleterIcon` — voir sa doc complète (V5-F-040). Même `.frame` que
+                // le `Canvas` ci-dessus pour hériter du même centrage par défaut de ce `ZStack`
+                // (donc de la même origine locale que `canvasSize`, sans calcul de décalage
+                // supplémentaire) — mais délibérément SANS `.scaleEffect` (voir doc).
+                deleteDropZoneIcon
+                    .frame(width: fitSize.width, height: fitSize.height)
+                    .allowsHitTesting(false)
+
                 zoomControls
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                     .padding(.leading, 8)
@@ -593,6 +603,48 @@ struct AnimemesEditorView: View {
             .frame(width: outerGeo.size.width, height: outerGeo.size.height)
         }
         .frame(height: 360)
+    }
+
+    /// Port de `MemesView2.drawDeleterIcon`/`mDeleteBound` (`:1355-1361`) — zone VISUELLE de
+    /// l'icône corbeille : carré 70×70 démarrant au centre horizontal du canevas, `top=10`.
+    /// **Ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-040, Phase B P2)**.
+    private static func deleteDropZoneVisualRect(canvasWidth: CGFloat) -> CGRect {
+        CGRect(x: canvasWidth / 2, y: 10, width: 70, height: 70)
+    }
+
+    /// Port de `executeDeleterObjeect` (`MemesView2.java:1765-1769`) — zone de DÉTECTION au
+    /// relâchement, plus généreuse que la zone visuelle (`mDeleteBound.left-30` à
+    /// `mDeleteBound.right+80`, `y` de 10 à 100) : reproduite ici en coordonnées canevas LOCALES
+    /// (mêmes coordonnées que `value.location` du geste — non affectées par `zoomState.
+    /// currentScale`, voir doc de `.scaleEffect` sur `canvasArea`), fidèle à `event.getX()/getY()`
+    /// côté Android (coordonnées de vue, également non affectées par un éventuel zoom externe).
+    private static func isInDeleteDropZone(_ point: CGPoint, canvasWidth: CGFloat) -> Bool {
+        let visual = deleteDropZoneVisualRect(canvasWidth: canvasWidth)
+        return point.x >= visual.minX - 30 && point.x <= visual.maxX + 80 && point.y >= 10 && point.y <= 100
+    }
+
+    /// Port de `drawDeleterIcon` — icône affichée pendant qu'un calque sélectionné est glissé
+    /// (`onFingerMoving && !isOnAutoMode`). **Approximation assumée, documentée** : positionnée en
+    /// espace ÉCRAN (haut du conteneur du canevas), PAS à l'intérieur du groupe qui reçoit
+    /// `zoomState.currentScale` (celui-ci enveloppe UNIQUEMENT le `Canvas` lui-même, voir
+    /// commentaire détaillé sur `.scaleEffect` dans `canvasArea` — le sortir de ce groupe pour le
+    /// zoomer avec le contenu aurait exigé de restructurer cette composition de gestes documentée
+    /// comme fragile) : à zoom par défaut (le cas courant), la position visuelle correspond
+    /// exactement à la zone de dépôt réelle ; à un niveau de zoom différent, l'icône reste fixe à
+    /// l'écran alors que le contenu du canevas zoome sous elle — la LOGIQUE de suppression, elle,
+    /// reste fidèle à 100% (coordonnées canevas locales, indépendantes du zoom, voir
+    /// `isInDeleteDropZone`).
+    @ViewBuilder
+    private var deleteDropZoneIcon: some View {
+        if isDraggingSelectedObject, !state.autoCaptureEnabled {
+            let visual = Self.deleteDropZoneVisualRect(canvasWidth: canvasSize.width)
+            Image(systemName: "trash.circle.fill")
+                .resizable()
+                .frame(width: visual.width, height: visual.height)
+                .foregroundStyle(.white, Color.red)
+                .background(Circle().fill(Color.black.opacity(0.4)))
+                .position(x: visual.midX, y: visual.midY)
+        }
     }
 
     /// Ajuste `available` au ratio largeur/hauteur demandé, en restant dans les deux dimensions.
@@ -835,13 +887,24 @@ struct AnimemesEditorView: View {
                     _ = state.selectObject(at: value.startLocation)
                 }
                 state.dragMoved(to: value.location)
+                // Port de `onFingerMoving = true` (`executeTouchEvent`, `ACTION_MOVE`) — pilote
+                // l'affichage de l'icône corbeille (`deleteDropZoneIcon`), voir sa doc (V5-F-040).
+                isDraggingSelectedObject = state.selectedId != nil
             }
-            .onEnded { _ in
+            .onEnded { value in
                 if state.isMaskEditMode {
                     lastMaskDragTranslation = .zero
                 } else {
                     state.dragEnded()
+                    // Port de `executeDeleterObjeect` (`MemesView2.java:1765-1769`), appelé APRÈS
+                    // `touchUp` sur `ACTION_UP` — **ajouté le 2026-08-26
+                    // (MIGRATION_PARITY_AUDIT_V5.md V5-F-040, Phase B P2)**. Voir doc de
+                    // `Self.isInDeleteDropZone` pour la zone exacte.
+                    if !state.autoCaptureEnabled, Self.isInDeleteDropZone(value.location, canvasWidth: canvasSize.width) {
+                        state.deleteSelected()
+                    }
                 }
+                isDraggingSelectedObject = false
             }
     }
 

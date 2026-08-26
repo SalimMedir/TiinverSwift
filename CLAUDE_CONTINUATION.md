@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [32/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [33/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -96,8 +96,11 @@ supprimée entièrement, `rosterAll()` retourne `[RosterEntity]` brut, `RosterLi
 (upload de publication Feed non protégé contre la mise en arrière-plan, Android utilise un vrai
 `Service` en foreground + file d'attente persistée, `publish()` enveloppé dans
 `UIApplication.shared.beginBackgroundTask` (option "à défaut" de la RECOMMANDATION), persistance/
-reprise après échec réseau complet non traitée)]**. Voir section "Cycle V5" plus bas pour le
-détail complet.)
+reprise après échec réseau complet non traitée) ; Lot P1-32 V5-F-077 BUILD_VALIDATED (en-tête
+Referer manquant au téléchargement de pièce jointe chat, seul chemin CDN du projet à ne pas
+l'attacher, `requestDownload` basculé vers `download(for:)` avec `Referer: https://tiinver.com`,
+commentaire stale affirmant à tort qu'Android n'attache aucun header corrigé au passage)]**. Voir
+section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -671,12 +674,29 @@ plus fréquent en usage réel. La persistance/reprise après échec réseau comp
 backgroundTask expiré) N'EST PAS traitée. **Commit `e1b8b0a`, CI verte (run `32935455105`)** —
 `BUILD_VALIDATED`, portée réduite documentée. Détail des 32 lots dans `PROGRESS_V5.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-077** (prochain P1 dans
-l'ordre exact du document `MIGRATION_PARITY_AUDIT_V5.md`, ligne ~2464 — lire sa fiche complète en
+**Lot P1-32 traité (V5-F-077)** — Chat, pipeline média BunnyCDN (téléchargement), en-tête HTTP
+`Referer` manquant sur le téléchargement de pièce jointe chat (photo/vidéo/audio/document).
+Vérifié `messagerie/ui/ChatFragmentTest.java:3152-3176` (`downloadFile`), ligne 3159 :
+`request.addRequestHeader("Referer", "https://tiinver.com")` — le MÊME en-tête que TOUS les
+autres points d'accès au CDN Tiinver côté Android (~15 fichiers). Côté iOS,
+`ChatViewModel.requestDownload` utilisait `URLSession.shared.download(from: remoteURL)` — appel
+brut sans `URLRequest` ni en-tête — alors que TOUS les autres chemins CDN déjà portés côté iOS
+(`FeedMediaDownloader`, `CDNAsyncImage`, `VideoPlayerManager`, `VideoCacheManager`,
+`CommunityTemplateRepository`) l'ajoutent explicitement, plusieurs documentant que ce Referer est
+une exigence RÉELLE du CDN confirmée par test. Le commentaire de tête de `requestDownload`
+affirmait même à tort qu'Android n'attache aucun header sur ce téléchargement précis — contredit
+par la lecture directe du source. Correction : `requestDownload` construit désormais un
+`URLRequest` portant `Referer: https://tiinver.com` et appelle `download(for: request)` au lieu de
+`download(from:)`, à l'identique des autres chemins CDN du projet ; commentaire stale corrigé au
+passage. **Commit `fde9608`, CI verte (run `32936140166`)** — `BUILD_VALIDATED`. Détail des 33
+lots dans `PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-078** (prochain P1 dans
+l'ordre exact du document `MIGRATION_PARITY_AUDIT_V5.md`, ligne ~2482 — lire sa fiche complète en
 premier : ID, PRIORITÉ, DOMAINE, FEATURE, ANDROID SOURCE, ANDROID BEHAVIOR, IOS FILES, IOS
-BEHAVIOR, CAUSE, IMPACT, RECOMMANDATION), puis continuer AUTOMATIQUEMENT V5-F-078, V5-F-082,
-V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (7 P1 restants après V5-F-077, dans l'ordre exact
-du document ; V5-F-060 déjà clos DIFFÉRÉ), puis tous les P2 (31), P3 (21), SANS s'arrêter entre les
+BEHAVIOR, CAUSE, IMPACT, RECOMMANDATION), puis continuer AUTOMATIQUEMENT V5-F-082, V5-F-085,
+V5-F-089, V5-F-095, V5-F-097, V5-F-098 (6 P1 restants après V5-F-078, dans l'ordre exact du
+document ; V5-F-060 déjà clos DIFFÉRÉ), puis tous les P2 (31), P3 (21), SANS s'arrêter entre les
 lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve Android
 vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI → State/ViewModel →
 Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale → diff revu →

@@ -2475,6 +2475,7 @@ IMPACT : Si (comme l'indiquent les nombreux autres points du code iOS déjà cor
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Ajouter request.setValue("https://tiinver.com", forHTTPHeaderField: "Referer") sur la requête de téléchargement dans requestDownload, en utilisant URLSession.shared.download(for: request) plutôt que download(from: URL), à l'identique des autres chemins CDN déjà corrigés du projet.
 CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Chat (image/vidéo/fichier/vocal)" (Phase A.2, 2026-08-24)
+STATUT : BUILD_VALIDATED (2026-08-26) — RECOMMANDATION appliquée telle quelle : `ChatViewModel.requestDownload` (Sources/TiinverSwift/Messagerie/ChatViewModel.swift) bascule de `URLSession.shared.download(from: remoteURL)` vers `download(for: request)` avec un `URLRequest` portant `Referer: https://tiinver.com`, à l'identique des autres chemins CDN du projet (`FeedMediaDownloader`, `CDNAsyncImage`, `VideoPlayerManager`). Commentaire précédent affirmant à tort qu'Android n'attache aucun header corrigé au passage. Commit fde9608, CI run 32936140166 (succès). Test réel restant : recevoir une pièce jointe chat (photo/vidéo/audio/document) d'un correspondant et confirmer qu'elle se télécharge avec succès (pas de 403).
 ```
 
 ```

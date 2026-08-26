@@ -1584,6 +1584,42 @@ protection contre la suspension en arrière-plan était en cause ici.
 autre app ou verrouiller l'écran pendant l'upload, confirmer que la publication aboutit malgré tout
 au retour dans l'app (au lieu d'échouer silencieusement comme avant ce correctif).
 
+## 2026-08-26 — Phase B V5 — Lot P1-32 : V5-F-077 (Chat — en-tête Referer manquant au téléchargement de pièce jointe)
+
+**Commit** : `fde9608` — CI **success** (run `32936140166`).
+
+**Cause exacte** : `ChatFragmentTest.downloadFile` (Android, ligne 3159) attache systématiquement
+`request.addRequestHeader("Referer", "https://tiinver.com")` sur chaque téléchargement de pièce
+jointe chat via `DownloadManager` — le même en-tête que TOUS les autres points d'accès au CDN
+Tiinver du projet Android (~15 fichiers : `ChargerImages.java`, `ExoPlayerManager.java`,
+`ActivityAdapter.java`, etc.). Côté iOS, `ChatViewModel.requestDownload` utilisait
+`URLSession.shared.download(from: remoteURL)` — appel brut sans `URLRequest` ni en-tête — alors
+que TOUS les autres chemins CDN déjà portés côté iOS (`FeedMediaDownloader`, `CDNAsyncImage`,
+`VideoPlayerManager`, `VideoCacheManager`, `CommunityTemplateRepository`) l'ajoutent explicitement,
+plusieurs documentant en commentaire que ce Referer est une exigence RÉELLE du CDN Tiinver
+confirmée par test. Le commentaire de tête de `requestDownload` affirmait à tort qu'Android
+n'attache aucun en-tête sur ce téléchargement précis — contredit par la lecture directe de
+`ChatFragmentTest.java:3159`.
+
+**Correction appliquée** : RECOMMANDATION suivie telle quelle. `requestDownload` construit
+désormais un `URLRequest` portant `Referer: https://tiinver.com` et appelle
+`URLSession.shared.download(for: request)` au lieu de `download(from: remoteURL)`, à l'identique
+des autres chemins CDN du projet. Commentaire stale corrigé au passage.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatViewModel.swift`.
+
+**Flux frère vérifié** : `requestUpload`/`ChatMediaUploadService` (branche upload de la même pièce
+jointe) déjà fidèle (en-tête `AccessKey` de Bunny Storage porté correctement) — seule la branche
+téléchargement manquait son en-tête, cause confirmée isolée à `requestDownload`.
+
+**Résultat CI** : commit `fde9608`, push confirmé (`e1b8b0a..fde9608 main -> main`), run
+`32936140166` → **`conclusion: success`**.
+
+**Statut honnête** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test réel requis :
+recevoir une pièce jointe chat (photo/vidéo/audio/document) d'un correspondant et confirmer
+qu'elle se télécharge avec succès (absence de 403), si la zone CDN bloque effectivement les
+requêtes sans Referer comme le suggèrent les autres correctifs déjà validés pour la même raison.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

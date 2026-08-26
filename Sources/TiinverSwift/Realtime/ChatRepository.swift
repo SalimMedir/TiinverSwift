@@ -434,13 +434,24 @@ final class ChatRepository {
         }
     }
 
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-030, Phase B P2)** — avant ce
+    /// correctif, les deux branches ci-dessous exécutaient EXACTEMENT le même code
+    /// (`callEvents.send(.onCall(...))`), alors qu'Android (`ChatRepository.onCall`,
+    /// `:449-469`) diverge réellement : `!CallService.isOnCall` → `lunchcall(Profile)` établit un
+    /// VRAI appel entrant (CallKit) ; `CallService.isOnCall` → publie juste `CallModel.ONCALL`
+    /// (détection d'occupation, géré par `CallCoordinator.handle(.onCall)`). Le port précédent
+    /// supposait cet événement `ROOM.CALL` mort/jamais émis indépendamment de "voicecall" — rien
+    /// ne le garantit côté serveur, et le listener Android correspondant est bien vivant/réactif.
     private func handleIncomingCall(_ data: [Any]) {
         guard let payload = data.first else { return }
         if !Self.isOnCall {
-            // Port de `lunchcall(gson.fromJson(args[0].toString(), Profile.class))` — démarrage de
-            // `CallService` (module 12) publié comme événement, pas appelé directement (même
-            // raison que `handleNewMessage`).
-            callEvents.send(.onCall(data: Self.stringify(payload)))
+            // Port de `lunchcall(gson.fromJson(args[0].toString(), Profile.class))` — `ROOM.CALL`
+            // porte un `Profile` JSON DIRECT (contrairement à "voicecall", enveloppé dans un
+            // `MessageLib` reconstruit champ par champ dans `handleNewMessage`), décodé tel quel
+            // avec le même helper `decodeProfile` déjà utilisé pour les événements PBS
+            // (`onStartRoom`/`onStartPrivatePBS`).
+            guard let profile = Self.decodeProfile(Self.stringify(payload)) else { return }
+            Task { await CallCoordinator.shared.handleIncomingCall(profile: profile, chatType: profile.chatType ?? "") }
         } else {
             callEvents.send(.onCall(data: Self.stringify(payload)))
         }

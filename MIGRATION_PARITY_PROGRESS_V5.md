@@ -10,7 +10,7 @@ lot par lot complet. **Backlog P2 (31 findings) EN COURS [20/31 clos, dans l'ord
 V5-F-002, V5-F-004, V5-F-008, V5-F-014, V5-F-024, V5-F-025, V5-F-026
 (IOS_INTENTIONAL_DIFFERENCE), V5-F-030, V5-F-035, V5-F-038, V5-F-039, V5-F-040, V5-F-048,
 V5-F-049, V5-F-051, V5-F-054, V5-F-055 (partiel, écart architectural documenté), V5-F-059,
-V5-F-061, V5-F-065]. Prochain : V5-F-066. Puis 21 P3.**
+V5-F-061, V5-F-065, V5-F-066]. Prochain : V5-F-069. Puis 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2421,6 +2421,35 @@ erreur). Alerte "Échec du blocage" ajoutée dans `FeedView` (grille + `FeedDeta
 **Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedViewModel.swift`,
 `Sources/TiinverSwift/Feed/FeedView.swift`, `Sources/TiinverSwift/Profile/ProfileViewModel.swift`,
 `Sources/TiinverSwift/Profile/ProfileView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P2-21 : V5-F-066 (Envoi de commentaire — perte silencieuse du texte sur échec réseau)
+
+**Commit** : `d947b36` — poussé sur `main` (`4fa83a1..d947b36`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `SentCmtToServer` (`MyBottomSheetDialogFragment.java:402-436`) ajoute le
+commentaire à l'adapter IMMÉDIATEMENT, avant tout appel réseau. `CommentsView.send()` vidait
+`inputText` puis appelait `try? await CommentRepository.shared.post(...)` (erreur avalée), PUIS
+rechargeait inconditionnellement `comments = []` + `loadMore()` depuis le serveur — sans ajout
+optimiste préalable, un échec réseau faisait disparaître le texte tapé sans aucune trace ni erreur.
+
+**Correction appliquée** : nouveau `Comment(optimisticText:)` (id négatif, jamais un id serveur
+réel) inséré dans `comments` AVANT l'appel réseau, pour les commentaires racine uniquement
+(`parentId == nil` — `expandedReplies` a une structure séparée par commentaire parent, hors
+périmètre de ce correctif ciblé, mais l'erreur n'y est plus avalée non plus). `try?` remplacé par
+`do/catch`. Écart ASSUMÉ sur la branche d'échec par rapport à Android : l'observer
+`getPostliveData` (ligne 210-211) ne fait RIEN sur `Result.ERROR` — le commentaire optimiste Android
+reste bloqué en `status=0` pour toujours, sans erreur ni reprise possible (dead-end confirmé par
+lecture complète de l'observer) — jugé non "génuinement fonctionnel", donc non reproduit ; ici,
+l'entrée optimiste est retirée, le texte restauré dans le champ, et une erreur explicite affichée
+(même motif que `giftError`/`deleteError`/`blockError` déjà câblés). Sur succès, le reload serveur
+déjà existant (inchangé) remplace l'entrée optimiste par la donnée serveur réelle.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/CommentsView.swift`,
+`Sources/TiinverSwift/Discover/CommentModels.swift`.
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.

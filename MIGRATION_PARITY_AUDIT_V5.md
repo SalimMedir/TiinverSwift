@@ -2543,6 +2543,15 @@ CAUSE : Absence totale d'ajout optimiste côté iOS (contrairement à Android) c
 IMPACT : Sur une coupure réseau momentanée, l'utilisateur tape un commentaire, appuie sur Envoyer, voit le champ se vider — et le commentaire ne réapparaît JAMAIS, sans aucun message d'erreur ni possibilité de retenter avec le texte déjà saisi (à retaper entièrement). C'est une perte de données silencieuse plus sévère que le comportement Android correspondant (qui, bien qu'imparfait — pas de Toast d'erreur pour un commentaire texte non-cadeau —, laisse au moins le commentaire visible à l'écran).
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Ajouter le commentaire de façon optimiste à `comments` AVANT l'appel réseau (comme Android), remplacer `try?` par `do/catch`, et sur échec soit retirer l'entrée optimiste avec un message d'erreur explicite, soit la laisser visible avec un indicateur d'échec — dans tous les cas, ne plus vider silencieusement `inputText` sans confirmation de succès.
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-21). `Comment(optimisticText:)` ajouté,
+entrée locale insérée AVANT le réseau (commentaires racine uniquement, `parentId == nil` —
+`expandedReplies` hors périmètre). Écart assumé sur l'échec : Android ne fait RIEN sur
+`Result.ERROR` (bloqué en `status=0` pour toujours, sans erreur ni reprise, confirmé par lecture de
+l'observer `getPostliveData` en entier) — non reproduit comme "dead-end" ; ici, entrée retirée +
+texte restauré + erreur explicite affichée. Succès : reload serveur existant (déjà correct) remplace
+l'entrée optimiste par la donnée réelle. Fichiers modifiés : `Discover/CommentsView.swift`,
+`Discover/CommentModels.swift`. Commit `d947b36`, poussé sur `main`. CI non déclenchée par cette
+session.
 ```
 
 ```

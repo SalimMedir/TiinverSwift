@@ -293,8 +293,20 @@ déjà distinctement sur échec réseau [transport] indépendamment du résultat
 false` — `block()`/`toggleBlock()` passés en `do/catch`, nouveau `blockError: String?` publié
 UNIQUEMENT dans la branche `catch` ; alerte "Échec du blocage" ajoutée dans `FeedView`
 [grille+`FeedDetailPagerView`] et `ProfileView`, même motif que `deleteError`. **Commit `fa391e9`
-poussé sur `main`, CI PAS déclenchée**). **Prochain finding à traiter : V5-F-066** (grep
-`"^ID : V5-F-066"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe
+poussé sur `main`, CI PAS déclenchée**) ; Lot P2-21 V5-F-066 CODE_COMPLETE/CI_PENDING (envoi de
+commentaire — `try?` + absence totale d'ajout optimiste = perte silencieuse et totale du texte tapé
+sur échec réseau, `inputText` déjà vidé avant l'appel, reload serveur inconditionnel qui ne
+retrouve jamais un commentaire jamais persisté. `SentCmtToServer` [`MyBottomSheetDialogFragment.
+java:402-436`] ajoute le commentaire à l'adapter AVANT le réseau côté Android. Corrigé : nouveau
+`Comment(optimisticText:)` [id négatif] inséré AVANT le réseau [commentaires racine uniquement,
+`expandedReplies` structure séparée hors périmètre] ; `do/catch` remplace `try?`. Écart ASSUMÉ sur
+l'échec : `getPostliveData`'s observer [ligne 210-211] ne fait RIEN sur `Result.ERROR` côté Android
+— commentaire bloqué en `status=0` pour toujours, sans erreur ni reprise, dead-end confirmé par
+lecture complète — jugé non "génuinement fonctionnel", non reproduit ; ici entrée retirée + texte
+restauré + erreur explicite [même motif que `giftError`/`deleteError`/`blockError`]. Succès :
+reload serveur déjà existant [inchangé] remplace l'entrée optimiste par la donnée réelle. **Commit
+`d947b36` poussé sur `main`, CI PAS déclenchée**). **Prochain finding à traiter : V5-F-069** (grep
+`"^ID : V5-F-069"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe
 avant tout correctif, comme fait pour chaque finding tout au long de cette session ; identifier les
 findings P2 restants avec `grep "^PRIORITÉ : P2"` puis chercher lesquels n'ont pas encore de bloc
 `STATUT :` à leur suite). Si l'utilisateur a entre-temps déclenché la CI pour les findings

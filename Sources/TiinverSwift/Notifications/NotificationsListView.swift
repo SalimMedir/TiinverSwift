@@ -106,6 +106,18 @@ private struct NotificationRow: View {
         case "like": return "a aimé votre publication"
         case "share": return "a partagé votre publication"
         case "comment":
+            // **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-024, Phase B P2)** — ce
+            // switch ne testait que `noti.verb`, jamais `noti.payloadType`, contrairement à
+            // `LocalNotificationBuilder.activityNotificationContent` (même module, déjà correct) :
+            // un commentaire-cadeau (`AdapterNoti.java:219-224,361-392`, `TYPE_GIFT`) affichait
+            // l'identifiant brut du cadeau (`noti.commentText`, ex. "gift_rose_23") entre
+            // guillemets au lieu de l'emoji + nom lisible. Même résolution `GiftCatalog` que la
+            // notification push équivalente, réutilisée telle quelle plutôt que dupliquée.
+            if noti.payloadType == "gift" {
+                let emoji = GiftCatalog.emoji(for: noti.commentText)
+                let name = GiftCatalog.resolve(noti.commentText)?.name ?? "cadeau"
+                return "vous a envoyé un cadeau \(emoji) \(name) en tant que commenter"
+            }
             if let text = noti.commentText, !text.isEmpty { return "a commenté : « \(text) »" }
             return "a commenté votre publication"
         case "follow": return "a commencé à te suivre"

@@ -696,6 +696,23 @@ final class ChatViewModel: ObservableObject {
     /// `ChatMediaUploadService.reserveUpload`, V5-F-078) — deux `URLSession.download` concurrents
     /// sur le même fichier, deux écritures Core Data non ordonnées. `downloadingMessageIds` ajouté,
     /// même motif que `reserveUpload`/`uniqueDowloadSet`.
+    ///
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-079, Phase B P2)** — stockage
+    /// basculé de `.cachesDirectory` (purgeable par l'OS sous pression de stockage, sans aucun
+    /// recours) vers `.applicationSupportDirectory` (non-évictable). Option 2 de la RECOMMANDATION
+    /// (vérifier `fileExists` et retomber sur `isFileDownloaded=0`) délibérément ÉCARTÉE après
+    /// vérification du modèle de données réel : `DownloadReceiver.java:149`
+    /// (`cv.put("object_url", Uri.fromFile(file).toString())`) confirme qu'Android ÉCRASE lui aussi
+    /// `object_url` par le chemin local au téléchargement — EXACTEMENT le même comportement que
+    /// `updated.objectUrl = localURL.absoluteString` ci-dessous, pas une divergence introduite par
+    /// le portage. L'URL CDN distante d'origine est donc irrécupérable après coup, des DEUX côtés :
+    /// Option 2 réinitialiserait `isFileDownloaded` sans qu'aucun `handleAppear`/`requestDownload`
+    /// ultérieur ne puisse retélécharger (`objectUrl` ne serait plus une URL `http`, le garde-fou de
+    /// `requestDownload` échouerait silencieusement). Android compense en écrivant dans
+    /// `Environment.DIRECTORY_DOWNLOADS`/stockage externe privé, jamais purgés automatiquement par
+    /// l'OS — Option 1 (répertoire non-évictable) est donc la SEULE des deux qui reproduise
+    /// fidèlement la garantie réelle d'Android (fichier acquis définitivement), sans introduire de
+    /// nouveau champ pour porter une URL distante qu'Android lui-même ne conserve pas non plus.
     private func requestDownload(_ mlib: MessageLib) {
         guard let messageId = mlib.messageId, let remoteURLString = mlib.objectUrl,
               let remoteURL = URL(string: remoteURLString), remoteURL.scheme?.hasPrefix("http") == true,
@@ -713,7 +730,7 @@ final class ChatViewModel: ObservableObject {
                     try? FileManager.default.removeItem(at: tempURL)
                     return
                 }
-                let mediaDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                let mediaDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                     .appendingPathComponent("ChatMedia", isDirectory: true)
                 try FileManager.default.createDirectory(at: mediaDirectory, withIntermediateDirectories: true)
                 let ext = remoteURL.pathExtension.isEmpty ? "bin" : remoteURL.pathExtension

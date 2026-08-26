@@ -50,6 +50,13 @@ final class VideoCacheManager {
     /// avalait silencieusement l'échec). Bascule vers `URLSession` + `URLRequest` portant les
     /// MÊMES en-têtes que la lecture réelle, une seule source de vérité
     /// (`VideoPlayerManager.videoHTTPHeaders`).
+    /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-058, Phase B P1-24)** — port du
+    /// streaming disque `CacheWriter`/`SimpleCache` (`CacheWorker.java:66-69,231-234`, écrit en
+    /// flux par blocs bornés). Utilisait `URLSession.shared.dataTask`, dont le callback reçoit la
+    /// vidéo ENTIÈRE déjà bufférisée en mémoire comme `Data` avant l'écriture disque — appelé
+    /// automatiquement pour chaque vidéo de la fenêtre `currentIndex±2` PENDANT le défilement du
+    /// Feed (voir `VideoPlayerManager.preload`), un scénario d'usage normal, pas un cas limite.
+    /// `downloadTask` écrit directement sur disque par blocs bornés, fidèle au streaming Android.
     func precache(_ remoteURL: URL) {
         queue.async { [weak self] in
             guard let self, !self.isCached(remoteURL) else { return }
@@ -58,10 +65,12 @@ final class VideoCacheManager {
                 request.setValue(value, forHTTPHeaderField: field)
             }
             let semaphore = DispatchSemaphore(value: 0)
-            let task = URLSession.shared.dataTask(with: request) { data, response, _ in
+            let task = URLSession.shared.downloadTask(with: request) { tempURL, response, _ in
                 defer { semaphore.signal() }
-                guard let data, let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else { return }
-                try? data.write(to: self.localURL(for: remoteURL))
+                guard let tempURL, let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else { return }
+                let destination = self.localURL(for: remoteURL)
+                try? self.fileManager.removeItem(at: destination) // même tolérance à l'écrasement que l'ancien `data.write(to:)`
+                try? self.fileManager.moveItem(at: tempURL, to: destination)
             }
             task.resume()
             semaphore.wait() // Cette closure s'exécute déjà sur `queue` (utility, dédiée), pas le thread principal.

@@ -32,6 +32,13 @@ enum FeedMediaDownloader {
     /// `Referer: https://tiinver.com` — MÊME valeur littérale qu'`urlExists`, ligne 839). Android
     /// enregistre dans le dossier public `Downloads` via `DownloadManager` ; `PHPhotoLibrary` est
     /// l'équivalent iOS le plus proche pour un média destiné à l'app Photos de l'utilisateur.
+    /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-058, Phase B P1-24)** — port de
+    /// `android.app.DownloadManager` (téléchargement système, streaming disque, jamais chargé en
+    /// tas Java). Utilisait `URLSession.shared.data(for:)`, qui charge la RÉPONSE HTTP ENTIÈRE en
+    /// mémoire comme `Data` avant l'écriture disque — pour une vidéo longue/haute qualité, plusieurs
+    /// centaines de Mo d'un coup. `URLSession.shared.download(for:)` écrit directement sur disque
+    /// par blocs bornés sans jamais retenir le fichier complet en RAM, fidèle au streaming
+    /// `DownloadManager`.
     static func download(_ post: FeedActivity) async throws {
         let status = await requestAddOnlyAuthorization()
         guard status == .authorized || status == .limited else { throw DownloadError.photoLibraryDenied }
@@ -40,14 +47,16 @@ enum FeedMediaDownloader {
 
         var request = URLRequest(url: sourceURL)
         request.setValue("https://tiinver.com", forHTTPHeaderField: "Referer")
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (downloadedURL, response) = try? await URLSession.shared.download(for: request),
             let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode)
         else { throw DownloadError.networkFailure }
 
         let ext = post.isVideo ? "mp4" : "webp"
         let tmpURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString).appendingPathExtension(ext)
-        try data.write(to: tmpURL)
+        // Le fichier temporaire fourni par `download(for:)` doit être déplacé AVANT de rendre la
+        // main au run loop, sous peine d'être supprimé par le système — fait immédiatement ici.
+        try FileManager.default.moveItem(at: downloadedURL, to: tmpURL)
         defer { try? FileManager.default.removeItem(at: tmpURL) }
 
         try await PHPhotoLibrary.shared().performChanges {

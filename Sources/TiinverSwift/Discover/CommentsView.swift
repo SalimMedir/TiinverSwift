@@ -11,6 +11,9 @@ struct CommentsView: View {
     @State private var isLoading = false
     @State private var offset = 0
     private let limit = 20
+    // V5-F-046 (Phase B P1-20) — réponses imbriquées (threading), voir `repliesSection(for:)`.
+    @State private var expandedReplies: [Int: [Comment]] = [:]
+    @State private var loadingReplyIds: Set<Int> = []
 
     var body: some View {
         NavigationStack {
@@ -47,6 +50,54 @@ struct CommentsView: View {
 
     @ViewBuilder
     private func commentRow(_ comment: Comment) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            commentLine(comment)
+            // **Ajouté le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-046, Phase B P1-20)** —
+            // port de `CommentAdapter.java:211-233` (bouton "Afficher N commentaires", visible si
+            // `elts.getRepliesCount() > 0`, tap → `getReplay` → `ReplayCommentAdapter`) : le
+            // threading n'était jamais chargé ni affiché côté iOS — `CommentRepository.replies`
+            // existait déjà (port fonctionnel correct de `getReplay`) mais n'avait AUCUN appelant
+            // dans tout le projet (grep exhaustif), fonctionnalité de LECTURE totalement absente.
+            if (comment.repliesCount ?? 0) > 0 {
+                repliesSection(for: comment)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func repliesSection(for comment: Comment) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let replies = expandedReplies[comment.id] {
+                ForEach(replies) { reply in
+                    commentLine(reply)
+                }
+            } else {
+                Button {
+                    Task { await loadReplies(for: comment) }
+                } label: {
+                    if loadingReplyIds.contains(comment.id) {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text("Afficher \(comment.repliesCount ?? 0) commentaire\((comment.repliesCount ?? 0) > 1 ? "s" : "")")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(loadingReplyIds.contains(comment.id))
+            }
+        }
+        .padding(.leading, 40) // aligné sous le texte du commentaire parent (avatar 32pt + spacing 8)
+    }
+
+    private func loadReplies(for comment: Comment) async {
+        guard expandedReplies[comment.id] == nil, !loadingReplyIds.contains(comment.id) else { return }
+        loadingReplyIds.insert(comment.id)
+        defer { loadingReplyIds.remove(comment.id) }
+        let page = (try? await CommentRepository.shared.replies(commentId: comment.id, limit: limit, offset: 0)) ?? []
+        expandedReplies[comment.id] = page
+    }
+
+    @ViewBuilder
+    private func commentLine(_ comment: Comment) -> some View {
         HStack(alignment: .top, spacing: 8) {
             // Port de `CommentAdapter.img_avatar.setOnClickListener`/`ReplayCommentAdapter` (les
             // DEUX adapters, commentaires ET réponses — `comments/ui/CommentAdapter.java:244-247`,

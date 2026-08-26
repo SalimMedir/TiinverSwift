@@ -41,6 +41,9 @@ struct AnimemesEditorView: View {
     @StateObject private var state = AnimemesEditorState()
     @State private var canvasSize: CGSize = CGSize(width: 360, height: 640)
     @State private var showGalleryPicker = false
+    /// Port de `CroperView`/`onBitmapCroperListerner` — voir doc du `.fullScreenCover` plus bas
+    /// (V5-F-035).
+    @State private var pendingCropImage: UIImage?
     // V5-F-034 (Phase B P1-16) — voir `onVideoPicked` du `GalleryPickerView` ci-dessous : import
     // vidéo (recadrage temporel + extraction de trames) non porté, alerte explicite à la place
     // d'une fermeture silencieuse.
@@ -183,7 +186,7 @@ struct AnimemesEditorView: View {
                 onImagePicked: { url in
                     showGalleryPicker = false
                     if let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
-                        state.addImage(image, canvasSize: canvasSize)
+                        pendingCropImage = image
                     }
                 },
                 // **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-034, Phase B P1-16)**
@@ -204,6 +207,33 @@ struct AnimemesEditorView: View {
                 },
                 onCancel: { showGalleryPicker = false }
             )
+        }
+        // Port de `AnimemesCompound.add(MediaDataDetail)` (`:2441-2469`) — Android instancie un
+        // `CroperView` et n'appelle `onNewAddBitmap` (calque ajouté au canevas) que dans
+        // `onBitmapCropedResult`, APRÈS validation du recadrage ; `onClose()` referme sans rien
+        // ajouter, l'annulation restant possible tant que le calque n'existe pas encore.
+        // **Ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-035, Phase B P2)** — avant ce
+        // correctif, `state.addImage` était appelé IMMÉDIATEMENT depuis `onImagePicked`, sans
+        // aucune étape de recadrage/aperçu/annulation intermédiaire : l'image devenait un calque
+        // permanent dès la sélection. Réutilise `PhotoCropView` (déjà porté, `PhotoEditor/
+        // PhotoCropView.swift`, wrapper `TOCropViewController`) — le MÊME composant qui remplace
+        // déjà `CroperView.java` pour la publication Feed/Profil (`PublishComposeView.swift`) —
+        // plutôt que de réinventer un second recadreur. `shape: .rectangle` par défaut : Android
+        // n'affiche aucun sélecteur de forme dans CE flux précis (contrairement à
+        // `PublishComposeView`, qui propose Rectangle/Ovale) — `CroperView` y est instancié sans
+        // configuration de forme, zone de recadrage rectangulaire libre uniquement.
+        .fullScreenCover(isPresented: Binding(get: { pendingCropImage != nil }, set: { if !$0 { pendingCropImage = nil } })) {
+            if let image = pendingCropImage {
+                PhotoCropView(
+                    image: image,
+                    onCropped: { cropped in
+                        state.addImage(cropped, canvasSize: canvasSize)
+                        pendingCropImage = nil
+                    },
+                    onCancelled: { pendingCropImage = nil }
+                )
+                .ignoresSafeArea()
+            }
         }
         .alert("Vidéo non prise en charge", isPresented: $showVideoImportUnsupportedAlert) {
             Button("OK", role: .cancel) {}

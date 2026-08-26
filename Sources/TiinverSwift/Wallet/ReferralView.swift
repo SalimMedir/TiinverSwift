@@ -26,6 +26,11 @@ struct ReferralView: View {
                 NavigationLink("Regarder une vidéo") { EarnCoinsView(adProvider: RewardedAdManager()) } // R.id.btn_watch_video
                     .buttonStyle(.borderedProminent)
 
+                // Port de `btn_activate_ads` (`ReferralActivity.java:160-165`, V5-F-052) — raccourci
+                // permanent vers Réglages > Publicité, absent jusqu'ici de ce portage.
+                NavigationLink("Activer la visualisation des publicités maintenant") { SettingAdvertisementView() }
+                    .font(.footnote)
+
                 if let qrImage = Self.qrCode(from: link) {
                     Image(uiImage: qrImage).interpolation(.none).resizable().frame(width: 200, height: 200)
                 }

@@ -1792,6 +1792,10 @@ CAUSE : Lors du portage de `maskApplyDrag`/du clamp de `maskEditScale` dans les 
 IMPACT : Pour une même amplitude de glissement/pincement du doigt, un masque peut être positionné/mis à l'échelle bien plus loin sur iOS qu'Android ne le permettrait avant de saturer — résultat visuel final différent pour un geste identique dans les zones proches ou au-delà des bornes Android, notamment perceptible en fin de course du geste (impression de "plus de marge" côté iOS).
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Aligner les bornes de `AnimationObjectData.maskOffsetX`/`maskOffsetY` sur [-1, 1] et `maskScale` sur [0.1, 3.0] pour reproduire fidèlement `maskApplyDrag`/le clamp de `maskEditScale` de `MemesView2.java`.
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-8). RECOMMANDATION appliquée telle quelle —
+`maskOffsetX`/`maskOffsetY` : `[-2,2]`→`[-1,1]` ; `maskScale` : `[0.1,5]`→`[0.1,3.0]`. Fichier
+modifié : `Animems/AnimationObjectData.swift`. Commit `d9cda78`, poussé sur `main`. CI non
+déclenchée par cette session.
 ```
 
 ```
@@ -1890,6 +1894,15 @@ CAUSE : `MagnificationGesture` de SwiftUI ne transmet pas la position du geste (
 IMPACT : Pincer-zoomer près du bord gauche ou droit de la timeline sur iOS fait sauter visuellement le contenu (recentrage brusque sur le milieu de l'écran) au lieu de rester stable sous les doigts comme sur Android — gênant surtout à fort zoom sur une longue timeline.
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Remplacer `MagnificationGesture` par un `UIPinchGestureRecognizer` enveloppé dans un `UIViewRepresentable` pour récupérer `location(in:)`, permettant de reproduire fidèlement l'ancrage sous le point focal réel ; à défaut, documenter explicitement l'approximation comme limitation SwiftUI assumée.
+STATUT : DOCUMENTÉ, PAS de correctif de code (2026-08-26, Phase B P3) — option "à minima" de la
+RECOMMANDATION appliquée, PAS le correctif complet. `MagnificationGesture` confirmée API-limitée
+(aucune localisation exposée, seul un facteur d'échelle scalaire). Correctif complet
+(`UIPinchGestureRecognizer`/`UIViewRepresentable`) délibérément écarté : cette vue compose déjà
+`combinedDragGesture` ET `magnificationGesture` simultanément sur une composition de gestes déjà
+documentée fragile — introduire un second système de reconnaissance (UIKit) sans pouvoir tester sur
+appareil réel dans cet environnement risquerait une régression réelle de geste pour un correctif
+purement cosmétique. Fichier modifié (commentaire uniquement, aucun changement fonctionnel) :
+`Animems/TimelineView.swift`. Commit `99fca23`, poussé sur `main`.
 ```
 
 ```

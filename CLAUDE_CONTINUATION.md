@@ -415,13 +415,22 @@ systématiquement 2 `addAction` liés au MÊME `PendingIntent` que le tap, iOS n
 `UNNotificationCategory`. Corrigé : `registerNotificationCategories()` enregistre la catégorie
 "activity" avec 2 actions `.foreground`, appelée au lancement ; handler `didReceive` déjà routé par
 `categoryIdentifier` seul, aucun changement requis. **Commit `60000ec` poussé sur `main`, CI PAS
-déclenchée**). **Prochain finding à traiter : V5-F-041** (grep `"^ID : V5-F-041"` dans
-`MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe avant tout correctif,
-comme fait pour chaque finding tout au long de cette session ; identifier les P3 restants avec
-`grep "^PRIORITÉ : P3"` puis chercher lesquels n'ont pas encore de bloc `STATUT :` à leur suite).
-Si l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et
-communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas
-échéant) avant de continuer le P3.
+déclenchée**) ; Lot P3-8 V5-F-041 CODE_COMPLETE/CI_PENDING (bornes de clamp du masque Animems
+deux fois trop larges — `MemesView2.java` clampe offset à `[-1,1]`/échelle à `[0.1,3.0]`, iOS
+clampait à `[-2,2]`/`[0.1,5]`. Corrigé : bornes alignées exactement. **Commit `d9cda78` poussé sur
+`main`, CI PAS déclenchée**) ; Lot P3-9 V5-F-044 **DOCUMENTÉ, pas de correctif de code**
+(pincement-zoom timeline ancré au centre au lieu du point focal réel — `MagnificationGesture`
+SwiftUI n'expose aucune localisation, contrairement à `ScaleGestureDetector` Android. Correctif
+complet [`UIPinchGestureRecognizer`/`UIViewRepresentable`] écarté : cette vue compose déjà 2
+gestes simultanément sur une composition déjà fragile, introduire un 3ᵉ système UIKit sans test
+réel possible risquerait une régression pour un correctif purement cosmétique P3. Approximation
+documentée en commentaire. **Commit `99fca23` poussé sur `main`**). **Prochain finding à traiter :
+V5-F-052** (grep `"^ID : V5-F-052"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par
+lecture directe avant tout correctif, comme fait pour chaque finding tout au long de cette
+session ; identifier les P3 restants avec `grep "^PRIORITÉ : P3"` puis chercher lesquels n'ont pas
+encore de bloc `STATUT :` à leur suite). Si l'utilisateur a entre-temps déclenché la CI pour les
+findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur statut vers
+`BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P3.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

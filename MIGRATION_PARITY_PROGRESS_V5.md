@@ -13,8 +13,8 @@ V5-F-049, V5-F-051, V5-F-054, V5-F-055 (partiel, écart architectural documenté
 V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071, V5-F-073 (DUPLICATE de V5-F-020), V5-F-074,
 V5-F-079, V5-F-083, V5-F-086, V5-F-090, V5-F-096, V5-F-099]. **BACKLOG P2 ENTIÈREMENT CLOS
 (31/31)**. Backlog P3 (21 findings) EN COURS [3/21 clos : V5-F-003 (DUPLICATE de V5-F-050),
-V5-F-011, V5-F-012, V5-F-015 (DUPLICATE de V5-F-065), V5-F-017, V5-F-027, V5-F-028]. Prochain :
-V5-F-041.**
+V5-F-011, V5-F-012, V5-F-015 (DUPLICATE de V5-F-065), V5-F-017, V5-F-027, V5-F-028, V5-F-041,
+V5-F-044 (DOCUMENTÉ)]. Prochain : V5-F-052.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2808,6 +2808,33 @@ au même comportement pour les 2 actions ET le tap simple.
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P3-8 : V5-F-041 (Bornes de clamp du masque Animems deux fois trop larges)
+
+**Commit** : `d9cda78` — poussé sur `main` (`ca597b1..d9cda78`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `MemesView2.java` clampe `maskEditOffsetX/Y` à `[-1,1]` et `maskEditScale` à
+`[0.1,3.0]`. `AnimationObjectData` clampait à `[-2,2]` (double) et `[0.1,5]` (67% de plus) —
+divergence numérique pure, même geste, résultat visuel différent en fin de course.
+
+**Correction appliquée** : bornes corrigées pour correspondre exactement à Android.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimationObjectData.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P3-9 : V5-F-044 (DOCUMENTÉ, pas de correctif) — pincement-zoom timeline ancré au centre au lieu du point focal réel
+
+**Aucun changement fonctionnel.** `MagnificationGesture` SwiftUI n'expose aucune localisation
+(vérifié : seul un facteur d'échelle scalaire), contrairement à `ScaleGestureDetector` Android
+(`getFocusX()`). Correctif complet écarté (`UIPinchGestureRecognizer`/`UIViewRepresentable`) : cette
+vue compose déjà `combinedDragGesture` ET `magnificationGesture` simultanément sur une composition
+de gestes déjà documentée fragile — introduire un second système de reconnaissance UIKit sans
+pouvoir tester sur appareil réel risquerait une régression de geste réelle pour un correctif
+purement cosmétique (P3). Option "à minima" de la RECOMMANDATION appliquée : approximation
+documentée en commentaire dans `TimelineView.swift` (commit `99fca23`).
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

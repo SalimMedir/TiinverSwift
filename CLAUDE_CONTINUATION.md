@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [9/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [10/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -36,8 +36,10 @@ profil restait vide après déblocage, `else { await loadInitialPosts() }` symé
 `toggleBlock()`) ; Lot P1-8 V5-F-016 BUILD_VALIDATED (endpoint abonnement groupe payant sans le
 suffixe "2" Android, blocage composeur jamais déclenché, endpoint corrigé dans
 `GroupRepository.checkSubscription`) ; Lot P1-9 V5-F-019 BUILD_VALIDATED (tap sur bulle "appel
-manqué" sans effet, `onTap` câblé vers `callCoordinator.startOutgoingCall`)]**. Voir section
-"Cycle V5" plus bas pour le détail complet.)
+manqué" sans effet, `onTap` câblé vers `callCoordinator.startOutgoingCall`) ; Lot P1-10 V5-F-020
+BUILD_VALIDATED (repli REST manquant pour l'historique de groupe quand le cache local est épuisé,
+`GroupRepository.fetchOlderGroupMessages` ajouté + câblé dans `ChatViewModel.loadMore()`)]**. Voir
+section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -282,42 +284,56 @@ pour le bouton toolbar. Cause : point d'entrée UI non câblé lors du portage. 
 remplacée par l'appel à `callCoordinator.startOutgoingCall(profile: outgoingCallProfile, chatType:
 viewModel.target.type)`, gardée par `guard callCoordinator.state == .idle else { return }` (même
 garde que le bouton toolbar). **Commit `8bacdcb`, CI verte (run `32917273673`)** —
-`BUILD_VALIDATED`. Détail des 9 lots dans `PROGRESS_V5.md`.
+`BUILD_VALIDATED`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-020** (Socket.IO — historique
-de groupe, repli REST serveur quand le cache local est épuisé — FONCTIONNALITÉ ENTIÈREMENT
-ABSENTE, portée plus large que les lots précédents. Android [`ChatFragmentTest.java:985-995`
-`loadMoreFromServeur()`, déclenché uniquement pour un groupe ; `:1415-1430` `onLoadFinished` :
-si le `CursorLoader` local retourne 0 ligne pendant un scroll-up, `hasLocalData=false` puis appel
-de `loadMoreFromServeur()` ; `:203/1731` `lastDate` = stamp du plus ancien message déjà chargé ;
-`ChatViewModel.java:128-130` délègue à `chatRepository.loadMoreFromServeur` ;
-`ChatRepository.java:1129-1177` GET `/group/{groupId}/messages?lastDate={lastDate}&limit={limit}`
-via `TransportData`, puis `getChatManager().prepareOldGroupMessage(object,false)` ;
-`ChatManager.java:1090-1155` `prepareOldGroupMessage` : parse le tableau JSON `data`, persiste
-chaque message via `addGroupMessage(meta,true/false)`, ET propage à l'UI via
-`ChatRepository.sendLiveData(chatModel)` avec `ChatModel.OLDMESSAGE`] — chaîne complète vérifiée
-atteignable, aucun maillon mort. Quand le cache local Core Data d'un groupe est épuisé, Android
-bascule automatiquement sur un appel REST paginé par date pour continuer à charger l'historique
-plus ancien. iOS [`ChatViewModel.swift`, `loadMore()` ligne ~184-195] interroge UNIQUEMENT le
-cache Core Data local (`MessageRepository.page`) ; si la page est vide, retourne immédiatement
-sans AUCUN appel réseau de repli — grep exhaustif sur tout `Sources/TiinverSwift/` pour
-`group/*/messages`/`loadMoreFromServeur`/`lastDate` ne retourne AUCUN résultat, fonctionnalité
-absente même partiellement. Impact : pour un groupe dont l'historique n'est pas intégralement en
-cache local [réinstallation, rejoint avant sync, cache purgé], le scroll vers le haut s'arrête
-silencieusement côté iOS alors qu'Android continue de charger depuis le serveur. Plan : dans
-`ChatViewModel.loadMore()`, quand la page locale est vide ET que la conversation est un groupe,
-appeler `GET group/{groupId}/messages?lastDate={dateDuPlusAncienMessageChargé}&limit={pageSize}`
-via `APIClient`, décoder le tableau `data` [même motif de décodage tolérant par item que
-`ChatRepository.decodeMessages`, pas un décodage strict du tableau entier], persister chaque
-message via `MessageRepository.addGroupMessage`, puis insérer les résultats en tête de `items`
-comme le fait déjà `loadMore()` pour la page locale — lire d'abord `ChatViewModel.swift` en
-entier, `GroupRepository.swift`, et `MessageRepository.swift`/`addGroupMessage` pour confirmer la
-forme exacte de l'intégration avant de coder), puis continuer AUTOMATIQUEMENT V5-F-021, V5-F-022,
-V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037, V5-F-043, V5-F-046, V5-F-047,
-V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070,
-V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097,
-V5-F-098 (30 P1 restants après V5-F-020, dans l'ordre exact du document), puis tous les P2 (31),
-P3 (21), SANS s'arrêter
+**Lot P1-10 traité (V5-F-020)** — Socket.IO/historique de groupe, repli REST manquant quand le
+cache local est épuisé (FONCTIONNALITÉ ENTIÈREMENT ABSENTE). Vérifié `ChatFragmentTest.java:
+985-995`/`:1415-1430`/`:203/1731`, `ChatRepository.java:1129-1177` (`GET
+/group/{groupId}/messages?lastDate={lastDate}&limit={limit}`), `ChatManager.java:1090-1155`
+(`prepareOldGroupMessage`, propagation via `sendLiveData(ChatModel.OLDMESSAGE)` + persistance via
+`addGroupMessage`) — chaîne complète atteignable, aucun maillon mort. `ChatViewModel.loadMore()`
+interrogeait UNIQUEMENT le cache Core Data local, retournait silencieusement si vide — grep
+exhaustif confirmait ZÉRO trace de portage. Correctif : `GroupRepository.fetchOlderGroupMessages(
+groupId:lastDate:limit:)` (décodage per-item, même motif que `fetchMembers`/`searchGroups`),
+câblé dans une nouvelle `loadOlderGroupMessagesFromServer()` appelée par `loadMore()` quand la
+page locale est vide et la conversation est un groupe ; persistance via `MessageRepository.
+addGroupMessage` (déjà existant) ; résultats triés chronologiquement puis insérés en tête
+d'`items`. **Portée délibérément limitée** : les branches `voicecall`/`missedvoicecall` de
+`prepareOldGroupMessage` (effets de bord `CallService`, sans équivalent 1:1 `CallCoordinator`)
+NON portées, hors périmètre de ce finding Socket.IO/historique, documenté explicitement. **Commit
+`d136a68`, CI verte (run `32918138299`)** — `BUILD_VALIDATED`. Détail des 10 lots dans
+`PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-021** (Notifications — tap
+sur une notification locale iOS route toujours vers le centre de notifications, y compris pour
+les messages de chat. Android [`back_sync/NotificationUtils.java:290-338`
+`displayNoMessageNotification` et `:103-153` `displayNotificationOrPushMessage`] construisent
+TOUJOURS la destination via `String destination = "MainActivity";`, puis `show()` fait `new
+Intent(mContext, activityMap.get(destination))` où `activityMap.put("MainActivity",
+SplashActivity.class)` — le tap sur N'IMPORTE QUELLE notification [activité like/comment/follow OU
+message de chat] ouvre SplashActivity/HomeActivity [écran d'accueil générique], JAMAIS un centre
+de notifications dédié. iOS [`App/AppDelegate.swift:153-163`
+`userNotificationCenter(_:didReceive:)`] appelle SYSTÉMATIQUEMENT
+`DeepLinkCenter.shared.route(.notifications)` quel que soit le type de notification tapée [y
+compris les notifications de MESSAGE DE CHAT construites par
+`LocalNotificationBuilder.chatMessageNotificationContent`/`ChatRepository.swift:341`, qui n'ont
+pas de `categoryIdentifier` distinct], ouvrant la sheet `NotificationsListView` qui ne contient
+AUCUNE trace des messages de chat [seulement les entités `NotiEntity` de
+`notification2/{userId}`]. Cause : le commentaire de justification dans `AppDelegate.swift:
+148-151` confond "écran d'accueil par défaut" [ce que fait réellement `activityMap.get(
+"MainActivity")`] et "centre de notifications" [ce que fait le code iOS actuel] — dérive de
+compréhension, pas un choix délibéré. Plan : router vers l'accueil [TabView, onglet 0] par défaut
+pour les notifications de type chat/inconnues, réserver `.notifications` [ouverture de la sheet]
+aux seules notifications d'activité [like/comment/follow/etc.], en s'appuyant sur
+`categoryIdentifier` pour distinguer les deux familles au moment de la construction du contenu —
+lire `AppDelegate.swift` en entier autour de `didReceive`, `LocalNotificationBuilder.swift` pour
+voir tous les sites de construction de contenu de notification et leurs `categoryIdentifier`
+actuels le cas échéant, et `DeepLinkCenter.swift`/`HomeShellView.swift` pour la route vers
+l'accueil), puis continuer AUTOMATIQUEMENT V5-F-022, V5-F-023, V5-F-029, V5-F-033, V5-F-034,
+V5-F-036, V5-F-037, V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060,
+V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078,
+V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (29 P1 restants après V5-F-021, dans
+l'ordre exact du document), puis tous les P2 (31), P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →
 State/ViewModel → Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale

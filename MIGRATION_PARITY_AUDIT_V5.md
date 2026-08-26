@@ -841,6 +841,34 @@ CAUSE : Fonctionnalité absente du portage : MessageRepository.page(...) ne fait
 IMPACT : Pour une conversation de groupe dont l'historique complet n'est pas (ou plus) intégralement présent dans le cache Core Data local (réinstallation de l'app, utilisateur ayant rejoint le groupe avant que cet appareil n'ait synchronisé l'ancien historique, cache purgé, etc.), le scroll vers le haut s'arrête silencieusement dès que le cache local est épuisé côté iOS, alors qu'Android continue de charger l'historique plus ancien depuis le serveur. L'utilisateur iOS perçoit la conversation comme tronquée sans indication ni possibilité de voir la suite de l'historique, contrairement à Android.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Porter ChatRepository.loadMoreFromServeur (Android) : dans ChatViewModel.loadMore(), quand la page locale Core Data est vide ET que la conversation est un groupe, appeler GET 'group/{groupId}/messages?lastDate={dateDuPlusAncienMessageChargé}&limit={pageSize}' via APIClient, décoder le tableau 'data' (avec le même motif de décodage tolérant par item déjà utilisé dans ChatRepository.decodeMessages, pas un décodage strict du tableau entier), persister chaque message via MessageRepository.addGroupMessage, puis insérer les résultats en tête de 'items' comme le fait déjà loadMore() pour la page locale.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-10) — Vérifié directement :
+`ChatRepository.java:1129-1177` (`loadMoreFromServeur`) confirme `GET /group/{groupId}/messages?
+lastDate={lastDate}&limit={limit}`, `error` en booléen JSON natif (`object.getBoolean("error")`) ;
+`ChatManager.java:1090-1155` (`prepareOldGroupMessage`) confirme le parsing du tableau `data` et la
+propagation UI via `sendLiveData(ChatModel.OLDMESSAGE)` + persistance via `addGroupMessage`.
+Correctif : nouvelle méthode `GroupRepository.fetchOlderGroupMessages(groupId:lastDate:limit:)`
+(décodage per-item + diagnostic, même motif que `fetchMembers`/`searchGroups` du même fichier) ;
+`ChatViewModel.loadMore()` bascule sur `loadOlderGroupMessagesFromServer()` quand la page Core Data
+locale est vide, UNIQUEMENT pour un groupe (`target.isGroup`) ; persistance par message via
+`MessageRepository.addGroupMessage` (déjà existant) ; résultats triés chronologiquement puis
+insérés en tête d'`items`, même garantie que la page locale.
+**Portée délibérément limitée** : les branches `voicecall`/`missedvoicecall` de
+`prepareOldGroupMessage` (effets de bord de signalisation d'appel via `CallService`, sans
+équivalent 1:1 évident avec `CallCoordinator`) NON portées — hors périmètre de ce finding
+Socket.IO/historique, documenté explicitement dans `GroupRepository.fetchOlderGroupMessages`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/GroupRepository.swift`,
+`Sources/TiinverSwift/Messagerie/ChatViewModel.swift`.
+
+**Résultat CI** : commit `d136a68`, push confirmé (`3f46ca1..d136a68 main -> main`), run
+`32918138299` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : ouvrir une conversation de groupe dont
+l'historique local est incomplet (ex. après réinstallation), scroller vers le haut au-delà du
+cache local, confirmer le chargement de messages plus anciens depuis le serveur et l'absence de
+troncature silencieuse.
 ```
 
 ```

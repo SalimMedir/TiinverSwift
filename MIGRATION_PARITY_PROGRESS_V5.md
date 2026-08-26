@@ -5,9 +5,9 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [9/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
-V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019], démarré automatiquement à V5-F-001,
-dans l'ordre du document. Prochain : V5-F-020. Puis 31 P2, 21 P3.**
+temps). Backlog P1 (40 findings) EN COURS [10/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020], démarré automatiquement à
+V5-F-001, dans l'ordre du document. Prochain : V5-F-021. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -669,6 +669,55 @@ toolbar (`.disabled(callCoordinator.state != .idle)`), empêchant un double-appe
 **Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
 réel requis : taper sur une bulle "appel manqué"/"appel vocal", confirmer le déclenchement d'un
 appel sortant.
+
+## 2026-08-25 — Phase B V5 — Lot P1-10 : V5-F-020 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `ChatFragmentTest.java:985-995` (`loadMoreFromServeur`, déclenché uniquement pour un
+GROUPE) ; `:1415-1430` (`onLoadFinished` : si le `CursorLoader` local retourne 0 ligne pendant un
+'load more', `hasLocalData=false` puis appel de `loadMoreFromServeur()`) ; `:203/1731` (`lastDate`
+= stamp du plus ancien message déjà chargé) ; `ChatViewModel.java:128-130` (délègue à
+`chatRepository.loadMoreFromServeur`) ; `ChatRepository.java:1129-1177` (`GET
+/group/{groupId}/messages?lastDate={lastDate}&limit={limit}`, `error` en booléen JSON natif) ;
+`ChatManager.java:1090-1155` (`prepareOldGroupMessage` : parse `data`, persiste via
+`addGroupMessage(meta,true/false)`, propage à l'UI via `sendLiveData(ChatModel.OLDMESSAGE)`).
+Chaîne complète confirmée atteignable, tous les maillons s'appellent réellement.
+
+**iOS avant correctif** : `ChatViewModel.loadMore()` interrogeait UNIQUEMENT le cache Core Data
+local (`MessageRepository.page`) ; si la page était vide, retour immédiat sans aucun appel réseau
+de repli. Grep exhaustif sur `group/*/messages`/`loadMoreFromServeur`/`lastDate` : AUCUN résultat,
+fonctionnalité absente même partiellement.
+
+### Correctif appliqué
+
+Nouvelle méthode `GroupRepository.fetchOlderGroupMessages(groupId:lastDate:limit:)` — décodage
+per-item + diagnostic, même motif que `fetchMembers`/`searchGroups` (même fichier). `error` booléen
+JSON natif déjà toléré par `isBackendSuccess`/`errorFieldNormalized` sans changement.
+`ChatViewModel.loadMore()` bascule sur une nouvelle `loadOlderGroupMessagesFromServer()` quand la
+page locale est vide, UNIQUEMENT pour un groupe (`target.isGroup`) — `lastDate` calculé depuis le
+premier message présent dans `items` (déjà en ordre chronologique croissant). Persistance par
+message via `MessageRepository.addGroupMessage` (déjà existant, aucune modification). Résultats
+triés chronologiquement avant insertion en tête d'`items` (l'ordre exact renvoyé par cet endpoint
+n'a pas pu être confirmé par lecture du seul code Android ; la page locale équivalente est déjà
+toujours croissante avant insertion en tête, ce repli reproduit la même garantie).
+
+**Portée délibérément limitée** : `ChatManager.prepareOldGroupMessage` contient aussi des branches
+spéciales pour `object == "voicecall"`/`"missedvoicecall"` déclenchant des effets de bord de
+signalisation d'appel (`CallService.isOnCall`, déclin/lancement d'appel) — spécifiques à
+l'infrastructure d'appel Android, sans équivalent 1:1 évident avec `CallCoordinator` iOS, et hors
+du périmètre de ce finding (Socket.IO/historique, pas Calls). Seule la branche générique
+(persister + afficher) est portée, documenté explicitement dans le code plutôt que deviné.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/GroupRepository.swift`,
+`Sources/TiinverSwift/Messagerie/ChatViewModel.swift`.
+
+**Résultat CI** : commit `d136a68`, push confirmé (`3f46ca1..d136a68 main -> main`), run
+`32918138299` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : conversation de groupe avec historique local incomplet, scroller au-delà du cache
+local, confirmer le chargement depuis le serveur sans troncature silencieuse.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

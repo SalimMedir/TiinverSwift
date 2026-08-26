@@ -397,8 +397,16 @@ comme `searchSuggest`. **Commit `45d2848` poussé sur `main`, CI PAS déclenché
 V5-F-012 CODE_COMPLETE/CI_PENDING (recherche — `.onChange(of: tab)` ne annulait pas le debounce de
 frappe en attente [`searchTask`], requête réseau redondante possible ~300ms après un changement
 d'onglet. Corrigé : `searchTask?.cancel()` ajouté, fidèle à `cancelDebounce()`. **Commit `923d48a`
-poussé sur `main`, CI PAS déclenchée**). **Prochain finding à traiter : V5-F-015** (grep
-`"^ID : V5-F-015"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe
+poussé sur `main`, CI PAS déclenchée**) ; Lot P3-4 V5-F-015 **DUPLICATE de V5-F-065** (aucun code
+modifié — même gap EXACT `try? ... ?? isBlocked` dans `ProfileViewModel.toggleBlock()`, déjà
+corrigé sous V5-F-065/Lot P2-20 plus tôt dans cette session, trouvé indépendamment par 2 agents) ;
+Lot P3-5 V5-F-017 CODE_COMPLETE/CI_PENDING (panneau "Contenu restreint" absent de l'écran de détail
+d'un groupe payant — `SettingGroupMessageFragmant.java:190-196` l'affiche à TOUT membre dès
+`lucrative==1`, `GroupDetailView.swift` n'avait aucun équivalent ni même les paramètres
+`price`/`lucrative`. Corrigé : `GroupDetailView` gagne ces 2 paramètres [défaut 0], nouvelle
+`Section` avec le texte EXACT Android, seul appelant [`ChatView.swift`] mis à jour. **Commit
+`9e2f415` poussé sur `main`, CI PAS déclenchée**). **Prochain finding à traiter : V5-F-027** (grep
+`"^ID : V5-F-027"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe
 avant tout correctif, comme fait pour chaque finding tout au long de cette session ; identifier les
 P3 restants avec `grep "^PRIORITÉ : P3"` puis chercher lesquels n'ont pas encore de bloc
 `STATUT :` à leur suite). Si l'utilisateur a entre-temps déclenché la CI pour les findings

@@ -802,6 +802,11 @@ CAUSE : Pattern `try? ... ?? valeurActuelle` qui transforme toute erreur en no-o
 IMPACT : Un utilisateur qui tente de bloquer quelqu'un lors d'une coupure réseau croit l'avoir fait (aucune erreur affichée) alors que rien ne s'est produit côté serveur — il peut continuer à croire, à tort, que le blocage est actif.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Remplacer le `try?` par un `do/catch` qui, en cas d'échec, renseigne `errorMessage` (ou un état d'erreur dédié) affiché à l'écran, cohérent avec le motif déjà utilisé pour `loadProfile()` dans ce même fichier.
+STATUT : DUPLICATE de V5-F-065 (2026-08-26, Phase B P3) — même gap EXACT (`try? ... ?? isBlocked`
+dans `ProfileViewModel.toggleBlock()`, même citation Android `UserProfile.block()`'s `onError`),
+trouvé indépendamment par 2 agents d'audit différents. Déjà corrigé sous V5-F-065 (Lot P2-20,
+2026-08-26, plus tôt dans cette même session) : `do/catch` + `blockError: String?` publié sur
+échec réseau, vérifié par lecture directe de `ProfileViewModel.swift:227-242`. Aucun code modifié.
 ```
 
 ```
@@ -854,6 +859,13 @@ CAUSE : Lors du portage de SettingGroupMessageFragmant.java (documenté comme lu
 IMPACT : Un utilisateur consultant les informations d'un groupe payant sur iOS (via l'écran dédié, pas seulement au moment de devoir payer) n'a aucun moyen d'y voir le prix de l'abonnement ou la mention "contenu restreint" — perte d'information mineure mais réelle par rapport à Android, potentiellement gênante pour un membre qui veut vérifier le tarif avant renouvellement sans revenir au fil de discussion.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter `price`/`lucrative` aux paramètres de `GroupDetailView.init`, les transmettre depuis `ChatView.swift:107-111` (`viewModel.target.price`/`.lucrative`), et rendre un panneau équivalent (cadenas + "Ce groupe est accessible uniquement aux abonnés." + prix) en tête de liste, visible à tout membre quand `lucrative==1`, à l'identique d'Android.
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-5). RECOMMANDATION appliquée telle quelle :
+`GroupDetailView` gagne `lucrative`/`price` (défaut 0), nouvelle `Section` avec le texte EXACT
+Android (`Restricted_content`/`only_subscribers`/`subscription`+prix+`coins_per_month`) affichée à
+TOUT membre dès `lucrative==1`, juste après l'en-tête. Seul appelant (`ChatView.swift`) mis à jour
+avec `viewModel.target.lucrative`/`.price`. Fichiers modifiés : `Messagerie/GroupDetailView.swift`,
+`Messagerie/ChatView.swift`. Commit `9e2f415`, poussé sur `main`. CI non déclenchée par cette
+session.
 ```
 
 ```

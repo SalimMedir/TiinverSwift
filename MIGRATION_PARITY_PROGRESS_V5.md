@@ -13,7 +13,7 @@ V5-F-049, V5-F-051, V5-F-054, V5-F-055 (partiel, écart architectural documenté
 V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071, V5-F-073 (DUPLICATE de V5-F-020), V5-F-074,
 V5-F-079, V5-F-083, V5-F-086, V5-F-090, V5-F-096, V5-F-099]. **BACKLOG P2 ENTIÈREMENT CLOS
 (31/31)**. Backlog P3 (21 findings) EN COURS [3/21 clos : V5-F-003 (DUPLICATE de V5-F-050),
-V5-F-011, V5-F-012]. Prochain : V5-F-015.**
+V5-F-011, V5-F-012, V5-F-015 (DUPLICATE de V5-F-065), V5-F-017]. Prochain : V5-F-027.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2734,6 +2734,36 @@ déclencher ~300ms plus tard et relancer une requête réseau redondante.
 **Correction appliquée** : `searchTask?.cancel()` ajouté en tête de `.onChange(of: tab)`.
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Discover/SearchView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P3-4 : V5-F-015 (DUPLICATE de V5-F-065)
+
+**Aucun code modifié, aucun commit.** Même gap EXACT que V5-F-065 (`try? ... ?? isBlocked` dans
+`ProfileViewModel.toggleBlock()`, même citation Android `UserProfile.block()`'s `onError`), trouvé
+indépendamment par 2 agents d'audit différents. Déjà corrigé sous V5-F-065 (Lot P2-20, plus tôt
+dans cette même session) : `do/catch` + `blockError` publié sur échec réseau. Vérifié par lecture
+directe de `ProfileViewModel.swift:227-242`.
+
+## 2026-08-26 — Phase B V5 — Lot P3-5 : V5-F-017 (Panneau "Contenu restreint" absent de l'écran de détail d'un groupe payant)
+
+**Commit** : `9e2f415` — poussé sur `main` (`04be70a..9e2f415`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `SettingGroupMessageFragmant.java:190-196` affiche un panneau
+`container_static_info` (cadenas "Contenu restreint" + "Ce groupe est accessible uniquement aux
+abonnés." + "Abonnement : {price} jetons/mois") à TOUT membre (pas de garde `IAM_ADMIN`) dès que
+`lucrative==1`. `GroupDetailView.swift` n'avait aucun équivalent et ne recevait même pas
+`price`/`lucrative` de `RosterModel`, pourtant déjà peuplés côté serveur — seule la bannière
+d'abonnement dans le fil de discussion affichait le prix, pas l'écran de détail dédié.
+
+**Correction appliquée** : `GroupDetailView` gagne `lucrative`/`price` (défaut 0, aucun autre
+appelant hypothétique affecté), nouvelle `Section` avec le texte EXACT Android affichée à tout
+membre dès `lucrative==1`, juste après l'en-tête. Seul appelant (`ChatView.swift`) mis à jour.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/GroupDetailView.swift`,
+`Sources/TiinverSwift/Messagerie/ChatView.swift`.
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.

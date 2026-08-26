@@ -15,7 +15,15 @@ final class VideoCacheManager {
     private let directory: URL
     private let maxBytes: Int64
     private let fileManager = FileManager.default
-    private let queue = DispatchQueue(label: "com.tiinver.videocache", qos: .utility)
+    private let queue = DispatchQueue(label: "com.tiinver.videocache", qos: .utility, attributes: .concurrent)
+    /// Port de `precacheExecutor = Executors.newFixedThreadPool(2)` (`ExoPlayerManager.java:87`)
+    /// — **ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-055, Phase B P2)**. La `queue`
+    /// ci-dessus était auparavant SÉRIELLE (1 seul précache à la fois) : un seul téléchargement
+    /// lent retardait la mise en cache de TOUTES les vidéos suivantes de la fenêtre `currentIndex
+    /// ±2`, alors qu'Android peut continuer sur son second thread. `queue` rendue `.concurrent`,
+    /// ce sémaphore plafonne à 2 précaches simultanés (fidèle au pool à 2 threads), pas à un
+    /// nombre illimité.
+    private let concurrencyLimiter = DispatchSemaphore(value: 2)
 
     private init() {
         let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -57,9 +65,32 @@ final class VideoCacheManager {
     /// automatiquement pour chaque vidéo de la fenêtre `currentIndex±2` PENDANT le défilement du
     /// Feed (voir `VideoPlayerManager.preload`), un scénario d'usage normal, pas un cas limite.
     /// `downloadTask` écrit directement sur disque par blocs bornés, fidèle au streaming Android.
+    ///
+    /// **Revu le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-055, Phase B P2)** — deux écarts
+    /// identifiés contre `ExoPlayerManager.preCachePrefix(url, 2_000_000L)` : (1) file d'attente à
+    /// 1 thread au lieu de 2 (`precacheExecutor`) — CORRIGÉ, voir `concurrencyLimiter` ci-dessus ;
+    /// (2) téléchargement du fichier ENTIER au lieu d'un préfixe plafonné à 2 Mo —
+    /// **DÉLIBÉRÉMENT NON reproduit, écart architectural documenté, PAS un oubli**.
+    /// `preCachePrefix` n'est sûr côté Android QUE parce que la lecture réelle passe par le MÊME
+    /// `CacheDataSource` ExoPlayer segmenté (octets en cache servis depuis le disque, le RESTE
+    /// transparence basculé sur le réseau live, sans discontinuité) — vérifié directement
+    /// `VideoPlayerManager.swift:87` : `isCached(url) ? localURL(for: url) : url` — côté iOS, un
+    /// fichier "en cache" est chargé comme asset LOCAL COMPLET par `AVPlayerItem`, PAS via un
+    /// data source segmenté équivalent. Plafonner ce téléchargement à 2 Mo produirait un fichier
+    /// LOCAL TRONQUÉ qu'`isCached()` marquerait pourtant "en cache" — `VideoPlayerManager`
+    /// tenterait alors de lire CE fichier tronqué comme la vidéo complète, provoquant un arrêt de
+    /// lecture après ~quelques secondes pour CHAQUE vidéo précachée. Reproduire fidèlement le
+    /// plafond 2 Mo introduirait donc une régression de lecture RÉELLE et PIRE que la
+    /// surconsommation de données actuelle (qui, elle, produit toujours une lecture locale
+    /// complète et fiable une fois le téléchargement terminé) — cf. politique du projet de ne pas
+    /// porter un comportement Android qui ne fonctionnerait pas correctement dans l'architecture
+    /// de cache iOS existante sans une refonte plus large (data source AVFoundation segmenté,
+    /// hors périmètre d'un correctif P2 isolé).
     func precache(_ remoteURL: URL) {
         queue.async { [weak self] in
             guard let self, !self.isCached(remoteURL) else { return }
+            self.concurrencyLimiter.wait()
+            defer { self.concurrencyLimiter.signal() }
             var request = URLRequest(url: remoteURL)
             for (field, value) in VideoPlayerManager.videoHTTPHeaders {
                 request.setValue(value, forHTTPHeaderField: field)

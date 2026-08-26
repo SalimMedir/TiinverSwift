@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreGraphics
 import Foundation
 import UIKit
@@ -79,7 +80,25 @@ final class AnimemesEditorState: ObservableObject {
     /// charge par l'exporteur — seul le point d'entrée UI "Ajouter un son" manquait). `nil` = pas de
     /// son, fidèle au comportement par défaut d'Android (aucun son tant que l'utilisateur n'en
     /// choisit pas un).
-    @Published var audioURL: URL?
+    ///
+    /// **`didSet` ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-095, Phase B P1)** — port
+    /// de `mAudio.setFileName(path); mAudio.preparePlayer();` (`AnimemesCompound.java:2176-2177`/
+    /// `:2196-2197`, les 2 sites qui fixent `musicFilePath`) : Android prépare le lecteur audio
+    /// IMMÉDIATEMENT au choix du fichier, pas seulement au premier play. Voir
+    /// `prepareAudioPlayer()`/`AnimationEnginePlaybackDelegate` plus bas pour le couplage
+    /// lecture↔son (jusqu'ici : `audioURL` n'alimentait QUE `AnimemesExporter.audioURL` à l'export
+    /// final, aucun son n'était audible pendant l'édition/prévisualisation).
+    @Published var audioURL: URL? {
+        didSet {
+            guard audioURL != oldValue else { return }
+            prepareAudioPlayer()
+        }
+    }
+    /// Port de `MyAudioManager`/`mAudio` — un seul lecteur pour toute la durée de vie de l'éditeur,
+    /// comme côté Android (`AnimemesCompound.mAudio`, champ unique). PAS `@Published` : la
+    /// progression audio ne pilote aucun affichage (pas de scrubber son dédié), seul
+    /// `isPlaying`/`timeline.playheadFrame` (déjà `@Published`) reflètent l'état visible.
+    private var audioPlayer: AVAudioPlayer?
     /// Diagnostic AFFICHÉ À L'ÉCRAN (HUD temporaire) — demande explicite de l'utilisateur suite au
     /// rapport "les transformations ne fonctionnent pas réellement dans Appetize" : trace la chaîne
     /// GESTURE → CONTROLLER → STATE → TRANSFORM à chaque étape, visible sans accès console.
@@ -811,6 +830,21 @@ final class AnimemesEditorState: ObservableObject {
         version += 1
     }
 
+    /// Port de `mAudio.setFileName(path); mAudio.preparePlayer();` — voir doc de `audioURL`
+    /// ci-dessus. `AVAudioSession` configurée en catégorie `.playback` (`.mixWithOthers` pour ne
+    /// pas couper une musique déjà en cours côté utilisateur, Android n'a pas d'équivalent
+    /// explicite à ce concept iOS mais `MediaPlayer` y joue de façon comparable, toujours audible).
+    private func prepareAudioPlayer() {
+        guard let audioURL else {
+            audioPlayer = nil
+            return
+        }
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        try? AVAudioSession.sharedInstance().setActive(true)
+        audioPlayer = try? AVAudioPlayer(contentsOf: audioURL)
+        audioPlayer?.prepareToPlay()
+    }
+
     // MARK: - Lecture / scrub (port de `MemesView2.play/pause`, bouton play `AnimemesCompound.
     // java:2007-2019` + `onPlayheadMoved`/`TimelineView.OnTimelineListener`)
 
@@ -1107,18 +1141,34 @@ final class AnimemesEditorState: ObservableObject {
 /// utilisé par les gestes continus, voir sa doc de tête de fichier) — `animationEngineDidPause`
 /// n'a jamais eu besoin de toucher `version`/`renderVersion` (aucun changement visuel à ce moment,
 /// `isPlaying = false` suffit à mettre à jour l'icône play/pause via `@Published`).
+///
+/// **Couplage audio ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-095, Phase B P1)** —
+/// port de `AnimemesCompound.setPreviewAnimationListener` (`:1684-1704`) : `onPlay(frame)` (appelé
+/// à CHAQUE frame de lecture) fait `if (frame == 0) mAudio.seekTo(0)` PUIS, inconditionnellement,
+/// `forceResetAndPlay()` — mais `forceResetAndPlay()`/`seekTo` sont NO-OP dès que `mAudio.
+/// isPlaying == true` (lu dans `MyAudioManager.java`), donc l'effet net observable est : au tout
+/// début d'un cycle de lecture (frame 0), repositionner l'audio à 0 puis le démarrer ; sur les
+/// frames suivantes, ne rien refaire tant que la lecture continue. `onPause()` →
+/// `mAudio.pausePlaying()` (pause EN PLACE, position conservée) ; `onEnded()` → `stop()` →
+/// `mAudio.stopWithoutRelease()` (repositionne à 0 ET met en pause, mais NE release/détruit PAS le
+/// lecteur — d'où `audioPlayer` réutilisé tel quel au prochain `play()`, jamais recréé ici).
 extension AnimemesEditorState: AnimationEnginePlaybackDelegate {
     nonisolated func animationEngine(_ engine: AnimationEngine, didPlayFrame frame: Int) {
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.timeline.setPlayheadFrame(frame, external: false)
             self.isPlaying = true
+            if frame == 0 { self.audioPlayer?.currentTime = 0 }
+            if let audioPlayer = self.audioPlayer, !audioPlayer.isPlaying { audioPlayer.play() }
             self.bumpRenderVersion()
         }
     }
 
     nonisolated func animationEngineDidPause(_ engine: AnimationEngine) {
-        Task { @MainActor [weak self] in self?.isPlaying = false }
+        Task { @MainActor [weak self] in
+            self?.isPlaying = false
+            self?.audioPlayer?.pause()
+        }
     }
 
     nonisolated func animationEngineDidEnd(_ engine: AnimationEngine) {
@@ -1126,6 +1176,8 @@ extension AnimemesEditorState: AnimationEnginePlaybackDelegate {
             guard let self else { return }
             self.isPlaying = false
             self.timeline.setPlayheadFrame(0, external: false)
+            self.audioPlayer?.pause()
+            self.audioPlayer?.currentTime = 0
             self.bumpRenderVersion()
         }
     }

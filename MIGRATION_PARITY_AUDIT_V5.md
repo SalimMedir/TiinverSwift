@@ -3049,6 +3049,21 @@ IMPACT : Un contenu produit par l'éditeur Animems et publié depuis iOS arrive 
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Étendre PublishMedia (ou une variante) pour transporter style="animemes"/content_type="animation"/template_id depuis AnimemesEditorState jusqu'à FeedRepository.publish, et ajouter ces 3 paramètres optionnels à publish() en les injectant dans MediaMetaData/params exactement comme le fait PublishFragment.java.
 CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Animems (import/export)" (Phase A.2, 2026-08-24)
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-27). RECOMMANDATION appliquée via un nouveau
+`AnimemsPublishMetadata` (au lieu d'étendre `PublishMedia` directement, moins invasif — tous les
+autres appelants de `PublishComposeView` restent inchangés). `MotionTemplate.isFromCommunity`
+ajouté (exclu de `Codable` — champ runtime jamais persisté côté Android non plus, voir
+`CodingKeys`) ; `CommunityTemplateRepository.downloadAndPrepare` le marque `true` sur les 2 chemins
+de sortie (cache + téléchargement frais) ; `AnimemesEditorState.activeCommunityTemplateId` fixé
+dans `applyTemplate` (`template.isFromCommunity ? template.id : nil`, même placement qu'Android) ;
+`FeedRepository.publish` gagne 3 paramètres optionnels `contentType`/`style`/`templateId` (défaut
+`nil`, aucun appelant existant affecté) ; `PublishComposeView` route les valeurs EXACTES par type
+d'export (`content_type="image"` sans `template_id` pour une image statique,
+`content_type="animation"` + `template_id` pour une vidéo, fidèle à `createImage()`/
+`createVideosFromBitmap()`). Fichiers modifiés : `Animems/MotionTemplate.swift`,
+`Animems/CommunityTemplateRepository.swift`, `Animems/AnimemesEditorState.swift`,
+`Animems/AnimemesEditorView.swift`, `Feed/FeedRepository.swift`, `Feed/PublishComposeView.swift`.
+Commit `ca71e91`, poussé sur `main`. CI non déclenchée par cette session.
 ```
 
 ```

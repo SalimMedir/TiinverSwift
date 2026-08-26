@@ -11,7 +11,7 @@ V5-F-002, V5-F-004, V5-F-008, V5-F-014, V5-F-024, V5-F-025, V5-F-026
 (IOS_INTENTIONAL_DIFFERENCE), V5-F-030, V5-F-035, V5-F-038, V5-F-039, V5-F-040, V5-F-048,
 V5-F-049, V5-F-051, V5-F-054, V5-F-055 (partiel, écart architectural documenté), V5-F-059,
 V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071, V5-F-073 (DUPLICATE de V5-F-020), V5-F-074,
-V5-F-079]. Prochain : V5-F-083. Puis 21 P3.**
+V5-F-079, V5-F-083]. Prochain : V5-F-086. Puis 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2555,6 +2555,38 @@ aurait réinitialisé `isFileDownloaded` sans qu'aucun retéléchargement ultér
 (le garde-fou `http` de `requestDownload` échouerait silencieusement sur une URL déjà locale).
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatViewModel.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P2-27 : V5-F-083 (Métadonnées de classification Animems perdues à la publication)
+
+**Commit** : `ca71e91` — poussé sur `main` (`43d049f..ca71e91`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `PublishFragment.java` (via `AnimemesCompound.java:2597-2648` →
+`ActivityService.java:196`) envoie `style="animemes"` + `content_type` ("image" pour un export
+statique, "animation" pour une vidéo) et, UNIQUEMENT pour une vidéo, `template_id` si un modèle
+COMMUNAUTAIRE (pas un modèle sauvegardé localement) était actif. `FeedRepository.publish` codait en
+dur `content_type: nil`/`style: nil`/`"template_id": ""` pour TOUTE publication, y compris un export
+Animems — indiscernable d'une simple photo/vidéo Galerie côté backend.
+
+**Correction appliquée** : `AnimemsPublishMetadata` (structure dédiée, moins invasif qu'étendre
+`PublishMedia` — tous les autres appelants de `PublishComposeView` restent inchangés).
+`MotionTemplate.isFromCommunity` ajouté, exclu de `Codable` (champ runtime jamais persisté côté
+Android non plus — un fichier `.tmpl` déjà sauvegardé localement continue de décoder sans erreur).
+`CommunityTemplateRepository.downloadAndPrepare` le marque `true` sur les 2 chemins de sortie (cache
+local + téléchargement frais). `AnimemesEditorState.activeCommunityTemplateId` fixé dans
+`applyTemplate` (même placement/logique qu'Android). `FeedRepository.publish` gagne 3 paramètres
+optionnels (défaut `nil`, aucun appelant existant affecté). `PublishComposeView` route les valeurs
+EXACTES par type d'export : `template_id` JAMAIS inclus pour une image statique, fidèle à
+`createImage()` qui ne le bundle pas.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/MotionTemplate.swift`,
+`Sources/TiinverSwift/Animems/CommunityTemplateRepository.swift`,
+`Sources/TiinverSwift/Animems/AnimemesEditorState.swift`,
+`Sources/TiinverSwift/Animems/AnimemesEditorView.swift`,
+`Sources/TiinverSwift/Feed/FeedRepository.swift`, `Sources/TiinverSwift/Feed/PublishComposeView.swift`.
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.

@@ -343,7 +343,17 @@ RECOMMANDATION]. Option 2 [`fileExists`+reset `isFileDownloaded=0`] délibérém
 au téléchargement, même comportement que le port iOS — l'URL CDN distante est irrécupérable après
 coup des 2 côtés, Option 2 aurait cassé tout retéléchargement futur [garde-fou `http` de
 `requestDownload` échouerait silencieusement]. **Commit `0ffb9b3` poussé sur `main`, CI PAS
-déclenchée**). **Prochain finding à traiter : V5-F-083** (grep `"^ID : V5-F-083"` dans
+déclenchée**) ; Lot P2-27 V5-F-083 CODE_COMPLETE/CI_PENDING (métadonnées de classification Animems
+[`style`/`content_type`/`template_id`] perdues à la publication — `FeedRepository.publish` codait
+en dur `nil`/`nil`/`""` pour TOUTE publication, y compris un export Animems, indiscernable d'une
+simple photo/vidéo Galerie côté backend. Corrigé : nouveau `AnimemsPublishMetadata` [moins invasif
+qu'étendre `PublishMedia`] ; `MotionTemplate.isFromCommunity` ajouté [exclu de `Codable`, champ
+runtime jamais persisté côté Android non plus] ; `CommunityTemplateRepository.downloadAndPrepare`
+le marque `true` sur les 2 chemins de sortie ; `AnimemesEditorState.activeCommunityTemplateId` fixé
+dans `applyTemplate` [même placement qu'Android] ; `FeedRepository.publish` gagne 3 paramètres
+optionnels [défaut `nil`, aucun appelant existant affecté] ; `template_id` JAMAIS inclus pour une
+image statique, fidèle à `createImage()`. **Commit `ca71e91` poussé sur `main`, CI PAS
+déclenchée**). **Prochain finding à traiter : V5-F-086** (grep `"^ID : V5-F-086"` dans
 `MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe avant tout correctif,
 comme fait pour chaque finding tout au long de cette session ; identifier les findings P2 restants
 avec `grep "^PRIORITÉ : P2"` puis chercher lesquels n'ont pas encore de bloc `STATUT :` à leur

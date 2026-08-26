@@ -3566,6 +3566,13 @@ IMPACT : Si l'utilisateur enregistre une vidéo dans `CameraView` et que l'app p
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter un `.onChange(of: scenePhase)` qui arrête/finalise l'enregistrement (`recorder.stopRecording()`) dès que `scenePhase` quitte `.active` pendant `isRecording == true`, symétrique à `onPause()`→`releaseCamera()` côté Android — ou a minima observer `AVCaptureSession.wasInterruptedNotification` dans `CameraCaptureController` pour finaliser proprement le fichier en cours.
 CONTRE-AUDIT : trouvé par l'agent "Lifecycle" (Phase A.2, 2026-08-24)
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-31 — **DERNIER P2, BACKLOG P2 ENTIÈREMENT
+CLOS 31/31**). RECOMMANDATION appliquée telle quelle : le `.onChange(of: scenePhase)` existant
+(déjà câblé pour V3-F-134) appelle désormais `stopRecording()` (déjà existant, réutilisé tel quel)
+dès que `phase != .active` pendant `isRecording == true` — couvre `.inactive` ET `.background`,
+fidèle à `onPause()` qui se déclenche sur TOUTE perte de premier plan. Fichier modifié :
+`Camera/CameraView.swift`. Commit `99b4732`, poussé sur `main`. CI non déclenchée par cette
+session.
 ```
 
 ---

@@ -11,7 +11,8 @@ V5-F-002, V5-F-004, V5-F-008, V5-F-014, V5-F-024, V5-F-025, V5-F-026
 (IOS_INTENTIONAL_DIFFERENCE), V5-F-030, V5-F-035, V5-F-038, V5-F-039, V5-F-040, V5-F-048,
 V5-F-049, V5-F-051, V5-F-054, V5-F-055 (partiel, écart architectural documenté), V5-F-059,
 V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071, V5-F-073 (DUPLICATE de V5-F-020), V5-F-074,
-V5-F-079, V5-F-083, V5-F-086, V5-F-090, V5-F-096]. Prochain : V5-F-099 (DERNIER P2). Puis 21 P3.**
+V5-F-079, V5-F-083, V5-F-086, V5-F-090, V5-F-096, V5-F-099]. **BACKLOG P2 ENTIÈREMENT CLOS
+(31/31)**. Backlog P3 (21 findings) EN COURS — prochain : premier P3 dans l'ordre du document.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2663,6 +2664,34 @@ par `ProfileView` ET `FeedView` (grille Home) via `includesDownload`.
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P2-31 : V5-F-099 (Enregistrement caméra non finalisé au passage en arrière-plan) — DERNIER P2, BACKLOG P2 ENTIÈREMENT CLOS (31/31)
+
+**Commit** : `99b4732` — poussé sur `main` (`fcf0703..99b4732`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `BaseCameraFragment.onPause()` (`:339-366`) arrête et finalise IMMÉDIATEMENT un
+enregistrement en cours dès que l'app perd le focus (bouton Accueil, appel natif entrant, centre de
+notifications) — l'utilisateur retrouve toujours un fichier vidéo valide, jamais un enregistreur
+bloqué en arrière-plan. `CameraView` n'observait `scenePhase` que pour relancer la session après un
+refus de permission ; `.onDisappear` (seul déclencheur de `release()`) ne se produit que si la vue
+est retirée de la hiérarchie SwiftUI, pas quand l'app entière passe en arrière-plan avec l'écran
+caméra encore monté — aucune finalisation explicite de l'enregistrement en cours.
+
+**Correction appliquée** : le `.onChange(of: scenePhase)` existant appelle désormais
+`stopRecording()` (déjà existant, réutilisé tel quel) dès que `phase != .active` pendant
+`isRecording == true` — couvre `.inactive` ET `.background`, fidèle à `onPause()` qui se déclenche
+sur TOUTE perte de premier plan, transitoire ou non.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Camera/CameraView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+**BACKLOG P2 (31 findings) ENTIÈREMENT CLOS** : 29 `CODE_COMPLETE/CI_PENDING`, 1 `DUPLICATE`
+(V5-F-073, de V5-F-020), 1 `IOS_INTENTIONAL_DIFFERENCE` (V5-F-026). Voir `CLAUDE_CONTINUATION.md`
+pour le détail lot par lot complet. Backlog P3 (21 findings) à traiter ensuite, dans l'ordre du
+document.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

@@ -154,7 +154,7 @@ section "Cycle V5" plus bas pour le détail complet.)
 **BACKLOG P1 ENTIÈREMENT TRAITÉ (40/40)** — 36 `BUILD_VALIDATED` (CI verte confirmée), 4
 `CODE_COMPLETE/CI_PENDING` (V5-F-089/095/097/098, code poussé sur `main`, CI en attente d'un
 déclenchement par lots par l'utilisateur — voir section "Cycle V5" pour le détail du blocage
-d'outillage `gh`/jeton API). **BACKLOG P2 (31 findings) DÉMARRÉ** : Lot P2-1 V5-F-002
+d'outillage `gh`/jeton API). **BACKLOG P2 ENTIÈREMENT CLOS (31/31)** : Lot P2-1 V5-F-002
 CODE_COMPLETE/CI_PENDING (badge non-lu de l'onglet Chat jamais rafraîchi en temps réel à la
 réception socket d'un message pendant que l'app est sur un autre onglet, `chatUnreadCount`
 recalculé UNE SEULE FOIS au montage ; `.onReceive(ChatRepository.shared.chatEvents)` ajouté à
@@ -374,14 +374,24 @@ appelait `FeedMediaDownloader.download(post)` sans aucune garde, un retap pendan
 en vol démarrait un second téléchargement complet, écrivant deux fois le média dans la photothèque.
 Corrigé : nouveau `queuedDownloadPostIds: Set<Int>`, gardé par `.insert(post.id).inserted` [même
 sémantique que `Set.add()`, jamais retiré]. **Commit `eb27c20` poussé sur `main`, CI PAS
-déclenchée**). **Prochain finding à traiter : V5-F-099 (DERNIER P2 du backlog)** (grep
-`"^ID : V5-F-099"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe
-avant tout correctif, comme fait pour chaque finding tout au long de cette session). Une fois
-V5-F-099 traité, le backlog P2 (31 findings) sera ENTIÈREMENT clos — passer ensuite au backlog P3
-(21 findings), dans l'ordre du document, SAUF instruction contraire de l'utilisateur. Si
-l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et
-communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas
-échéant) avant de continuer.
+déclenchée**) ; Lot P2-31 V5-F-099 CODE_COMPLETE/CI_PENDING — **DERNIER P2, BACKLOG P2
+ENTIÈREMENT CLOS (31/31)** (enregistrement caméra non finalisé au passage en arrière-plan —
+`BaseCameraFragment.onPause()` arrête/finalise IMMÉDIATEMENT tout enregistrement en cours dès
+perte du focus [Accueil/appel entrant/centre de notifications] ; `CameraView` n'observait
+`scenePhase` que pour le cas post-permission, `.onDisappear` [seul déclencheur de `release()`] ne
+se produit pas au passage en arrière-plan avec l'écran caméra encore monté. Corrigé : le
+`.onChange(of: scenePhase)` existant appelle `stopRecording()` [déjà existant, réutilisé tel quel]
+dès que `phase != .active` pendant `isRecording == true`. **Commit `99b4732` poussé sur `main`, CI
+PAS déclenchée**).
+
+**BACKLOG P2 (31/31) ENTIÈREMENT CLOS** — 29 `CODE_COMPLETE/CI_PENDING`, 1 `DUPLICATE` (V5-F-073,
+de V5-F-020), 1 `IOS_INTENTIONAL_DIFFERENCE` (V5-F-026). **Backlog P3 (21 findings) DÉMARRE
+MAINTENANT**, dans l'ordre du document — **premier P3 à traiter : V5-F-003** (grep
+`"^ID : V5-F-003"` dans `MIGRATION_PARITY_AUDIT_V5.md` ; identifier les P3 restants avec
+`grep "^PRIORITÉ : P3"` puis chercher lesquels n'ont pas encore de bloc `STATUT :` à leur suite,
+même méthode que pour le P2). Si l'utilisateur a entre-temps déclenché la CI pour les findings
+`CI_PENDING` listés ci-dessus (P0/P1/P2) et communiqué un résultat, mettre à jour leur statut vers
+`BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P3.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

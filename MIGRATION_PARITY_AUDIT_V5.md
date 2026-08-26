@@ -2021,6 +2021,18 @@ CAUSE : Le port remplace le parsing par regex Android (#(\w+), qui borne proprem
 IMPACT : Un hashtag publié depuis iOS avec une ponctuation immédiatement après (virgule, point, point d'exclamation — cas très courant en usage réel) est enregistré côté serveur avec cette ponctuation collée (ex. "sunset," au lieu de "sunset"), cassant potentiellement l'association avec le flux #sunset (HashtagFeedView) et la recherche par hashtag pour CE post précis, sans qu'aucune erreur ne soit visible à l'utilisateur.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Réutiliser la même regex #([\wÀ-ɏ]+) déjà portée dans HashtagMentionText.swift:38 pour extraire les hashtags au moment de la publication, au lieu du split par espace.
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-14) — Correctif appliqué
+exactement comme recommandé : nouveau `HashtagMentionText.extractHashtags(from:)` (public,
+réutilise `hashtagRegex` déjà porté), appelé depuis `PublishComposeView.publish()` à la place du
+split-par-espace. Un seul point de vérité pour la regex hashtag (affichage ET extraction).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/HashtagMentionText.swift`,
+`Sources/TiinverSwift/Feed/PublishComposeView.swift`.
+
+**Commit `8211bb9`, poussé sur `main`** (`4757b49..8211bb9`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé. **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas
+confirmée.
 ```
 
 ```

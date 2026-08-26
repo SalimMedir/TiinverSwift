@@ -241,13 +241,28 @@ sémantique soft-delete séparée `deleteObjectDrawed`], nouvel `isDraggingSelec
 `deleteDropZoneIcon`, zone de dépôt testée en coordonnées canevas locales [fidèle indépendamment
 du zoom]. Approximation documentée : icône en espace écran, hors du groupe zoomé [restructuration
 jugée trop risquée]. **Commit `e163190` poussé sur `main`, CI PAS déclenchée**). **Prochain
-finding à traiter : V5-F-048** (V5-F-041/044 sont P3, V5-F-042/043/045/046/047 déjà traités en
-P0/P1 — V5-F-048 confirmé P2 par lecture directe, domaine Commentaires — cadeaux. Vérifier avec
-`grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc `STATUT :` à sa suite, comme
-fait pour identifier chaque finding restant tout au long de cette session). Si l'utilisateur a
-entre-temps déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et communiqué un
-résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant)
-avant de continuer le P2.
+finding à traiter : V5-F-048** — TRAITÉ DEPUIS, voir ci-dessous.
+
+**Lot P2-13 V5-F-048 CODE_COMPLETE/CI_PENDING — FINANCIER, vérification renforcée** (envoi de
+cadeau en commentaire entièrement absent côté iOS, endpoint `comment/add` distinct de `comment`.
+Vérification ligne par ligne d'`onPost`/`debitCoins` AVANT tout code : Android décrémente le solde
+UNIQUEMENT dans la branche `Result.SUCCESS`, jamais de débit optimiste ; la ligne `+= price` de la
+branche `ERROR` est un no-op réel [rien soustrait avant], non reproduite. Corrigé :
+`CommentRepository.sendGift` [aucune mutation de solde], `CommentsView.sendGift` décrémente
+`UserSession.shared.coinsAmount` UNIQUEMENT après succès confirmé, garde d'affordabilité en
+double, `GiftCatalog.orderedGiftIds` ajouté, `allowGiftCommenter` [déjà porté, 0 appelant] enfin
+câblé. **Commit `4757b49` poussé sur `main`, CI PAS déclenchée**) ; Lot P2-14 V5-F-049
+CODE_COMPLETE/CI_PENDING (hashtags de publication extraits par split-par-espace au lieu de la
+regex `#(\w+)` Android — ponctuation de fin collée au hashtag envoyé au serveur, hashtag sans
+espace précédent jamais détecté. Corrigé : nouveau `HashtagMentionText.extractHashtags(from:)`
+[réutilise la regex déjà portée], appelé depuis `publish()`. **Commit `8211bb9` poussé sur `main`,
+CI PAS déclenchée** — même blocage d'outillage pour les deux). **Prochain finding à traiter :
+V5-F-051** (V5-F-050 déjà traité en P1 — V5-F-051 confirmé P2 par lecture directe, domaine
+Settings. Vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc
+`STATUT :` à sa suite, comme fait pour identifier chaque finding restant tout au long de cette
+session). Si l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés
+ci-dessus et communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter
+l'échec le cas échéant) avant de continuer le P2.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

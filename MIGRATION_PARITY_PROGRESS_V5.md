@@ -2277,6 +2277,26 @@ d'outillage que les lots précédents. Vu la nature financière, test réel supp
 plus de la CI : envoyer un cadeau réel, confirmer débit serveur = débit local, provoquer un échec
 réseau simulé et confirmer qu'AUCUN débit local n'a lieu.
 
+## 2026-08-26 — Phase B V5 — Lot P2-14 : V5-F-049 (Publication — extraction de hashtags par split au lieu de regex)
+
+**Commit** : `8211bb9` — poussé sur `main` (`4757b49..8211bb9`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `PublishFragment.extractHashtags` utilise `Pattern.compile("#(\\w+)")` — borné
+aux caractères alphanumériques, la ponctuation de fin ne fuit jamais dans le hashtag extrait, et
+un hashtag collé sans espace précédent est quand même détecté. `PublishComposeView.publish()`
+utilisait un split-par-espace : "#sunset," devenait "sunset," (virgule incluse), et "jour#tag"
+(sans espace) n'était jamais détecté du tout.
+
+**Correction appliquée** : `HashtagMentionText.extractHashtags(from:)` (nouveau, réutilise la
+regex déjà portée pour l'affichage) appelé depuis `publish()` à la place du split-par-espace.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/HashtagMentionText.swift`,
+`Sources/TiinverSwift/Feed/PublishComposeView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

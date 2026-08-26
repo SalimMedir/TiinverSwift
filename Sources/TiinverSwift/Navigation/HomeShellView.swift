@@ -180,6 +180,19 @@ struct HomeShellView: View {
                 handleDeepLink(destination)
             }
         }
+        // Port de `Roster.addMessage` → `HomeActivity.refreshChatBadge()` — **ajouté le
+        // 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-002, Phase B P2)**. Avant ce correctif,
+        // `chatUnreadCount` n'était recalculé qu'UNE SEULE FOIS au montage (`.task` ci-dessus) :
+        // un message reçu par socket pendant que l'app est au premier plan sur un autre onglet
+        // (Accueil/Créateurs/...) ne faisait jamais apparaître/s'incrémenter le badge de l'onglet
+        // Chat avant de quitter/rouvrir `HomeShellView`. `ChatRepository.chatEvents` publie déjà
+        // `.message(meta)` à chaque nouveau message privé/groupe (persistance Core Data TOUJOURS
+        // `await`ée avant l'émission, voir `ChatRepository.handleNewMessage`) — il ne manquait que
+        // cet abonnement, fidèle à la RECOMMANDATION de l'audit.
+        .onReceive(ChatRepository.shared.chatEvents) { event in
+            guard case .message = event else { return }
+            Task { await refreshChatUnreadCount() }
+        }
         .onChange(of: notificationsViewModel.unreadCount) { count in
             // Équivalent du badge Android sur l'icône (pas de contrepartie directe dans
             // `NavigationCompound.java`, qui ne badge que la barre de navigation IN-APP — ajout

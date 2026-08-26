@@ -5,10 +5,10 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [15/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+temps). Backlog P1 (40 findings) EN COURS [16/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
 V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022,
-V5-F-023, V5-F-029, V5-F-033], démarré automatiquement à V5-F-001, dans l'ordre du document.
-Prochain : V5-F-034. Puis 31 P2, 21 P3.**
+V5-F-023, V5-F-029, V5-F-033, V5-F-034], démarré automatiquement à V5-F-001, dans l'ordre du
+document. Prochain : V5-F-036. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -914,6 +914,45 @@ récepteur Android si son décodeur suppose strictement un flux AMR_NB.
 réel PRIORITAIRE et CROISÉ (2 appareils) requis : enregistrer/envoyer un message vocal depuis iOS,
 confirmer sa lecture correcte côté récepteur Android (risque de codec, point le plus critique) ;
 confirmer aussi le geste d'annulation par glissement et le blocage <1s.
+
+## 2026-08-25 — Phase B V5 — Lot P1-16 : V5-F-034 (BUILD_VALIDATED, portée réduite documentée)
+
+### Vérification
+
+**Android** : `engine/.../AnimemesCompound.java:2108-2113` (clic `ic_add` → `addBitmapFromGallerie()`),
+`:2251-2253` (→ `animemesListener.onOpenGalleryImageOnly()`) ; `MemesFragment.java:386-388`
+(`onOpenGalleryImageOnly()` → `pickOnlyImage()`), `:551-559` (sélecteur filtre
+`PickVisualMedia.ImageAndVideo`), `:561-587` (callback : si vidéo, `videotrimmer.setVideoUri(uri)`
++ `setVisibility(VISIBLE)`), `:233-267` (`videotrimmer.setVideoTrimmerListener` → `onBitmaps` →
+`animemes_compound.addBitmaps(bitmaps, 33)`). Chemin réellement atteignable confirmé.
+
+**iOS avant correctif** : `AnimemesEditorView.swift:167-178`, `onVideoPicked: { _ in
+showGalleryPicker = false }` — la vidéo sélectionnée était totalement jetée, aucun trimmer, aucune
+extraction, aucun calque ajouté, fermeture silencieuse sans aucune indication.
+
+### Correctif appliqué (portée réduite, documentée)
+
+Investigation avant codage : `MediaTrimView.swift` existe déjà mais produit un fichier vidéo
+RÉ-ENCODÉ (`AVMutableComposition`), pas une séquence de bitmaps pour un calque canevas — périmètre
+différent de `VideoTrimmerView`/`addBitmaps` Android. `AnimemesEditorState.addCapturedPaintFrames`
+existe (mécanisme structurellement proche) mais la géométrie exacte calque/canevas attendue n'a
+pas été confirmée suffisamment pour improviser un `addVideoFrames(...)` fiable. Plutôt que de
+deviner cette géométrie (risque de bug canevas silencieux), correctif du repli EXPLICITEMENT
+autorisé par la RECOMMANDATION de l'audit elle-même : `onVideoPicked` affiche maintenant une
+alerte claire ("Vidéo non prise en charge") au lieu de fermer silencieusement la feuille.
+
+**Portage complet reporté** : trim temporel + extraction de trames + intégration calque nécessite
+une lecture complète de `AnimemesEditorState.swift` (géométrie canevas) avant implémentation
+fiable — non tenté ce tour, pas deviné.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorView.swift`.
+
+**Résultat CI** : commit `f49cafc`, push confirmé (`6e88fdc..f49cafc main -> main`), run
+`32922541422` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`, portée réduite documentée (pas le
+portage complet). PAS `COMPLETE_PARITY_VALIDATED` — test réel requis : choisir une vidéo depuis la
+galerie Animems, confirmer l'alerte au lieu d'un échec silencieux.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

@@ -49,8 +49,11 @@ quand activityId>0) ; Lot P1-14 V5-F-029 BUILD_VALIDATED (appel sortant terminé
 aucun message "appel manqué", `notifyMissedCall` ajouté dans `handle(.busyCall)`, gardé par
 `isOutgoingCall`) ; Lot P1-15 V5-F-033 BUILD_VALIDATED (message vocal — envoi ENTIÈREMENT absent
 côté iOS, `VoiceRecorder.swift` créé, bouton morphant mic/envoi câblé dans `ChatView.inputBar`,
-écart codec AAC vs AMR_NB Android documenté, test croisé réel iOS→Android requis)]**. Voir
-section "Cycle V5" plus bas pour le détail complet.)
+écart codec AAC vs AMR_NB Android documenté, test croisé réel iOS→Android requis) ; Lot P1-16
+V5-F-034 BUILD_VALIDATED — portée réduite documentée (import vidéo galerie Animems : alerte
+explicite au lieu de fermeture silencieuse, portage complet trim+extraction de trames reporté,
+géométrie canevas non suffisamment confirmée pour improviser sans risque)]**. Voir section
+"Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -383,43 +386,62 @@ changement à travers `ChatViewModel.sendMedia(object: "audio", …)` existant. 
 documenté** : `AVAudioRecorder` n'expose aucun encodeur AMR public — capture en AAC/`.m4a`, upload
 toujours étiqueté `audio/3gpp`/`.3gp` (comportement préexistant inchangé) — **risque réel NON
 résolu, test croisé iOS→Android prioritaire requis** pour confirmer la lecture côté récepteur
-Android. **Commit `b9e549f`, CI verte (run `32921757759`)** — `BUILD_VALIDATED`. Détail des 15
-lots dans `PROGRESS_V5.md`.
+Android. **Commit `b9e549f`, CI verte (run `32921757759`)** — `BUILD_VALIDATED`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-034** (Galerie/Animems —
-sélection d'une VIDÉO depuis la galerie dans l'éditeur Animems [bouton "+", `ic_add`] silencieusement
-ignorée côté iOS, FONCTIONNALITÉ MANQUANTE. Android
-[`engine/.../AnimemesCompound.java:2108-2113` clic `ic_add` → `addBitmapFromGallerie()` ; `:2251-2253`
-→ `animemesListener.onOpenGalleryImageOnly()` ; `MemesFragment.java:386-388` →
-`onOpenGalleryImageOnly()` → `pickOnlyImage()` ; `:551-559` `pickOnlyImage()` lance le sélecteur
-avec filtre `PickVisualMedia.ImageAndVideo` ; `:561-587` callback : si `isVideo`,
-`videotrimmer.setVideoUri(uri)` + `setVisibility(VISIBLE)` ; `:233-267`
-`videotrimmer.setVideoTrimmerListener` → `onBitmaps(bitmaps)` →
-`animemes_compound.addBitmaps(bitmaps, 33)` puis fermeture du trimmer] — en choisissant une VIDÉO,
-Android ouvre un VRAI écran de recadrage temporel (`VideoTrimmerView`, ratio de crop visible), et
-à la validation extrait une séquence de bitmaps depuis la vidéo trimée pour les ajouter comme
-calque animé sur le canevas — chemin réellement atteignable [bouton câblé, listener non nul,
-`VideoTrimmerView` instancié depuis le layout]. iOS
-[`Sources/TiinverSwift/Animems/AnimemesEditorView.swift:167-178`, sheet du `GalleryPickerView`,
-ligne 175 précisément ; bouton `ic_add` ligne 599] —
-`onVideoPicked: { _ in showGalleryPicker = false }` : la vidéo sélectionnée est TOTALEMENT jetée,
-aucun trimmer, aucune extraction de trame, aucun calque ajouté, la feuille se ferme simplement
-SANS AUCUN message d'erreur. Cause : le port de `GalleryPickerView` pour ce point d'entrée
-n'implémente que la branche image [`state.addImage`, ligne 171-173] ; la branche vidéo n'a jamais
-été câblée vers un équivalent trim+extraction [aucune fonction `addBitmaps`/`extractFrames`
-équivalente dans `AnimemesEditorState.swift`, malgré `addCapturedPaintFrames`, mécanisme
-structurellement proche déjà utilisé pour un autre bouton]. Plan : PREMIÈRE ÉTAPE avant tout code —
-vérifier si `MediaTrimView` existe déjà côté iOS [cité par l'audit comme "existant" mais NON
-confirmé personnellement] et lire `AnimemesEditorState.addCapturedPaintFrames` en entier pour
-évaluer la faisabilité réelle d'un `addVideoFrames(...)` analogue via `AVAssetImageGenerator` avant
-de committer à la portée complète [trim UI + extraction de frames] ; l'audit autorise explicitement
-un repli réduit si le coût est disproportionné : "à défaut, au minimum afficher un message
-d'erreur explicite plutôt que fermer silencieusement la feuille" — domaine Animems, attention
-particulière requise selon la directive Phase B [existing-but-never-called logic, state mutated
-without redraw, mémoire]), puis continuer AUTOMATIQUEMENT V5-F-036, V5-F-037, V5-F-043, V5-F-046,
+**Lot P1-16 traité (V5-F-034)** — Galerie/Animems, sélection d'une VIDÉO depuis la galerie
+[bouton "+", `ic_add`] silencieusement ignorée côté iOS. Vérifié `AnimemesCompound.java:
+2108-2113,2251-2253`/`MemesFragment.java:386-388,551-587,233-267` : Android ouvre un VRAI écran de
+recadrage temporel (`VideoTrimmerView`) puis extrait une séquence de bitmaps ajoutée comme calque
+animé (`addBitmaps(bitmaps, 33)`). `AnimemesEditorView.swift`, `onVideoPicked: { _ in
+showGalleryPicker = false }` : vidéo TOTALEMENT jetée, aucun trimmer/extraction/calque, fermeture
+silencieuse sans AUCUNE indication. Investigation avant codage : `MediaTrimView.swift` existe
+mais produit un fichier vidéo RÉ-ENCODÉ, pas une séquence de bitmaps pour un calque canevas —
+périmètre différent de `VideoTrimmerView`/`addBitmaps` ; `addCapturedPaintFrames` existe
+(mécanisme proche) mais la géométrie exacte calque/canevas n'était pas suffisamment confirmée
+pour improviser un `addVideoFrames(...)` fiable sans risque de bug canevas silencieux. Correctif
+appliqué : repli EXPLICITEMENT autorisé par la RECOMMANDATION de l'audit elle-même — alerte claire
+("Vidéo non prise en charge") au lieu de fermeture silencieuse. **Portage complet reporté** (trim
+temporel + extraction de trames + intégration calque — nécessite lecture complète de
+`AnimemesEditorState.swift` avant implémentation fiable, non deviné). **Commit `f49cafc`, CI
+verte (run `32922541422`)** — `BUILD_VALIDATED`, portée réduite documentée. Détail des 16 lots
+dans `PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-036** (Éditeur photo —
+undo : le bouton "undo" retire le MAUVAIS type de calque et reste visible en dehors du mode
+dessin. Android [`ImageViewCanvas.java:317-326` `deletePrecedenteDraw`, opère sur
+`composer.getPaintLayers()` — ArrayList SÉPARÉE des `layers` normaux, `AnimationComposer.java:
+10,46-47` ; câblage `ImageEditorCompound.java:353,458-460`/`AnimemesCompound.java:341,460,1939`
+`mView.deletePrecedenteDraw()` ; visibilité du bouton LIMITÉE au mode peinture actif
+`ImageEditorCompound.java:565` show/`:590,761` gone, même pattern
+`AnimemesCompound.java:2085/2099/1809` ; les traits de dessin libre sont ajoutés via
+`initPathDraw()`/`composer.addPaintLayer()` [`ImageViewCanvas.java:1795-1798,1022-1024`], JAMAIS
+dans `composer.getLayers()` [bitmaps/texte/stickers, ajoutés via `addData()`/`composer.addLayer()`,
+`:1017-1020`]] — "undo" ne retire QUE le dernier trait de dessin libre, jamais une image/sticker/
+texte, et le bouton n'est visible qu'en mode pinceau actif. iOS
+[`AnimationComposer.swift:8-31`, `paintLayers` porté fidèlement mais `addPaintLayer()`/
+`paintLayers` JAMAIS appelés/lus ailleurs dans tout le module — vérifié exhaustivement ;
+`AnimemesEditorState.swift:648-655` `removeLast()`, commentaire de tête affirmant À TORT la
+fidélité, fait `composer.setLayers(Array(composer.layers.dropLast()))` — retire le DERNIER calque
+TOUTES catégories confondues ; `:724-735` `addFreehandDrawing` ajoute le trait comme calque
+`.bitmap` ORDINAIRE via `composer.addLayer()`, PAS `composer.addPaintLayer()` ; câblage bouton
+TOUJOURS visible [`AnimemesEditorView.swift:906-980` `bottomToolbar`, aucune condition de mode,
+`:979-980` `.disabled(state.layers.isEmpty)`]] — résultat INVERSÉ d'Android (sticker→trait→sticker,
+undo iOS retire le 2e sticker au lieu du trait) ; si aucun trait dessiné, undo Android ne fait RIEN
+[garde `paintLayers` vide] alors qu'iOS supprime silencieusement le dernier élément placé. Cause :
+`paintLayers` porté fidèlement dans `AnimationComposer.swift` mais JAMAIS relié (ni le point
+d'ajout des traits, ni le bouton undo) — "existing-but-never-called logic", pattern à surveiller
+spécifiquement en Animems selon la directive Phase B. Plan : `addFreehandDrawing()` écrit dans
+`composer.addPaintLayer()` [pas `addLayer`] ; `removeLast()` opère sur `composer.paintLayers`
+[`composer.setPaintLayers(Array(composer.paintLayers.dropLast()))`, garde si vide, comme
+`deletePrecedenteDraw()`] ; bouton undo visible/actif UNIQUEMENT quand l'outil pinceau est actif
+[miroir `Visibility.show/gone(btn_undo)` dans les handlers `ic_paint`], au lieu de
+`.disabled(state.layers.isEmpty)` toujours visible — lire `AnimationComposer.swift`,
+`AnimemesEditorState.swift` [autour de 648-735] et `AnimemesEditorView.swift` [autour de 906-980,
++ repérer l'état de "mode pinceau actif" existant] en entier avant de coder, domaine Animems
+attention particulière requise), puis continuer AUTOMATIQUEMENT V5-F-037, V5-F-043, V5-F-046,
 V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063, V5-F-067, V5-F-068,
 V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095,
-V5-F-097, V5-F-098 (24 P1 restants après V5-F-034, dans l'ordre exact du document), puis tous les
+V5-F-097, V5-F-098 (23 P1 restants après V5-F-036, dans l'ordre exact du document), puis tous les
 P2 (31), P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →

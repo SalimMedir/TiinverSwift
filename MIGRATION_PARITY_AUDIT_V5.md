@@ -1281,6 +1281,31 @@ CAUSE : Le port de GalleryPickerView pour ce point d'entrée précis n'implémen
 IMPACT : Un utilisateur qui tente d'ajouter une vidéo comme calque animé depuis la galerie dans l'éditeur Animems n'obtient RIEN : pas d'erreur, pas de calque, juste la fermeture silencieuse du sélecteur — fonctionnalité entièrement manquante et échec totalement silencieux, exactement le pattern à signaler selon la consigne d'audit.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Porter la branche vidéo : ouvrir une UI de recadrage temporel (réutiliser MediaTrimView existant côté iOS ou équivalent), puis extraire une séquence de frames via AVAssetImageGenerator et les ajouter au canevas via une nouvelle méthode AnimemesEditorState.addVideoFrames(...) analogue à addCapturedPaintFrames. À défaut, au minimum afficher un message d'erreur explicite plutôt que fermer silencieusement la feuille.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-16) — Vérifié directement :
+`AnimemesCompound.java:2108-2113,2251-2253` et `MemesFragment.java:386-388,551-587,233-267`
+confirment le pipeline complet (`VideoTrimmerView` → `addBitmaps(bitmaps, 33)`). Portée RÉDUITE
+délibérée : `MediaTrimView.swift` existant confirmé (produit un fichier vidéo ré-encodé via
+`AVMutableComposition`, PAS une séquence de bitmaps pour un calque canevas — périmètre différent
+de `VideoTrimmerView`/`addBitmaps` Android) ; `AnimemesEditorState.addCapturedPaintFrames` existe
+(mécanisme structurellement proche) mais la géométrie exacte calque/canevas attendue n'a pas été
+confirmée suffisamment pour improviser un `addVideoFrames(...)` fiable sans risque de bug canevas
+silencieux. Correctif appliqué : repli explicitement autorisé par la RECOMMANDATION elle-même
+("à défaut, au minimum...") — `onVideoPicked` affiche désormais une alerte claire ("Vidéo non
+prise en charge") au lieu de fermer silencieusement la feuille sans aucune indication. Portage
+complet (trim temporel + extraction de trames + intégration calque) laissé pour un tour futur,
+nécessitant une lecture complète de `AnimemesEditorState.swift` (géométrie canevas) avant
+implémentation.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorView.swift`.
+
+**Résultat CI** : commit `f49cafc`, push confirmé (`6e88fdc..f49cafc main -> main`), run
+`32922541422` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée), portée RÉDUITE
+documentée ci-dessus (pas le portage complet du trim+extraction). PAS `COMPLETE_PARITY_VALIDATED`
+— test réel requis : choisir une vidéo depuis la galerie dans l'éditeur Animems, confirmer
+l'affichage de l'alerte au lieu d'un échec silencieux.
 ```
 
 ```

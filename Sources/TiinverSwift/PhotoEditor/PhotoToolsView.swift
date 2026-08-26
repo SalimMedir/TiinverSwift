@@ -42,6 +42,9 @@ struct PhotoToolsView: View {
     @State private var isDrawMode = false
     @State private var drawColor: Color = .red
     @State private var showTextPrompt = false
+    /// Port de `isBorderText`/`btn_textContainer` (V5-F-087) — bascule persistante, comme côté
+    /// Android (`v.isSelected()`), appliquée au PROCHAIN texte ajouté.
+    @State private var textHasContainer = false
     @State private var newText = ""
     @State private var showStickerPrompt = false
     @State private var newSticker = ""
@@ -167,6 +170,10 @@ struct PhotoToolsView: View {
                 .tint(isDrawMode ? .yellow : .white)
                 // Port de `containerEditText`/`ic_text`.
                 Button { showTextPrompt = true } label: { Image(systemName: "textformat") }
+                // Port de `btn_textContainer` (`ImageEditorCompound.java:441-457`, V5-F-087) —
+                // bascule fond opaque du PROCHAIN texte ajouté (noir-sur-blanc si actif).
+                Button { textHasContainer.toggle() } label: { Image(systemName: "character.textbox") }
+                    .tint(textHasContainer ? .yellow : .white)
                 // Port de `ic_smile`/`EmojiView` — clavier emoji système, voir tête de fichier.
                 Button { showStickerPrompt = true } label: { Image(systemName: "face.smiling") }
                 // Port de `ic_repeate`/`onRepeateImage` (V5-F-086) — recadrer à nouveau le composite
@@ -191,7 +198,11 @@ struct PhotoToolsView: View {
         guard !trimmed.isEmpty else { return }
         let offset = CGFloat(texts.count) * 24
         let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2 + offset)
-        texts.append(PlacedText(text: trimmed, position: center, color: drawColor))
+        // Port de `isBorderText` (V5-F-087) — Android FORCE noir-sur-blanc pendant que la bascule
+        // est active, ignore tout autre choix de couleur ; `drawColor` (palette libre) reste la
+        // couleur utilisée quand la bascule est inactive, comportement déjà en place.
+        let textColor: Color = textHasContainer ? .black : drawColor
+        texts.append(PlacedText(text: trimmed, position: center, color: textColor, hasContainer: textHasContainer))
         newText = ""
     }
 
@@ -323,6 +334,8 @@ struct PhotoToolsView: View {
                 Text(item.text)
                     .font(.system(size: (item.isSticker ? 64 : 30) / screenToImageScale, weight: item.isSticker ? .regular : .bold))
                     .foregroundStyle(item.color)
+                    .padding(item.hasContainer ? 6 / screenToImageScale : 0)
+                    .background(item.hasContainer ? Color.white : Color.clear)
                     .scaleEffect(item.scale)
                     .rotationEffect(item.rotation)
                     .position(item.position)
@@ -356,6 +369,13 @@ struct PlacedText: Identifiable {
     /// Port de `ImageViewCanvas.rotate` (rotation libre à deux doigts) — angle appliqué via
     /// `.rotationEffect`, aucune borne côté Android (rotation libre 360°), reproduit à l'identique.
     var rotation: Angle = .zero
+    /// Port de `isBorderText`/`btn_textContainer` (`ImageEditorCompound.java:441-457`, V5-F-087) —
+    /// bascule texte noir-sur-fond-blanc (`true`, `containerColor=white`+`textColor=black`, ANDROID
+    /// FORCE ces 2 couleurs, ignore tout choix de palette pendant que la bascule est active) vs
+    /// l'état par défaut `false` (fond transparent, couleur de premier plan libre — `color`
+    /// ci-dessus, déjà porté). Sans pertinence pour un sticker/emoji (jamais basculable côté
+    /// Android non plus, bouton visible UNIQUEMENT en mode texte).
+    var hasContainer: Bool = false
 }
 
 /// **Ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-085, Phase B P1-34)** — port de
@@ -380,6 +400,10 @@ private struct PlacedItemView: View {
         Text(item.text)
             .font(.system(size: item.isSticker ? 64 : 30, weight: item.isSticker ? .regular : .bold))
             .foregroundStyle(item.color)
+            // Port de `isBorderText`/`et.setContainerColor` (V5-F-087) — fond opaque plein derrière
+            // le texte, PAS pertinent pour un sticker (jamais basculable côté Android).
+            .padding(item.hasContainer ? 6 : 0)
+            .background(item.hasContainer ? Color.white : Color.clear)
             .scaleEffect(item.scale * magnifyBy)
             .rotationEffect(item.rotation + rotateBy)
             .position(x: item.position.x + dragOffset.width, y: item.position.y + dragOffset.height)

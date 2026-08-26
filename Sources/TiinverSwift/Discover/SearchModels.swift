@@ -103,22 +103,22 @@ struct SearchPostResult: Codable, Identifiable, Hashable {
         isCertified = container.decodeLenientIntIfPresent(forKey: .isCertified)
     }
 
-    /// **Corrigé le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-009, Phase B P0-2)** — même
-    /// correctif que `FeedActivity.thumbnailURL`/`effectiveObjectURLString` (voir ce fichier pour
-    /// la preuve complète, `MediaObject.getObject_url()` lu ligne par ligne) : cette structure
-    /// duplique les mêmes champs CDN pour son propre rendu de résultat de recherche (`SearchView.
-    /// postRow`, pas seulement via `asFeedActivity`), donc la même correction de priorité
-    /// (`cdn_content_url` prioritaire quand `cdn_content_id` est valide, sinon repli `object_url`)
-    /// s'y applique identiquement pour la branche photo — la branche vidéo (`cdn_thumbnail_url`)
-    /// était déjà correcte, non modifiée.
+    /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-010, Phase B P1-6)** — le
+    /// correctif V3-F-009 avait par erreur réutilisé la logique de priorité CDN générique de
+    /// `FeedActivity.thumbnailURL` (conçue pour un endpoint différent où `object_url` fait foi),
+    /// alors que `UniversalSearchAdapter.PostViewHolder.bind()` (Recherche/ui/
+    /// UniversalSearchAdapter.java:270-282), le VRAI code Android pour CET endpoint
+    /// (`content/search`), applique un fallback simple à deux étages : `cdn_thumbnail_url` non
+    /// vide → l'utiliser ; sinon `cdn_content_url` non vide → l'utiliser ; sinon fond gris uni.
+    /// Aucune branche vidéo/photo, aucune référence à `cdn_content_id` ni `object_url`.
     var thumbnailURL: URL? {
-        let isVideo = object?.caseInsensitiveCompare("videos") == .orderedSame
-        let hasContentId = cdn_content_id != nil && cdn_content_id != "NULL" && !(cdn_content_id?.isEmpty ?? true)
         let candidate: String?
-        if isVideo {
-            candidate = hasContentId ? cdn_thumbnail_url : object_url
+        if let thumb = cdn_thumbnail_url, !thumb.isEmpty {
+            candidate = thumb
+        } else if let content = cdn_content_url, !content.isEmpty {
+            candidate = content
         } else {
-            candidate = hasContentId ? (cdn_content_url ?? object_url) : object_url
+            candidate = nil
         }
         guard let candidate, !candidate.isEmpty else { return nil }
         return URL(string: candidate)

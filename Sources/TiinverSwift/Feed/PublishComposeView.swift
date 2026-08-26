@@ -284,7 +284,30 @@ struct PublishComposeView: View {
     /// passe" en tapant Publier, sans le moindre indice de la cause. Les deux surfacent maintenant
     /// `errorText` (déjà affiché dans le formulaire) au lieu de disparaître silencieusement, fidèle
     /// à la consigne explicite de ne jamais laisser une erreur être invisible.
+    ///
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-076, Phase B P1-31)**
+    /// — Android protège tout l'upload (BunnyCDN + `activity/add`) par un vrai `Service` en
+    /// foreground (`ActivityService.onStartCommand`, `startForeground`), insensible à la mise en
+    /// arrière-plan de l'app. Portée réduite documentée : plutôt que de porter l'infrastructure
+    /// complète (file d'attente persistée en Core Data + reprise après échec réseau, cf.
+    /// `FILE_TRANSFERT_URI`), on applique ici l'option "à défaut" de la RECOMMANDATION —
+    /// `UIApplication.shared.beginBackgroundTask` enveloppe l'upload pour qu'il survive au passage
+    /// en arrière-plan (~30s, prolongeable par iOS selon la charge système), au lieu d'être
+    /// suspendu immédiatement comme un `Task` non protégé. La persistance/reprise après un échec
+    /// réseau complet (app tuée, backgroundTask expiré) N'EST PAS traitée par ce correctif — hors
+    /// périmètre du cas le plus fréquent (bascule brève vers une autre app / verrouillage d'écran
+    /// pendant l'upload), qui est celui réellement corrigé ici.
     private func publish() async {
+        var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
+        backgroundTaskId = UIApplication.shared.beginBackgroundTask(withName: "PublishUpload") {
+            UIApplication.shared.endBackgroundTask(backgroundTaskId)
+            backgroundTaskId = .invalid
+        }
+        defer {
+            if backgroundTaskId != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTaskId)
+            }
+        }
         print("SESSION: myId=\(UserSession.shared.myId ?? "nil") apiKey.isEmpty=\(UserSession.shared.apiKey?.isEmpty ?? true) authenticated=\(UserSession.shared.isLoggedIn)")
         guard let actorId = UserSession.shared.myId else {
             errorText = "Session invalide — reconnecte-toi puis réessaie."

@@ -11,7 +11,7 @@ V5-F-002, V5-F-004, V5-F-008, V5-F-014, V5-F-024, V5-F-025, V5-F-026
 (IOS_INTENTIONAL_DIFFERENCE), V5-F-030, V5-F-035, V5-F-038, V5-F-039, V5-F-040, V5-F-048,
 V5-F-049, V5-F-051, V5-F-054, V5-F-055 (partiel, écart architectural documenté), V5-F-059,
 V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071, V5-F-073 (DUPLICATE de V5-F-020), V5-F-074,
-V5-F-079, V5-F-083, V5-F-086]. Prochain : V5-F-090. Puis 21 P3.**
+V5-F-079, V5-F-083, V5-F-086, V5-F-090]. Prochain : V5-F-096. Puis 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2610,6 +2610,32 @@ forme (contrairement à l'écran de choix en amont du flux de publication) — `
 avec sa forme par défaut `.rectangle`, fidèle à ce site d'appel précis.
 
 **Fichiers modifiés** : `Sources/TiinverSwift/PhotoEditor/PhotoToolsView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P2-29 : V5-F-090 (Animems Canvas — dessin libre appauvri : épaisseur fixe, palette réduite, aucun lissage)
+
+**Commit** : `22c2716` — poussé sur `main` (`42ab43e..22c2716`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : le moteur de dessin Animems réel (`MemesView2.java`) offre une épaisseur de
+trait réglable via un vrai `SeekBar` (`PaintSizeListAdapter.java:35-45`, 0-100, `paintSize` par
+défaut 10), une palette de 21 couleurs réelles (`PaintList.getPaintList()`, `colors.xml`), et lisse
+les points bruts du doigt par un filtre `MIN_DIST=4` + une itération de Chaikin
+(`AnimationEngine.chaikin:371-388`). `AnimemesDrawingView.swift` avait une épaisseur fixée en dur à
+8pt sans contrôle, 6 couleurs arbitraires, et un tracé en segments droits bruts sans filtre ni
+lissage.
+
+**Correction appliquée** : `Slider(1...100)` fidèle au `SeekBar` réel ; palette étendue aux 21 hex
+réels (transparent inclus, lus directement dans `colors.xml`) ; nouveau `chaikin(_:)` reproduisant
+exactement l'algorithme Android (1 itération, coupe 0.75/0.25, extrémités conservées), appliqué au
+tracé live (`Canvas`) ET à la rasterisation finale (`flatten()`) ; capture des points filtrée par
+`MIN_DIST=4` avant ajout au trait, comme `addFilteredPoint`/`rawPathPoints`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesDrawingView.swift` (interface externe
+— `canvasSize`/`onDone`/`onCancel` — inchangée, seul appelant `AnimemesEditorView.swift` non
+touché).
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.

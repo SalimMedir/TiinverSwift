@@ -3241,6 +3241,15 @@ IMPACT : Résultat visuel des dessins libres notablement différent (traits plus
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter un slider d'épaisseur (ex. 2-40pt) et étendre la palette à un jeu de couleurs comparable à `PaintList` (21 teintes) ; appliquer un lissage de courbe (ex. un filtre Catmull-Rom/Chaikin simple sur `stroke.points`) avant le tracé final dans `flatten()`.
 CONTRE-AUDIT : trouvé par l'agent "Animems Canvas" (Phase A.2, 2026-08-24)
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-29). RECOMMANDATION appliquée, alignée sur
+les valeurs RÉELLES d'Android plutôt que les fourchettes suggérées : `Slider` 1...100 fidèle au
+`SeekBar` réel (`PaintSizeListAdapter.java`, défaut `paintSize=10`) ; palette étendue aux 21 hex
+réels de `PaintList.getPaintList()` (lus dans `colors.xml`, transparent inclus) ; lissage de Chaikin
+1 itération fidèle à `AnimationEngine.chaikin` + filtre `MIN_DIST=4` sur les points bruts avant
+lissage (`MemesView2.java`), appliqué au tracé live ET à `flatten()`. Fichier modifié :
+`Animems/AnimemesDrawingView.swift` (interface externe inchangée, seul appelant
+`AnimemesEditorView.swift` non touché). Commit `22c2716`, poussé sur `main`. CI non déclenchée par
+cette session.
 ```
 
 ```

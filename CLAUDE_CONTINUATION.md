@@ -359,14 +359,21 @@ texte/dessin ajouté. Corrigé : nouveau bouton toolbar "crop.rotate" ouvre `Pho
 `flatten()` [déjà existant, réutilisé tel quel] ; `onCropped` remplace `displayedImage` et vide
 `strokes`/`texts` [port de `clearBoard()`+`onNewAddBitmap`] ; `onRepeateImage` lu en entier confirme
 `CroperView` instanciée SANS étape de choix de forme — `PhotoCropView` réutilisé avec sa forme par
-défaut `.rectangle`. **Commit `c54b97b` poussé sur `main`, CI PAS déclenchée**). **Prochain finding
-à traiter : V5-F-090** (grep `"^ID : V5-F-090"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à
-confirmer par lecture directe avant tout correctif, comme fait pour chaque finding tout au long de
-cette session ; identifier les findings P2 restants avec `grep "^PRIORITÉ : P2"` puis chercher
-lesquels n'ont pas encore de bloc `STATUT :` à leur suite). Si l'utilisateur a entre-temps
-déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à
-jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le
-P2.
+défaut `.rectangle`. **Commit `c54b97b` poussé sur `main`, CI PAS déclenchée**) ; Lot P2-29 V5-F-090
+CODE_COMPLETE/CI_PENDING (Animems Canvas — dessin libre appauvri : épaisseur fixée en dur à 8pt
+sans contrôle, palette réduite à 6 couleurs arbitraires, tracé en segments droits bruts sans
+lissage. Le moteur réel `MemesView2.java` offre un `SeekBar` réglable 0-100 [`paintSize` défaut 10],
+21 couleurs réelles [`PaintList.getPaintList()`], et un lissage Chaikin 1 itération après filtre
+`MIN_DIST=4`. Corrigé : `Slider(1...100)`, palette étendue aux 21 hex réels [lus dans `colors.xml`],
+nouveau `chaikin(_:)` fidèle à `AnimationEngine.chaikin` appliqué au tracé live ET à `flatten()`,
+capture filtrée par `MIN_DIST=4`. **Commit `22c2716` poussé sur `main`, CI PAS déclenchée**).
+**Prochain finding à traiter : V5-F-096** (grep `"^ID : V5-F-096"` dans
+`MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe avant tout correctif,
+comme fait pour chaque finding tout au long de cette session ; identifier les findings P2 restants
+avec `grep "^PRIORITÉ : P2"` puis chercher lesquels n'ont pas encore de bloc `STATUT :` à leur
+suite). Si l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés
+ci-dessus et communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter
+l'échec le cas échéant) avant de continuer le P2.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

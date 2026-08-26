@@ -32,6 +32,9 @@ struct WithdrawView: View {
     @State private var isSubmitting = false
     @State private var errorMessage: String?
     @State private var didSubmit = false
+    /// **Ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-097, Phase B P1, financier)** —
+    /// restaure l'étape de confirmation Android disparue au portage. Voir doc de `submit()`.
+    @State private var showConfirmation = false
 
     @StateObject private var rewardedInterstitial = RewardedInterstitialAdManager()
     private let config = TiinverFirebaseConfigManager.shared
@@ -100,6 +103,12 @@ struct WithdrawView: View {
         .alert("Retrait envoyé", isPresented: $didSubmit) {
             Button("OK") { dismiss() }
         }
+        .alert("Confirmer le retrait", isPresented: $showConfirmation) {
+            Button("Confirmer") { performSubmit() }
+            Button("Annuler", role: .cancel) {}
+        } message: {
+            Text(confirmationSummary)
+        }
         .task { await refreshBalance() }
     }
 
@@ -113,6 +122,18 @@ struct WithdrawView: View {
 
     /// Port de `submitButton.setOnClickListener` — validations dans le MÊME ordre que l'original
     /// (téléphone/adresse vide → montant nul → seuil minimum → solde insuffisant → confirmation).
+    ///
+    /// **Étape de confirmation restaurée le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-097,
+    /// Phase B P1, financier)** — Android n'appelle JAMAIS `submitWithdrawalRequest`/
+    /// `submitWithdrawalByCrypto` directement depuis ce handler : les 4 branches de validation qui
+    /// réussissent ouvrent TOUTES un `FireMissilesDialogFragment`, et seule `onPositive()` de la
+    /// dernière branche (solde suffisant) lance réellement la soumission
+    /// (`WithdrawActivity.java:224-268`, message récapitulatif opérateur/pays/solde/montant/
+    /// destination). Cette barrière avait disparu au portage iOS (aucune boîte de dialogue, appel
+    /// réseau direct dans `submit()`) — en plus d'être une divergence de parité, c'est ELLE qui
+    /// limitait le risque de double-soumission côté Android (un second tap avant la fermeture de la
+    /// boîte n'atteint plus le bouton d'origine). Restaurée ici via `showConfirmation`/
+    /// `confirmationSummary` ; la soumission réseau elle-même est déplacée dans `performSubmit()`.
     private func submit() {
         errorMessage = nil
         guard !destination.trimmingCharacters(in: .whitespaces).isEmpty else {
@@ -131,8 +152,36 @@ struct WithdrawView: View {
             errorMessage = "Solde insuffisant" // R.string.Insufficient_balance_msg
             return
         }
+        showConfirmation = true
+    }
+
+    /// Port du récapitulatif affiché par `FireMissilesDialogFragment.setMessage(...)` avant
+    /// confirmation (`WithdrawActivity.java:250-256`).
+    private var confirmationSummary: String {
+        let fullDestination = selectedOperator.isCrypto ? destination.trimmingCharacters(in: .whitespaces) : selectedCountry.phoneCode + destination.trimmingCharacters(in: .whitespaces)
+        let balance = String(format: "%.0f", currentBalance)
+        let amount = String(format: "%.0f", requestedAmount)
+        let money = String(format: "%.2f", calculatedMoney)
+        return """
+        Moyen de retrait : \(selectedOperator.name)
+        Pays : \(selectedCountry.name)
+        Solde actuel : \(balance) pièces
+        Montant demandé : \(amount) pièces
+        Montant calculé : \(money) \(currency)
+        Destination : \(fullDestination)
+        """
+    }
+
+    /// Port de `FireMissilesDialogFragment.DialogListner.onPositive()` — seul point d'entrée réel
+    /// de l'appel réseau, voir doc de `submit()`.
+    ///
+    /// **`isSubmitting` positionné SYNCHRONEMENT ici (V5-F-097)** — avant ce correctif,
+    /// `isSubmitting = true` n'était fixé qu'À L'INTÉRIEUR de la closure `Task`, sans aucun `guard
+    /// !isSubmitting`, sur cette opération d'argent réel.
+    private func performSubmit() {
+        guard !isSubmitting else { return }
+        isSubmitting = true
         Task {
-            isSubmitting = true
             defer { isSubmitting = false }
             guard let userId = UserSession.shared.myId else { return }
             let fullDestination = selectedOperator.isCrypto ? destination.trimmingCharacters(in: .whitespaces) : selectedCountry.phoneCode + destination.trimmingCharacters(in: .whitespaces)

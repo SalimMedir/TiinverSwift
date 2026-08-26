@@ -75,10 +75,20 @@ struct TransferCoinsView: View {
         }
     }
 
+    /// **`isSubmitting` positionné SYNCHRONEMENT ici le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md
+    /// V5-F-097, Phase B P1, financier)** — avant ce correctif, `isSubmitting = true` n'était fixé
+    /// qu'À L'INTÉRIEUR de la closure `Task` (tour de boucle suivant, PAS synchrone dans le handler
+    /// de tap), et aucun `guard !isSubmitting` n'existait du tout. Port fidèle de
+    /// `TransfertCoinsActivity.java:115-140` : `transfert.setVisibility(View.GONE)` exécuté
+    /// SYNCHRONEMENT dans `onClick`, AVANT l'appel réseau — un second tap immédiat ne peut plus
+    /// atteindre le bouton (`GONE`). Un double-tap rapide (avant le premier repaint SwiftUI)
+    /// pouvait démarrer DEUX `Task` exécutant chacune `transferCoins` en parallèle avant qu'aucune
+    /// n'ait eu la chance de positionner `isSubmitting` → double débit réel de pièces.
     private func transfer() {
+        guard !isSubmitting else { return }
         guard let foundUser, let myId = UserSession.shared.myId, let amount = Int(amountText) else { return }
+        isSubmitting = true
         Task {
-            isSubmitting = true
             defer { isSubmitting = false }
             do {
                 try await WalletRepository.shared.transferCoins(senderId: myId, receiverId: String(foundUser.id ?? 0), quantity: amount)

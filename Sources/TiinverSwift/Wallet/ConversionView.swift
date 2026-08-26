@@ -39,10 +39,14 @@ struct ConversionView: View {
         .navigationTitle("Convertir en gemmes")
     }
 
+    /// **`isSubmitting` positionné SYNCHRONEMENT ici le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md
+    /// V5-F-097, Phase B P1, financier)** — même correctif que `TransferCoinsView.transfer()`, voir
+    /// sa doc pour le détail complet du mécanisme de course corrigé.
     private func convert() {
+        guard !isSubmitting else { return }
         guard let userId = UserSession.shared.myId else { return }
+        isSubmitting = true
         Task {
-            isSubmitting = true
             defer { isSubmitting = false }
             do {
                 try await WalletRepository.shared.convert(userId: userId, currentBalance: coinsAmount, requestedAmount: requestedAmount, gems: gems)

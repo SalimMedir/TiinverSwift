@@ -70,6 +70,9 @@ struct GroupDetailView: View {
     /// `IAM_ADMIN`).
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var isUploadingPhoto = false
+    /// Port de l'aperçu optimiste `SettingGroupMessageFragmant.onUriResult` (V5-F-074) — bitmap
+    /// local affiché IMMÉDIATEMENT au choix, avant même le début de l'upload réseau.
+    @State private var pendingGroupAvatarImage: UIImage?
 
     init(groupId: String, groupName: String, groupToken: String, groupType: String, groupDescription: String?, groupProfile: String?) {
         self.groupId = groupId
@@ -229,10 +232,12 @@ struct GroupDetailView: View {
         .onChange(of: photoPickerItem) { item in
             guard let item else { return }
             Task {
-                guard let raw = try? await item.loadTransferable(type: Data.self),
-                    let jpegData = UIImage(data: raw)?.jpegData(compressionQuality: 0.9)
+                guard let raw = try? await item.loadTransferable(type: Data.self), let uiImage = UIImage(data: raw),
+                    let jpegData = uiImage.jpegData(compressionQuality: 0.9)
                 else { return }
+                pendingGroupAvatarImage = uiImage
                 await uploadPhoto(jpegData)
+                pendingGroupAvatarImage = nil
                 photoPickerItem = nil
             }
         }
@@ -242,24 +247,36 @@ struct GroupDetailView: View {
     /// tapable UNIQUEMENT pour un admin (`if (IAM_ADMIN) { ...galerie+crop... }`), même garde côté
     /// iOS. `PhotosPicker` enveloppe directement l'avatar (comme `ProfileView.avatar`) plutôt qu'un
     /// bouton séparé superposé.
+    ///
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-074, Phase B P2)** — même
+    /// correctif que `ProfileView.avatar` : `pendingGroupAvatarImage` prend la priorité d'affichage
+    /// tant que non-nil, fidèle à `onUriResult` qui affiche le bitmap AVANT `sendFotoPerfilToServer`.
     @ViewBuilder
     private var groupAvatar: some View {
-        let image = CDNAsyncImage(url: groupProfile.flatMap(URL.init), targetSize: CGSize(width: 56, height: 56)) { image in
-            image.resizable().aspectRatio(contentMode: .fill)
-        } placeholder: {
-            if isUploadingPhoto {
-                ProgressView()
-            } else {
-                Color(.tertiarySystemFill)
-            }
+        let image: AnyView
+        if let pendingGroupAvatarImage {
+            image = AnyView(Image(uiImage: pendingGroupAvatarImage).resizable().aspectRatio(contentMode: .fill))
+        } else {
+            image = AnyView(
+                CDNAsyncImage(url: groupProfile.flatMap(URL.init), targetSize: CGSize(width: 56, height: 56)) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    if isUploadingPhoto {
+                        ProgressView()
+                    } else {
+                        Color(.tertiarySystemFill)
+                    }
+                }
+            )
         }
-        .frame(width: 56, height: 56).clipShape(Circle())
+        let framed = image
+            .frame(width: 56, height: 56).clipShape(Circle())
 
         if isCurrentUserAdmin {
-            PhotosPicker(selection: $photoPickerItem, matching: .images) { image }
+            PhotosPicker(selection: $photoPickerItem, matching: .images) { framed }
                 .disabled(isUploadingPhoto)
         } else {
-            image
+            framed
         }
     }
 

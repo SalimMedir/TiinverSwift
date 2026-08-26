@@ -14,6 +14,9 @@ struct ProfileView: View {
     @State private var showEditProfile = false
     @State private var showReport = false
     @State private var avatarPickerItem: PhotosPickerItem?
+    /// Port de l'aperçu optimiste `AddPerfilFoto.onFileReady` (V5-F-074) — image locale affichée
+    /// IMMÉDIATEMENT au choix, avant même le début de l'upload réseau.
+    @State private var pendingAvatarImage: UIImage?
     /// **CAUSE RACINE RÉELLE (P0-D, 2026-08-17, confirmée par relecture du code — pas une
     /// hypothèse)** : la grille de posts n'avait ABSOLUMENT AUCUN geste de tap câblé (`postCell`
     /// était rendu nu, sans `.onTapGesture` ni navigation), contrairement à `FeedView`'s
@@ -88,10 +91,12 @@ struct ProfileView: View {
         .onChange(of: avatarPickerItem) { item in
             guard let item else { return }
             Task {
-                guard let raw = try? await item.loadTransferable(type: Data.self),
-                      let jpegData = UIImage(data: raw)?.jpegData(compressionQuality: 0.9)
+                guard let raw = try? await item.loadTransferable(type: Data.self), let uiImage = UIImage(data: raw),
+                      let jpegData = uiImage.jpegData(compressionQuality: 0.9)
                 else { return }
+                pendingAvatarImage = uiImage
                 await viewModel.uploadProfilePicture(imageData: jpegData)
+                pendingAvatarImage = nil
                 avatarPickerItem = nil
             }
         }
@@ -335,21 +340,36 @@ struct ProfileView: View {
     /// `profile: User?` (2026-08-16) — voir note de tête de `header` : l'avatar doit rester visible
     /// (cercle placeholder gris + icône silhouette, comme Android affiche un avatar générique tant
     /// que l'image réelle n'a pas chargé) même quand `viewModel.profile` est encore `nil`.
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-074, Phase B P2)** — Android
+    /// (`AddPerfilFoto.onFileReady`) affiche le bitmap local recadré IMMÉDIATEMENT, avant même le
+    /// début de l'upload réseau. `CDNAsyncImage` ne réagit qu'à un changement d'URL (`.task(id:
+    /// url)`) — tant que l'ancien avatar CDN reste affiché (cas de la quasi-totalité des
+    /// utilisateurs), le placeholder `isUploadingPhoto` restait inatteignable : aucun retour visuel
+    /// pendant tout l'upload. `pendingAvatarImage` (peuplé par `.onChange(of: avatarPickerItem)`
+    /// ci-dessus) prend maintenant la priorité d'affichage tant que non-nil.
     @ViewBuilder
     private func avatar(_ profile: User?) -> some View {
-        let image = CDNAsyncImage(url: URL(string: profile?.profile ?? ""), targetSize: CGSize(width: 84, height: 84)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
-            if viewModel.isUploadingPhoto {
-                ProgressView()
-            } else {
-                Color(.secondarySystemBackground)
-                    .overlay {
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 32))
-                            .foregroundStyle(.secondary)
+        let image: AnyView
+        if let pendingAvatarImage {
+            image = AnyView(Image(uiImage: pendingAvatarImage).resizable().aspectRatio(contentMode: .fill))
+        } else {
+            image = AnyView(
+                CDNAsyncImage(url: URL(string: profile?.profile ?? ""), targetSize: CGSize(width: 84, height: 84)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+                    if viewModel.isUploadingPhoto {
+                        ProgressView()
+                    } else {
+                        Color(.secondarySystemBackground)
+                            .overlay {
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 32))
+                                    .foregroundStyle(.secondary)
+                            }
                     }
-            }
+                }
+            )
         }
-        .frame(width: 84, height: 84).clipShape(Circle())
+        let framed = image
+            .frame(width: 84, height: 84).clipShape(Circle())
         // Port de `ProfileAdapter2.java:281-285` (état `profilepicturestateloading==3`, icône
         // d'erreur superposée) — V4-F-009 : `photoUploadFailed` n'était lu nulle part côté vue
         // avant ce correctif. Coin HAUT-droit (pas bas-droit, déjà occupé par le bouton caméra
@@ -365,7 +385,7 @@ struct ProfileView: View {
 
         if viewModel.isCurrentUser {
             PhotosPicker(selection: $avatarPickerItem, matching: .images) {
-                image.overlay(alignment: .bottomTrailing) {
+                framed.overlay(alignment: .bottomTrailing) {
                     Image(systemName: "camera.circle.fill")
                         .font(.title3)
                         .foregroundStyle(.white, .blue)
@@ -373,7 +393,7 @@ struct ProfileView: View {
             }
             .disabled(viewModel.isUploadingPhoto)
         } else {
-            image
+            framed
         }
     }
 

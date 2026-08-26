@@ -38,6 +38,27 @@ struct HashtagMentionText: View {
     private static let hashtagRegex = try? NSRegularExpression(pattern: "#([\\w\\u00C0-\\u024F]+)")
     private static let mentionRegex = try? NSRegularExpression(pattern: "@([\\w.\\-]+)")
 
+    /// Port de `PublishFragment.extractHashtags` (`:528-534`, `Pattern.compile("#(\\w+)")`,
+    /// `matcher.find()` global sur tout le texte) — **exposé le 2026-08-26
+    /// (MIGRATION_PARITY_AUDIT_V5.md V5-F-049, Phase B P2)** pour être réutilisé par
+    /// `PublishComposeView.publish()`, qui extrayait ses hashtags par un simple split-par-espace
+    /// (ne retirait jamais la ponctuation de fin de token, ex. "#sunset," → "sunset," au lieu de
+    /// "sunset", et ratait tout hashtag collé sans espace précédent, ex. "jour#tag"). Même regex
+    /// que `hashtagRegex` ci-dessus (déjà fidèle à la classe de caractères `\w` élargie
+    /// accents/latin étendu d'Android) — un seul point de vérité plutôt qu'un second pattern
+    /// dupliqué qui pourrait diverger.
+    static func extractHashtags(from text: String) -> [String] {
+        guard let hashtagRegex else { return [] }
+        let nsText = text as NSString
+        let matches = hashtagRegex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
+        return matches.compactMap { match in
+            guard match.numberOfRanges > 1 else { return nil }
+            let range = match.range(at: 1)
+            guard range.location != NSNotFound else { return nil }
+            return nsText.substring(with: range)
+        }
+    }
+
     var body: some View {
         Text(Self.attributed(text, baseColor: baseColor))
             .font(font)

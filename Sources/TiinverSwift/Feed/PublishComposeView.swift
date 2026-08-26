@@ -335,7 +335,12 @@ struct PublishComposeView: View {
         errorText = nil
         defer { isPublishing = false }
 
-        let hashtags = caption.split(separator: " ").filter { $0.hasPrefix("#") }.map { String($0.dropFirst()) }
+        // **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-049, Phase B P2)** — port de
+        // `PublishFragment.extractHashtags` (`Pattern.compile("#(\\w+)")`) via
+        // `HashtagMentionText.extractHashtags`, réutilisant la même regex déjà portée pour
+        // l'affichage. Le split-par-espace précédent laissait la ponctuation de fin collée
+        // ("#sunset," → "sunset,") et ratait un hashtag sans espace précédent ("jour#tag").
+        let hashtags = HashtagMentionText.extractHashtags(from: caption)
 
         do {
             switch media {

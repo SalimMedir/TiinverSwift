@@ -519,6 +519,34 @@ CAUSE : `reset()` et `loadNextPage()` partagent le même verrou `isLoading` avec
 IMPACT : Après un tirage pour rafraîchir pendant un défilement rapide vers le bas (scénario d'usage courant), l'utilisateur voit un contenu incohérent (ancienne page affichée comme "actualisée") puis des publications en double lors du défilement suivant, sans aucune erreur visible — bug silencieux de cohérence des données.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Découpler le verrou de `reset()` de celui de `loadNextPage()` (ex. incrémenter un jeton de génération à chaque `reset()` et ignorer toute réponse de pagination dont le jeton est périmé), ou annuler explicitement la tâche de pagination en vol avant de lancer le rafraîchissement.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-5) — Vérifié directement :
+`MainFragment.java:481-489` confirme que `loadResetData` ne teste aucun flag `loading`/
+`isLoadingMore` avant de relancer `executeBackTask()` — Android ne bloque JAMAIS silencieusement
+un rafraîchissement. Correctif : jeton de génération (`private var loadGeneration = 0` sur
+`FeedViewModel`), incrémenté dans `reset()` qui appelle désormais directement `fetchPage(generation:)`
+(bypass du verrou `isLoading` de `loadNextPage()`, reproduisant fidèlement le comportement Android
+"toujours déclenché"). `fetchPage(generation:)` (nouvelle fonction privée, corps extrait de
+l'ancien `loadNextPage()`) rejette toute réponse réseau dont la génération est périmée
+(`guard generation == loadGeneration else { discard; return }`) avant tout traitement de la
+page, empêchant une réponse de pagination obsolète de s'appliquer à l'état fraîchement réinitialisé.
+Piège auto-détecté avant commit : le `defer` de remise à `isLoading = false` devait lui aussi être
+conditionné à la génération courante (`defer { if generation == loadGeneration { isLoading = false } }`)
+— sinon une tâche périmée résolue APRÈS le nouveau `reset()` aurait pu effacer à tort le spinner
+d'une pagination plus récente encore en vol ; tracé manuellement les deux ordres de résolution
+possibles pour confirmer l'absence de course résiduelle. Sites d'appel vérifiés par `grep`
+(`.refreshable`, seuil de pagination infinie, bouton retry, reset post-publication) : tous
+inchangés, routés par le même `FeedViewModel` partagé.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedViewModel.swift`.
+
+**Résultat CI** : commit `f5096d3`, push confirmé (`3845bc5..f5096d3 main -> main`), run
+`32914485375` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : atteindre le seuil de pagination infinie, tirer
+pour rafraîchir avant la réponse réseau, confirmer l'absence de flux figé sur une ancienne page et
+l'absence de doublons à la pagination suivante.
 ```
 
 ```

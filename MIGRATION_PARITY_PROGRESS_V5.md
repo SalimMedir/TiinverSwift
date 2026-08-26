@@ -2,11 +2,12 @@
 
 Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 
-**État actuel (2026-08-24) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
+**État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS, démarré automatiquement à V5-F-001, dans l'ordre du
-document. Puis 31 P2, 21 P3.**
+temps). Backlog P1 (40 findings) EN COURS [5/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+V5-F-007, V5-F-009], démarré automatiquement à V5-F-001, dans l'ordre du document. Prochain :
+V5-F-010. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -446,6 +447,88 @@ que Profile était le SEUL contexte Android câblé — analyse incomplète, n'a
 
 **Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
 réel requis : confirmer "Télécharger" visible sur les posts d'autrui, absent sur ses propres posts.
+
+## 2026-08-24 — Phase B V5 — Lot P1-4 : V5-F-007 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `FeedFragment.java:1351-1359` — branche `report_content` du plein écran Home remplit
+`target_id`/`report_type="content"` en plus de userId/username/nikname ; `Report.java:70-71,149-150`
+lit ces champs depuis l'Intent et les envoie dans le `map` POST vers l'endpoint `report`.
+`ProfileFeedFragment.java`/`HashtagProfile.java` (leurs plein écrans respectifs) confirmés faire de
+même. `MainFragment.OnclickMoreExpand` (la grille) les laisse vides — 2 comportements Android
+distincts selon la classe appelante.
+
+**iOS avant correctif** : `FeedViewModel.report(_:reason:)` / `FeedRepository.reportUser` étaient
+appelées IDENTIQUEMENT par la grille ET par `FeedDetailPagerView` (plein écran), `target_id`/
+`report_type` codés en dur à `""` dans les deux cas — le commentaire du fichier ne citait que
+`MainFragment` comme référence, sans avoir vérifié le cas plein écran.
+
+### Correctif appliqué
+
+Nouveau paramètre `includesTarget: Bool = false` sur `FeedViewModel.report`/
+`FeedRepository.reportUser` (défaut `false`, préservant le comportement vide existant de la grille,
+site d'appel `FeedView.swift` ~ligne 259 inchangé). `FeedDetailPagerView.confirmationDialog`
+(~ligne 653) — struct UNIQUE partagé par 6 écrans parents (Home/Profile/Hashtag/Search/
+Notifications/HomeShellView deep-link) — passe désormais `includesTarget: true`, corrigeant
+correctement TOUS ces contextes plein écran d'un seul coup.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedRepository.swift`,
+`Sources/TiinverSwift/Feed/FeedViewModel.swift`, `Sources/TiinverSwift/Feed/FeedView.swift`.
+
+**Résultat CI** : commit `3845bc5`, push confirmé (`2b3b7a6..3845bc5 main -> main`), run
+`32913810419` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis (accès back-office modération) : signaler un post depuis le plein écran, confirmer
+`target_id`/`report_type` remplis côté serveur ; signaler depuis la grille, confirmer qu'ils
+restent vides.
+
+## 2026-08-25 — Phase B V5 — Lot P1-5 : V5-F-009 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `MainFragment.java:481-489` (`loadResetData`, appelée par `HomeActivity.java:182` au
+nouveau tap sur l'onglet Accueil) — ne teste AUCUN flag `loading`/`isLoadingMore` avant de relancer
+`executeBackTask()` : le rafraîchissement (page 1, offset 0) est TOUJOURS déclenché, même si une
+pagination (`loadMoreData`, ligne 505-517) est en cours.
+
+**iOS avant correctif** : `FeedViewModel.swift` — `reset()` réutilisait la MÊME fonction
+`loadNextPage()`, protégée par le MÊME verrou `isLoading`, que la pagination infinie
+(`FeedView.swift`, seuil `count-2`). Scénario reproductible : pagination en vol
+(`isLoading=true`) → tirage pour rafraîchir → `reset()` vide `posts`/`offset` puis appelle
+`loadNextPage()` qui retourne aussitôt (`guard !isLoading`, toujours vrai) → la réponse de
+pagination obsolète (ancienne page) s'applique ensuite au tableau fraîchement vidé → doublons à la
+pagination suivante, vraie page 1 jamais récupérée.
+
+### Correctif appliqué
+
+Jeton de génération : `private var loadGeneration = 0` sur `FeedViewModel`. `reset()` incrémente la
+génération et appelle directement une nouvelle fonction privée `fetchPage(generation:)` (bypass du
+verrou `isLoading`, fidèle au comportement Android "toujours déclenché"). `loadNextPage()` reste
+gardée par `guard !isLoading` (fidèle à la pagination infinie, inchangée) et délègue aussi à
+`fetchPage(generation:)`. `fetchPage` rejette toute réponse réseau dont la génération est périmée
+(`guard generation == loadGeneration else { discard; return }`) avant tout traitement de page.
+
+**Course auto-détectée avant commit** : le `defer` de remise à `isLoading = false` devait être
+conditionné à la génération courante (`defer { if generation == loadGeneration { isLoading = false } }`)
+— sinon une tâche périmée résolue APRÈS un `reset()` plus récent aurait pu effacer à tort le
+spinner d'une pagination encore en vol. Tracé manuellement les deux ordres de résolution réseau
+possibles pour confirmer l'absence de course résiduelle dans les deux cas.
+
+**Flux frère vérifié** : `grep` sur tous les appelants (`.refreshable`, seuil de pagination
+infinie, bouton retry, reset post-publication) — tous routés par le même `FeedViewModel` partagé,
+aucune modification nécessaire de leur côté.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedViewModel.swift`.
+
+**Résultat CI** : commit `f5096d3`, push confirmé (`3845bc5..f5096d3 main -> main`), run
+`32914485375` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : atteindre le seuil de pagination infinie, tirer pour rafraîchir avant la réponse
+réseau, confirmer l'absence de flux figé sur une ancienne page et l'absence de doublons à la
+pagination suivante.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

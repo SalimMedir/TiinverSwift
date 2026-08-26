@@ -9,7 +9,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-24 — cycle V3 clos, **cycle V4 ENTIÈREMENT CLOS (75/75 findings)**,
+# CURRENT HANDOFF (2026-08-25 — cycle V3 clos, **cycle V4 ENTIÈREMENT CLOS (75/75 findings)**,
 **cycle V5 EN COURS** : Phase A [69 findings] + Phase A.2 contre-audit ciblé [30 findings
 supplémentaires, V5-F-070 à V5-F-099] TERMINÉES, **99 findings au total**, Phase B EN COURS —
 **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7, tous BUILD_VALIDATED)** : Lot P0-1 V5-F-094 (export MP4
@@ -23,10 +23,13 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [3/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [5/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
-(includesDownload: true sur le fullScreenCover Home)]**. Voir section "Cycle V5" plus bas pour le
-détail complet.)
+(includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
+(target_id/report_type manquants au signalement plein écran, `includesTarget` sur
+`FeedDetailPagerView`) ; Lot P1-5 V5-F-009 BUILD_VALIDATED (course pull-to-refresh vs pagination
+infinie, jeton de génération `loadGeneration` sur `FeedViewModel`)]**. Voir section "Cycle V5" plus
+bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -192,29 +195,59 @@ V5-F-094, V5-F-018, V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064. Aucun `BLO
 dans `FeedView.swift` ; la garde `if !isOwnPost { if includesDownload {...} }` existait déjà et
 masquait correctement "Télécharger" sur ses propres posts, seul le paramètre manquait. Commentaire
 stale de `FeedMediaDownloader.swift` corrigé au passage. **Commit `8157db3`, CI verte (run
-`32913100968`)** — `BUILD_VALIDATED`. Détail des 3 lots dans `PROGRESS_V5.md`.
+`32913100968`)** — `BUILD_VALIDATED`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-007** (Feed/plein écran
-Home/Signalement — un signalement envoyé depuis le plein écran Home cible génériquement
-l'UTILISATEUR au lieu du POST précis : Android [`FeedFragment.java:1351-1359`] remplit
-`target_id`/`report_type="content"` en plus de userId/username pour un signalement content, alors
-que `MainFragment.OnclickMoreExpand` [la grille] les laisse vides — 2 comportements Android
-distincts selon la classe ; iOS [`FeedViewModel.report`/`FeedRepository.reportUser`] utilise la
-MÊME fonction avec `target_id`/`report_type` codés en dur à `""` pour les DEUX contextes [grille ET
-`FeedDetailPagerView`, déjà vérifié Android : `ProfileFeedFragment.java`/`HashtagProfile.java`
-remplissent aussi ces champs pour LEUR plein écran respectif] — `FeedDetailPagerView` est un seul
-struct partagé par 6 écrans parents [Home/Profile/Hashtag/Search/Notifications/HomeShellView
-deep-link], donc corriger son unique site d'appel `viewModel.report(...)` [ligne ~653] pour
-inclure `post.id`/`"content"` corrige correctement TOUS ces contextes plein écran d'un coup,
-fidèle au pattern Android général ; le site d'appel de la GRILLE [ligne ~259, dans `FeedView`
-elle-même] doit rester inchangé, vide, fidèle à `MainFragment` — plan : ajouter un paramètre
-`includesTarget: Bool = false` à `FeedViewModel.report`/`FeedRepository.reportUser`, passé `true`
-uniquement depuis l'appel de `FeedDetailPagerView`), puis continuer AUTOMATIQUEMENT V5-F-009,
-V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022, V5-F-023, V5-F-029,
-V5-F-033, V5-F-034, V5-F-036, V5-F-037, V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057,
-V5-F-058, V5-F-060, V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076,
-V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (36 P1 restants
-après V5-F-007, dans l'ordre exact du document), puis tous les P2 (31), P3 (21), SANS s'arrêter
+**Lot P1-4 traité (V5-F-007)** — Feed/plein écran Home/Signalement, un signalement envoyé depuis
+le plein écran Home ciblait génériquement l'UTILISATEUR au lieu du POST précis. Vérifié
+`FeedFragment.java:1351-1359` (`target_id`/`report_type="content"` remplis en plus de
+userId/username pour un signalement content, alors que `MainFragment.OnclickMoreExpand` [la
+grille] les laisse vides) et confirmé que `ProfileFeedFragment.java`/`HashtagProfile.java`
+remplissent aussi ces champs pour LEUR plein écran respectif. `FeedDetailPagerView` étant un seul
+struct partagé par 6 écrans parents (Home/Profile/Hashtag/Search/Notifications/HomeShellView
+deep-link), corriger son unique site d'appel `viewModel.report(...)` (ligne ~653) corrige
+correctement TOUS ces contextes plein écran d'un coup, fidèle au pattern Android général ; le site
+d'appel de la GRILLE (ligne ~259, dans `FeedView` elle-même) reste inchangé, vide, fidèle à
+`MainFragment`. Correctif : nouveau paramètre `includesTarget: Bool = false` sur
+`FeedViewModel.report`/`FeedRepository.reportUser`, passé `true` uniquement depuis l'appel de
+`FeedDetailPagerView`. **Commit `3845bc5`, CI verte (run `32913810419`)** — `BUILD_VALIDATED`.
+
+**Lot P1-5 traité (V5-F-009)** — Feed/Pagination & pull-to-refresh, une course entre pagination
+infinie en cours et pull-to-refresh figeait le flux sur une ancienne page puis produisait des
+doublons. Vérifié `MainFragment.java:481-489` (`loadResetData` ne teste AUCUN flag
+`loading`/`isLoadingMore` avant de relancer le chargement — Android ne bloque JAMAIS
+silencieusement un rafraîchissement). `reset()` et `loadNextPage()` partageaient le même verrou
+`isLoading`, causant l'annulation silencieuse du vrai fetch page-1 pendant qu'une réponse de
+pagination obsolète s'appliquait à l'état fraîchement réinitialisé. Correctif : jeton de
+génération (`loadGeneration`) sur `FeedViewModel` — `reset()` bypass le verrou `isLoading` (fidèle
+à Android) et incrémente la génération ; `fetchPage(generation:)` (nouvelle fonction privée,
+factorisée depuis l'ancien `loadNextPage()`) rejette toute réponse dont la génération est périmée.
+Piège auto-détecté avant commit : le `defer` de remise à `isLoading` devait lui aussi être
+conditionné à la génération courante, sinon une tâche périmée résolue après un `reset()` plus
+récent aurait pu effacer à tort le spinner d'une pagination encore en vol — tracé manuellement les
+deux ordres de résolution réseau pour confirmer l'absence de course résiduelle. **Commit
+`f5096d3`, CI verte (run `32914485375`)** — `BUILD_VALIDATED`. Détail des 5 lots dans
+`PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-010** (Recherche — rendu des
+vignettes de résultats "Publications" : Android [`UniversalSearchAdapter.java`, `PostViewHolder.bind()`
+lignes 268-290] applique un fallback simple à DEUX étages, SANS branche vidéo/photo ni référence à
+`cdn_content_id` ni `object_url` : `cdn_thumbnail_url` non vide → l'utiliser ; sinon
+`cdn_content_url` non vide → l'utiliser ; sinon fond gris uni — le champ `object_url` n'est JAMAIS
+lu par ce ViewHolder, confirmé par lecture complète de `bind()`. iOS [`SearchModels.swift`,
+`SearchPostResult.thumbnailURL` lignes 114-125] réutilise à tort l'algorithme de priorité CDN
+générique de `FeedActivity` [conçu pour un endpoint différent où `object_url` FAIT foi] : détermine
+`isVideo`, calcule `hasContentId`, puis retombe sur `object_url` dès que `cdn_content_id` est
+absent/NULL/vide — MÊME si `cdn_thumbnail_url`/`cdn_content_url` est renseigné et non vide. Impact :
+grille de résultats "Publications" affiche une vignette différente/obsolète/vide pour une partie
+significative des posts retournés par la recherche universelle. Plan : remplacer
+`SearchPostResult.thumbnailURL` par le fallback fidèle à Android à 2 étages, sans dépendre de
+`object_url`/`cdn_content_id`/type vidéo-photo, exactement comme `UniversalSearchAdapter.java:270-282`),
+puis continuer AUTOMATIQUEMENT V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022,
+V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037, V5-F-043, V5-F-046, V5-F-047,
+V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070,
+V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097,
+V5-F-098 (34 P1 restants après V5-F-010, dans l'ordre exact du document), puis tous les P2 (31),
+P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →
 State/ViewModel → Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale

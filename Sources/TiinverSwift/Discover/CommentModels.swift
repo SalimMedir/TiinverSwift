@@ -61,4 +61,27 @@ struct Comment: Codable, Identifiable, Equatable {
         stamp = try container.decodeIfPresent(String.self, forKey: .stamp)
         object = try container.decodeIfPresent(String.self, forKey: .object)
     }
+
+    /// Port de l'ajout optimiste `SentCmtToServer` (`MyBottomSheetDialogFragment.java:402-436`,
+    /// V5-F-066) — commentaire local temporaire affiché avant confirmation serveur. `id` négatif
+    /// dérivé de l'horloge, jamais un id serveur réel (les id serveur sont toujours positifs).
+    init(optimisticText text: String) {
+        id = -Int(Date().timeIntervalSince1970 * 1_000_000)
+        username = UserSession.shared.username
+        firstname = nil
+        lastname = nil
+        profile = UserSession.shared.profile
+        certified = nil
+        activityId = nil
+        actor = UserSession.shared.myId.flatMap(Int.init)
+        repliesCount = nil
+        parentId = nil
+        object_url = nil
+        commentText = text
+        action = nil
+        status = 0
+        isReply = false
+        stamp = nil
+        object = nil
+    }
 }

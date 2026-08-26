@@ -23,6 +23,9 @@ struct CommentsView: View {
     @State private var selectedGift: String?
     @State private var isSendingGift = false
     @State private var giftError: String?
+    /// Port du `Toast` équivalent pour l'échec d'envoi de commentaire (V5-F-066) — Android ne
+    /// montre aucune erreur explicite ici, voir `send()` pour la justification du léger écart.
+    @State private var sendError: String?
 
     var body: some View {
         NavigationStack {
@@ -68,6 +71,13 @@ struct CommentsView: View {
                 Button("OK", role: .cancel) { giftError = nil }
             } message: {
                 Text(giftError ?? "")
+            }
+            .alert(
+                "Échec de l'envoi", isPresented: Binding(get: { sendError != nil }, set: { if !$0 { sendError = nil } })
+            ) {
+                Button("OK", role: .cancel) { sendError = nil }
+            } message: {
+                Text(sendError ?? "")
             }
         }
     }
@@ -270,15 +280,44 @@ struct CommentsView: View {
         offset += limit
     }
 
+    /// Port de `SentCmtToServer` (`MyBottomSheetDialogFragment.java:402-436`, V5-F-066) — ajout
+    /// optimiste à la liste AVANT l'appel réseau, comme Android.
+    ///
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-066, Phase B P2)** — `try?`
+    /// avalait l'échec réseau, combiné à l'absence totale d'ajout optimiste : `inputText` déjà vidé
+    /// + aucune entrée locale + reload serveur qui ne retrouve jamais le commentaire jamais persisté
+    /// = perte de texte totale et silencieuse. Écart assumé sur la branche d'échec par rapport à
+    /// Android : `getPostliveData`'s observer (ligne 210-211) ne fait RIEN sur `Result.ERROR` — le
+    /// commentaire optimiste Android reste bloqué en `status=0` pour toujours, sans erreur ni reprise
+    /// possible (dead-end confirmé par lecture de l'observer en entier) ; ici, l'entrée optimiste est
+    /// retirée, le texte restauré dans le champ, et une erreur explicite affichée — une vraie voie de
+    /// reprise plutôt qu'un blocage muet permanent. Sur succès, le reload serveur existant (déjà
+    /// correct) remplace l'entrée optimiste par la donnée serveur réelle (id/horodatage exacts).
+    /// Ajout optimiste limité aux commentaires racine (`parentId == nil`) — `expandedReplies` a une
+    /// structure séparée par commentaire parent, hors périmètre de ce correctif ciblé ; une réponse
+    /// dont l'envoi échoue lève désormais correctement (au lieu d'avaler l'erreur), même si elle
+    /// n'a pas encore d'affichage optimiste dédié.
     private func send() async {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        inputText = ""
         let parentId = replyTarget?.id
         replyTarget = nil
-        try? await CommentRepository.shared.post(activityId: activityId, text: text, parentId: parentId)
-        offset = 0
-        comments = []
-        await loadMore()
+        inputText = ""
+        var optimistic: Comment?
+        if parentId == nil {
+            let entry = Comment(optimisticText: text)
+            optimistic = entry
+            comments.append(entry)
+        }
+        do {
+            try await CommentRepository.shared.post(activityId: activityId, text: text, parentId: parentId)
+            offset = 0
+            comments = []
+            await loadMore()
+        } catch {
+            if let optimistic { comments.removeAll { $0.id == optimistic.id } }
+            inputText = text
+            sendError = "Pas de connexion internet, réessayer plus tard"
+        }
     }
 }

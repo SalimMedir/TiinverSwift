@@ -126,13 +126,26 @@ struct CameraView: View {
                     : "La caméra n'a pas pu démarrer sur cet appareil."
             )
         }
-        // Relance automatique au retour au premier plan (ex. après avoir accordé la permission
-        // depuis Réglages) — Android n'a pas d'équivalent direct (accorder une permission système
-        // relance l'Activity elle-même), reproduit fonctionnellement plutôt que littéralement.
         .onChange(of: scenePhase) { phase in
-            guard phase == .active, isPermissionDeniedError else { return }
-            recorder.acknowledgeError()
-            recorder.start(lensFacing: lensFacing)
+            if phase == .active {
+                // Relance automatique au retour au premier plan (ex. après avoir accordé la
+                // permission depuis Réglages) — Android n'a pas d'équivalent direct (accorder une
+                // permission système relance l'Activity elle-même), reproduit fonctionnellement
+                // plutôt que littéralement.
+                guard isPermissionDeniedError else { return }
+                recorder.acknowledgeError()
+                recorder.start(lensFacing: lensFacing)
+            } else if isRecording {
+                // Port d'`onPause()` → `releaseCamera()` (`BaseCameraFragment.java:339-366`,
+                // V5-F-099) — Android arrête et finalise l'enregistrement en cours DÈS que l'app
+                // perd le focus (bouton Accueil, appel natif entrant, centre de notifications,
+                // etc.), pas seulement au retrait explicite de l'écran caméra. `phase != .active`
+                // couvre `.inactive` ET `.background` (les 3 seuls cas de `ScenePhase`), fidèle à
+                // `onPause()` qui se déclenche sur TOUTE perte de premier plan, transitoire ou non.
+                // Réutilise `stopRecording()` (ci-dessous) tel quel — finalise proprement le
+                // fichier en cours au lieu de le laisser dans un état actif non fermé.
+                stopRecording()
+            }
         }
     }
 

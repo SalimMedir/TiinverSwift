@@ -327,6 +327,23 @@ final class MessageRepository {
         }
     }
 
+    /// **Ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-078, Phase B P1-33)** — port du
+    /// scan `isFileUploaded==0` indépendant de l'UI (`ChatManager.sendMessageFromCursor`, branche
+    /// upload), déclenché côté Android par `WorkManager`/reconnexion réseau/notification push (voir
+    /// `ChatRepository.resumePendingUploads`). Messages ENVOYÉS par l'utilisateur courant
+    /// (`usernameFrom == currentUsername`), média pas encore uploadé, TOUTES conversations
+    /// confondues — pas de filtre `conversationId`, fidèle à `sendMessageFromCursor` qui balaie
+    /// TOUS les messages locaux, pas seulement ceux de la conversation actuellement affichée à
+    /// l'écran (contrairement à `ChatViewModel.handleAppear`, seul déclencheur de reprise avant ce
+    /// correctif).
+    func pendingUploads(currentUsername: String) async throws -> [MessageLib] {
+        let predicate = NSPredicate(format: "isFileUploaded == 0 AND usernameFrom == %@", currentUsername)
+        let rows = try await messages.query(predicate: predicate)
+        return rows
+            .map { Self.toMessageLib($0, currentUsername: currentUsername) }
+            .filter { ["audio", "photo", "video", "sticker", "gif"].contains($0.object ?? "") }
+    }
+
     /// Port de `ChatFragmentTest.onCreateLoader`/`displayMessageOnInicialPage`/
     /// `displayMoreMessageOnScroll` (les 3, lus en entier) — CursorLoader `MSG_URI` filtré
     /// `conversationId=?`, trié `stamp DESC`, paginé `LIMIT 100 OFFSET n`. `belongsToCurrentUser`

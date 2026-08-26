@@ -600,9 +600,14 @@ final class ChatViewModel: ObservableObject {
         guard let messageId = mlib.messageId, let object = mlib.object,
               let localPath = mlib.localFileDirection, let fileURL = URL(string: localPath)
         else { return }
+        // **Corrigé le 2026-08-26 (V5-F-078, Phase B P1-33)** — évite un double upload/double envoi
+        // socket si `ChatRepository.resumePendingUploads` (reconnexion socket) démarre l'upload de
+        // ce même message pendant qu'une bulle visible le déclenche aussi ici.
+        guard ChatMediaUploadService.shared.reserveUpload(messageId: messageId) else { return }
         let thumbnailURL = mlib.thumbnailUri.flatMap(URL.init(string:))
         Task { [weak self] in
             guard let self else { return }
+            defer { ChatMediaUploadService.shared.releaseUpload(messageId: messageId) }
             do {
                 let result = try await ChatMediaUploadService.shared.upload(
                     messageId: messageId, object: object, fileURL: fileURL, thumbnailFileURL: thumbnailURL

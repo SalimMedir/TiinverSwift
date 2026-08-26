@@ -195,6 +195,55 @@ final class ChatRepository {
         socket.emit(SocketEvent.addUser, username)
         socket.emit(SocketEvent.offlineStatus, ["id": myId, "username": username])
         socket.emit(SocketEvent.joinRoom, ["id": myId, "username": username])
+        resumePendingUploads(currentUsername: username)
+    }
+
+    /// **Ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-078, Phase B P1-33)** — second
+    /// mécanisme de reprise d'upload Android (`ChatManager.sendMessageFromCursor`, déclenché par
+    /// `WorkManager` sur reconnexion réseau/sync périodique/notification push via
+    /// `HttpConnectionService`/`NetworkStateReceiver`/`SyncAdapter`/`MyFirebaseMessagingService`),
+    /// jusqu'ici absent côté iOS — seul `ChatViewModel.handleAppear` (affichage d'une bulle à
+    /// l'écran) déclenchait une reprise. **Portée réduite documentée** : seul le déclencheur
+    /// reconnexion socket (`onConnected()`, déjà appelé sur `.connect` ET `.reconnect`) est
+    /// reproduit ici — ni scan périodique en arrière-plan (`BGTaskScheduler`, infrastructure déjà
+    /// écartée pour la même famille de raisons dans V5-F-060, DIFFÉRÉ) ni scan à la réception d'une
+    /// notification push, les deux hors périmètre de ce correctif P1 isolé. Pas de politique de
+    /// retry/backoff dédiée (contrairement à `UploadChatWork`+`WorkManager`) : un échec laisse
+    /// `isFileUploaded=0`, retenté au prochain `onConnected()` ou `handleAppear`, à l'identique de
+    /// la politique déjà en place côté `ChatViewModel.requestUpload`.
+    private func resumePendingUploads(currentUsername: String) {
+        Task { [weak self] in
+            guard let self, let pending = try? await self.messages.pendingUploads(currentUsername: currentUsername)
+            else { return }
+            for mlib in pending {
+                guard let messageId = mlib.messageId, let object = mlib.object,
+                      let localPath = mlib.localFileDirection, let fileURL = URL(string: localPath)
+                else { continue }
+                // Évite un double upload/double envoi socket si `ChatViewModel.requestUpload`
+                // (bulle visible) a déjà réservé ce même message — voir `ChatMediaUploadService.
+                // reserveUpload`.
+                guard ChatMediaUploadService.shared.reserveUpload(messageId: messageId) else { continue }
+                defer { ChatMediaUploadService.shared.releaseUpload(messageId: messageId) }
+                let thumbnailURL = mlib.thumbnailUri.flatMap(URL.init(string:))
+                do {
+                    let result = try await ChatMediaUploadService.shared.upload(
+                        messageId: messageId, object: object, fileURL: fileURL, thumbnailFileURL: thumbnailURL
+                    )
+                    try await self.messages.updateFileUploaded(messageId: messageId, objectUrl: result.objectUrl, thumbnailUri: result.thumbnailUrl)
+                    var updated = mlib
+                    updated.objectUrl = result.objectUrl
+                    updated.isFileUploaded = 1
+                    if let thumb = result.thumbnailUrl { updated.thumbnailUri = thumb }
+                    if updated.type == ChatType.chat.wireValue {
+                        self.sendPrivateMessage(updated)
+                    } else if updated.type == ChatType.group.wireValue {
+                        self.sendGroupMessage(updated)
+                    }
+                } catch {
+                    // `isFileUploaded` reste à 0 — retenté au prochain `onConnected()`/`handleAppear`.
+                }
+            }
+        }
     }
 
     private func onDisconnected(reason: String) {

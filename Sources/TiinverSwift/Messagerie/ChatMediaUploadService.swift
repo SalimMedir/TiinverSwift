@@ -27,6 +27,28 @@ final class ChatMediaUploadService {
 
     enum UploadError: Error { case httpFailure(Int) }
 
+    /// **Ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-078, Phase B P1-33)** — depuis ce
+    /// correctif, DEUX chemins peuvent déclencher l'upload du MÊME message concurremment :
+    /// `ChatViewModel.requestUpload` (bulle redevenue visible à l'écran) et `ChatRepository.
+    /// resumePendingUploads` (reconnexion socket). Les deux appelants sont `@MainActor`-isolés et
+    /// cette réservation est un accès synchrone (aucun `await` entre le test et l'insertion), donc
+    /// atomique du point de vue MainActor — pas besoin d'un `actor` dédié ici, contrairement à
+    /// `SerialTaskQueue` (V5-F-070) dont le problème venait justement d'un `await` interne à
+    /// l'opération protégée. Évite un double PUT BunnyCDN et surtout un double `sendPrivateMessage`/
+    /// `sendGroupMessage` pour le même `messageId` (risque de doublon perçu par le destinataire).
+    private var uploadingMessageIds: Set<String> = []
+
+    @discardableResult
+    func reserveUpload(messageId: String) -> Bool {
+        guard !uploadingMessageIds.contains(messageId) else { return false }
+        uploadingMessageIds.insert(messageId)
+        return true
+    }
+
+    func releaseUpload(messageId: String) {
+        uploadingMessageIds.remove(messageId)
+    }
+
     /// Port de `prapare()`/`uploadMediaAndThumbnail()`/`uploadMediaToBunny()` — branche vidéo (2 PUT :
     /// média + thumbnail) vs branche générique (1 PUT), dispatch identique sur `object == "video"`.
     ///

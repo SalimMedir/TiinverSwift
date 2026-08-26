@@ -1625,6 +1625,39 @@ CAUSE : Le commentaire de composeTransform (lignes 366-369) indique lui-même qu
 IMPACT : Pour toute vidéo où le sujet n'est pas déjà centré (cas fréquent après un changement de ratio, ex. paysage → 9:16), les utilisateurs Android peuvent recadrer manuellement pour garder le sujet dans le cadre ; les utilisateurs iOS obtiennent TOUJOURS un recadrage strictement centré sans aucun moyen de le corriger — perte de fonctionnalité, et pixels finaux différents même sans aucune interaction de l'utilisateur (90% vs 100% de la zone disponible).
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter une DragGesture sur l'aperçu vidéo pendant que le menu de ratio est actif, pour permettre de repositionner un cadre de recadrage réellement affiché à l'écran, clampé dans les limites du renderSize (équivalent de moveCropRect), et reproduire la marge par défaut de 90% avant tout glissement de l'utilisateur.
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-10) — Vérifié directement :
+`CropOverlayView.java:243-266` (`resetCropRect`, marge 90%) et `:341-389`
+(`onTouchEvent`/`moveCropRect`, glisser clampé dans `videoRect`) ; `VideoTrimmerView.
+java:122-137` (`setBtnCropRatioVisibility`) et `:265-299` (`applyRatio` : overlay `VISIBLE` dès
+qu'un ratio ≠ Libre est choisi, PAS seulement pendant que le menu est ouvert — nuance corrigée
+par rapport à la formulation exacte de la RECOMMANDATION). Correctif au-delà du "a minima" —
+recadrage interactif réel, pas seulement la marge 90% :
+- `VideoTrimState` gagne `cropCenter` (position normalisée `[0,1]×[0,1]`, réinitialisée à
+  (0.5,0.5) à chaque changement de ratio, port de `resetCropRect`), `cropNormSize(forTargetRatio:
+  videoAspect:)` (même calcul de marge 90% qu'Android, vérifié algébriquement terme à terme contre
+  la formule Java d'origine), `moveCropCenter(dx:dy:cropSize:)` (glisser clampé, port de
+  `moveCropRect`).
+- `MediaTrimView` gagne `cropOverlay` : visible dès que `cropRatio != .free` (fidèle à la
+  visibilité réelle Android, pas liée à un menu), assombrit l'extérieur du cadre (remplissage
+  pair-impair `Path`/`FillStyle(eoFill:)`, technique SwiftUI standard sans dépendance externe), et
+  un glisser qui ne démarre QUE si le doigt touche D'ABORD l'intérieur du rectangle (`onTouchEvent`
+  `ACTION_DOWN: cropRect.contains(x,y)`, reproduit nativement via `.contentShape` bornée à la
+  forme du rectangle, pas de state additionnel nécessaire).
+- `composeTransform` (étape 4) utilise maintenant `state.cropCenter`/`cropNormSize` au lieu de
+  toujours recalculer un rectangle centré à 100% — le commentaire précédent affirmant "pas de
+  recadrage libre interactif pour la vidéo côté Android, contrairement à la photo" était FAUX
+  (écrit sans avoir lu la gestion tactile de `CropOverlayView.java`), corrigé au passage.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/MediaTrimView.swift`,
+`Sources/TiinverSwift/Media/VideoTrimState.swift`.
+
+**Commit `7556155`, poussé sur `main`** (`e0fdc14..7556155`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé. **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas
+confirmée. Test réel à confirmer en plus de la CI (géométrie jamais exécutée dans cet
+environnement) : sélectionner un ratio non-Libre, confirmer l'apparition du cadre à 90%, le
+glisser dans les 4 directions jusqu'aux limites, confirmer le clamp, valider et vérifier que la
+vidéo exportée reflète bien la zone choisie (pas un centrage automatique).
 ```
 
 ```

@@ -219,13 +219,22 @@ galerie dans Animems — `AnimemesCompound.add` n'ajoute le bitmap qu'APRÈS val
 `CroperView`, `onClose()` annule sans rien ajouter ; iOS appelait `state.addImage` immédiatement.
 Corrigé AU-DELÀ du "a minima" recommandé : réutilise `PhotoCropView` déjà porté [même composant
 que `PublishComposeView`/`TOCropViewController`], nouveau `.fullScreenCover` entre sélection et
-ajout au canevas. **Commit `f9b7818` poussé sur `main`, CI PAS déclenchée**). **Prochain finding à
-traiter : V5-F-038** (V5-F-036/037 déjà traités en P1 — V5-F-038 confirmé P2 par lecture directe.
-Vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc `STATUT :` à sa
-suite, comme fait pour identifier chaque finding restant tout au long de cette session). Si
-l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et
-communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le
-cas échéant) avant de continuer le P2.
+ajout au canevas. **Commit `f9b7818` poussé sur `main`, CI PAS déclenchée**) ; Lot P2-10 V5-F-038
+CODE_COMPLETE/CI_PENDING (recadrage vidéo non interactif + marge 90% manquante —
+`CropOverlayView.java` lu en entier confirme un vrai recadrage déplaçable [`resetCropRect`
+centre à 90%, `onTouchEvent`/`moveCropRect` glisse clampé], le commentaire iOS précédent affirmait
+à tort le contraire sans avoir lu la gestion tactile. Corrigé AU-DELÀ du "a minima" recommandé :
+`VideoTrimState.cropCenter`/`cropNormSize`/`moveCropCenter` + nouveau `MediaTrimView.cropOverlay`
+[visible dès ratio≠Libre, assombrissement pair-impair, glisser clampé] + `composeTransform` utilise
+maintenant la position choisie par l'utilisateur. **Commit `7556155` poussé sur `main`, CI PAS
+déclenchée** — géométrie jamais exécutée dans cet environnement, test réel supplémentaire requis).
+**Prochain finding à traiter : V5-F-039** (confirmé P2 par lecture directe, domaine adjacent —
+précision de détection "aucune modification" du même écran de trim vidéo. Vérifier avec `grep
+"^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc `STATUT :` à sa suite, comme fait
+pour identifier chaque finding restant tout au long de cette session). Si l'utilisateur a
+entre-temps déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et communiqué un
+résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant)
+avant de continuer le P2.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

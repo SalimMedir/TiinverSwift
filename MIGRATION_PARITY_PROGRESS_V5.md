@@ -2171,6 +2171,34 @@ d'outillage que les lots précédents. Test réel à confirmer : sélectionner u
 galerie dans Animems, confirmer l'écran de recadrage interactif, valider ET annuler séparément
 pour confirmer les deux chemins.
 
+## 2026-08-26 — Phase B V5 — Lot P2-10 : V5-F-038 (Trim vidéo — recadrage non interactif, marge 90% manquante)
+
+**Commit** : `7556155` — poussé sur `main` (`e0fdc14..7556155`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `CropOverlayView.java` (lu en entier pour ce finding) confirme un vrai
+recadrage interactif : `resetCropRect` centre le cadre à seulement 90% de la zone max pour le
+ratio choisi (pas 100%), et `onTouchEvent`/`moveCropRect` permettent de le glisser n'importe où
+dans les limites vidéo avant validation — la position FINALE choisie par l'utilisateur est
+envoyée à `VideoTransformer`, pas un centrage automatique. Le commentaire iOS existant affirmait à
+tort "pas de recadrage libre interactif pour la vidéo côté Android" — écrit sans avoir lu la
+gestion tactile du fichier.
+
+**Correction appliquée** (au-delà du "a minima" recommandé) : `VideoTrimState` gagne
+`cropCenter`/`cropNormSize(forTargetRatio:videoAspect:)`/`moveCropCenter(dx:dy:cropSize:)` (port
+fidèle de `resetCropRect`/`moveCropRect`, vérifié algébriquement terme à terme). `MediaTrimView`
+gagne un `cropOverlay` réel (visible dès `cropRatio != .free`, assombrissement pair-impair, glisser
+qui ne démarre que si le doigt touche d'abord le rectangle). `composeTransform` utilise maintenant
+la position choisie par l'utilisateur au lieu d'un centrage 100% systématique.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/MediaTrimView.swift`,
+`Sources/TiinverSwift/Media/VideoTrimState.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. Géométrie jamais exécutée dans cet environnement : test réel
+supplémentaire requis (glisser le cadre jusqu'aux 4 limites, confirmer le clamp, confirmer que
+l'export reflète la zone choisie).
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

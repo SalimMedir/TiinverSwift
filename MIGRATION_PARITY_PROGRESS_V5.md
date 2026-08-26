@@ -5,10 +5,11 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [18/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+temps). Backlog P1 (40 findings) EN COURS [19/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
 V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022,
-V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037 (IOS_INTENTIONAL_DIFFERENCE)], démarré
-automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-043. Puis 31 P2, 21 P3.**
+V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037 (IOS_INTENTIONAL_DIFFERENCE),
+V5-F-043], démarré automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-046.
+Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -1045,6 +1046,41 @@ touchant aucune ligne de code fonctionnel).
 
 **Statut honnête** : `IOS_INTENTIONAL_DIFFERENCE`. Aucun test réel requis (aucun changement de
 comportement).
+
+## 2026-08-25 — Phase B V5 — Lot P1-19 : V5-F-043 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `AnimemesCompound.java:859-871` (`onKeyframeButtonClicked`) : `if
+(controller_mode_activate) captureTransformKeyframe(); else showPanelEditor(sel);`.
+`controller_mode_activate` (`:1857-1877`) confirmé `false` par défaut, piloté par un bouton
+SÉPARÉ `R.id.controlle_movement`, remis à `false` par `R.id.timelineTabs`. `btn_keyframe`
+(`:420-436,1390`) masqué par défaut, rendu VISIBLE dès qu'un item timeline est sélectionné —
+atteignable en mode timeline NORMAL, pas seulement en mode "controller".
+
+**iOS avant correctif** : `AnimemesEditorView.swift` bouton ◆ appelait inconditionnellement
+`state.recordKeyframe()`. `MovementControllerState.swift` (le modèle du mode "controller"
+Android) confirmé jamais instancié nulle part dans le projet (grep exhaustif) — le SEUL mode
+existant côté iOS correspond au mode timeline PAR DÉFAUT d'Android, où le même bouton devrait
+ouvrir le panneau de propriétés sans créer aucun keyframe.
+
+### Correctif appliqué
+
+Cause : le commentaire de `recordKeyframe()` citait avoir audité les 2 méthodes Android
+(`captureTransformKeyframe`/`showPanelEditor`) mais ne retenait que la première, sans reproduire
+la condition `controller_mode_activate` qui l'encadre. Correctif : bouton ◆ câblé vers
+`state.snapshotLayerEditor()`/`showLayerEditor` — MÊME action que le bouton "propriétés" déjà
+existant dans `bottomToolbar`. `recordKeyframe()` non supprimé : reste utilisé par `dragEnded()`
+(gardé par `autoCaptureEnabled`), concern séparé du bouton ◆, inchangé par ce correctif.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorView.swift`.
+
+**Résultat CI** : commit `1cf255b`, push confirmé (`6760bc0..1cf255b main -> main`), run
+`32924984556` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : sélectionner un calque, taper ◆ plusieurs fois, confirmer l'ouverture du panneau de
+propriétés sans effet de bord sur la timeline.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

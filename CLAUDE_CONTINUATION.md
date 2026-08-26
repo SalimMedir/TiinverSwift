@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [18/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [19/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -59,8 +59,11 @@ dernier trait de dessin, séparation de conteneur/composition "toujours en arri�
 reproduite) ; Lot P1-18 V5-F-037 IOS_INTENTIONAL_DIFFERENCE — 2 correctifs V3 antérieurs
 affirmaient à tort qu'Android ne remuxe jamais un trim temporel seul (faux, vérifié directement :
 vrai fast path `SimpleTrimmer` keyframe-snappé existe), ré-encodage frame-exact iOS conservé
-délibérément (précision > vitesse), commentaires corrigés, AUCUN changement fonctionnel]**. Voir
-section "Cycle V5" plus bas pour le détail complet.)
+délibérément (précision > vitesse), commentaires corrigés, AUCUN changement fonctionnel) ; Lot
+P1-19 V5-F-043 BUILD_VALIDATED (bouton ◆ Animems enregistrait un keyframe matriciel
+inconditionnellement, câblé vers l'ouverture du panneau de propriétés — mode "controller" jamais
+porté côté iOS, seul comportement Android atteignable)]**. Voir section "Cycle V5" plus bas pour
+le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -437,46 +440,51 @@ introspection sync-sample `AVAssetReader` sans équivalent simple, risque de dé
 correction des commentaires de tête de `MediaTrimView.swift`/`VideoTrimState.swift` qui
 affirmaient à tort une "fidélité Android". **AUCUN changement fonctionnel, diff commentaires
 uniquement**. **Commit `df62da7`, CI verte (run `32924295725`)** —
-`IOS_INTENTIONAL_DIFFERENCE`. Détail des 18 lots dans `PROGRESS_V5.md`.
+`IOS_INTENTIONAL_DIFFERENCE`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-043** (Animems - Keyframes —
-le bouton ◆ (keyframe) capture TOUJOURS un keyframe matriciel côté iOS, alors qu'en mode timeline
-PAR DÉFAUT Android ouvre le panneau de propriétés SANS créer aucun keyframe. Android
-[`AnimemesCompound.java:859-871` `onKeyframeButtonClicked`, branche `if
-(controller_mode_activate) captureTransformKeyframe(); else showPanelEditor(sel);` ; `:1321-1348`
-`captureTransformKeyframe` ; `:873-901` `showPanelEditor` ; `:1857-1877`
-`controller_mode_activate` piloté par un bouton SÉPARÉ `R.id.controlle_movement`, `false` par
-défaut et remis à `false` par `R.id.timelineTabs` ; `:420-436,1390` `btn_keyframe` masqué par
-défaut, VISIBLE dès qu'un item timeline est sélectionné dans `onSelectionChanged` — donc
-atteignable en mode timeline NORMAL, pas seulement en mode "controller"] — le bouton diamant est
-visible dès qu'un calque est sélectionné dans la timeline classique [mode par défaut,
-`controller_mode_activate == false`] ; dans cet état, le tap appelle `showPanelEditor(sel)`
-[ouverture du panneau de réglages, sliders opacité/couleur/rayon de coin, etc.], SANS créer le
-moindre keyframe — `captureTransformKeyframe()` n'est appelée QUE si le mode "controller de
-mouvement" [panneau de curseurs séparé, zoom/rotation/skew/ancrage] a été explicitement activé
-par un AUTRE bouton. iOS [`AnimemesEditorView.swift:662-665`, bouton ◆ dans `playbackBar` ;
-`AnimemesEditorState.swift:823-833` `recordKeyframe` ; `MovementControllerState.swift:1-48`, mode
-"controller" ENTIÈREMENT non branché — AUCUN appelant `MovementControllerState(...)` dans tout le
-projet] — le bouton ◆ [visible dès que `state.selectedId != nil`, équivalent exact du mode
-timeline par défaut Android] appelle INCONDITIONNELLEMENT `state.recordKeyframe()`, ajoutant/
-écrasant un keyframe matriciel à chaque appui — aucune branche équivalente à
-`controller_mode_activate` n'existe côté iOS. Cause : le commentaire de `recordKeyframe()`
-[`:816-822`] cite avoir audité les 2 méthodes Android mais ne retient QUE `captureTransformKeyframe`
-sans reproduire la condition `controller_mode_activate` qui l'encadre. Impact : dans le SEUL flux
-possible côté iOS [le mode "controller" n'existe pas], taper ◆ insère silencieusement un keyframe
-à chaque appui — effet de bord réel, taps répétés/exploratoires créent/écrasent des keyframes non
-voulus [`KeyframeTrack.addKeyframe` remplace en place tout keyframe déjà présent au même
-timestamp]. Plan : faire pointer ◆ vers l'ouverture du panneau de propriétés déjà porté ailleurs
-sous le bouton "propriétés" [`AnimemesEditorView.swift:968-973`, `state.snapshotLayerEditor()`/
-`showLayerEditor`] par défaut, réserver `recordKeyframe()`/l'icône diamant "active" au futur mode
-"controller" s'il est un jour porté [NE PAS construire ce mode maintenant — `MovementControllerState`
-confirmé jamais instancié, hors périmètre de ce finding unique] — lire
-`AnimemesEditorView.swift` autour de 662-665 et 968-973, et `AnimemesEditorState.swift` autour de
-816-833 en entier avant de coder, domaine Animems attention particulière requise), puis continuer
-AUTOMATIQUEMENT V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063,
-V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085,
-V5-F-089, V5-F-095, V5-F-097, V5-F-098 (21 P1 restants après V5-F-043, dans l'ordre exact du
-document), puis tous les P2 (31), P3 (21), SANS s'arrêter
+**Lot P1-19 traité (V5-F-043)** — Animems/Keyframes, le bouton ◆ capturait TOUJOURS un keyframe
+matriciel côté iOS, alors qu'en mode timeline PAR DÉFAUT Android ouvre le panneau de propriétés
+SANS créer aucun keyframe. Vérifié `AnimemesCompound.java:859-871` (`onKeyframeButtonClicked` :
+`controller_mode_activate` ? `captureTransformKeyframe()` : `showPanelEditor(sel)`) et `:1857-1877`
+(`controller_mode_activate` confirmé `false` par défaut, bouton SÉPARÉ). `MovementControllerState.swift`
+confirmé jamais instancié (grep exhaustif) — le mode "controller" n'existe pas côté iOS, donc le
+SEUL comportement Android atteignable est `showPanelEditor`. Le bouton ◆ appelait
+inconditionnellement `state.recordKeyframe()`. Correctif : bouton câblé vers
+`state.snapshotLayerEditor()`/`showLayerEditor` — MÊME action que le bouton "propriétés" existant.
+`recordKeyframe()` non supprimé (reste utilisé par `dragEnded()`, `autoCaptureEnabled`, concern
+distinct). **Commit `1cf255b`, CI verte (run `32924984556`)** — `BUILD_VALIDATED`. Détail des 19
+lots dans `PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-046** (Commentaires —
+réponses imbriquées [threading] JAMAIS chargées ni affichées, FONCTIONNALITÉ MANQUANTE. Android
+[`comments/ui/CommentAdapter.java:211-233`, bouton "Afficher N commentaires" visible si
+`elts.getRepliesCount() > 0`, tap → `listener.getReplay(elts, callback)` →
+`replayCommentAdapter.submitList(...)` ; `MyBottomSheetDialogFragment.java:516-520`
+`getReplay` → `commentViewModel.getReplay(data.getId(), LIMIT, OFFSET)` ;
+`comments/controller/CommentRepository.java:177-229` `getReplay`/`prepareReplayeData`, endpoint
+`/comment/replay/{activityId}/{limit}/{offset}`] — chaque commentaire de premier niveau ayant des
+réponses affiche un bouton "Afficher N commentaires", le tap déclenche un appel réseau réel
+récupérant et affichant les réponses imbriquées via un adapter dédié. iOS
+[`Discover/CommentRepository.swift:16-24`, `func replies(commentId:limit:offset:)` — port
+FONCTIONNEL CORRECT de `getReplay`, mais AUCUN appelant dans tout le projet iOS [grep
+`\.replies(commentId` = 0 résultat] ; `Discover/CommentsView.swift` [112 lignes] ne récupère ni
+n'affiche jamais aucune réponse : pas de bouton "voir les réponses", pas d'indentation, pas
+d'appel à `replies(...)` ; `Discover/CommentModels.swift:17,50` `repliesCount` décodé mais JAMAIS
+lu dans l'UI ; le bouton "Répondre" [ligne 84] permet bien d'ENVOYER un commentaire avec
+`parentId`, mais aucune réponse — ni la sienne ni celle d'un autre utilisateur — n'est jamais
+visible dans l'app]. Cause : `CommentRepository.replies` porté comme fonction isolée mais jamais
+câblé dans `CommentsView` — code mort côté fonction réseau, fonctionnalité UI simplement absente.
+Impact : threading des commentaires — explicitement demandé par le brief d'audit ["réponses
+imbriquées ... fonctionnent des deux côtés"] — totalement non fonctionnel en LECTURE sur iOS.
+Plan : ajouter dans `CommentsView` un affichage "Afficher N réponses" conditionné à
+`comment.repliesCount ?? 0 > 0`, appelant `CommentRepository.shared.replies(commentId:...)` et
+rendant les résultats imbriqués sous le commentaire parent, fidèle à
+`CommentAdapter`/`ReplayCommentAdapter` — lire `CommentsView.swift` [112 lignes] et
+`CommentModels.swift` en entier avant de coder pour la structure exacte des vues/modèles
+existants), puis continuer AUTOMATIQUEMENT V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060,
+V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078,
+V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (20 P1 restants après V5-F-046, dans
+l'ordre exact du document), puis tous les P2 (31), P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →
 State/ViewModel → Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale

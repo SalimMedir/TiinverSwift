@@ -1539,6 +1539,26 @@ CAUSE : Le commentaire de `recordKeyframe()` (`AnimemesEditorState.swift:816-822
 IMPACT : Dans le flux d'édition normal (timeline visible, pas de mode « controller » — flux qui est d'ailleurs le SEUL possible côté iOS puisque ce mode n'existe pas), taper ◆ sur iOS insère silencieusement un keyframe de position/rotation/échelle/inclinaison à la frame courante à chaque appui — un effet de bord réel sur la timeline — alors qu'un utilisateur venant d'Android s'attend à ce que ce bouton, dans ce contexte, ouvre juste un panneau de réglages sans rien modifier. Des taps répétés/exploratoires créent ou écrasent des keyframes matriciels non voulus (silencieusement, `KeyframeTrack.addKeyframe` remplaçant en place tout keyframe déjà présent au même timestamp).
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Faire pointer le bouton ◆ vers l'ouverture du panneau de propriétés (déjà porté ailleurs sous le bouton « propriétés », `AnimemesEditorView.swift:944-949`) par défaut, et réserver `recordKeyframe()`/l'icône diamant « active » au futur mode « controller » de mouvement s'il est un jour porté — ou, a minima, documenter explicitement ce choix de design comme une divergence assumée plutôt que comme un port direct du bouton Android.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-19) — Vérifié directement :
+`AnimemesCompound.java:859-871` (`onKeyframeButtonClicked`) confirme le branchement
+`controller_mode_activate` ? `captureTransformKeyframe()` : `showPanelEditor(sel)` ;
+`controller_mode_activate` (`:1857-1877`) confirmé `false` par défaut, piloté par un bouton
+SÉPARÉ (`R.id.controlle_movement`) ; `MovementControllerState.swift` confirmé jamais instancié
+(grep exhaustif) — le mode "controller" n'existe tout simplement pas côté iOS, donc le SEUL
+comportement Android atteignable est `showPanelEditor(sel)`. Correctif : bouton ◆ dans
+`playbackBar` câblé vers `state.snapshotLayerEditor()`/`showLayerEditor` — MÊME action que le
+bouton "propriétés" existant. `recordKeyframe()` non supprimé (reste appelé depuis
+`dragEnded()`, gardé par `autoCaptureEnabled`, concern distinct inchangé).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorView.swift`.
+
+**Résultat CI** : commit `1cf255b`, push confirmé (`6760bc0..1cf255b main -> main`), run
+`32924984556` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : sélectionner un calque, taper ◆ plusieurs fois,
+confirmer l'ouverture du panneau de propriétés sans création/écrasement de keyframe.
 ```
 
 ```

@@ -1678,6 +1678,44 @@ de l'upload, rouvrir l'app SANS revenir sur la conversation concernée, confirme
 l'envoi du message reprennent automatiquement dès la reconnexion socket ; confirmer aussi l'absence
 de doublon si la conversation est rouverte pendant qu'une reprise est en cours.
 
+## 2026-08-26 — Phase B V5 — V5-F-082 (Animems — habillage promotionnel export/partage) — DIFFÉRÉ
+
+**Pas de commit** — décision de report, pas un correctif de code.
+
+**Finding** : Android lance un pipeline de composition secondaire complet au partage externe d'une
+vidéo Animems exportée (bouton "Partager" natif, PAS "Publier") : un outro de 4 secondes (logo
+Tiinver + nom d'utilisateur + message "Connect, grow and monetize") ET un watermark animé (5
+keyframes de position/échelle/alpha/rotation avec interpolation bézier, se déplaçant haut-gauche →
+haut-droite → bas-gauche puis fixe) superposés sur toute la vidéo — mécanisme de croissance
+virale/attribution systématique. Côté iOS, `AnimemesEditorView`'s `ShareLink` partage le fichier
+brut d'`AnimemesExporter` directement, sans aucune étape de composition — confirmé par grep
+exhaustif de "watermark"/"outro"/"UnifiedComposer" (seule occurrence : un TODO explicite déjà
+présent dans `AnimemesExporter.swift` avant ce cycle).
+
+**Investigation menée avant la décision** : lu directement (au-delà de la citation de l'audit) les
+3 fichiers Android sources réels : `UnifiedComposerFinal.java` (719 lignes, composition/muxing
+final main+outro+watermark), `AnimatedWatermarkComposer.java` (166 lignes, interpolation bézier
+par keyframe), et `ExportVideoService.java:280-480` (configuration outro + les 5 keyframes exacts
+avec leurs valeurs bézier). Confirmé aussi : asset logo `mipmap/ic_logo.png` (5 densités Android)
+et chaîne `R.string.connect_grow_and_monetize` = "Connect, grow and monetize" existent côté
+Android mais N'ONT AUCUN équivalent côté iOS (ni asset catalog, ni chaîne localisée).
+
+**Décision** : `DIFFÉRÉ`, 4 raisons cumulatives — (1) ~900+ lignes de code natif bas niveau
+MediaCodec/MediaMuxer à REDESIGNER (pas transposer ligne à ligne) pour AVFoundation via un
+compositeur `AVVideoCompositing` personnalisé, infrastructure dont AUCUN équivalent n'existe
+ailleurs dans ce dépôt iOS ; (2) portage d'asset binaire (logo) + chaîne localisée nécessaire,
+décisions de sélection/format allant au-delà d'un correctif de code pur ; (3) risque de régression
+ÉLEVÉ sur le flux CŒUR d'export/partage Animems — ce compositeur s'insère directement dans le
+chemin du fichier réellement partagé, une implémentation précipitée pourrait produire un fichier
+corrompu pour TOUS les exports, strictement pire que l'absence actuelle de branding ; (4) même
+l'option "au minimum" de la RECOMMANDATION reste un sous-système `AVVideoCompositing` entièrement
+nouveau, non réductible à un correctif chirurgical compatible avec la cadence de ce balayage
+automatisé. Les valeurs exactes (keyframes, durée, ratios de texte) sont déjà toutes documentées
+dans `MIGRATION_PARITY_AUDIT_V5.md` — l'implémentation future n'aura pas besoin d'une nouvelle
+lecture du source Android, seulement d'une session de conception AVFoundation dédiée.
+
+**Statut honnête** : `DIFFÉRÉ`. Aucun fichier modifié, aucun commit, aucune CI.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

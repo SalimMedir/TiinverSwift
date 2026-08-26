@@ -2562,6 +2562,38 @@ IMPACT : Toute vidéo Animems partagée par un utilisateur iOS vers WhatsApp/Ins
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Porter au minimum une version simplifiée : composer un outro de quelques secondes (logo + nom d'utilisateur) et/ou un watermark statique ou animé via AVFoundation (AVVideoComposition + CALayer d'overlay) avant d'exposer le fichier au ShareLink, réutilisant AnimemesExporter comme point d'insertion.
 CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Animems (import/export)" (Phase A.2, 2026-08-24)
+
+STATUT : DIFFÉRÉ (2026-08-26, Phase B V5) — Décision de report, PAS un correctif de code, pour 4
+raisons cumulatives, après lecture directe des 3 fichiers Android sources réels (au-delà de la
+citation de l'audit) : (1) le pipeline Android réel à porter totalise ~900+ lignes de code natif
+bas niveau MediaCodec/MediaMuxer réparties sur 3 sous-systèmes architecturalement distincts —
+`UnifiedComposerFinal.java` (719 lignes, composition/muxing final main+outro+watermark),
+`AnimatedWatermarkComposer.java` (166 lignes, interpolation bézier par keyframe sur CHAQUE frame),
+et la génération vidéo de l'outro elle-même (`MP4Encoder.setOutroConfig`/`startOutreVideoEncode` +
+rendu `OverlayView` en bitmap) — ce n'est PAS un portage ligne-à-ligne mais une reconception
+complète pour AVFoundation (`AVMutableComposition` + un compositeur vidéo personnalisé
+`AVVideoCompositing`), infrastructure dont AUCUN équivalent n'existe ailleurs dans ce dépôt iOS
+(confirmé par grep exhaustif, seule occurrence étant le TODO de tête de `AnimemesExporter.swift`) ;
+(2) exige le portage d'un asset binaire (`mipmap/ic_logo.png`, retrouvé dans les 5 densités
+Android) et d'une chaîne localisée (`R.string.connect_grow_and_monetize` = "Connect, grow and
+monetize") — décisions de sélection/format d'asset (résolution, @1x/@2x/@3x) allant au-delà d'un
+correctif de code pur ; (3) risque de régression ÉLEVÉ sur le flux CŒUR d'export/partage Animems :
+ce compositeur s'insère directement dans le chemin du fichier réellement partagé — une
+implémentation précipitée/partielle pourrait produire un fichier corrompu/illisible pour TOUS les
+exports, un résultat strictement pire que l'absence actuelle de branding (l'export lui-même
+fonctionne toujours aujourd'hui) ; (4) même l'option "au minimum" de la RECOMMANDATION reste un
+sous-système `AVVideoCompositing` entièrement nouveau, non réductible à un correctif chirurgical
+compatible avec la cadence de ce balayage automatisé finding-par-finding. Les valeurs exactes
+(5 keyframes bézier avec temps/x/y/échelle/alpha/rotation, durée outro 4s, ratios de taille de
+texte) SONT toutes disponibles dans le source Android lu — l'implémentation future n'a donc PAS
+besoin d'une nouvelle lecture, seulement du temps de conception AVFoundation dédié hors de ce
+cycle de correction automatisé.
+
+**Aucun fichier modifié, aucun commit de code, aucune CI.**
+
+**Statut honnête** : `DIFFÉRÉ`. Nécessite une session dédiée pour concevoir/implémenter un
+compositeur `AVVideoCompositing` personnalisé + porter l'asset logo + la chaîne localisée, hors
+périmètre d'un correctif ponctuel de backlog P1.
 ```
 
 ```

@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [34/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [35/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -104,7 +104,11 @@ P1-33 V5-F-078 BUILD_VALIDATED — portée réduite documentée (second mécanis
 Android — WorkManager sur reconnexion/sync/push — absent côté iOS, seul le déclencheur
 reconnexion socket reproduit via `ChatRepository.resumePendingUploads`, verrou
 `ChatMediaUploadService.reserveUpload/releaseUpload` ajouté pour éviter une course avec
-`ChatViewModel.requestUpload`)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
+`ChatViewModel.requestUpload`) ; V5-F-082 DIFFÉRÉ (habillage promotionnel export Animems — outro
+4s + watermark animé bézier, ~900+ lignes de code natif MediaCodec/MediaMuxer Android à redesigner
+en compositeur `AVVideoCompositing` personnalisé, asset logo + chaîne localisée à porter, risque de
+régression élevé sur le flux cœur d'export si précipité)]**. Voir section "Cycle V5" plus bas pour
+le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -718,14 +722,32 @@ appelants sont `@MainActor` et la réservation ne contient aucun `await` interne
 `d5b583c`, CI verte (run `32937077298`)** — `BUILD_VALIDATED`, portée réduite documentée. Détail
 des 34 lots dans `PROGRESS_V5.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-082** (prochain P1 dans
-l'ordre exact du document `MIGRATION_PARITY_AUDIT_V5.md`, ligne ~2551 — V5-F-079/080/081 sont P2,
-déjà sautés à raison — lire sa fiche complète en premier : ID, PRIORITÉ, DOMAINE, FEATURE, ANDROID
-SOURCE, ANDROID BEHAVIOR, IOS FILES, IOS BEHAVIOR, CAUSE, IMPACT, RECOMMANDATION), puis continuer
-AUTOMATIQUEMENT V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (5 P1 restants après V5-F-082,
-dans l'ordre exact du document ; V5-F-060 déjà clos DIFFÉRÉ), puis tous les P2 (31), P3 (21), SANS
-s'arrêter entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois :
-preuve Android
+**V5-F-082 traité — DIFFÉRÉ (2026-08-26, pas un correctif de code)** — Pipeline média Animems,
+habillage promotionnel (outro + watermark animé) au partage externe d'une vidéo Animems exportée.
+Lu directement (au-delà de la citation de l'audit) les 3 fichiers Android sources réels :
+`ExportVideoService.java:280-480` (config outro 4s + les 5 keyframes bézier EXACTS de
+`AnimatedWatermarkComposer`), `UnifiedComposerFinal.java` (719 lignes, composition/muxing final),
+`AnimatedWatermarkComposer.java` (166 lignes, interpolation bézier par frame). Confirmé aussi :
+asset `mipmap/ic_logo.png` (5 densités) et chaîne `R.string.connect_grow_and_monetize` =
+"Connect, grow and monetize" existent côté Android, AUCUN équivalent côté iOS. **Décision DIFFÉRÉ,
+4 raisons cumulatives** : (1) ~900+ lignes de code natif MediaCodec/MediaMuxer à REDESIGNER (pas
+transposer) pour un compositeur `AVVideoCompositing` personnalisé — AUCUNE infrastructure
+équivalente ailleurs dans ce dépôt iOS ; (2) portage d'asset binaire + chaîne localisée nécessaire,
+au-delà d'un correctif de code pur ; (3) risque de régression ÉLEVÉ sur le flux CŒUR
+d'export/partage Animems — une implémentation précipitée pourrait produire un fichier corrompu
+pour TOUS les exports, pire que l'absence actuelle de branding ; (4) même l'option "au minimum" de
+la RECOMMANDATION reste un sous-système entièrement nouveau, non réductible à un correctif
+chirurgical. Valeurs exactes (keyframes/durée/ratios) déjà toutes documentées dans
+`MIGRATION_PARITY_AUDIT_V5.md`/`PROGRESS_V5.md` — implémentation future n'a pas besoin d'une
+nouvelle lecture Android. **Aucun fichier modifié, aucun commit, aucune CI.**
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-085** (prochain P1 dans
+l'ordre exact du document `MIGRATION_PARITY_AUDIT_V5.md`, ligne ~2634 — lire sa fiche complète en
+premier : ID, PRIORITÉ, DOMAINE, FEATURE, ANDROID SOURCE, ANDROID BEHAVIOR, IOS FILES, IOS
+BEHAVIOR, CAUSE, IMPACT, RECOMMANDATION), puis continuer AUTOMATIQUEMENT V5-F-089, V5-F-095,
+V5-F-097, V5-F-098 (4 P1 restants après V5-F-085, dans l'ordre exact du document ; V5-F-060 et
+V5-F-082 déjà clos DIFFÉRÉ), puis tous les P2 (31), P3 (21), SANS s'arrêter entre les lots
+(instruction explicite de l'utilisateur), en respectant à chaque fois : preuve Android
 vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI → State/ViewModel →
 Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale → diff revu →
 commit → push → CI → attente OBLIGATOIRE du résultat → mise à jour des 3 documents

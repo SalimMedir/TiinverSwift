@@ -14,8 +14,8 @@ V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071, V5-F-073 (DUPLICATE de V5-F-02
 V5-F-079, V5-F-083, V5-F-086, V5-F-090, V5-F-096, V5-F-099]. **BACKLOG P2 ENTIÈREMENT CLOS
 (31/31)**. Backlog P3 (21 findings) EN COURS [3/21 clos : V5-F-003 (DUPLICATE de V5-F-050),
 V5-F-011, V5-F-012, V5-F-015 (DUPLICATE de V5-F-065), V5-F-017, V5-F-027, V5-F-028, V5-F-041,
-V5-F-044 (DOCUMENTÉ), V5-F-052, V5-F-053 (DIFFÉRÉ), V5-F-056, V5-F-075 (IOS_INTENTIONAL_DIFFERENCE), V5-F-080]. Prochain :
-V5-F-081.**
+V5-F-044 (DOCUMENTÉ), V5-F-052, V5-F-053 (DIFFÉRÉ), V5-F-056, V5-F-075 (IOS_INTENTIONAL_DIFFERENCE), V5-F-080, V5-F-081 (IOS_INTENTIONAL_DIFFERENCE),
+V5-F-084]. Prochain : V5-F-087.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2911,6 +2911,30 @@ d'état "en cours" existante, hors périmètre).
 **Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatViewModel.swift`,
 `Sources/TiinverSwift/Messagerie/ChatBubbleViews.swift`,
 `Sources/TiinverSwift/Messagerie/ChatView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P3-14bis : V5-F-081 (IOS_INTENTIONAL_DIFFERENCE) — Content-Type upload chat photo/audio délibérément non aligné sur Android
+
+**Aucun changement fonctionnel** (commit `79751e9`, commentaire uniquement). `application/
+octet-stream` codé en dur côté Android (branche non-vidéo) est incohérent avec sa propre branche
+vidéo (vrai MIME), cause racine jamais identifiée côté Android lui-même — `SUGGESTED_STATUS` de
+l'audit déjà `IOS_INTENTIONAL_DIFFERENCE`. Décision documentée dans
+`Messagerie/ChatMediaUploadService.swift`.
+
+## 2026-08-26 — Phase B V5 — Lot P3-14 : V5-F-084 (Débit audio export Animems divisé par deux)
+
+**Commit** : `da9d371` — poussé sur `main` (`79751e9..da9d371`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `MP4Encoder.java:1576-1587` encode l'AAC à 128 kbps quand une piste audio est
+présente. `AnimemesExporter.swift` utilisait 64 kbps (fréquence/canaux déjà identiques) — qualité
+audio perceptiblement inférieure sans justification.
+
+**Correction appliquée** : `AVEncoderBitRateKey` 64000→128000.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesExporter.swift`.
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.

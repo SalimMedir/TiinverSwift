@@ -3082,6 +3082,12 @@ IMPACT : Incertain sans test live : si Bunny Storage/la pull zone CDN sert le Co
 SUGGESTED_STATUS : IOS_INTENTIONAL_DIFFERENCE
 RECOMMANDATION : Si une stricte parité protocolaire est souhaitée, envoyer aussi application/octet-stream pour les branches photo/audio ; sinon documenter explicitement cette divergence comme une amélioration délibérée (Content-Type correct plutôt que la valeur générique probablement non-intentionnelle d'Android).
 CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Chat (image/vidéo/fichier/vocal)" (Phase A.2, 2026-08-24)
+STATUT : IOS_INTENTIONAL_DIFFERENCE (2026-08-26, Phase B P3) — 2ᵉ option de la RECOMMANDATION
+appliquée (documentation, pas de changement de code) : `application/octet-stream` codé en dur côté
+Android est incohérent entre ses 2 propres branches (vidéo vs non-vidéo), cause racine jamais
+identifiée, `SUGGESTED_STATUS` de l'audit lui-même déjà `IOS_INTENTIONAL_DIFFERENCE`. Décision
+documentée dans le code : `Messagerie/ChatMediaUploadService.swift`. Commit `79751e9` (commentaire
+uniquement), poussé sur `main`.
 ```
 
 ```
@@ -3180,6 +3186,9 @@ IMPACT : Qualité audio perceptiblement inférieure (surtout sur des sons/musiqu
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Aligner AVEncoderBitRateKey sur 128000 dans AnimemesExporter.swift pour reproduire fidèlement le débit audio Android.
 CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Animems (import/export)" (Phase A.2, 2026-08-24)
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-14). RECOMMANDATION appliquée telle quelle :
+`AVEncoderBitRateKey` 64000→128000. Fichier modifié : `Animems/AnimemesExporter.swift`. Commit
+`da9d371`, poussé sur `main`. CI non déclenchée par cette session.
 ```
 
 ```

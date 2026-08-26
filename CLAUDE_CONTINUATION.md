@@ -448,13 +448,19 @@ propre `SUGGESTED_STATUS` du finding, aucune action requise) ; Lot P3-13 V5-F-08
 CODE_COMPLETE/CI_PENDING (aucun retour utilisateur en cas d'échec de téléchargement de pièce
 jointe chat — bulle en échec indiscernable de "en cours". Corrigé : nouveau `ChatViewModel.
 failedDownloadMessageIds`, icône d'échec threadée via `ChatBubbleRow`→`MediaImageBubbleBody`/
-`VideoBubbleBody`. **Commit `09e4294` poussé sur `main`, CI PAS déclenchée**). **Prochain finding
-à traiter : V5-F-081** (grep `"^ID : V5-F-081"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à
-confirmer par lecture directe avant tout correctif, comme fait pour chaque finding tout au long de
-cette session ; identifier les P3 restants avec `grep "^PRIORITÉ : P3"` puis chercher lesquels
-n'ont pas encore de bloc `STATUT :` à leur suite). Si l'utilisateur a entre-temps déclenché la CI
-pour les findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur
-statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P3.
+`VideoBubbleBody`. **Commit `09e4294` poussé sur `main`, CI PAS déclenchée**) ; Lot P3-14bis V5-F-081
+**IOS_INTENTIONAL_DIFFERENCE, pas de correctif** (Content-Type upload chat photo/audio — Android
+code en dur `application/octet-stream`, incohérent avec sa propre branche vidéo, cause racine
+jamais identifiée ; iOS envoie le vrai MIME, jugé correct et non reproduit. **Commit `79751e9`**) ;
+Lot P3-14 V5-F-084 CODE_COMPLETE/CI_PENDING (débit audio export Animems divisé par deux — Android
+128kbps, iOS 64kbps. Corrigé : `AVEncoderBitRateKey` aligné. **Commit `da9d371` poussé sur `main`,
+CI PAS déclenchée**). **Prochain finding à traiter : V5-F-087** (grep `"^ID : V5-F-087"` dans
+`MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe avant tout correctif,
+comme fait pour chaque finding tout au long de cette session ; identifier les P3 restants avec
+`grep "^PRIORITÉ : P3"` puis chercher lesquels n'ont pas encore de bloc `STATUT :` à leur suite).
+Si l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et
+communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas
+échéant) avant de continuer le P3.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

@@ -632,6 +632,12 @@ struct FeedDetailPagerView: View {
     @State private var boostTargetPost: FeedActivity?
     @State private var statsTargetPost: FeedActivity?
     @State private var downloadError: String?
+    /// Port de `uniqueDowloadSet` (`ProfileFeedFragment.java:101,769-773`, V5-F-096) — un `post.id`
+    /// une fois inséré n'est JAMAIS retiré (pas de `defer`/retrait au succès ou à l'échec, fidèle à
+    /// Android : le `Set` n'est vidé qu'en recréant le Fragment, ici l'équivalent est la durée de
+    /// vie de CETTE instance de pager). Un second tap sur "Télécharger" pour le même post — pendant
+    /// le téléchargement OU même après qu'il soit terminé/ait échoué — est silencieusement ignoré.
+    @State private var queuedDownloadPostIds: Set<Int> = []
 
     /// Port ponctuel : quand ce pager est ouvert directement sur UN post isolé (résolution d'un lien
     /// profond `/post/{token}`, `DeepLinkRouter.swift`) ou sur une liste jetable (résultats de
@@ -767,7 +773,11 @@ struct FeedDetailPagerView: View {
                     Button("Bloquer @\(post.username ?? "")", role: .destructive) { blockTargetPost = post }
                     Button("Signaler le post") { reportTargetPost = post; showReportReasons = true }
                     if includesDownload {
+                        // Port de `addingDownloadingFileToQueue` (V5-F-096) — `Set.add` retourne
+                        // `false` si déjà présent, ignore silencieusement un second appel pour le
+                        // même post, à l'identique ici.
                         Button("Télécharger") {
+                            guard queuedDownloadPostIds.insert(post.id).inserted else { return }
                             Task {
                                 do { try await FeedMediaDownloader.download(post) } catch {
                                     downloadError = error.localizedDescription

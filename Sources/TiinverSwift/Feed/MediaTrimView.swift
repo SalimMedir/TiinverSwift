@@ -406,7 +406,19 @@ struct MediaTrimView: View {
             errorText = "Impossible de lire la durée de la vidéo — réessaie ou annule."
             return
         }
-        guard trimState != VideoTrimState() || startFraction > 0.001 || endFraction < 0.999 else {
+        // **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-039, Phase B P2)** — Android
+        // (`VideoTrimmerView.java:238`) utilise un seuil ABSOLU fixe de 100ms de chaque côté
+        // (`selStart <= 100 && selEnd >= duration - 100`), indépendant de la durée totale. Le seuil
+        // fractionnaire précédent (`0.001`/`0.999`, soit 0.1% de la durée) divergeait fortement sur
+        // les vidéos longues (>100s : seuil iOS plus LARGE qu'Android, un trim réel de plusieurs
+        // dixièmes de seconde republiait l'original sans le couper) et sur les vidéos courtes
+        // (<100s : seuil iOS plus STRICT, ré-encodage déclenché pour une différence sub-100ms
+        // qu'Android aurait ignorée). Recalculé en secondes absolues sur la durée réelle.
+        let noTrimThresholdSeconds = 0.1
+        guard trimState != VideoTrimState()
+            || startFraction * duration > noTrimThresholdSeconds
+            || (1 - endFraction) * duration > noTrimThresholdSeconds
+        else {
             onTrimmed(sourceURL)
             return
         }

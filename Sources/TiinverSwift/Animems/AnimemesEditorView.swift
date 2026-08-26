@@ -662,8 +662,15 @@ struct AnimemesEditorView: View {
     }
 
     /// Port de la barre de lecture (`AnimemesCompound.java:2007-2019` — bouton play/pause unique) +
-    /// bouton ◆ (`captureTransformKeyframe`, voir `AnimemesEditorState.recordKeyframe`) + accès à la
-    /// durée du calque sélectionné.
+    /// bouton ◆ + accès à la durée du calque sélectionné.
+    ///
+    /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-043, Phase B P1-19)** — voir le
+    /// commentaire du bouton ◆ ci-dessous : appelait auparavant inconditionnellement
+    /// `state.recordKeyframe()`, alors qu'Android [`AnimemesCompound.java:859-871`,
+    /// `onKeyframeButtonClicked`] ne le fait QUE si le mode "controller de mouvement"
+    /// (`controller_mode_activate`, jamais porté côté iOS — `MovementControllerState` confirmé
+    /// jamais instancié) est actif ; en mode timeline PAR DÉFAUT (le SEUL mode existant côté iOS),
+    /// le même bouton Android ouvre `showPanelEditor(sel)` sans créer aucun keyframe.
     private var playbackBar: some View {
         HStack(spacing: 20) {
             Button {
@@ -681,9 +688,19 @@ struct AnimemesEditorView: View {
 
             Spacer()
 
-            // Port du bouton ◆ — enregistre un keyframe matrice pour le calque sélectionné à la
-            // position actuelle du playhead (modèle "marqueur explicite", voir audit).
-            Button { state.recordKeyframe() } label: {
+            // Port du bouton ◆ (`AnimemesCompound.java:859-871`, `onKeyframeButtonClicked`) —
+            // branche `controller_mode_activate == false` (mode timeline par défaut, le SEUL
+            // existant côté iOS) : ouvre le panneau de propriétés (`showPanelEditor(sel)`), MÊME
+            // action que le bouton "propriétés" (voir bottomToolbar) — AUCUN keyframe créé.
+            // `state.recordKeyframe()` (branche `controller_mode_activate == true`) n'est plus
+            // appelé depuis CE bouton — reste utilisé ailleurs (`dragEnded()`, gardé par
+            // `autoCaptureEnabled`, concern distinct du bouton ◆ lui-même, inchangé ici).
+            Button {
+                if let snapshot = state.snapshotLayerEditor() {
+                    layerEditorSnapshot = snapshot
+                    showLayerEditor = true
+                }
+            } label: {
                 Image(systemName: "diamond.fill")
             }
             .disabled(state.selectedId == nil)

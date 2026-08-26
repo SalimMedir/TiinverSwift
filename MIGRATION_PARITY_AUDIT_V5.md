@@ -1101,6 +1101,22 @@ CAUSE : Le switch de `NotificationRow.bodyText` (liste in-app) ne reprend que le
 IMPACT : Chaque notification de cadeau reçu en commentaire affiche un texte incompréhensible pour l'utilisateur dans le centre de notifications (ex. « gift_rose_23 » au lieu de « 🌹 Rose »), alors que la notification push correspondante affiche le bon texte.
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Réutiliser `LocalNotificationBuilder`'s logique de résolution gift (ou `GiftCatalog` directement) dans `NotificationRow.bodyText` quand `noti.verb == "comment" && noti.payloadType == "gift"`.
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-5) — Correctif appliqué
+exactement comme recommandé : branche `if noti.payloadType == "gift"` ajoutée dans le cas
+`"comment"` de `NotificationRow.bodyText`, réutilisant `GiftCatalog.emoji(for:)`/`.resolve(_:)?
+.name` (mêmes helpers, même texte que `LocalNotificationBuilder.activityNotificationContent`).
+Vérifié que `noti.payloadType` (`NotiEntity`, Core Data) est déjà correctement peuplé depuis
+`payload_type` côté serveur (`NotificationCenterViewModel.swift:92`) — aucune modification de
+modèle nécessaire, seul le switch d'affichage manquait la branche. Vérifié qu'aucun autre site du
+projet ne duplique ce même switch (grep sur "a commenté" : seulement `LocalNotificationBuilder`
+[déjà correct] et ce fichier).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/NotificationsListView.swift`.
+
+**Commit `d04096b`, poussé sur `main`** (`670ec0f..d04096b`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé. **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas
+confirmée.
 ```
 
 ```

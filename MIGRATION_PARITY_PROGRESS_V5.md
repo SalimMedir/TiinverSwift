@@ -2057,6 +2057,28 @@ séparément, hors périmètre).
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
 
+## 2026-08-26 — Phase B V5 — Lot P2-5 : V5-F-024 (Notifications — texte brut pour un commentaire-cadeau)
+
+**Commit** : `d04096b` — poussé sur `main` (`670ec0f..d04096b`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `NotificationRow.bodyText` (liste in-app) ne testait que `noti.verb`, jamais
+`noti.payloadType` — un commentaire-cadeau affichait l'identifiant brut du cadeau
+(`noti.commentText`, ex. "gift_rose_23") entre guillemets au lieu de l'emoji + nom lisible. La
+notification push équivalente (`LocalNotificationBuilder.activityNotificationContent`, même
+module) gérait déjà correctement ce cas via `GiftCatalog` — le switch de la liste in-app n'avait
+jamais reproduit cette branche.
+
+**Correction appliquée** : branche `if noti.payloadType == "gift"` ajoutée, réutilisant
+`GiftCatalog.emoji(for:)`/`.resolve(_:)?.name` (mêmes helpers/texte que la notification push).
+Vérifié que `noti.payloadType` est déjà correctement peuplé côté modèle — seul l'affichage
+manquait la vérification.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/NotificationsListView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

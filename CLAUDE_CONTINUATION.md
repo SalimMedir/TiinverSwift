@@ -228,11 +228,16 @@ centre à 90%, `onTouchEvent`/`moveCropRect` glisse clampé], le commentaire iOS
 [visible dès ratio≠Libre, assombrissement pair-impair, glisser clampé] + `composeTransform` utilise
 maintenant la position choisie par l'utilisateur. **Commit `7556155` poussé sur `main`, CI PAS
 déclenchée** — géométrie jamais exécutée dans cet environnement, test réel supplémentaire requis).
-**Prochain finding à traiter : V5-F-039** (confirmé P2 par lecture directe, domaine adjacent —
-précision de détection "aucune modification" du même écran de trim vidéo. Vérifier avec `grep
-"^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc `STATUT :` à sa suite, comme fait
-pour identifier chaque finding restant tout au long de cette session). Si l'utilisateur a
-entre-temps déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et communiqué un
+Lot P2-11 V5-F-039 CODE_COMPLETE/CI_PENDING (même écran de trim vidéo, seuil "aucune modification"
+exprimé en fraction de durée `0.001`/`0.999` au lieu d'un seuil absolu 100ms comme Android
+`VideoTrimmerView.java:238` — divergent sur vidéos longues [seuil trop large, un vrai trim
+republiait l'original] et courtes [seuil trop strict]. Corrigé : seuil recalculé en secondes
+absolues `0.1s` contre la durée réelle. **Commit `3edca15` poussé sur `main`, CI PAS
+déclenchée**). **Prochain finding à traiter : V5-F-040** (confirmé P2 par lecture directe, domaine
+Animems — interactions canvas. Vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas
+encore de bloc `STATUT :` à sa suite, comme fait pour identifier chaque finding restant tout au
+long de cette session). Si l'utilisateur a entre-temps déclenché la CI pour les findings
+`CI_PENDING` listés ci-dessus et communiqué un
 résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant)
 avant de continuer le P2.
 

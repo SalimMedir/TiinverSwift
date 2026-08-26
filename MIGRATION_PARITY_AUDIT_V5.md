@@ -1674,6 +1674,17 @@ CAUSE : Le seuil a été porté en cohérence avec le reste du fichier qui manip
 IMPACT : Pour toute vidéo source de plus de 100 secondes (0.001 × durée > 0.1 s), iOS traite comme 'sans modification' — et republie donc le fichier ORIGINAL non trimmé — un trim qu'Android aurait bien exécuté. Exemple concret : sur une vidéo source de 10 minutes (600 s), iOS ignore silencieusement jusqu'à 0.6 s coupés à chaque extrémité (0.001×600=0.6s, très supérieur au seuil Android de 0.1s), alors qu'Android aurait déjà déclenché startTrimWithCrop() dès 100 ms de différence. À l'inverse, pour une vidéo source de moins de 100 s, le seuil iOS est plus strict qu'Android (peut déclencher un ré-encodage pour une différence sub-100ms qu'Android aurait ignorée).
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Remplacer les seuils fractionnaires (0.001) par un seuil absolu en secondes équivalent aux 100 ms d'Android, calculé sur (startFraction * duration) et ((1 - endFraction) * duration) plutôt que sur les fractions brutes indépendamment de la durée totale.
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-11) — Correctif appliqué
+exactement comme recommandé : seuil `0.1` seconde (100ms) comparé à `startFraction * duration`/
+`(1 - endFraction) * duration` au lieu des fractions brutes `0.001`/`0.999`. Vérifié directement
+`VideoTrimmerView.java:238`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/MediaTrimView.swift`.
+
+**Commit `3edca15`, poussé sur `main`** (`9bb3f96..3edca15`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé. **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas
+confirmée.
 ```
 
 ```

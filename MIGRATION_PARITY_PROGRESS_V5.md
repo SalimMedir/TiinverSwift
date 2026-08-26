@@ -2199,6 +2199,23 @@ d'outillage que les lots précédents. Géométrie jamais exécutée dans cet en
 supplémentaire requis (glisser le cadre jusqu'aux 4 limites, confirmer le clamp, confirmer que
 l'export reflète la zone choisie).
 
+## 2026-08-26 — Phase B V5 — Lot P2-11 : V5-F-039 (Trim vidéo — seuil "aucune modification" en fraction plutôt qu'absolu)
+
+**Commit** : `3edca15` — poussé sur `main` (`9bb3f96..3edca15`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `VideoTrimmerView.java:238` utilise un seuil ABSOLU de 100ms de chaque côté,
+indépendant de la durée totale. iOS utilisait `startFraction > 0.001 || endFraction < 0.999`
+(0.1% de la durée) — divergence forte sur vidéos longues (>100s, seuil iOS trop large, un vrai
+trim republiait l'original non coupé) et courtes (<100s, seuil iOS trop strict).
+
+**Correction appliquée** : seuil recalculé en secondes absolues (`0.1s`) contre la durée réelle.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/MediaTrimView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

@@ -255,7 +255,18 @@ final class AnimemesEditorState: ObservableObject {
         // dessine chaque bitmap à sa taille PIXEL native (`bmp.width`/`bmp.height`, pas de mise à
         // l'échelle appliquée par le moteur) — une photo caméra pleine résolution recouvrirait tout
         // le canevas sans ce redimensionnement préalable.
-        guard let resized = Self.downscale(image, maxDimension: 220), let cgImage = resized.cgImage else { return }
+        //
+        // **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-093, Phase B P3)** — `220`
+        // (constante fixe, indépendante du canevas) remplacée par une taille proportionnelle au
+        // canevas ACTIF, fidèle à `onNewAddBitmap` (`AnimemesCompound.java:2268-2277`,
+        // `mWidth=mView.getWidth()/CELLS`/`mHeight=mView.getHeight()/CELLS`, `CELLS=2` —
+        // `MathUtils.java:12`) : un import sur un canevas 1:1 avait la MÊME taille par défaut qu'un
+        // import sur un canevas 9:16 avant ce correctif, alors qu'Android adapte proportionnellement
+        // au ratio choisi. `min(width,height)/2` (suggestion de l'audit) reproduit fidèlement l'ordre
+        // de grandeur de la borne Android par-axe tout en réutilisant `downscale(maxDimension:)`
+        // (borne UNIQUE par plus grand côté, pas 2 bornes séparées par axe) sans réécrire ce helper.
+        let maxDimension = min(canvasSize.width, canvasSize.height) / 2
+        guard let resized = Self.downscale(image, maxDimension: maxDimension), let cgImage = resized.cgImage else { return }
         let obj = AnimationObjectData()
         obj.objectType = .bitmap
         obj.addBitmap(cgImage)

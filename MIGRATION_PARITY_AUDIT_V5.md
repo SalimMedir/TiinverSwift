@@ -1900,6 +1900,29 @@ CAUSE : `URLSession.shared.data(for:)`/`dataTask` (API haut niveau) chargent sys
 IMPACT : Pour une vidéo longue/haute qualité (le pré-cache cible spécifiquement les URLs 720p, voir commentaire ligne 44-52 de VideoCacheManager.swift), ce chargement en mémoire peut atteindre plusieurs centaines de Mo d'un coup — pendant un simple défilement du Feed (precache silencieux, sans action utilisateur visible), cumulé avec la vidéo en cours de lecture et d'éventuels autres médias déjà en mémoire, ce qui augmente significativement le risque de jetsam/crash mémoire sur les appareils à RAM limitée, un scénario d'usage normal (scroll du Feed) et non un cas limite.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Remplacer `URLSession.shared.data(for:)`/`dataTask` par `URLSession.shared.download(for:)` (ou une URLSessionDownloadTask) dans FeedMediaDownloader.download et VideoCacheManager.precache, qui écrit directement sur disque par blocs sans charger le fichier complet en RAM, fidèle au streaming disque de DownloadManager/CacheWriter côté Android.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-24) — Vérifié directement :
+`CacheWorker.java:66-69,231-234` confirme `CacheDataSource.Factory`/`CacheWriter` écrivant en flux
+par blocs bornés dans `SimpleCache`, et `DownloadManager` streamant sur disque système — aucun des
+deux ne charge jamais le fichier complet en tas Java. Correctif : `FeedMediaDownloader.download`
+basculé de `URLSession.shared.data(for:)` vers `URLSession.shared.download(for:)` (fichier
+temporaire système déplacé immédiatement, synchrone, avant tout retour au run loop) ;
+`VideoCacheManager.precache` basculé de `URLSession.shared.dataTask` vers
+`URLSession.shared.downloadTask(with:completionHandler:)`, fichier temporaire déplacé dans le
+callback avec `removeItem` défensif avant `moveItem` (même tolérance à l'écrasement que l'ancien
+`data.write(to:)`). Les deux écrivent désormais directement sur disque par blocs bornés, plus
+aucune mise en tampon RAM du fichier complet.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedMediaDownloader.swift`,
+`Sources/TiinverSwift/Media/VideoCacheManager.swift`.
+
+**Résultat CI** : commit `d92eec9`, push confirmé (`2df9dd5..d92eec9 main -> main`), run
+`32928942478` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis (profiling mémoire, Instruments) : télécharger une
+vidéo longue/haute qualité depuis le Feed/Profil et faire défiler le Feed rapidement (déclenchant
+le pré-cache), confirmer l'absence de pic mémoire correspondant à la taille du fichier vidéo.
 ```
 
 ```
@@ -1932,6 +1955,26 @@ CAUSE : Fonctionnalité explicitement reportée ("module 18, pas encore atteint"
 IMPACT : Sur iOS : (1) aucune notification de ré-engagement basée sur le contenu suggéré (perte d'un levier de rétention actif sur Android) ; (2) les posts "boostés" (promotion payante, argent réel dépensé par l'utilisateur) ne sont jamais livrés/activés automatiquement en tâche de fond — sur Android ce mécanisme tourne même app fermée ; (3) aucune donnée de temps de visionnage n'est jamais envoyée au serveur, cassant potentiellement tout algorithme de recommandation côté backend qui en dépendrait.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Enregistrer un identifiant BGAppRefreshTask (ou BGProcessingTask pour la synchro de vues nécessitant plus de temps) dans BGTaskSchedulerPermittedIdentifiers, l'enregistrer via BGTaskScheduler.shared.register(forTaskWithIdentifier:) dans AppDelegate, planifier une soumission après chaque connexion (miroir de HomeActivity.allPermisson()/scheduleDynamicWorker) et à la fermeture de l'app, et enfin câbler ViewEventRepository.record(...) depuis les écrans de lecture du Feed (FeedView) pour que le stockage local cesse d'être mort.
+
+STATUT : DIFFÉRÉ (2026-08-25, Phase B V5) — Décision de report, PAS un correctif de code, pour 4
+raisons cumulatives : (1) enregistrer `BGTaskSchedulerPermittedIdentifiers` exige une modification
+`project.yml`/capability Xcode ("Background Modes"), une décision de configuration de build
+au-delà d'un correctif de code pur, à ne pas prendre seul au fil d'un balayage automatisé de
+backlog ; (2) ce finding regroupe 3 comportements d'arrière-plan architecturalement distincts
+(synchronisation analytics/watchtime, notifications de ré-engagement, livraison de boost payante),
+chacun exigeant une vérification complète et séparée de la logique/l'endpoint Android
+(`ViewSyncWorker.java`, `MyWorker.java`, `NotificationUtils.displaySuggestNotification`,
+`boost/deliver`) avant une implémentation fiable ; (3) précédent direct déjà posé dans le cycle V3
+: `V3-F-095` (MÊME domaine fonctionnel, temps de visionnage/analytics) déjà explicitement différé
+pour l'équivalent Android de ce même mécanisme ; (4) la partie livraison de boost touche de
+l'ARGENT RÉEL dépensé par l'utilisateur — mérite une implémentation et un test dédiés et
+approfondis, pas un correctif bundlé dans un balayage automatisé de 40 findings P1.
+
+**Aucun fichier modifié, aucun commit de code, aucune CI.**
+
+**Statut honnête** : `DIFFÉRÉ`. Nécessite une décision produit (capability Background Modes) et
+une session dédiée pour vérifier/implémenter séparément les 3 comportements + le câblage de
+`ViewEventRepository`, hors périmètre d'un correctif ponctuel de backlog P1.
 ```
 
 ```

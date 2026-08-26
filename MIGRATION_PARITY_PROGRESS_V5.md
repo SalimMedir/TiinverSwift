@@ -5,11 +5,11 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [23/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+temps). Backlog P1 (40 findings) EN COURS [25/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
 V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022,
 V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037 (IOS_INTENTIONAL_DIFFERENCE),
-V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057], démarré automatiquement à V5-F-001, dans
-l'ordre du document. Prochain : V5-F-058. Puis 31 P2, 21 P3.**
+V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060 (DIFFÉRÉ)], démarré
+automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-062. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -1222,6 +1222,81 @@ confirmé (`65db96d..76fc029 main -> main`), run `32928191420` → **`conclusion
 **Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
 réel requis (profiling Instruments) : lancer la lecture, quitter l'écran sans pause, confirmer
 l'absence de `CADisplayLink` résiduel actif.
+
+## 2026-08-25 — Phase B V5 — Lot P1-24 : V5-F-058 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `Activity/service/CacheWorker.java:66-69,231-234` — `CacheDataSource.Factory` +
+`CacheWriter(dataSource, dataSpec, buffer, ...)` écrit en FLUX, par blocs bornés, directement dans
+`SimpleCache` sur disque. Téléchargement utilisateur via `android.app.DownloadManager` — streaming
+disque système, jamais chargé en tas Java. Aucun des deux chemins ne retient jamais le fichier
+complet en mémoire, quelle que soit sa durée/poids.
+
+**iOS avant correctif** : `FeedMediaDownloader.download` via `URLSession.shared.data(for:
+request)` — fichier vidéo entier chargé en mémoire comme `Data` avant `data.write(to:)`.
+`VideoCacheManager.precache` [appelé automatiquement en arrière-plan par
+`VideoPlayerManager.preload` pour chaque vidéo de la fenêtre `currentIndex±2` PENDANT le
+défilement du Feed] via `URLSession.shared.dataTask` — même mise en tampon RAM complète avant
+écriture.
+
+### Correctif appliqué
+
+Cause : `URLSession.shared.data(for:)`/`dataTask` (API haut niveau) chargent systématiquement
+tout le corps HTTP en RAM, contrairement à `URLSession.shared.download(for:)`/`downloadTask`
+(téléchargement en flux direct vers un fichier temporaire). Correctif : `FeedMediaDownloader.download`
+basculé vers `URLSession.shared.download(for:)`, fichier temporaire système déplacé immédiatement
+(synchrone, avant tout retour au run loop, condition requise par l'API). `VideoCacheManager.precache`
+basculé vers `URLSession.shared.downloadTask(with:completionHandler:)`, fichier temporaire déplacé
+dans le callback avec `removeItem` défensif avant `moveItem` (même tolérance à l'écrasement que
+l'ancien `data.write(to:)`).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedMediaDownloader.swift`,
+`Sources/TiinverSwift/Media/VideoCacheManager.swift`.
+
+**Résultat CI** : commit `d92eec9`, push confirmé (`2df9dd5..d92eec9 main -> main`), run
+`32928942478` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis (profiling mémoire) : téléchargement vidéo + défilement rapide du Feed, confirmer
+l'absence de pic mémoire correspondant à la taille du fichier.
+
+## 2026-08-25 — Phase B V5 — V5-F-060 : DIFFÉRÉ (aucun correctif de code)
+
+### Vérification
+
+**Android** : `Utils/ViewTracker.java:100-113` (`startPeriodicSync`, `PeriodicWorkRequest` 15min
+sur `ViewSyncWorker`, appelé depuis `App.java:259,329`) ; `Activity/ui/HomeActivity.java:365,
+373-375,752-782` (`scheduleDynamicWorker` → 3 `PeriodicWorkRequest` sur `MyWorker`, 1-2 jours :
+"suggest-content", "get-suggest-content", "my-boost-deliver") ; `service/worker/ViewSyncWorker.java`
+(`doWork`) ; `service/MyWorker.java` (`doWork`, appelle `NotificationUtils.displaySuggestNotification`
+et `/boost/deliver/{userId}`). 4 tâches `WorkManager` périodiques persistant au-delà du cycle de
+vie du process, avec retry/backoff/contrainte réseau.
+
+**iOS** : `grep -r BGTaskScheduler` sur tout `Sources/TiinverSwift/` = 0 résultat.
+`BGTaskSchedulerPermittedIdentifiers` absent de `project.yml`. `ViewEventRepository` (stockage
+local, seul morceau écrit) jamais instancié (`grep -rn "ViewEventRepository("` vide). Endpoints
+`activity/suggest-content`/`boost/deliver` absents de TOUT fichier Swift, ni en tâche de fond ni
+même en appel synchrone au premier plan.
+
+### Décision : DIFFÉRÉ, pas de correctif de code
+
+4 raisons cumulatives : (1) enregistrer `BGTaskSchedulerPermittedIdentifiers` exige une
+modification `project.yml`/capability Xcode ("Background Modes"), une décision de configuration
+de build au-delà d'un correctif de code pur, à ne pas prendre seul au fil d'un balayage
+automatisé de backlog ; (2) ce finding regroupe 3 comportements d'arrière-plan
+architecturalement distincts (sync analytics/watchtime, notifications de ré-engagement, livraison
+de boost payante), chacun exigeant une vérification complète et séparée de la logique/l'endpoint
+Android avant une implémentation fiable ; (3) précédent direct déjà posé dans le cycle V3 :
+`V3-F-095` (MÊME domaine fonctionnel, temps de visionnage/analytics) déjà explicitement différé ;
+(4) la partie livraison de boost touche de l'ARGENT RÉEL dépensé par l'utilisateur — mérite une
+implémentation et un test dédiés, pas un correctif bundlé dans un balayage automatisé.
+
+**Fichiers modifiés** : aucun. **Commit** : aucun. **CI** : aucune.
+
+**Statut honnête** : `DIFFÉRÉ`. Nécessite une décision produit (capability Background Modes) et
+une session dédiée pour vérifier/implémenter séparément les 3 comportements + le câblage de
+`ViewEventRepository`.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

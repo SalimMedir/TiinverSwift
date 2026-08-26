@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [23/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [25/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -72,7 +72,10 @@ avant authentification, même `.alert` que `HomeShellView` ajoutée sur `RootRou
 `routeToGroup` ne retourne plus silencieusement si `myId == nil`) ; Lot P1-23 V5-F-057
 BUILD_VALIDATED (`CADisplayLink` de l'éditeur Animems jamais invalidé en quittant l'écran pendant
 la lecture, fuite non bornée, `.onDisappear { state.engine.stop() }` + `deinit` sur
-`AnimationEngine`)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
+`AnimationEngine`) ; Lot P1-24 V5-F-058 BUILD_VALIDATED (téléchargement/pré-cache vidéo
+chargeaient le fichier entier en RAM, `URLSession.shared.data(for:)`/`dataTask` basculés vers
+`download(for:)`/`downloadTask`, streaming disque)]**. Voir section "Cycle V5" plus bas pour le
+détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -512,35 +515,47 @@ lien comme filet de sécurité supplémentaire. **Commit `7bbca19` (code), docum
 commit `76fc029`, CI verte (run `32928191420`)** — `BUILD_VALIDATED`. Détail des 23 lots dans
 `PROGRESS_V5.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-058** (Performance/mémoire —
-téléchargement et pré-cache vidéo : vidéo ENTIÈRE chargée en RAM avant écriture disque
-(téléchargement Profil + pré-cache Feed), risque réel de jetsam/crash mémoire sur un simple
-défilement. Android [`Activity/service/CacheWorker.java:66-69,231-234`,
-`CacheDataSource.Factory`+`CacheWriter(dataSource, dataSpec, buffer, ...)` — écrit en FLUX, par
-blocs bornés, directement dans `SimpleCache` sur disque ; téléchargement utilisateur via
-`android.app.DownloadManager`, streaming disque système, JAMAIS chargé en tas Java] — le pré-cache
-ExoPlayer ET le téléchargement utilisateur écrivent TOUS DEUX la vidéo progressivement sur disque
-via un buffer de taille bornée, sans jamais retenir le fichier complet en mémoire, quelle que soit
-sa durée/poids. iOS [`Feed/FeedMediaDownloader.swift:36-45`, `download`, via
-`URLSession.shared.data(for:)` ; `Media/VideoCacheManager.swift:53-71`, `precache`, via
-`URLSession.shared.dataTask`] — `FeedMediaDownloader.download` charge la TOTALITÉ du fichier vidéo
-en mémoire comme un `Data` unique avant `data.write(to:)` ; `VideoCacheManager.precache` [appelé
-automatiquement en arrière-plan par `VideoPlayerManager.preload` pour chaque vidéo de la fenêtre
-`currentIndex±2` PENDANT le défilement du Feed] fait de même. Cause : `URLSession.shared.data(for:)`/
-`dataTask` [API haut niveau] chargent SYSTÉMATIQUEMENT tout le corps HTTP en RAM, contrairement à
-`URLSession.shared.download(for:)` [téléchargement en flux direct vers un fichier temporaire]
-qui aurait été l'équivalent réel. Impact : pour une vidéo longue/haute qualité [pré-cache cible
-spécifiquement les URLs 720p], ce chargement peut atteindre plusieurs centaines de Mo D'UN COUP —
-pendant un simple scroll du Feed [precache SILENCIEUX, sans action utilisateur visible], cumulé
-avec la vidéo en lecture et d'autres médias déjà en mémoire — scénario d'usage NORMAL, pas un cas
-limite. Plan : remplacer `URLSession.shared.data(for:)`/`dataTask` par
-`URLSession.shared.download(for:)` [ou `URLSessionDownloadTask`] dans les deux fonctions, qui
-écrit directement sur disque par blocs sans charger le fichier complet en RAM, fidèle au streaming
-disque Android — lire `FeedMediaDownloader.swift` et `VideoCacheManager.swift` en entier avant de
-coder pour la structure exacte des appelants/callbacks), puis continuer AUTOMATIQUEMENT V5-F-060,
-V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078,
-V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (16 P1 restants après V5-F-058, dans
-l'ordre exact du document), puis tous les P2 (31), P3 (21), SANS s'arrêter
+**Lot P1-24 traité (V5-F-058)** — Performance/mémoire, téléchargement et pré-cache vidéo
+chargeaient le fichier ENTIER en RAM avant écriture disque, risque réel de jetsam/crash sur un
+simple défilement. Vérifié `CacheWorker.java:66-69,231-234` (`CacheDataSource.Factory`+
+`CacheWriter`, écrit en flux par blocs bornés) et `DownloadManager` (streaming disque système) —
+aucun des deux ne charge jamais le fichier complet en tas Java. `FeedMediaDownloader.download`
+[`URLSession.shared.data(for:)`] et `VideoCacheManager.precache` [`URLSession.shared.dataTask`,
+appelé automatiquement PENDANT le défilement du Feed pour la fenêtre `currentIndex±2`]
+bufférisaient tous deux la vidéo entière en RAM. Correctif : les deux basculés vers les API de
+streaming `URLSession.shared.download(for:)`/`downloadTask(with:completionHandler:)`, fichier
+temporaire système déplacé immédiatement (synchrone) vers la destination finale. **Commit
+`d92eec9`, CI verte (run `32928942478`)** — `BUILD_VALIDATED`. Détail des 24 lots dans
+`PROGRESS_V5.md`.
+
+**V5-F-060 traité — DIFFÉRÉ (pas de correctif de code)** : Tâches en arrière-plan
+(BGTaskScheduler) — synchronisation périodique WorkManager (vues/watchtime + suggestions de
+contenu + livraison de boost) : AUCUN équivalent iOS enregistré. Vérifié `Utils/ViewTracker.java:
+100-113`/`HomeActivity.java:365,373-375,752-782` : 4 tâches `WorkManager` périodiques enregistrées
+au démarrage/à chaque connexion (sync vues 15min, suggestion de contenu → notification locale de
+ré-engagement, livraison quotidienne de "boosts" [promotion payante, argent réel]). iOS : `grep -r
+BGTaskScheduler` = 0 résultat, `BGTaskSchedulerPermittedIdentifiers` absent du project.yml,
+`ViewEventRepository` (le seul morceau écrit, stockage local) jamais instancié, endpoints
+`activity/suggest-content`/`boost/deliver` absents de TOUT fichier Swift — fonctionnalité
+entièrement absente, y compris son infrastructure de remplacement. **Décision DIFFÉRÉ** (pas
+BUILD_VALIDATED, pas de code touché) pour 4 raisons cumulatives : (1) enregistrer
+`BGTaskSchedulerPermittedIdentifiers` exige une modification `project.yml`/capability Xcode
+("Background Modes"), une décision de configuration de build au-delà d'un correctif de code pur,
+à ne pas prendre seul au fil d'un balayage automatisé de backlog ; (2) le finding regroupe 3
+comportements d'arrière-plan architecturalement distincts [sync analytics, notifications de
+ré-engagement, livraison de boost PAYANTE], chacun exigeant une vérification complète et séparée
+de la logique/l'endpoint Android avant une implémentation fiable ; (3) précédent direct déjà posé
+dans le cycle V3 : `V3-F-095` [MÊME domaine fonctionnel, temps de visionnage/analytics] déjà
+explicitement différé ; (4) la partie livraison de boost touche de l'ARGENT RÉEL dépensé par
+l'utilisateur — mérite une implémentation et un test dédiés, pas un correctif bundlé dans un
+balayage automatisé. **Aucun fichier modifié, aucun commit de code, aucune CI.**
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-062** (lire d'abord
+`MIGRATION_PARITY_AUDIT_V5.md` pour la citation Android/iOS complète de ce finding avant de
+coder — non résumée ici, se référer au document source), puis continuer AUTOMATIQUEMENT
+V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082,
+V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (14 P1 restants après V5-F-062, dans l'ordre
+exact du document ; V5-F-060 déjà clos DIFFÉRÉ), puis tous les P2 (31), P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →
 State/ViewModel → Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale

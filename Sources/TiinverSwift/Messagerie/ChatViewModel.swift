@@ -596,6 +596,25 @@ final class ChatViewModel: ObservableObject {
     /// `isFileUploaded` passé à 1 ; SwiftUI ne re-déclenche PAS `.onAppear` sur une simple mise à
     /// jour de contenu, donc l'envoi est déclenché explicitement ici pour un comportement observable
     /// équivalent (le message part bien vers le pair une fois l'upload terminé).
+    /// **Protégé contre la mise en arrière-plan le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md
+    /// V5-F-098, Phase B P1)** — Android confie cet upload à un `OneTimeWorkRequest` WorkManager
+    /// persistant (`ChatManager.java:261-295`, contrainte réseau + retry exponentiel), qui survit à
+    /// la mise en arrière-plan ET à un kill du process par l'OS. Avant ce correctif, ce `Task` Swift
+    /// nu était suspendu avec le process dans les toutes premières secondes si l'utilisateur quittait
+    /// l'app juste après avoir envoyé une photo/vidéo/cadeau (fenêtre d'exécution arrière-plan iOS
+    /// limitée), laissant `isFileUploaded=0` indéfiniment jusqu'à ce que l'utilisateur rouvre
+    /// manuellement la conversation (seul déclencheur de `handleAppear`/`.onAppear`, qui ne se
+    /// redéclenche PAS simplement parce que l'app revient au premier plan). **Portée réduite
+    /// documentée**, même politique que V5-F-076 (Feed, Lot P1-31) : plutôt que de porter
+    /// l'infrastructure complète (`URLSessionConfiguration.background`/file d'attente persistée),
+    /// applique l'option "à défaut" de la RECOMMANDATION — `UIApplication.shared.beginBackgroundTask`
+    /// donne à l'upload le temps de survivre à un passage bref en arrière-plan (~30s, prolongeable
+    /// par iOS) au lieu d'être suspendu immédiatement. Le second demi de la RECOMMANDATION ("retry
+    /// programmé au retour en premier plan") n'est PAS ajouté séparément : `ChatRepository.
+    /// resumePendingUploads` (V5-F-078) couvre déjà ce cas dès que le socket se reconnecte, ce qui
+    /// survient typiquement au retour au premier plan — ajouter un second observateur de cycle de
+    /// vie applicatif (`UIApplication.didBecomeActiveNotification`, absent de tout le dépôt) pour un
+    /// gain marginal aurait dépassé la portée d'un correctif P1 isolé.
     private func requestUpload(_ mlib: MessageLib) {
         guard let messageId = mlib.messageId, let object = mlib.object,
               let localPath = mlib.localFileDirection, let fileURL = URL(string: localPath)
@@ -605,9 +624,21 @@ final class ChatViewModel: ObservableObject {
         // ce même message pendant qu'une bulle visible le déclenche aussi ici.
         guard ChatMediaUploadService.shared.reserveUpload(messageId: messageId) else { return }
         let thumbnailURL = mlib.thumbnailUri.flatMap(URL.init(string:))
+
+        var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
+        backgroundTaskId = UIApplication.shared.beginBackgroundTask(withName: "ChatMediaUpload") {
+            UIApplication.shared.endBackgroundTask(backgroundTaskId)
+            backgroundTaskId = .invalid
+        }
+
         Task { [weak self] in
             guard let self else { return }
-            defer { ChatMediaUploadService.shared.releaseUpload(messageId: messageId) }
+            defer {
+                ChatMediaUploadService.shared.releaseUpload(messageId: messageId)
+                if backgroundTaskId != .invalid {
+                    UIApplication.shared.endBackgroundTask(backgroundTaskId)
+                }
+            }
             do {
                 let result = try await ChatMediaUploadService.shared.upload(
                     messageId: messageId, object: object, fileURL: fileURL, thumbnailFileURL: thumbnailURL

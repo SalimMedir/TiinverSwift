@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [36/40 BUILD_VALIDATED + 2 CODE_COMPLETE/CI_PENDING (V5-F-089, V5-F-095) : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [36/40 BUILD_VALIDATED + 3 CODE_COMPLETE/CI_PENDING (V5-F-089, V5-F-095, V5-F-097) : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -131,7 +131,16 @@ le scrub manuel timeline [`onPlayheadMoved`→`mAudio.seekTo`] non reproduit, ho
 cast Android `(int) seconds` douteux non porté sans preuve d'intention. **Commit `88b6023` poussé
 sur `main`, CI PAS déclenchée** — même blocage d'outillage que P1-35 ; **utilisateur a validé en
 cours de session** : continuer les correctifs sans s'arrêter, il déclenchera la CI par lots
-lui-même et communiquera le résultat)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
+lui-même et communiquera le résultat) ; Lot P1-37 V5-F-097 CODE_COMPLETE/CI_PENDING (FINANCIER —
+course de double-soumission sur Wallet transfert/retrait/conversion, `isSubmitting` fixé seulement
+DANS le `Task` sans aucun `guard` avant, double-tap rapide pouvait démarrer 2 requêtes réseau en
+parallèle avant qu'aucune ne pose le verrou → double débit réel ; corrigé sur les 3 écrans
+[`TransferCoinsView`/`WithdrawView`/`ConversionView`] : `guard !isSubmitting` + `isSubmitting =
+true` synchrone AVANT le `Task` ; `WithdrawView` gagne en plus une boîte de confirmation
+[`showConfirmation`] restaurant `FireMissilesDialogFragment` disparu au portage — vérification
+financière renforcée effectuée, aucune logique de calcul/débit/crédit modifiée. **Commit `1a94d5c`
+poussé sur `main`, CI PAS déclenchée** — même blocage d'outillage)]**. Voir section "Cycle V5" plus
+bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

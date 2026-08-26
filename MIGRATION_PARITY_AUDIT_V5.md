@@ -2995,6 +2995,42 @@ IMPACT : Un double-tap rapide (avant le premier repaint SwiftUI qui refléterait
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Positionner `isSubmitting = true` de façon SYNCHRONE dans le handler de bouton (avant la création du `Task`), avec un `guard !isSubmitting else { return }` en tout premier, sur les trois écrans (TransferCoinsView, WithdrawView, ConversionView) ; envisager de restaurer une étape de confirmation explicite sur WithdrawView avant l'envoi réseau, par fidélité et par sécurité pour une opération d'argent réel.
 CONTRE-AUDIT : trouvé par l'agent "Mémoire / concurrence" (Phase A.2, 2026-08-24)
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P1-37, FINDING FINANCIER —
+vérification renforcée effectuée) — Correctif appliqué EXACTEMENT comme recommandé, sur les 3
+écrans :
+- `TransferCoinsView.transfer()`/`ConversionView.convert()` : `guard !isSubmitting else { return
+  }` ajouté en tête (absent avant), `isSubmitting = true` déplacé de l'intérieur du `Task` à AVANT
+  sa création (synchrone dans le handler de tap).
+- `WithdrawView` : même correctif synchrone, appliqué à un nouveau `performSubmit()` (le corps du
+  `Task`, seul point d'appel réseau désormais) ; `submit()` (validations) déclenche maintenant
+  `showConfirmation = true` au lieu d'appeler le réseau directement — restaure la boîte de
+  confirmation Android disparue au portage (`FireMissilesDialogFragment`, résumé opérateur/pays/
+  solde/montant demandé/montant calculé/destination, vérifié `WithdrawActivity.java:224-268` :
+  Android n'appelle JAMAIS `submitWithdrawalRequest`/`submitWithdrawalByCrypto` ailleurs que dans
+  `onPositive()` de cette boîte), nouvel `.alert("Confirmer le retrait", ...)`.
+- Piège de compilation évité en écrivant le correctif : `Text(value, specifier:)` n'est PAS
+  disponible sur un `String` brut (uniquement sur `LocalizedStringKey`/`Text`) — le récapitulatif
+  de confirmation (`confirmationSummary: String`) utilise `String(format:)` à la place.
+
+**Vérification financière renforcée effectuée** (exigence explicite de l'utilisateur pour tout
+finding wallet) : paramètres envoyés à `transferCoins`/`submitWithdrawalRequest`/
+`submitWithdrawalByCrypto`/`convert` relus ligne par ligne — INCHANGÉS (mêmes arguments, même
+ordre, aucun montant/delta recalculé) ; solde local avant/après (`UserSession.shared.coinsAmount`/
+`pendingCoinsAmount`) — INCHANGÉ, aucune logique de mise à jour touchée ; gestion d'erreur
+(`catch`/`errorMessage`) — INCHANGÉE ; `showRewardedInterstitialAfterSuccess()` (déjà corrigé
+V4-F-065) — INCHANGÉE. Le correctif est un pur ajout de garde de concurrence + repositionnement
+temporel de `isSubmitting` + réintroduction d'une boîte de confirmation déjà présente côté
+Android — AUCUNE ligne de logique de calcul/débit/crédit modifiée. Idempotence : `guard
+!isSubmitting` empêche maintenant une 2ᵉ requête réseau concurrente tant que la 1ʳᵉ n'est pas
+retombée (succès OU échec, `defer { isSubmitting = false }` inchangé).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Wallet/TransferCoinsView.swift`,
+`Sources/TiinverSwift/Wallet/ConversionView.swift`, `Sources/TiinverSwift/Wallet/WithdrawView.swift`.
+
+**Commit `1a94d5c`, poussé sur `main`** (`1e92d9a..1a94d5c`). **CI NON déclenchée par cette
+session** — même blocage d'outillage que les Lots P1-35/P1-36 (`gh` CLI/jeton API absents, workflow
+`workflow_dispatch`-only). **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas confirmée.
 ```
 
 ```

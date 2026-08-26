@@ -1872,6 +1872,41 @@ réelle. En attente d'un déclenchement manuel du workflow par l'utilisateur (ac
 de session : accumuler plusieurs correctifs, CI lancée en lots par l'utilisateur plutôt qu'après
 chaque finding) avant `BUILD_VALIDATED`.
 
+## 2026-08-26 — Phase B V5 — Lot P1-37 : V5-F-097 (Wallet — course de double-soumission, FINANCIER)
+
+**Commit** : `1a94d5c` — poussé sur `main` (`1e92d9a..1a94d5c`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les 2 lots précédents, voir "Statut honnête").
+
+**Cause exacte** : sur les 3 écrans (`TransferCoinsView.transfer()`/`WithdrawView.submit()`/
+`ConversionView.convert()`), `isSubmitting = true` n'était fixé qu'À L'INTÉRIEUR de la closure
+`Task` (tour de boucle suivant, PAS synchrone dans le handler de tap), et AUCUN `guard
+!isSubmitting` n'existait avant. Vérifié Android : `TransfertCoinsActivity.java:115-140` masque le
+bouton SYNCHRONEMENT (`setVisibility(GONE)`) avant tout appel réseau ; `WithdrawActivity.
+java:224-268` n'appelle la soumission RÉELLE que depuis `onPositive()` d'un
+`FireMissilesDialogFragment` de confirmation (jamais directement depuis le clic).
+
+**Correction appliquée** (vérification financière renforcée effectuée — paramètres/deltas/solde
+avant-après/gestion d'erreur relus ligne par ligne, AUCUNE logique de calcul/débit/crédit
+modifiée) :
+- `TransferCoinsView`/`ConversionView` : `guard !isSubmitting else { return }` ajouté, `isSubmitting
+  = true` déplacé avant la création du `Task`.
+- `WithdrawView` : même correctif, appliqué à un nouveau `performSubmit()` — désormais seul point
+  d'appel réseau, atteint uniquement via un nouvel `.alert("Confirmer le retrait", ...)`
+  (`showConfirmation`/`confirmationSummary`) qui restaure la boîte de confirmation Android
+  disparue au portage.
+- Piège évité en écrivant le correctif : `\(valeur, specifier:)` n'existe QUE dans un contexte
+  `LocalizedStringKey`/`Text`, pas dans un `String` brut — `confirmationSummary` utilise
+  `String(format:)`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Wallet/TransferCoinsView.swift`,
+`Sources/TiinverSwift/Wallet/ConversionView.swift`, `Sources/TiinverSwift/Wallet/WithdrawView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les Lots P1-35/P1-36 : `gh` CLI/jeton API GitHub absents de cette session locale
+Windows, workflow `workflow_dispatch`-only. En attente d'un déclenchement CI par lots par
+l'utilisateur (accord donné en cours de session). Test réel requis en plus de la CI, vu la nature
+financière : double-tap rapide sur chacun des 3 boutons, confirmer qu'un seul débit/crédit a lieu.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

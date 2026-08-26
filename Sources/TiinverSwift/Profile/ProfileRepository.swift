@@ -89,6 +89,16 @@ final class ProfileRepository {
         _ = try await APIClient.shared.post(["userId": userId, "followId": followerId], endpoint: "follow")
     }
 
+    /// **Ajouté le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-022, Phase B P1-12)** — port de
+    /// `NotiLikecmt/AdapterNoti.java:420-441` (`FollowVH.bind`'s `butSeguir.setOnClickListener`) —
+    /// SEUL appelant de l'endpoint `followback` dans tout le code Android (`SuggestionVH`, la ligne
+    /// "suggestions de comptes", poste sur l'endpoint `follow` générique via `Following()`, PAS
+    /// celui-ci). Mêmes paramètres `{userId, followId}` que `follow(userId:followerId:)` ci-dessus
+    /// (`userId` = la personne à suivre en retour, `followId` = moi), endpoint différent.
+    func followBack(userId: String, followerId: String) async throws {
+        _ = try await APIClient.shared.post(["userId": userId, "followId": followerId], endpoint: "followback")
+    }
+
     /// Port de `UserProfile.block(username, userId)` — endpoint `block`, réponse `message` ∈
     /// `{"USER BLOCKED", "USER UNBLOCKED"}` (bascule automatique côté serveur selon l'état actuel,
     /// PAS un paramètre `blocked: Bool` envoyé par le client).

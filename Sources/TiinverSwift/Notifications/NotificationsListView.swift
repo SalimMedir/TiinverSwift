@@ -139,8 +139,13 @@ private struct NotificationRow: View {
                         // P1 — bug frère, même pattern `try?` + optimiste sans rollback, trouvé en
                         // vérifiant tous les appelants de `ProfileRepository.follow`) : rollback
                         // ajouté, fidèle au vrai comportement Android (`UserProfile.java:507-508`).
+                        //
+                        // Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-022, Phase B
+                        // P1-12) — ce bouton reproduit `FollowVH.bind` (`AdapterNoti.java:420-441`),
+                        // qui poste sur l'endpoint `followback`, PAS l'endpoint `follow` générique
+                        // utilisé par le profil/les suggestions.
                         do {
-                            try await ProfileRepository.shared.follow(userId: String(noti.userId), followerId: myId)
+                            try await ProfileRepository.shared.followBack(userId: String(noti.userId), followerId: myId)
                         } catch {
                             justFollowedBack = false
                         }

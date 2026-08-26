@@ -103,31 +103,49 @@ private struct NotificationRow: View {
         }
     }
 
+    @ViewBuilder
+    private var nameAndBodyText: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(noti.firstname ?? "") \(noti.lastname == "null" ? "" : (noti.lastname ?? ""))")
+                .font(.subheadline.bold())
+                .foregroundStyle(.primary)
+            Text(bodyText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     var body: some View {
         HStack {
             // Port de `AdapterNoti.img_avatar.setOnClickListener`/`bindAvatarClick` (`NotiLikecmt/
             // AdapterNoti.java:482-483` et `:587-588`, les DEUX formes de ligne de notification) —
-            // absent jusqu'ici côté iOS (gap confirmé, pas une hypothèse : aucune navigation du
-            // tout sur cette ligne). Zone tapable = avatar + bloc nom/texte, comme Android.
+            // zone tapable = avatar SEUL, inconditionnellement → profil.
             NavigationLink {
                 ProfileView(userId: String(noti.userId), isCurrentUser: false)
             } label: {
-                HStack {
-                    CDNAsyncImage(url: noti.profile.flatMap(URL.init), targetSize: CGSize(width: 44, height: 44)) { $0.resizable() } placeholder: { Color.gray.opacity(0.3) }
-                        .frame(width: 44, height: 44)
-                        .clipShape(Circle())
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(noti.firstname ?? "") \(noti.lastname == "null" ? "" : (noti.lastname ?? ""))")
-                            .font(.subheadline.bold())
-                            .foregroundStyle(.primary)
-                        Text(bodyText)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                CDNAsyncImage(url: noti.profile.flatMap(URL.init), targetSize: CGSize(width: 44, height: 44)) { $0.resizable() } placeholder: { Color.gray.opacity(0.3) }
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
             }
             .buttonStyle(.plain)
+
+            // **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-023, Phase B P1-13)** —
+            // port de `AdapterNoti.bindBodyClick` (`:612-625`) : zone tapable DISTINCTE de l'avatar,
+            // attachée au bloc nom/texte, → le post visé (`FullScreenMedia`), indépendamment de la
+            // présence d'une vignette. Android désactive explicitement le clic
+            // (`body.setClickable(false)`) quand `activityId<=0` (ex. notification `follow`, sans
+            // post associé) — reproduit ici en affichant le texte SANS le rendre tapable dans ce cas,
+            // plutôt qu'un `Button` désactivé (pas de retour visuel de "bouton" pour Android non plus).
+            if let post = reconstructedPost {
+                Button {
+                    onOpenPost(post)
+                } label: {
+                    nameAndBodyText
+                }
+                .buttonStyle(.plain)
+            } else {
+                nameAndBodyText
+            }
             Spacer()
 
             if noti.verb == "follow" {

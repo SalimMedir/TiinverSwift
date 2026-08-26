@@ -403,6 +403,32 @@ CAUSE : `UserSession.clear()` a été porté comme une purge ciblée des seuls c
 IMPACT : Sur un appareil partagé (device de test/famille) : après déconnexion d'un utilisateur A et connexion d'un utilisateur B, l'écran Wallet (`WalletView`/`WalletViewModel.coinsAmount`) peut afficher le solde en pièces/gemmes de l'utilisateur A jusqu'à ce que `ProfileViewModel` rafraîchisse le profil de B — fenêtre où une information financière erronée est montrée. Le `fcmId` de l'utilisateur précédent reste aussi en cache (pourrait être repoussé par erreur avant qu'un nouveau token ne soit obtenu).
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Étendre `UserSession.clear()` (ou `LocalDataPurger.purgeAll()`) pour réinitialiser aussi coinsAmount/gemsAmount/pendingCoinsAmount/pendingGemsAmount à 0 et supprimer la clé `fcmId` de UserDefaults, pour refléter fidèlement le `.edit().clear()` global d'Android sur le même fichier de préférences.
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-2) — Vérifié directement :
+`SessionManager.java:59-66` (`clear()` — `.edit().clear().apply()`, vide LA TOTALITÉ du fichier
+"tiinver_1995") ; `infoContract.java:106-109` (COINS_AMOUNT/GEMS_AMOUNT/PENDING_COINS_AMOUNT/
+PENDING_GEMS_AMOUNT) ; `MyFirebaseInstanceIdService.java:28,41` +
+`MyBackgroundTask.java:215` (`Settings.setStringPreference/getStringPreference(context,"fcmId",
+...)`, même fichier de préférences `PREFFERENCE_NAME` que `Settings.java` utilise pour TOUS ses
+helpers). Correctif appliqué exactement comme recommandé :
+- `UserSession.clear()` supprime maintenant aussi les clés UserDefaults `coinsAmount`/
+  `gemsAmount`/`pendingCoinsAmount`/`pendingGemsAmount` (`removeObject`, pas une réécriture
+  explicite à 0 — leurs accesseurs `.double(forKey:)`/`.integer(forKey:)` retournent déjà 0 pour
+  une clé absente, cohérent avec le style déjà en place dans cette même méthode pour les autres
+  champs).
+- Nouveau `PushTokenRegistrar.clearToken()` (encapsule la clé `"fcmId"`, `private` ailleurs dans le
+  fichier), appelé depuis `UserSession.clear()`.
+- Vérifié qu'Android perd de la MÊME façon un `pendingCoinsAmount`/`pendingGemsAmount` non
+  synchronisé au logout (même fichier, même `.clear()` global) — ce correctif ne crée donc AUCUN
+  nouveau risque financier, il reproduit fidèlement une limitation déjà présente côté Android.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Security/UserSession.swift`,
+`Sources/TiinverSwift/Notifications/PushTokenRegistrar.swift`.
+
+**Commit `b880a01`, poussé sur `main`** (`541ebff..b880a01`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé (`gh` CLI/jeton API absents, workflow
+`workflow_dispatch`-only, utilisateur informé et déclenche par lots de son côté). **PAS
+`BUILD_VALIDATED`** tant qu'une CI verte n'est pas confirmée.
 ```
 
 ```

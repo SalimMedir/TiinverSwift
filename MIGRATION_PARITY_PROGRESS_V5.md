@@ -1968,6 +1968,32 @@ apparaître/s'incrémenter le badge avant de quitter/rouvrir l'écran.
 d'outillage que les 4 derniers lots P1. En attente d'un déclenchement CI par lots par
 l'utilisateur.
 
+## 2026-08-26 — Phase B V5 — Lot P2-2 : V5-F-004 (Session — nettoyage incomplet au logout/suppression)
+
+**Commit** : `b880a01` — poussé sur `main` (`541ebff..b880a01`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `SessionManager.clear()` (Android) vide la TOTALITÉ du fichier
+`SharedPreferences` "tiinver_1995" — pas seulement l'identité de session, mais aussi le solde
+wallet en cache (`coinsAmount`/`gemsAmount`/`pendingCoinsAmount`/`pendingGemsAmount`,
+`infoContract.java:106-109`) et le `fcmId` poussé au serveur (`Settings.setStringPreference`,
+même fichier). `UserSession.clear()` (iOS) ne purgeait que les 7 champs d'identité — solde et
+`fcmId` résiduels restaient lisibles après déconnexion sur un appareil partagé, jusqu'à un fetch
+profil.
+
+**Correction appliquée** : `UserSession.clear()` supprime maintenant aussi les 4 clés wallet
+(`removeObject`, cohérent avec le reste de la méthode) ; nouveau
+`PushTokenRegistrar.clearToken()` appelé pour la clé `fcmId`. Vérifié qu'Android perd de la même
+façon un `pendingCoinsAmount`/`pendingGemsAmount` non synchronisé au logout (même fichier) — pas
+un nouveau risque financier introduit, une limitation déjà présente côté Android reproduite
+fidèlement.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Security/UserSession.swift`,
+`Sources/TiinverSwift/Notifications/PushTokenRegistrar.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

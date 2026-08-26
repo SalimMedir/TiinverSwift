@@ -160,13 +160,22 @@ réception socket d'un message pendant que l'app est sur un autre onglet, `chatU
 recalculé UNE SEULE FOIS au montage ; `.onReceive(ChatRepository.shared.chatEvents)` ajouté à
 `HomeShellView`, filtré `.message`, relance `refreshChatUnreadCount()` — port fidèle de
 `Roster.addMessage`→`HomeActivity.refreshChatBadge()`. **Commit `66beb6e` poussé sur `main`, CI
-PAS déclenchée** — même blocage d'outillage). **Prochain finding à traiter : V5-F-004** (2ᵉ P2
-dans l'ordre du document — vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas
-encore de bloc `STATUT :` à sa suite dans `MIGRATION_PARITY_AUDIT_V5.md`, comme fait pour
-identifier chaque finding restant tout au long de cette session). Si l'utilisateur a entre-temps
-déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre
-à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer
-le P2.
+PAS déclenchée** — même blocage d'outillage) ; Lot P2-2 V5-F-004 CODE_COMPLETE/CI_PENDING
+(nettoyage local incomplet au logout/suppression de compte, `SessionManager.clear()` Android vide
+TOUT le fichier SharedPreferences "tiinver_1995" — solde wallet en cache + `fcmId` inclus —
+`UserSession.clear()` iOS ne purgeait que l'identité de session ; solde wallet résiduel pouvait
+s'afficher pour un nouvel utilisateur sur appareil partagé. Corrigé : `UserSession.clear()`
+supprime aussi `coinsAmount`/`gemsAmount`/`pendingCoinsAmount`/`pendingGemsAmount` ;
+nouveau `PushTokenRegistrar.clearToken()` pour `fcmId`. Vérifié qu'Android perd de la même façon
+un solde en attente non synchronisé au logout — pas un nouveau risque financier introduit.
+**Commit `b880a01` poussé sur `main`, CI PAS déclenchée** — même blocage d'outillage).
+**Prochain finding à traiter : V5-F-008** (3ᵉ P2 dans l'ordre du document — V5-F-005/006/007 déjà
+traités en P1 : 005=DUPLICATE de V5-F-064, 006/007=BUILD_VALIDATED. Vérifier avec `grep
+"^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc `STATUT :` à sa suite dans
+`MIGRATION_PARITY_AUDIT_V5.md`, comme fait pour identifier chaque finding restant tout au long de
+cette session). Si l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING`
+listés ci-dessus et communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou
+traiter l'échec le cas échéant) avant de continuer le P2.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

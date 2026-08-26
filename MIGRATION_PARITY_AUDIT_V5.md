@@ -387,6 +387,12 @@ CAUSE : `DeepLinkCenter.pending` (destinations réussies) est correctement buffe
 IMPACT : Message d'erreur affiché au mauvais moment, dans un contexte sans rapport (juste après un login réussi), pouvant laisser croire à l'utilisateur que sa connexion vient d'échouer ou qu'un problème réseau affecte son compte alors que l'application fonctionne normalement à cet instant.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter le même `.alert` sur `deepLinks.errorMessage` au niveau de `RootRouterView` (ou `AuthCoordinatorView`), qui reste monté même avant authentification, à l'image du traitement déjà réservé à `pending`.
+STATUT : DUPLICATE de V5-F-050 (2026-08-26, Phase B P3) — trouvé indépendamment par 2 agents
+d'audit différents, décrivant le MÊME gap (même citation Android `ShareActivity.onError` →
+`showDialog()`) avec la MÊME recommandation. Vérifié par lecture directe :
+`RootRouterView.swift:142-149` porte déjà exactement cette alerte (`.alert` lié à
+`deepLinks.errorMessage`), ajoutée sous V5-F-050 (Lot P1-22, 2026-08-25, commit antérieur à cette
+session, `BUILD_VALIDATED`). Aucun code modifié.
 ```
 
 ```
@@ -668,6 +674,13 @@ CAUSE : Port incomplet de parseAndDisplay() : seule la garde `isFull` (posts) a 
 IMPACT : Si le backend ne respecte pas strictement `types=` (renvoie malgré tout une catégorie non demandée) ou si une réponse réseau en vol arrive après un changement d'onglet, Android supprime la catégorie hors-scope de l'onglet demandé au moment de la requête tandis qu'iOS l'affiche quand même — un onglet "Publications" pourrait ponctuellement afficher une section "Comptes"/"Hashtags" côté iOS sans équivalent Android. Impact dépendant du respect effectif de `types=` par le backend, non vérifiable depuis le code client seul — sévérité tenue basse en conséquence.
 SUGGESTED_STATUS : CODE_PRESENT_UNVERIFIED
 RECOMMANDATION : Ajouter dans decodeResults()/SearchView un filtrage explicite par `tab` (n'afficher "users" que si tab∈{all,users}, "hashtags" que si tab∈{all,hashtags}, "posts" que si isFull && tab∈{all,posts}), fidèle à parseAndDisplay().
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-2). RECOMMANDATION appliquée telle quelle :
+`decodeResults` reçoit désormais `tab`, vide `users`/`hashtags`/`posts` hors du périmètre de
+l'onglet actif, fidèle aux 3 gardes `showUsers`/`showHashtags`/`showPosts` de `parseAndDisplay`.
+`suggest()` passe `tab: .all` en dur, fidèle à `searchSuggest` qui appelle toujours
+`parseAndDisplay(object, false, "all")` indépendamment de l'onglet UI réellement sélectionné.
+Fichier modifié : `Discover/SearchRepository.swift`. Commit `45d2848`, poussé sur `main`. CI non
+déclenchée par cette session.
 ```
 
 ```
@@ -684,6 +697,10 @@ CAUSE : `runSearch(full:)` appelé directement depuis `.onChange(of: tab)` sans 
 IMPACT : Pas d'affichage erroné observé (les deux appels utilisent les mêmes paramètres à jour), mais requête réseau dupliquée à chaque changement d'onglet effectué pendant qu'un debounce de frappe est encore en vol (fenêtre de ~300 ms après la dernière frappe) — gaspillage réseau reproductible, sévérité mineure.
 SUGGESTED_STATUS : CODE_PRESENT_UNVERIFIED
 RECOMMANDATION : Appeler `searchTask?.cancel()` au début du handler `.onChange(of: tab)`, avant `runSearch(full: true)`, pour reproduire fidèlement `cancelDebounce()`.
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-3). RECOMMANDATION appliquée telle quelle :
+`searchTask?.cancel()` ajouté en tête de `.onChange(of: tab)`. Fichier modifié :
+`Discover/SearchView.swift`. Commit `923d48a`, poussé sur `main`. CI non déclenchée par cette
+session.
 ```
 
 ```

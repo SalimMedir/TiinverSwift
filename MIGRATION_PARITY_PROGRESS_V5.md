@@ -12,7 +12,8 @@ V5-F-002, V5-F-004, V5-F-008, V5-F-014, V5-F-024, V5-F-025, V5-F-026
 V5-F-049, V5-F-051, V5-F-054, V5-F-055 (partiel, écart architectural documenté), V5-F-059,
 V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071, V5-F-073 (DUPLICATE de V5-F-020), V5-F-074,
 V5-F-079, V5-F-083, V5-F-086, V5-F-090, V5-F-096, V5-F-099]. **BACKLOG P2 ENTIÈREMENT CLOS
-(31/31)**. Backlog P3 (21 findings) EN COURS — prochain : premier P3 dans l'ordre du document.**
+(31/31)**. Backlog P3 (21 findings) EN COURS [3/21 clos : V5-F-003 (DUPLICATE de V5-F-050),
+V5-F-011, V5-F-012]. Prochain : V5-F-015.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2690,8 +2691,52 @@ d'outillage que les lots précédents. En attente d'un déclenchement CI par lot
 
 **BACKLOG P2 (31 findings) ENTIÈREMENT CLOS** : 29 `CODE_COMPLETE/CI_PENDING`, 1 `DUPLICATE`
 (V5-F-073, de V5-F-020), 1 `IOS_INTENTIONAL_DIFFERENCE` (V5-F-026). Voir `CLAUDE_CONTINUATION.md`
-pour le détail lot par lot complet. Backlog P3 (21 findings) à traiter ensuite, dans l'ordre du
+pour le détail lot par lot complet. Backlog P3 (21 findings) DÉMARRE ci-dessous, dans l'ordre du
 document.
+
+## 2026-08-26 — Phase B V5 — Lot P3-1 : V5-F-003 (DUPLICATE de V5-F-050)
+
+**Aucun code modifié, aucun commit.** Vérifié par lecture directe : `RootRouterView.swift:142-149`
+porte déjà exactement l'alerte demandée (`.alert` lié à `deepLinks.errorMessage`, monté avant
+authentification), ajoutée sous V5-F-050 (Lot P1-22, 2026-08-25). Trouvé indépendamment par 2
+agents d'audit différents, même citation Android (`ShareActivity.onError`→`showDialog()`).
+
+## 2026-08-26 — Phase B V5 — Lot P3-2 : V5-F-011 (Recherche — catégories non filtrées par onglet actif)
+
+**Commit** : `45d2848` — poussé sur `main` (`a4f8816..45d2848`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `parseAndDisplay` (`RechercheTiinver.java:461-573`) applique 3 gardes
+`showUsers`/`showHashtags`/`showPosts`, chacune conditionnée par le `tab` capturé au moment de
+l'appel réseau, EN PLUS de la présence de la clé JSON. Seule la garde `showPosts`/`isFull` avait
+été portée (V3-F-106) ; `users`/`hashtags` étaient affichés dès que présents dans la réponse, sans
+vérifier l'onglet actif.
+
+**Correction appliquée** : `decodeResults` reçoit désormais `tab`, vide `users`/`hashtags`/`posts`
+hors du périmètre de l'onglet actif. `suggest()` passe `tab: .all` en dur, fidèle à `searchSuggest`
+qui appelle toujours `parseAndDisplay(object, false, "all")` indépendamment de l'onglet UI.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/SearchRepository.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P3-3 : V5-F-012 (Recherche — debounce non annulé au changement d'onglet)
+
+**Commit** : `923d48a` — poussé sur `main` (`45d2848..923d48a`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `selectTab` (`RechercheTiinver.java:341-350`) appelle `cancelDebounce()` avant
+de relancer la recherche pour le nouvel onglet. `.onChange(of: tab)` appelait `runSearch(full:
+true)` directement sans annuler `searchTask` (le debounce de frappe en attente), qui pouvait se
+déclencher ~300ms plus tard et relancer une requête réseau redondante.
+
+**Correction appliquée** : `searchTask?.cancel()` ajouté en tête de `.onChange(of: tab)`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/SearchView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

@@ -385,12 +385,24 @@ dès que `phase != .active` pendant `isRecording == true`. **Commit `99b4732` po
 PAS déclenchée**).
 
 **BACKLOG P2 (31/31) ENTIÈREMENT CLOS** — 29 `CODE_COMPLETE/CI_PENDING`, 1 `DUPLICATE` (V5-F-073,
-de V5-F-020), 1 `IOS_INTENTIONAL_DIFFERENCE` (V5-F-026). **Backlog P3 (21 findings) DÉMARRE
-MAINTENANT**, dans l'ordre du document — **premier P3 à traiter : V5-F-003** (grep
-`"^ID : V5-F-003"` dans `MIGRATION_PARITY_AUDIT_V5.md` ; identifier les P3 restants avec
-`grep "^PRIORITÉ : P3"` puis chercher lesquels n'ont pas encore de bloc `STATUT :` à leur suite,
-même méthode que pour le P2). Si l'utilisateur a entre-temps déclenché la CI pour les findings
-`CI_PENDING` listés ci-dessus (P0/P1/P2) et communiqué un résultat, mettre à jour leur statut vers
+de V5-F-020), 1 `IOS_INTENTIONAL_DIFFERENCE` (V5-F-026). **Backlog P3 (21 findings) EN COURS
+[3/21 clos]** : Lot P3-1 V5-F-003 **DUPLICATE de V5-F-050** (aucun code modifié — l'alerte
+`deepLinks.errorMessage` demandée existe déjà sur `RootRouterView.swift:142-149`, ajoutée sous
+V5-F-050/Lot P1-22, trouvé indépendamment par 2 agents d'audit) ; Lot P3-2 V5-F-011
+CODE_COMPLETE/CI_PENDING (recherche — catégories `users`/`hashtags` affichées dès présence dans le
+JSON sans vérifier l'onglet actif, seule la garde `showPosts`/`isFull` avait été portée [V3-F-106].
+Corrigé : `decodeResults` reçoit `tab`, vide les catégories hors-scope, fidèle aux 3 gardes
+`showUsers`/`showHashtags`/`showPosts` de `parseAndDisplay` ; `suggest()` passe `tab: .all` en dur
+comme `searchSuggest`. **Commit `45d2848` poussé sur `main`, CI PAS déclenchée**) ; Lot P3-3
+V5-F-012 CODE_COMPLETE/CI_PENDING (recherche — `.onChange(of: tab)` ne annulait pas le debounce de
+frappe en attente [`searchTask`], requête réseau redondante possible ~300ms après un changement
+d'onglet. Corrigé : `searchTask?.cancel()` ajouté, fidèle à `cancelDebounce()`. **Commit `923d48a`
+poussé sur `main`, CI PAS déclenchée**). **Prochain finding à traiter : V5-F-015** (grep
+`"^ID : V5-F-015"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe
+avant tout correctif, comme fait pour chaque finding tout au long de cette session ; identifier les
+P3 restants avec `grep "^PRIORITÉ : P3"` puis chercher lesquels n'ont pas encore de bloc
+`STATUT :` à leur suite). Si l'utilisateur a entre-temps déclenché la CI pour les findings
+`CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur statut vers
 `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P3.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22

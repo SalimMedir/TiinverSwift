@@ -464,6 +464,29 @@ CAUSE : Le commentaire de `FeedRepository.swift:322-327` justifie les champs vid
 IMPACT : Les signalements de contenu envoyés depuis le plein écran Home (et vraisemblablement aussi Profile/Hashtag, qui appellent la même fonction) arrivent au back-office de modération sans indication du post concerné ni du type de signalement, dégradant la capacité de modération par rapport à Android.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Faire passer `post.id` et un `report_type` ("content" en plein écran) à `FeedRepository.reportUser`/`FeedViewModel.report`, en distinguant le contexte grille (vide, fidèle à `MainFragment`) du contexte plein écran (rempli, fidèle à `FeedFragment.java`/`ProfileFeedFragment.java`/`HashtagProfile.java`).
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B V5, Lot P1-4) — Vérifié directement :
+`FeedFragment.java:1351-1359` confirme `target_id`/`report_type="content"` remplis pour un
+signalement de contenu plein écran, en plus de userId/username/nikname. Correctif : nouveau
+paramètre `includesTarget: Bool = false` sur `FeedViewModel.report`/`FeedRepository.reportUser`
+(défaut `false` préservant le comportement vide existant de la grille, `FeedView.swift` ligne
+~259, inchangée). `FeedDetailPagerView.confirmationDialog` (ligne ~653) — struct UNIQUE partagé
+par 6 écrans parents (Home/Profile/Hashtag/Search/Notifications/HomeShellView deep-link) — passe
+désormais `includesTarget: true`, corrigeant correctement TOUS ces contextes plein écran d'un seul
+coup, fidèle au fait qu'Android remplit ces champs pour CHACUNE de ses classes plein écran propres
+(`ProfileFeedFragment.java`/`HashtagProfile.java` inclus).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedRepository.swift`,
+`Sources/TiinverSwift/Feed/FeedViewModel.swift`, `Sources/TiinverSwift/Feed/FeedView.swift`.
+
+**Résultat CI** : commit `3845bc5`, push confirmé (`2b3b7a6..3845bc5 main -> main`), run
+`32913810419` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis (accès au back-office de modération) : signaler un
+post depuis le plein écran [n'importe quel contexte parent], confirmer que `target_id`/
+`report_type` arrivent bien remplis côté serveur ; signaler depuis la grille, confirmer qu'ils
+restent vides.
 ```
 
 ```

@@ -24,6 +24,14 @@ final class FeedViewModel: ObservableObject {
     private let profileRepository = ProfileRepository.shared
     private let pageSize = 10
     private var offset = 0
+    /// **Ajouté (V5-F-009, 2026-08-24)** — jeton de génération : incrémenté à chaque `reset()`.
+    /// Une réponse de pagination (`loadNextPage()`) dont le jeton capturé au départ ne correspond
+    /// plus à ce compteur au retour du réseau est PÉRIMÉE (un `reset()` a eu lieu entre-temps) et
+    /// n'est plus appliquée à `posts`/`offset`. Port de `loadResetData` (`MainFragment.java:
+    /// 481-489`), qui ne vérifie AUCUN flag `loading` avant de relancer un chargement page 1 —
+    /// contrairement à l'ancien `reset()` iOS qui partageait le même verrou `isLoading` que
+    /// `loadNextPage()` et se faisait donc silencieusement bloquer par une pagination en vol.
+    private var loadGeneration = 0
 
     /// Port de `notifyUser` (`POST push {"userId": ...}`) — **ajouté le 2026-08-24
     /// (MIGRATION_PARITY_AUDIT_V4.md V4-F-030, Phase B P1)**. Vérifié Android : câblé dans
@@ -64,6 +72,33 @@ final class FeedViewModel: ObservableObject {
 
     func loadNextPage() async {
         guard !isLoading else { return }
+        await fetchPage(generation: loadGeneration)
+    }
+
+    /// Port de `navigation_home` re-tap sur `MainFragment.loadResetData()` (module 5,
+    /// `HomeShellView`/`HomeActivity.mOnNavigationItemSelectedListener`).
+    ///
+    /// **Corrigé (V5-F-009, 2026-08-24)** — `loadResetData` (Android) ne vérifie AUCUN flag
+    /// `loading` avant de relancer un chargement page 1 : le rafraîchissement n'est JAMAIS
+    /// silencieusement annulé par une pagination en vol. L'ancienne version appelait
+    /// `loadNextPage()`, partageant son `guard !isLoading` — si un `loadNextPage()` de pagination
+    /// était déjà en vol au moment du tirage pour rafraîchir, ce `guard` bloquait le VRAI
+    /// rechargement de la page 1, `posts`/`offset` restaient remis à zéro sans nouvelle donnée, et
+    /// la réponse PÉRIMÉE de l'ancienne pagination (page N) s'appliquait ensuite au tableau
+    /// fraîchement vidé — flux figé sur d'anciennes données puis doublons à la pagination
+    /// suivante. `reset()` appelle maintenant directement `fetchPage` (contourne le `guard
+    /// !isLoading` de `loadNextPage()`, fidèle à l'absence de garde d'Android) après avoir
+    /// incrémenté `loadGeneration` — toute réponse de pagination encore en vol au moment du
+    /// `reset()` portera un jeton périmé et sera ignorée par `fetchPage` à son retour.
+    func reset() async {
+        loadGeneration += 1
+        let generation = loadGeneration
+        posts = []
+        offset = 0
+        await fetchPage(generation: generation)
+    }
+
+    private func fetchPage(generation: Int) async {
         // 2026-08-13 — CAUSE RÉELLE CONFIRMÉE du feed vide sans aucune erreur visible (audit
         // post-Appetize.io) : cette garde retournait SILENCIEUSEMENT si `myId` était absent/invalide
         // (pas de session valide) — `errorMessage` n'était jamais touché dans ce cas précis (seul le
@@ -94,13 +129,24 @@ final class FeedViewModel: ObservableObject {
         }
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        // V5-F-009 : ne rabaisse `isLoading` que si CETTE génération est toujours la génération
+        // courante — sinon un fetch périmé, résolu APRÈS qu'un `reset()` en a lancé un nouveau,
+        // couperait à tort le spinner du VRAI chargement encore en vol.
+        defer { if generation == loadGeneration { isLoading = false } }
 
         let requestLine = "FEED REQUEST: feedtimeline/\(userId)/\(pageSize)/\(offset) authHeader=\(UserSession.shared.apiKey != nil ? "present" : "nil")"
         print(requestLine)
         diagnostics += "\n" + requestLine
         do {
             let result = try await repository.fetchTimeline(userId: userId, limit: pageSize, offset: offset)
+            // V5-F-009 : un `reset()` a eu lieu pendant cet appel réseau — cette réponse correspond
+            // à une requête émise pour une génération déjà périmée (offset/posts d'une liste qui
+            // n'existe plus), l'appliquer corromprait l'état fraîchement réinitialisé.
+            guard generation == loadGeneration else {
+                let staleLine = "FEED RESPONSE: discarded — stale generation \(generation), current \(loadGeneration)"
+                print(staleLine)
+                return
+            }
             let page = result.activities
             let responseLine = "FEED RESPONSE: server sent \(result.receivedCount) activities, \(page.count) decoded successfully" + (result.receivedCount != page.count ? " — \(result.receivedCount - page.count) DROPPED BY DECODE FAILURE" : "")
             print(responseLine)
@@ -119,14 +165,6 @@ final class FeedViewModel: ObservableObject {
             print(errorLine)
             diagnostics += "\n" + errorLine
         }
-    }
-
-    /// Port de `navigation_home` re-tap sur `MainFragment.loadResetData()` (module 5,
-    /// `HomeShellView`/`HomeActivity.mOnNavigationItemSelectedListener`).
-    func reset() async {
-        posts = []
-        offset = 0
-        await loadNextPage()
     }
 
     // MARK: - Interactions (port de `OnLikeClicked`/`OnclickCommentaire`/`OnclickPrtg`/`OnclickMoreExpand`)

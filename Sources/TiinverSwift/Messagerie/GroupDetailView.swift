@@ -38,6 +38,10 @@ struct GroupDetailView: View {
     /// ci-dessus) : l'en-tête resterait figé sur l'ANCIENNE photo après un changement réussi sans
     /// cette mutabilité.
     @State private var groupProfile: String?
+    /// Port de `lucrative`/`price` (`SettingGroupMessageFragmant.java:190-196`, V5-F-017) — pilote
+    /// le panneau "Contenu restreint" ci-dessous, visible à TOUT membre (hors garde `IAM_ADMIN`).
+    let lucrative: Int
+    let price: Int
 
     @Environment(\.dismiss) private var dismiss
     @State private var members: [GroupMember] = []
@@ -74,13 +78,15 @@ struct GroupDetailView: View {
     /// local affiché IMMÉDIATEMENT au choix, avant même le début de l'upload réseau.
     @State private var pendingGroupAvatarImage: UIImage?
 
-    init(groupId: String, groupName: String, groupToken: String, groupType: String, groupDescription: String?, groupProfile: String?) {
+    init(groupId: String, groupName: String, groupToken: String, groupType: String, groupDescription: String?, groupProfile: String?, lucrative: Int = 0, price: Int = 0) {
         self.groupId = groupId
         _groupName = State(initialValue: groupName)
         self.groupToken = groupToken
         self.groupType = groupType
         _groupDescription = State(initialValue: groupDescription)
         _groupProfile = State(initialValue: groupProfile)
+        self.lucrative = lucrative
+        self.price = price
     }
 
     /// Port de `FilterGroupMemberList`'s `SearchView`/`filterMember` (410 lignes, entier — même
@@ -121,6 +127,19 @@ struct GroupDetailView: View {
                         descriptionDraft = groupDescription ?? ""
                         isEditingDescription = true
                     }
+                }
+            }
+
+            // Port de `container_static_info` (`SettingGroupMessageFragmant.java:190-196`,
+            // V5-F-017) — visible à TOUT membre (PAS de garde `IAM_ADMIN` sur ce bloc précis,
+            // contrairement à la section invite/ajout ci-dessous), affiché dès que `lucrative==1`.
+            if lucrative == 1 {
+                Section {
+                    Text("🔒 Contenu restreint") // Restricted_content
+                    Text("Ce groupe est accessible uniquement aux abonnés.") // only_subscribers
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Text("Abonnement : \(price) jetons/mois") // subscription + price + coins_per_month
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
             }
 

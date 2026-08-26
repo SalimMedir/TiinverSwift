@@ -122,7 +122,9 @@ struct ChatView: View {
                 GroupDetailView(
                     groupId: viewModel.target.groupId ?? "", groupName: viewModel.target.groupName ?? "",
                     groupToken: viewModel.target.token ?? "", groupType: viewModel.target.groupType ?? "",
-                    groupDescription: viewModel.target.description, groupProfile: viewModel.target.profile
+                    groupDescription: viewModel.target.description, groupProfile: viewModel.target.profile,
+                    // Port du panneau "Contenu restreint" (V5-F-017) — absent jusqu'ici de ce site d'appel.
+                    lucrative: viewModel.target.lucrative, price: viewModel.target.price
                 )
             }
         }

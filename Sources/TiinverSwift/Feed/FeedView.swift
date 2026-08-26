@@ -101,6 +101,32 @@ struct FeedView: View {
         return segments
     }
 
+    /// Port de `ActivityAdapter.FooterViewHolder` (`:259-291`, `case 2` = icône erreur + texte +
+    /// bouton "Réessayer" visible) — **ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md
+    /// V5-F-054, Phase B P2)**. Même motif que `ProfileView.postsGridFooter`/`ProfileViewModel.
+    /// postsLoadError` (déjà porté pour la grille Profil, jamais reproduit ici) : avant ce
+    /// correctif, `viewModel.errorMessage` était bien renseigné par `fetchPage()` sur un échec de
+    /// pagination, mais `FeedView` ne le lisait QUE dans `emptyOrStatusState`, elle-même
+    /// conditionnée à `posts.isEmpty` — dès qu'un post était déjà affiché (le cas réel de toute
+    /// pagination en cours de scroll), un échec réseau arrêtait silencieusement la croissance du
+    /// flux sans aucune indication ni moyen de relancer manuellement. Réutilise `errorMessage`
+    /// directement (pas de nouveau flag dupliqué : `fetchPage()` le remet déjà à `nil` avant
+    /// chaque tentative, exactement le même cycle que `postsLoadError`).
+    @ViewBuilder
+    private var feedGridFooter: some View {
+        if viewModel.isLoading {
+            ProgressView().padding()
+        } else if let errorMessage = viewModel.errorMessage {
+            VStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle").foregroundStyle(.secondary)
+                Text(errorMessage).font(.caption).foregroundStyle(.secondary)
+                Button("Réessayer") { Task { await viewModel.loadNextPage() } }
+                    .font(.caption.bold())
+            }
+            .padding()
+        }
+    }
+
     /// Port de `feed_header_layout.xml` — item `TYPE_HEADER` en position 0 du `RecyclerView`
     /// (`ActivityAdapter.HeaderViewHolder`), pas un composant décoratif mort : `contacts_suggest`
     /// (carrousel horizontal de comptes à suivre) est bien câblé (`sugestionRecycle.setAdapter(
@@ -172,6 +198,7 @@ struct FeedView: View {
                         }
                     }
                     .padding(1)
+                    feedGridFooter
                 }
                 .refreshable { await viewModel.reset() }
             }

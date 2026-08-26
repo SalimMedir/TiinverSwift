@@ -2145,6 +2145,20 @@ CAUSE : FeedView.swift n'affiche la vue d'état (chargement/erreur/vide) que dan
 IMPACT : Sur l'écran d'accueil (le plus consulté de l'app), un utilisateur qui perd la connexion ou rencontre une erreur serveur pendant le scroll voit son flux s'arrêter de grandir sans aucune explication ni moyen de relancer manuellement le chargement — expérience « écran figé » sans message clair, exactement le pattern que ce domaine d'audit cible explicitement, alors qu'Android affiche toujours un état visible (icône + texte + bouton) pour ce cas précis.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter à FeedView.swift un footer de pagination (readable via une nouvelle propriété booléenne type `postsLoadError`, sur le même modèle que ProfileViewModel.postsLoadError/ProfileView.postsGridFooter) affichant une icône d'erreur, un texte, et un bouton Réessayer quand `loadNextPage()` échoue alors que `posts` n'est pas vide.
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-16) — Correctif appliqué selon
+l'esprit de la RECOMMANDATION, avec une simplification assumée : réutilise `viewModel.
+errorMessage` (existant, déjà correctement peuplé/remis à `nil` par `fetchPage()`) plutôt qu'un
+nouveau flag booléen dupliqué `postsLoadError` — même cycle de vie observé (reset avant chaque
+tentative, posé sur échec), donc strictement équivalent sans état supplémentaire. Nouveau
+`feedGridFooter` (spinner pendant `isLoading`, icône+texte+bouton "Réessayer" sur
+`errorMessage != nil`, rien sinon) ajouté sous le contenu de la grille.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedView.swift`.
+
+**Commit `48dd5ec`, poussé sur `main`** (`9432cb2..48dd5ec`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé. **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas
+confirmée.
 ```
 
 ```
@@ -2161,6 +2175,29 @@ CAUSE : Le port de `preCachePrefix` n'a pas reproduit le plafond de longueur `2_
 IMPACT : Pour chaque vidéo du feed approchant de la position de lecture courante, l'app iOS télécharge silencieusement le fichier vidéo ENTIER (potentiellement plusieurs dizaines de Mo) au lieu d'un préfixe de 2 Mo — surconsommation de données cellulaires nettement supérieure à Android, et exposition beaucoup plus grande à une interruption réseau en cours de téléchargement (un fichier volumineux a statistiquement bien plus de chances d'être coupé qu'un préfixe de 2 Mo, et le résultat partiel est alors intégralement jeté silencieusement — `try?`/vérification de statut 2xx, aucun octet écrit, tentative perdue). De plus, la sérialisation stricte (1 thread vs 2 côté Android) signifie qu'un seul téléchargement lent ou bloqué sur une connexion dégradée retarde la mise en cache de TOUTES les vidéos suivantes de la fenêtre, alors qu'Android peut continuer avec son second thread.
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Limiter precache() à un préfixe de taille comparable (ex. 2 Mo) via un en-tête `Range: bytes=0-1999999` sur la requête, et paralléliser la queue de précache (ex. DispatchQueue concurrente avec une limite de 2 opérations simultanées) pour se rapprocher du comportement/volume de données observable d'Android.
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-17 — **correctif PARTIEL,
+écart architectural documenté**) — Sur les 2 volets de la RECOMMANDATION :
+- **Parallélisation (2 threads)** : appliquée exactement comme recommandé — `queue` passée en
+  `.concurrent`, nouveau `DispatchSemaphore(value: 2)` plafonnant à 2 précaches simultanés, fidèle
+  à `precacheExecutor = Executors.newFixedThreadPool(2)`.
+- **Plafond 2 Mo (préfixe)** : **DÉLIBÉRÉMENT NON appliqué**, après vérification directe de
+  `VideoPlayerManager.swift:87` : `isCached(url) ? localURL(for: url) : url` — un fichier "en
+  cache" côté iOS est chargé comme asset LOCAL COMPLET par `AVPlayerItem`, pas via un data source
+  segmenté équivalent à `CacheDataSource` ExoPlayer (qui, LUI, sert les octets en cache depuis le
+  disque et bascule le RESTE sur le réseau live sans discontinuité — c'est CE mécanisme qui rend
+  `preCachePrefix` sûr côté Android). Plafonner le téléchargement iOS à 2 Mo produirait un fichier
+  local TRONQUÉ qu'`isCached()` marquerait pourtant "en cache" — `VideoPlayerManager` tenterait de
+  lire ce fichier tronqué comme la vidéo complète, provoquant un arrêt de lecture après quelques
+  secondes pour CHAQUE vidéo précachée. Reproduire fidèlement le plafond aurait donc introduit une
+  RÉGRESSION DE LECTURE réelle, pire que la surconsommation de données actuelle — nécessiterait un
+  data source AVFoundation segmenté, hors périmètre d'un correctif P2 isolé.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Media/VideoCacheManager.swift`.
+
+**Commit `9d25c37`, poussé sur `main`** (`48dd5ec..9d25c37`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé. **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas
+confirmée.
 ```
 
 ```

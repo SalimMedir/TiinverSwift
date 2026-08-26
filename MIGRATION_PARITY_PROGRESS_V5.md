@@ -2315,6 +2315,49 @@ liste `SettingsView`, réutilisant `UpdateAppView` tel quel.
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
 
+## 2026-08-26 — Phase B V5 — Lot P2-16 : V5-F-054 (Feed Home — pagination silencieuse sur échec)
+
+**Commit** : `48dd5ec` — poussé sur `main` (`9432cb2..48dd5ec`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `ActivityAdapter.FooterViewHolder` affiche icône+texte+bouton "Réessayer" sur
+échec de pagination. `FeedViewModel.errorMessage` était déjà correctement peuplé par
+`fetchPage()`, mais `FeedView` ne le lisait que dans `emptyOrStatusState` (conditionnée à
+`posts.isEmpty`) — un échec réseau pendant le scroll (le cas réel) arrêtait silencieusement la
+croissance du flux. `ProfileView`/`ProfileViewModel` ont déjà ce motif (`postsGridFooter`/
+`postsLoadError`) pour la grille Profil, jamais reproduit pour le Feed Home.
+
+**Correction appliquée** (simplification assumée) : nouveau `feedGridFooter` réutilisant
+`errorMessage` existant (même cycle de vie que `postsLoadError` aurait eu, pas de nouveau flag
+dupliqué) — spinner/erreur+retry/rien selon l'état.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P2-17 : V5-F-055 (Cache vidéo — fichier entier + file sérielle au lieu de préfixe 2Mo/2 threads)
+
+**Commit** : `9d25c37` — poussé sur `main` (`48dd5ec..9d25c37`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `ExoPlayerManager.preCachePrefix` limite chaque précache à 2 Mo
+(`DataSpec.setLength(2_000_000L)`) sur un pool de 2 threads. iOS téléchargeait le fichier ENTIER
+sur une queue strictement sérielle (1 seul précache à la fois).
+
+**Correction PARTIELLE appliquée, écart architectural documenté** : la parallélisation (2 threads)
+est corrigée fidèlement. Le plafond 2 Mo n'est PAS appliqué — vérifié que `VideoPlayerManager.
+swift:87` charge un fichier "en cache" comme asset LOCAL COMPLET (pas via un data source segmenté
+comme le `CacheDataSource` ExoPlayer qui rend le plafond sûr côté Android). Tronquer le
+téléchargement iOS à 2 Mo produirait un fichier marqué "en cache" mais illisible au-delà de
+quelques secondes — régression de lecture réelle, pire que la surconsommation de données
+actuelle. Nécessiterait un data source AVFoundation segmenté, hors périmètre P2.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Media/VideoCacheManager.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

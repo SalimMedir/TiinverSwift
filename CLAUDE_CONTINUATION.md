@@ -261,9 +261,20 @@ CODE_COMPLETE/CI_PENDING (entrée "Mise à jour" absente du menu racine Settings
 `item_headers_of_settings.xml` place `header_updateapp` en dernier, toujours visible ;
 `UpdateAppView` déjà porté mais seul appelant = blocage forcé `RootRouterView`, aucun accès manuel.
 Corrigé : `NavigationLink("Mise à jour") { UpdateAppView() }` ajouté en fin de liste. **Commit
-`7f97584` poussé sur `main`, CI PAS déclenchée**). **Prochain finding à traiter : V5-F-054**
-(V5-F-052/053 sont P3 — V5-F-054 confirmé P2 par lecture directe, domaine Cache/téléchargement/
-hors-ligne. Vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc
+`7f97584` poussé sur `main`, CI PAS déclenchée**) ; Lot P2-16 V5-F-054 CODE_COMPLETE/CI_PENDING
+(pagination Feed Home silencieuse sur échec — `errorMessage` déjà peuplé mais jamais lu hors de
+`emptyOrStatusState`, conditionnée à `posts.isEmpty`. Corrigé : nouveau `feedGridFooter` réutilise
+`errorMessage` existant, même motif que `ProfileView.postsGridFooter`. **Commit `48dd5ec` poussé
+sur `main`**) ; Lot P2-17 V5-F-055 CODE_COMPLETE/CI_PENDING — **correctif PARTIEL, écart
+architectural documenté** (cache vidéo précache le fichier ENTIER sur file sérielle au lieu d'un
+préfixe 2Mo/2 threads Android. Parallélisation [2 threads] corrigée fidèlement ; plafond 2Mo
+DÉLIBÉRÉMENT NON appliqué — `VideoPlayerManager.swift:87` charge un fichier "en cache" comme asset
+LOCAL COMPLET, pas via un data source segmenté comme `CacheDataSource` ExoPlayer qui rend ce
+plafond sûr côté Android ; le reproduire tronquerait la lecture après quelques secondes pour
+chaque vidéo précachée — régression réelle pire que la surconsommation actuelle. **Commit
+`9d25c37` poussé sur `main`, CI PAS déclenchée** pour les deux). **Prochain finding à traiter :
+V5-F-059** (V5-F-056 est P3, V5-F-057/058 déjà traités en P1 — V5-F-059 confirmé P2 par lecture
+directe. Vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc
 `STATUT :` à sa suite, comme fait pour identifier chaque finding restant tout au long de cette
 session). Si l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés
 ci-dessus et communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter

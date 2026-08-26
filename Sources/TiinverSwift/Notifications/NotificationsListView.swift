@@ -121,7 +121,18 @@ private struct NotificationRow: View {
             if let text = noti.commentText, !text.isEmpty { return "a commenté : « \(text) »" }
             return "a commenté votre publication"
         case "follow": return "a commencé à te suivre"
-        case "transfert": return "vous a transféré des coins"
+        case "transfert":
+            // **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-025, Phase B P2)** — port
+            // de `AdapterNoti.TransferVH.bind` (`"%s %s %s << %s >>"`, fullName+transferred_you+
+            // MONTANT+coins) : `NotiEntity.commentText` porte le montant transféré pour ce `verb`
+            // précis (`NotiEntity.java:26`, documenté explicitement dans le commentaire de champ
+            // Android — même propriété que le texte de commentaire/id de cadeau selon le `verb`),
+            // jamais lu ici auparavant. Bracket ASCII Android "<< coins >>" pas reproduit tel quel
+            // (déjà remplacé par des guillemets français ailleurs dans ce même switch, cohérent).
+            if let amount = noti.commentText, !amount.isEmpty {
+                return "vous a transféré \(amount) pièces"
+            }
+            return "vous a transféré des coins"
         default: return noti.commentText ?? noti.verb ?? ""
         }
     }

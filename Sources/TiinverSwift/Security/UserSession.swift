@@ -147,6 +147,17 @@ final class UserSession {
     }
 
     /// Équivalent de la déconnexion : purge apiKey (Keychain) + identifiants (UserDefaults).
+    ///
+    /// **Étendu le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-004, Phase B P2)** — cette
+    /// méthode ne purgeait que les champs d'IDENTITÉ (myId/profile/username/...), pas l'équivalent
+    /// fidèle de `SessionManager.clear()` côté Android (`SharedPreferences.edit().clear().apply()`,
+    /// vide la TOTALITÉ du fichier "tiinver_1995" partagé par `back_sync/infoContract.java` —
+    /// solde wallet EN CACHE inclus, `Settings.setStringPreference(context,"fcmId",...)` inclus).
+    /// Sur un appareil partagé, `coinsAmount`/`gemsAmount`/`pendingCoinsAmount`/`pendingGemsAmount`
+    /// résiduels de l'utilisateur A pouvaient s'afficher dans `WalletView`/`WalletViewModel` pour
+    /// l'utilisateur B jusqu'à ce qu'un fetch profil les écrase — fenêtre d'information financière
+    /// erronée. `fcmId` résiduel pouvait aussi rester associé au compte A côté serveur tant qu'aucun
+    /// nouveau jeton n'était repoussé.
     func clear() {
         apiKey = nil
         defaults.removeObject(forKey: Keys.myId)
@@ -156,6 +167,11 @@ final class UserSession {
         defaults.removeObject(forKey: Keys.firstname)
         defaults.removeObject(forKey: Keys.lastname)
         defaults.removeObject(forKey: Keys.referralCode)
+        defaults.removeObject(forKey: Keys.coinsAmount)
+        defaults.removeObject(forKey: Keys.gemsAmount)
+        defaults.removeObject(forKey: Keys.pendingCoinsAmount)
+        defaults.removeObject(forKey: Keys.pendingGemsAmount)
+        PushTokenRegistrar.clearToken()
     }
 }
 

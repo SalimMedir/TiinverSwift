@@ -71,4 +71,14 @@ enum PushTokenRegistrar {
             }
         }
     }
+
+    /// Port de `SessionManager.clear()` (`context.getSharedPreferences(PREFFERENCE_NAME,
+    /// MODE_PRIVATE).edit().clear().apply()`) pour ce champ précis — **ajouté le 2026-08-26
+    /// (MIGRATION_PARITY_AUDIT_V5.md V5-F-004, Phase B P2)**. Android vide TOUT le fichier de
+    /// préférences partagé au logout/à la suppression de compte, y compris `fcmId` (même fichier
+    /// que `COINS_AMOUNT`/etc., voir `back_sync/infoContract.java`) — appelé depuis
+    /// `UserSession.clear()`.
+    static func clearToken() {
+        UserDefaults.standard.removeObject(forKey: userDefaultsKey)
+    }
 }

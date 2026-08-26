@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [19/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [20/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -62,8 +62,10 @@ vrai fast path `SimpleTrimmer` keyframe-snappé existe), ré-encodage frame-exac
 délibérément (précision > vitesse), commentaires corrigés, AUCUN changement fonctionnel) ; Lot
 P1-19 V5-F-043 BUILD_VALIDATED (bouton ◆ Animems enregistrait un keyframe matriciel
 inconditionnellement, câblé vers l'ouverture du panneau de propriétés — mode "controller" jamais
-porté côté iOS, seul comportement Android atteignable)]**. Voir section "Cycle V5" plus bas pour
-le détail complet.)
+porté côté iOS, seul comportement Android atteignable) ; Lot P1-20 V5-F-046 BUILD_VALIDATED
+(réponses imbriquées aux commentaires jamais chargées/affichées, `CommentRepository.replies`
+existait déjà mais 0 appelant, `repliesSection(for:)`/`commentLine(_:)` ajoutés dans
+`CommentsView`)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -455,36 +457,50 @@ inconditionnellement `state.recordKeyframe()`. Correctif : bouton câblé vers
 distinct). **Commit `1cf255b`, CI verte (run `32924984556`)** — `BUILD_VALIDATED`. Détail des 19
 lots dans `PROGRESS_V5.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-046** (Commentaires —
-réponses imbriquées [threading] JAMAIS chargées ni affichées, FONCTIONNALITÉ MANQUANTE. Android
-[`comments/ui/CommentAdapter.java:211-233`, bouton "Afficher N commentaires" visible si
-`elts.getRepliesCount() > 0`, tap → `listener.getReplay(elts, callback)` →
-`replayCommentAdapter.submitList(...)` ; `MyBottomSheetDialogFragment.java:516-520`
-`getReplay` → `commentViewModel.getReplay(data.getId(), LIMIT, OFFSET)` ;
-`comments/controller/CommentRepository.java:177-229` `getReplay`/`prepareReplayeData`, endpoint
-`/comment/replay/{activityId}/{limit}/{offset}`] — chaque commentaire de premier niveau ayant des
-réponses affiche un bouton "Afficher N commentaires", le tap déclenche un appel réseau réel
-récupérant et affichant les réponses imbriquées via un adapter dédié. iOS
-[`Discover/CommentRepository.swift:16-24`, `func replies(commentId:limit:offset:)` — port
-FONCTIONNEL CORRECT de `getReplay`, mais AUCUN appelant dans tout le projet iOS [grep
-`\.replies(commentId` = 0 résultat] ; `Discover/CommentsView.swift` [112 lignes] ne récupère ni
-n'affiche jamais aucune réponse : pas de bouton "voir les réponses", pas d'indentation, pas
-d'appel à `replies(...)` ; `Discover/CommentModels.swift:17,50` `repliesCount` décodé mais JAMAIS
-lu dans l'UI ; le bouton "Répondre" [ligne 84] permet bien d'ENVOYER un commentaire avec
-`parentId`, mais aucune réponse — ni la sienne ni celle d'un autre utilisateur — n'est jamais
-visible dans l'app]. Cause : `CommentRepository.replies` porté comme fonction isolée mais jamais
-câblé dans `CommentsView` — code mort côté fonction réseau, fonctionnalité UI simplement absente.
-Impact : threading des commentaires — explicitement demandé par le brief d'audit ["réponses
-imbriquées ... fonctionnent des deux côtés"] — totalement non fonctionnel en LECTURE sur iOS.
-Plan : ajouter dans `CommentsView` un affichage "Afficher N réponses" conditionné à
-`comment.repliesCount ?? 0 > 0`, appelant `CommentRepository.shared.replies(commentId:...)` et
-rendant les résultats imbriqués sous le commentaire parent, fidèle à
-`CommentAdapter`/`ReplayCommentAdapter` — lire `CommentsView.swift` [112 lignes] et
-`CommentModels.swift` en entier avant de coder pour la structure exacte des vues/modèles
-existants), puis continuer AUTOMATIQUEMENT V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060,
-V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078,
-V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (20 P1 restants après V5-F-046, dans
-l'ordre exact du document), puis tous les P2 (31), P3 (21), SANS s'arrêter
+**Lot P1-20 traité (V5-F-046)** — Commentaires, réponses imbriquées [threading] jamais chargées ni
+affichées (FONCTIONNALITÉ MANQUANTE). Vérifié `CommentAdapter.java:211-233` (bouton "Afficher N
+commentaires" visible si `repliesCount > 0` → `getReplay` → `ReplayCommentAdapter`) et
+`CommentRepository.java:177-229` (endpoint `/comment/replay/{activityId}/{limit}/{offset}`).
+`CommentRepository.replies` (iOS) existait déjà, port correct, mais 0 appelant dans tout le
+projet ; `CommentsView` ne récupérait/affichait jamais aucune réponse, `repliesCount` décodé mais
+jamais lu. Correctif : `commentRow` restructuré, rendu extrait en `commentLine(_:)` réutilisable ;
+nouvelle `repliesSection(for:)` ("Afficher N commentaire(s)") câblée sur `loadReplies(for:)` →
+`CommentRepository.shared.replies`, résultats rendus imbriqués (indentation 40pt). **Commit
+`ff728a9`, CI verte (run `32925870270`)** — `BUILD_VALIDATED`. Détail des 20 lots dans
+`PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-047** (Commentaires —
+cadeaux : affichage d'un commentaire-cadeau reçu rendu CASSÉ (ID technique brut au lieu du badge
+emoji). Android [`models/activity/comments/CommentModel.java:300-330`, commentaire explicite dans
+le code : "Les champs existants suffisent : comments → stocke gift_thumb_name, object → stocke
+gift" ; `resolveGift(Context)` résout LOCALEMENT emoji/nom/prix depuis `commentText` via
+`GiftCatalogHelper`, ne lit JAMAIS `getGiftEmoji()`/`getGiftName()`/`getGiftPrice()` pour
+l'affichage ; `CommentAdapter.java:197-198,276-281` `bindGiftView` appelle
+`elts.resolveGift(context)`, PAS les getters directs ; `GiftCatalogHelper.java`, catalogue
+statique complet emoji/prix/nom localisé] — le serveur n'envoie, pour un commentaire-cadeau, QUE
+`object="gift"` et `comments="gift_thumb_name"` [l'identifiant technique] — AUCUNE preuve que le
+backend envoie des champs séparés `giftEmoji`/`giftName`/`giftPrice`/`hasGift` ; Android résout
+ENTIÈREMENT l'affichage côté CLIENT via `GiftCatalogHelper`, à partir de ces 2 seuls champs. iOS
+[`Discover/CommentModels.swift:26-33`, `giftEmoji`/`giftName`/`giftPrice`/`hasGift` décodés
+directement depuis des clés JSON SUPPOSÉES du serveur, AUCUN champ `object` décodé ;
+`Discover/CommentsView.swift:79-82`, `if comment.hasGift == true, let emoji = comment.giftEmoji
+{ Label(...) }` sinon texte brut ; `Models/GiftCatalog.swift:3-8`, commentaire de tête du fichier
+LUI-MÊME : "CommentModel.resolveGift (commentaires, module 18, pas encore atteint)"] — Comment ne
+décode aucun champ `object`, s'appuie entièrement sur des clés qu'Android démontre ne JAMAIS être
+envoyées par le serveur pour cet endroit [preuve inverse : Android calcule tout en local exprès].
+Résultat probable : un commentaire-cadeau reçu s'affiche comme texte brut "gift_thumb_name" [ID
+technique non résolu] au lieu d'un badge "👍 ... 5". Cause : le port iOS suppose que le serveur
+envoie des champs de cadeau pré-résolus, alors qu'Android démontre que la résolution est
+intégralement client-side via un catalogue statique JAMAIS branché côté iOS pour ce module. Plan :
+ajouter un champ `object` à `Comment`, détecter `object == "gift"`, résoudre l'affichage via
+`GiftCatalog.resolve(comment.commentText)` [déjà porté et disponible, déjà utilisé pour le chat]
+plutôt que de dépendre des champs serveur non confirmés — lire `Models/GiftCatalog.swift` en
+entier pour l'API exacte de `resolve(_:)`/`emoji(for:)` avant de coder, et vérifier tous les sites
+consommant `comment.hasGift`/`giftEmoji`/`giftName`/`giftPrice` avant de les remplacer), puis
+continuer AUTOMATIQUEMENT V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063, V5-F-067,
+V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089,
+V5-F-095, V5-F-097, V5-F-098 (19 P1 restants après V5-F-047, dans l'ordre exact du document), puis
+tous les P2 (31), P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →
 State/ViewModel → Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale

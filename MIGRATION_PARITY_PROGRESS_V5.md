@@ -5,11 +5,11 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [19/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+temps). Backlog P1 (40 findings) EN COURS [20/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
 V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022,
 V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037 (IOS_INTENTIONAL_DIFFERENCE),
-V5-F-043], démarré automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-046.
-Puis 31 P2, 21 P3.**
+V5-F-043, V5-F-046], démarré automatiquement à V5-F-001, dans l'ordre du document. Prochain :
+V5-F-047. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -1081,6 +1081,41 @@ existant dans `bottomToolbar`. `recordKeyframe()` non supprimé : reste utilisé
 **Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
 réel requis : sélectionner un calque, taper ◆ plusieurs fois, confirmer l'ouverture du panneau de
 propriétés sans effet de bord sur la timeline.
+
+## 2026-08-25 — Phase B V5 — Lot P1-20 : V5-F-046 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `comments/ui/CommentAdapter.java:211-233` — bouton "Afficher N commentaires"
+visible si `elts.getRepliesCount() > 0`, tap → `listener.getReplay(elts, callback)` →
+`replayCommentAdapter.submitList(...)`. `MyBottomSheetDialogFragment.java:516-520` : `getReplay`
+→ `commentViewModel.getReplay(data.getId(), LIMIT, OFFSET)`.
+`comments/controller/CommentRepository.java:177-229` : `getReplay`/`prepareReplayeData`, endpoint
+`/comment/replay/{activityId}/{limit}/{offset}`.
+
+**iOS avant correctif** : `CommentRepository.replies(commentId:limit:offset:)` existait déjà,
+port fonctionnel correct de `getReplay` — mais grep exhaustif (`\.replies(commentId`) = 0
+résultat dans tout le projet. `CommentsView` ne récupérait ni n'affichait jamais aucune réponse ;
+`repliesCount` décodé mais jamais lu dans l'UI.
+
+### Correctif appliqué
+
+Cause : `CommentRepository.replies` porté comme fonction isolée mais jamais câblée dans
+`CommentsView` — code mort côté fonction réseau, fonctionnalité UI simplement absente. Correctif :
+`commentRow` restructuré, rendu de ligne extrait en `commentLine(_:)` réutilisable (commentaires
+ET réponses, même présentation) ; nouvelle `repliesSection(for:)` affichant "Afficher N
+commentaire(s)" quand `repliesCount > 0` ; nouvelle `loadReplies(for:)` appelant
+`CommentRepository.shared.replies` (offset 0, même limite que la page principale) ; résultats
+rendus imbriqués (indentation 40pt, alignée sous le texte du parent) via `commentLine`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/CommentsView.swift`.
+
+**Résultat CI** : commit `ff728a9`, push confirmé (`7b3ba10..ff728a9 main -> main`), run
+`32925870270` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : commentaire avec réponses existantes, taper "Afficher N commentaires", confirmer
+l'affichage correct.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

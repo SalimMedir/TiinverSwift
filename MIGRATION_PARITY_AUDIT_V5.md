@@ -1624,6 +1624,26 @@ CAUSE : CommentRepository.replies a été porté (fonction isolée) mais jamais 
 IMPACT : Le threading des commentaires, explicitement demandé par le brief d'audit ("réponses imbriquées ... fonctionnent des deux côtés"), est totalement non fonctionnel côté lecture sur iOS : un utilisateur ne voit jamais aucune réponse existante à un commentaire.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter dans CommentsView un affichage "Afficher N réponses" conditionné à comment.repliesCount ?? 0 > 0, appelant CommentRepository.shared.replies(commentId:...) et rendant les résultats imbriqués sous le commentaire parent, fidèle à CommentAdapter/ReplayCommentAdapter.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-20) — Vérifié directement :
+`CommentAdapter.java:211-233` confirme le bouton "Afficher N commentaires" visible si
+`repliesCount > 0`, appelant `getReplay` → `ReplayCommentAdapter`. `CommentRepository.replies`
+confirmé déjà fonctionnel (port correct de `getReplay`) mais confirmé par grep exhaustif SANS
+appelant dans tout le projet avant ce correctif. Correctif : `commentRow` restructuré — rendu de
+ligne extrait en `commentLine(_:)` réutilisable (commentaires ET réponses), nouvelle
+`repliesSection(for:)` affichant "Afficher N commentaire(s)" quand `repliesCount > 0`, câblée sur
+une nouvelle `loadReplies(for:)` appelant `CommentRepository.shared.replies(commentId:limit:offset:)`
+(offset 0, même `limit` que la page principale), résultats rendus imbriqués (indentation 40pt)
+sous le commentaire parent via `commentLine`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/CommentsView.swift`.
+
+**Résultat CI** : commit `ff728a9`, push confirmé (`7b3ba10..ff728a9 main -> main`), run
+`32925870270` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : ouvrir les commentaires d'un post ayant des
+réponses, taper "Afficher N commentaires", confirmer l'affichage correct des réponses imbriquées.
 ```
 
 ```

@@ -733,6 +733,42 @@ CAUSE : Port partiel du callback `OnFollowingSuccess` : seule la mise à jour du
 IMPACT : Un utilisateur suivi via iOS ne reçoit jamais la notification push "quelqu'un vous suit" que ses abonnés Android reçoivent, ce qui réduit silencieusement l'engagement/la découverte pour tout compte suivi majoritairement depuis l'app iOS.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Après le succès de `repository.follow(...)` dans `ProfileViewModel.follow()` et dans `FollowListView.toggleFollow()`, appeler `try? await FeedRepository.shared.notifyPostAuthor(userId: <id de l'utilisateur suivi>)`, fidèle au fire-and-forget sans callback d'Android (`data.Post(map,"push",null)`).
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-4 — **portée élargie au-delà
+des 2 sites cités par l'audit**) — En vérifiant TOUS les appelants réels de
+`ProfileRepository.follow`/`profileRepository.follow` (pas seulement les 2 cités), 3 sites
+supplémentaires avec le MÊME gap confirmé ont été trouvés, chacun vérifié directement contre son
+propre équivalent Android réel (pas supposé par analogie) :
+- `SearchView.toggleFollow` → `UniversalSearchAdapter.java:230-234` (`OnFollowingSuccess` →
+  `notifyUser`).
+- `SuggestionsCarouselView.follow` → `AdapterSuggestContact.java:139-143` (idem).
+- `FeedViewModel.followFromDetail` → `CustomCardView.java:270-296` (`followBtn`, idem).
+
+Les 5 sites appellent maintenant `notifyPostAuthor(userId:)` (helper déjà existant, `POST push
+{userId}`, déjà utilisé pour like/commentaire/partage) juste après le succès du follow,
+fire-and-forget via `try?`, fidèle à `data.Post(map,"push",null)` (callback null côté Android).
+
+**2 sites adjacents vérifiés et confirmés NE PAS nécessiter le correctif** (contre leur propre
+source Android, pas supposé) :
+- `FeedViewModel.unfollow()` — `MainFragment.java:1299-1315` (branche `unfollow` de
+  `OnclickMoreExpand`) : `OnFollowingSuccess` ne fait qu'un `Toast`+fermeture de feuille, AUCUN
+  `notifyUser` (cohérent : pas de notification "vous êtes suivi" en se désabonnant).
+- `NotificationsListView`'s bouton "Suivre en Retour" (`ProfileRepository.followBack`,
+  endpoint `followback`) — `AdapterNoti.java:420-434` (`butSeguir`, callback `td.Post(map,
+  "followback", Callback)`) : AUCUN `notifyUser` dans ce callback précis. Une AUTRE ligne
+  d'annonce (`lL`, suggestions de follow injectées dans la même liste, endpoint `follow` standard)
+  appelle bien `notifyUser` (`AdapterNoti.java:495-509`) mais correspond à une fonctionnalité
+  d'injection de suggestions dans le flux de notifications qui n'est PAS portée côté iOS (déjà
+  documenté séparément en tête de `NotificationsListView.swift`) — hors périmètre, rien à corriger
+  ici tant que cette fonctionnalité elle-même n'est pas portée.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Profile/ProfileViewModel.swift`,
+`Sources/TiinverSwift/Discover/FollowListView.swift`, `Sources/TiinverSwift/Discover/SearchView.swift`,
+`Sources/TiinverSwift/Feed/SuggestionsCarouselView.swift`, `Sources/TiinverSwift/Feed/FeedViewModel.swift`.
+
+**Commit `2dca9e8`, poussé sur `main`** (`98634e8..2dca9e8`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé. **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas
+confirmée.
 ```
 
 ```

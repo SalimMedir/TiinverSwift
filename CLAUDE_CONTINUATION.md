@@ -177,15 +177,27 @@ remplacé par des tronçons [`feedGridSegments`] séparés par un nouveau `FeedG
 largeur [placeholder discret 48pt, distinct du `FeedAdCell` plein écran du pager, fidèle au
 commentaire Android sur `AdsViewHolder.setPlaceholder`] — réutilise `NativeAdContentView`/
 `NativeAdLoader` déjà portés. **Commit `5c98813` poussé sur `main`, CI PAS déclenchée** — même
-blocage d'outillage). **Prochain finding à traiter : V5-F-014** (V5-F-009/010/013 déjà traités en
-P1 [BUILD_VALIDATED], V5-F-011/012 sont P3 [pas encore leur tour] — V5-F-014 confirmé P2 par
-lecture directe de son bloc dans `MIGRATION_PARITY_AUDIT_V5.md`. Vérifier avec `grep "^PRIORITÉ :
-P2"` puis chercher lequel n'a pas encore de bloc `STATUT :` à sa suite, comme fait pour identifier
-chaque finding restant tout au long de cette session — NE PAS supposer que "prochain ID numérique"
-= "prochain P2", les priorités sont entrelacées dans le document). Si l'utilisateur a entre-temps
-déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre
-à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer
-le P2.
+blocage d'outillage) ; Lot P2-4 V5-F-014 CODE_COMPLETE/CI_PENDING — **portée élargie au-delà des 2
+sites cités par l'audit** (notification push "quelqu'un vous suit" manquante après un follow
+réussi — `TransportData.notifyUser`/`POST push {userId}` côté Android, depuis
+`OnFollowingSuccess`. L'audit avait trouvé 2 sites [`ProfileViewModel.follow`,
+`FollowListView.toggleFollow`] ; en vérifiant TOUS les appelants réels de `follow`, 3 sites
+supplémentaires avec le même gap confirmés contre leur propre Android :
+`SearchView.toggleFollow`→`UniversalSearchAdapter.java`,
+`SuggestionsCarouselView.follow`→`AdapterSuggestContact.java`,
+`FeedViewModel.followFromDetail`→`CustomCardView.java`. Les 5 appellent maintenant
+`notifyPostAuthor(userId:)` [helper `POST push` déjà existant]. 2 sites adjacents vérifiés et
+confirmés SANS correctif nécessaire : `FeedViewModel.unfollow()` et le bouton "Suivre en Retour"
+de `NotificationsListView` [endpoint `followback`] — leurs callbacks Android respectifs n'ont
+AUCUN `notifyUser`. **Commit `2dca9e8` poussé sur `main`, CI PAS déclenchée** — même blocage
+d'outillage). **Prochain finding à traiter : V5-F-024** (V5-F-016/019/020/021/022/023 déjà
+traités en P1 ; V5-F-015/017/018 sont P3/P0 [déjà traité pour le P0] — V5-F-024 confirmé P2 par
+lecture directe de son bloc. Vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas
+encore de bloc `STATUT :` à sa suite, comme fait pour identifier chaque finding restant tout au
+long de cette session — NE PAS supposer que "prochain ID numérique" = "prochain P2", les
+priorités sont entrelacées dans le document). Si l'utilisateur a entre-temps déclenché la CI pour
+les findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur statut
+vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P2.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

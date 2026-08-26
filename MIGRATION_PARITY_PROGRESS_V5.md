@@ -2025,6 +2025,38 @@ chargement), et que le tap sur les posts environnants ouvre toujours le bon post
 (`detailStartIndex` doit rester l'index RÉEL dans `viewModel.posts`, pas la position visuelle dans
 le tronçon).
 
+## 2026-08-26 — Phase B V5 — Lot P2-4 : V5-F-014 (Profil — notification push manquante au follow, portée élargie)
+
+**Commit** : `2dca9e8` — poussé sur `main` (`98634e8..2dca9e8`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `TransportData.notifyUser(userId)` (`POST push {userId}`) est appelé depuis
+`OnFollowingSuccess` après CHAQUE follow réussi côté Android, déclenchant une notification
+"quelqu'un vous suit". L'audit avait trouvé ce gap sur 2 points d'entrée
+(`ProfileViewModel.follow`, `FollowListView.toggleFollow`) — en vérifiant TOUS les appelants réels
+de `follow` (pas seulement les 2 cités), 3 sites supplémentaires avec le même gap confirmé ont été
+trouvés, chacun vérifié directement contre son propre Android : `SearchView.toggleFollow`
+(`UniversalSearchAdapter.java:230-234`), `SuggestionsCarouselView.follow`
+(`AdapterSuggestContact.java:139-143`), `FeedViewModel.followFromDetail`
+(`CustomCardView.java:270-296`).
+
+**Correction appliquée** : les 5 sites appellent maintenant `notifyPostAuthor(userId:)` (helper
+`POST push` déjà existant) juste après le succès du follow, fire-and-forget via `try?`.
+
+**2 sites vérifiés et confirmés SANS correctif nécessaire** : `FeedViewModel.unfollow()`
+(branche unfollow Android, `OnFollowingSuccess` sans `notifyUser`) et le bouton "Suivre en
+Retour" de `NotificationsListView` (endpoint `followback`, callback Android sans `notifyUser` non
+plus — une AUTRE ligne de la même liste Android, suggestions de follow injectées, appelle bien
+`notifyUser` mais correspond à une fonctionnalité entière non portée côté iOS, documentée
+séparément, hors périmètre).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Profile/ProfileViewModel.swift`,
+`Sources/TiinverSwift/Discover/FollowListView.swift`, `Sources/TiinverSwift/Discover/SearchView.swift`,
+`Sources/TiinverSwift/Feed/SuggestionsCarouselView.swift`, `Sources/TiinverSwift/Feed/FeedViewModel.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

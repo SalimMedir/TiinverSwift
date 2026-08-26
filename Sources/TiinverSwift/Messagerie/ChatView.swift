@@ -216,7 +216,14 @@ struct ChatView: View {
         case "information", "shareboard":
             SystemInfoRow(text: systemInfoText(for: mlib))
         case "missedvoicecall", "voicecall":
-            MissedCallBubbleRow(message: mlib, text: systemInfoText(for: mlib)) { }
+            // Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-019, Phase B P1-9) — un tap
+            // sur cette bulle relance un appel sortant côté Android (MissedViewHolder.java:15-39 →
+            // ChatFragmentTest.java:561-563 → ActivityMsg.java:516-518, case 8: startCall(), même
+            // action que le bouton d'appel de la barre d'outils), fermeture auparavant vide.
+            MissedCallBubbleRow(message: mlib, text: systemInfoText(for: mlib)) {
+                guard callCoordinator.state == .idle else { return }
+                callCoordinator.startOutgoingCall(profile: outgoingCallProfile, chatType: viewModel.target.type)
+            }
         default:
             ChatBubbleRow(
                 message: mlib, isGroup: viewModel.target.isGroup,

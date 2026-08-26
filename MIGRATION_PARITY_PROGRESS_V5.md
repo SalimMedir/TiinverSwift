@@ -5,9 +5,9 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [8/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
-V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016], démarré automatiquement à V5-F-001, dans
-l'ordre du document. Prochain : V5-F-019. Puis 31 P2, 21 P3.**
+temps). Backlog P1 (40 findings) EN COURS [9/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019], démarré automatiquement à V5-F-001,
+dans l'ordre du document. Prochain : V5-F-020. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -635,6 +635,40 @@ suffixe d'endpoint était la vraie divergence. Diff strictement localisé (1 lig
 **Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
 réel requis : ouvrir la conversation d'un groupe payant avec abonnement expiré/restreint côté
 serveur, confirmer le blocage du composeur et l'affichage de la bannière.
+
+## 2026-08-25 — Phase B V5 — Lot P1-9 : V5-F-019 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `MissedViewHolder.java:15-39` (`onClick` → construit `ResultData` avec
+`object=ResultData.CALL`) → `ChatFragmentTest.java:561-563` (le listener détecte `ResultData.CALL`
+et appelle `mListener.onArticleSelected(8,null)`) → `ActivityMsg.java:516-518` (`case 8:
+startCall();` — même méthode que le bouton d'appel de la barre d'outils). Un tap sur une bulle
+"appel manqué"/"appel vocal" déclenche exactement la même action que le bouton toolbar : appel
+sortant relancé immédiatement.
+
+**iOS avant correctif** : `ChatView.swift:190-191` — `MissedCallBubbleRow(message:text:) { }`, le
+paramètre `onTap` est une fermeture totalement VIDE. Le composant lui-même
+(`ChatBubbleViews.swift:306-322`) est un `Button` fonctionnel, câblé côté vue ; le fichier possède
+déjà `outgoingCallProfile`/`callCoordinator.startOutgoingCall(...)` utilisés juste à côté pour le
+bouton toolbar (lignes 356-359/385).
+
+### Correctif appliqué
+
+Cause : point d'entrée UI non câblé lors du portage. Fermeture `onTap` remplacée par
+`callCoordinator.startOutgoingCall(profile: outgoingCallProfile, chatType: viewModel.target.type)`,
+gardée par `guard callCoordinator.state == .idle else { return }` — même garde que le bouton
+toolbar (`.disabled(callCoordinator.state != .idle)`), empêchant un double-appel concurrent.
+`callCoordinator`/`outgoingCallProfile` déjà en portée (propriétés `ChatView`).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatView.swift`.
+
+**Résultat CI** : commit `8bacdcb`, push confirmé (`f4ae1c6..8bacdcb main -> main`), run
+`32917273673` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : taper sur une bulle "appel manqué"/"appel vocal", confirmer le déclenchement d'un
+appel sortant.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

@@ -806,6 +806,25 @@ CAUSE : Point d'entrée UI non câblé lors du portage : `MissedCallBubbleRow` a
 IMPACT : Un utilisateur qui tape sur une notification d'appel manqué dans la conversation (le geste naturel pour rappeler quelqu'un) n'obtient aucune réaction sur iOS, alors que c'est le comportement attendu et fonctionnel sur Android — perte d'une fonctionnalité de rappel rapide, régression silencieuse d'UX.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Remplacer la fermeture vide par `{ callCoordinator.startOutgoingCall(profile: outgoingCallProfile, chatType: viewModel.target.type) }` au site d'appel de `MissedCallBubbleRow` dans `ChatView.swift:190-191`, en respectant la même garde `callCoordinator.state != .idle` déjà utilisée pour le bouton de la barre d'outils afin d'éviter un double-appel concurrent.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-9) — Vérifié directement :
+`MissedViewHolder.java:15-39` → `ChatFragmentTest.java:561-563` → `ActivityMsg.java:516-518`
+(`case 8: startCall();`) confirme qu'un tap sur la bulle relance exactement la même action que le
+bouton d'appel de la barre d'outils. Correctif : fermeture `onTap` de `MissedCallBubbleRow`
+(site d'appel `ChatView.swift`, `messageRow(_:)`) remplacée par
+`callCoordinator.startOutgoingCall(profile: outgoingCallProfile, chatType: viewModel.target.type)`,
+gardée par `guard callCoordinator.state == .idle else { return }` — même garde que le bouton de la
+barre d'outils, empêchant un double-appel concurrent. `callCoordinator`/`outgoingCallProfile` déjà
+en portée (propriétés `ChatView`), aucune modification structurelle nécessaire.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatView.swift`.
+
+**Résultat CI** : commit `8bacdcb`, push confirmé (`f4ae1c6..8bacdcb main -> main`), run
+`32917273673` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : taper sur une bulle "appel manqué"/"appel vocal"
+dans une conversation, confirmer qu'un appel sortant est bien relancé vers le correspondant.
 ```
 
 ```

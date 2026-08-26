@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [8/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [9/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -35,7 +35,9 @@ BUILD_VALIDATED (vignette recherche "Publications" retombait à tort sur object_
 profil restait vide après déblocage, `else { await loadInitialPosts() }` symétrique ajouté à
 `toggleBlock()`) ; Lot P1-8 V5-F-016 BUILD_VALIDATED (endpoint abonnement groupe payant sans le
 suffixe "2" Android, blocage composeur jamais déclenché, endpoint corrigé dans
-`GroupRepository.checkSubscription`)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
+`GroupRepository.checkSubscription`) ; Lot P1-9 V5-F-019 BUILD_VALIDATED (tap sur bulle "appel
+manqué" sans effet, `onTap` câblé vers `callCoordinator.startOutgoingCall`)]**. Voir section
+"Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -268,30 +270,53 @@ bloqué. Correctif : endpoint corrigé (`checksubscription` → `checksubscripti
 de la RECOMMANDATION (distinguer échec réseau franc du repli `.active`) délibérément NON appliqué :
 vérifié que l'`onError` Android ne fait lui-même rien de spécial sur échec réseau — le "fail open"
 du `try?` existant est déjà fidèle à Android. Diff strictement localisé (1 ligne + commentaire).
-**Commit `904d77a`, CI verte (run `32916536677`)** — `BUILD_VALIDATED`. Détail des 8 lots dans
-`PROGRESS_V5.md`.
+**Commit `904d77a`, CI verte (run `32916536677`)** — `BUILD_VALIDATED`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-019** (Écran de conversation
-— bulle d'appel manqué : un tap sur une bulle "appel manqué"/"appel vocal" ne rappelle jamais le
-correspondant. Android [`MissedViewHolder.java:15-39`, `onClick` → `ResultData.CALL` →
-`ChatFragmentTest.java:561-563` → `mListener.onArticleSelected(8,null)` →
-`ActivityMsg.java:516-518`, `case 8: startCall();`] déclenche exactement la même action que le
-bouton d'appel de la barre d'outils : un appel sortant est immédiatement relancé. iOS
-[`ChatView.swift:190-191`, `MissedCallBubbleRow(message:text:) { }`] — le dernier paramètre
-`onTap` est une fermeture totalement VIDE au site d'appel, alors que le fichier possède déjà tout
-le nécessaire (`outgoingCallProfile`/`callCoordinator.startOutgoingCall(...)`, utilisés juste à
-côté pour le bouton de la barre d'outils, lignes 356-359) — le composant `MissedCallBubbleRow`
-lui-même [`ChatBubbleViews.swift:306-322`] est un `Button` fonctionnel, câblé côté vue, mais son
-action n'a jamais été reliée. Cause : point d'entrée UI non câblé lors du portage. Plan :
-remplacer la fermeture vide par
-`{ callCoordinator.startOutgoingCall(profile: outgoingCallProfile, chatType: viewModel.target.type) }`
-au site d'appel de `ChatView.swift:190-191`, en respectant la même garde
-`callCoordinator.state != .idle` déjà utilisée pour le bouton de la barre d'outils, afin d'éviter
-un double-appel concurrent), puis continuer AUTOMATIQUEMENT V5-F-020, V5-F-021, V5-F-022,
+**Lot P1-9 traité (V5-F-019)** — Écran de conversation, un tap sur une bulle "appel manqué"/"appel
+vocal" ne rappelait jamais le correspondant. Vérifié `MissedViewHolder.java:15-39` →
+`ChatFragmentTest.java:561-563` → `ActivityMsg.java:516-518` (`case 8: startCall();`, même action
+que le bouton d'appel de la barre d'outils). `ChatView.swift:190-191` —
+`MissedCallBubbleRow(message:text:) { }`, fermeture `onTap` totalement vide, alors que
+`outgoingCallProfile`/`callCoordinator.startOutgoingCall(...)` étaient déjà utilisés juste à côté
+pour le bouton toolbar. Cause : point d'entrée UI non câblé lors du portage. Correctif : fermeture
+remplacée par l'appel à `callCoordinator.startOutgoingCall(profile: outgoingCallProfile, chatType:
+viewModel.target.type)`, gardée par `guard callCoordinator.state == .idle else { return }` (même
+garde que le bouton toolbar). **Commit `8bacdcb`, CI verte (run `32917273673`)** —
+`BUILD_VALIDATED`. Détail des 9 lots dans `PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-020** (Socket.IO — historique
+de groupe, repli REST serveur quand le cache local est épuisé — FONCTIONNALITÉ ENTIÈREMENT
+ABSENTE, portée plus large que les lots précédents. Android [`ChatFragmentTest.java:985-995`
+`loadMoreFromServeur()`, déclenché uniquement pour un groupe ; `:1415-1430` `onLoadFinished` :
+si le `CursorLoader` local retourne 0 ligne pendant un scroll-up, `hasLocalData=false` puis appel
+de `loadMoreFromServeur()` ; `:203/1731` `lastDate` = stamp du plus ancien message déjà chargé ;
+`ChatViewModel.java:128-130` délègue à `chatRepository.loadMoreFromServeur` ;
+`ChatRepository.java:1129-1177` GET `/group/{groupId}/messages?lastDate={lastDate}&limit={limit}`
+via `TransportData`, puis `getChatManager().prepareOldGroupMessage(object,false)` ;
+`ChatManager.java:1090-1155` `prepareOldGroupMessage` : parse le tableau JSON `data`, persiste
+chaque message via `addGroupMessage(meta,true/false)`, ET propage à l'UI via
+`ChatRepository.sendLiveData(chatModel)` avec `ChatModel.OLDMESSAGE`] — chaîne complète vérifiée
+atteignable, aucun maillon mort. Quand le cache local Core Data d'un groupe est épuisé, Android
+bascule automatiquement sur un appel REST paginé par date pour continuer à charger l'historique
+plus ancien. iOS [`ChatViewModel.swift`, `loadMore()` ligne ~184-195] interroge UNIQUEMENT le
+cache Core Data local (`MessageRepository.page`) ; si la page est vide, retourne immédiatement
+sans AUCUN appel réseau de repli — grep exhaustif sur tout `Sources/TiinverSwift/` pour
+`group/*/messages`/`loadMoreFromServeur`/`lastDate` ne retourne AUCUN résultat, fonctionnalité
+absente même partiellement. Impact : pour un groupe dont l'historique n'est pas intégralement en
+cache local [réinstallation, rejoint avant sync, cache purgé], le scroll vers le haut s'arrête
+silencieusement côté iOS alors qu'Android continue de charger depuis le serveur. Plan : dans
+`ChatViewModel.loadMore()`, quand la page locale est vide ET que la conversation est un groupe,
+appeler `GET group/{groupId}/messages?lastDate={dateDuPlusAncienMessageChargé}&limit={pageSize}`
+via `APIClient`, décoder le tableau `data` [même motif de décodage tolérant par item que
+`ChatRepository.decodeMessages`, pas un décodage strict du tableau entier], persister chaque
+message via `MessageRepository.addGroupMessage`, puis insérer les résultats en tête de `items`
+comme le fait déjà `loadMore()` pour la page locale — lire d'abord `ChatViewModel.swift` en
+entier, `GroupRepository.swift`, et `MessageRepository.swift`/`addGroupMessage` pour confirmer la
+forme exacte de l'intégration avant de coder), puis continuer AUTOMATIQUEMENT V5-F-021, V5-F-022,
 V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037, V5-F-043, V5-F-046, V5-F-047,
 V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070,
 V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097,
-V5-F-098 (31 P1 restants après V5-F-019, dans l'ordre exact du document), puis tous les P2 (31),
+V5-F-098 (30 P1 restants après V5-F-020, dans l'ordre exact du document), puis tous les P2 (31),
 P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →

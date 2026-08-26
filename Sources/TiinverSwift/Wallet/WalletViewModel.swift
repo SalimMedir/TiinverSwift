@@ -37,6 +37,10 @@ final class WalletViewModel: ObservableObject {
     func loadMore() async {
         guard !isLoading, !reachedEnd, let userId = UserSession.shared.myId else { return }
         isLoading = true
+        // V5-F-063 (Phase B P1-26) — effacé au début de CHAQUE tentative (pas seulement en cas de
+        // succès) : `errorMessage` est maintenant réellement consommé par `WalletView` (bandeau +
+        // bouton "Réessayer"), un ancien message ne doit pas persister après une reprise réussie.
+        errorMessage = nil
         defer { isLoading = false }
         do {
             let page = try await repository.transactions(userId: userId, limit: limit, offset: offset)

@@ -49,8 +49,30 @@ struct WalletView: View {
                 if viewModel.isLoading {
                     ProgressView().frame(maxWidth: .infinity)
                 }
+                // **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-063, Phase B P1-26)**
+                // — `WalletActivity.java:124-186` relance automatiquement `executeBackTask()`
+                // toutes les 5s sur échec réseau (`attemptReconnect`, `:178-186`), sans jamais
+                // afficher de message d'erreur — Android se rétablit silencieusement dès que le
+                // réseau revient. `viewModel.errorMessage` était déjà peuplé sur échec mais
+                // JAMAIS lu ici : si l'échec survenait au chargement INITIAL (liste vide), aucune
+                // cellule n'existait pour déclencher un nouvel essai via `.onAppear`, et l'écran
+                // restait vide/figé en permanence, sans texte, sans bouton, sans reprise. Repli
+                // ASSUMÉ, pas la reproduction de la reprise automatique silencieuse à 5s
+                // d'Android (nécessiterait un timer géré par le cycle de vie de la vue, même
+                // classe de risque de fuite que V5-F-057/CADisplayLink) : message d'erreur visible
+                // + bouton "Réessayer" explicite, complété par `.refreshable` ci-dessous pour un
+                // second mécanisme de reprise manuelle.
+                if let errorMessage = viewModel.errorMessage, viewModel.transactions.isEmpty {
+                    VStack(spacing: 8) {
+                        Text(errorMessage).font(.footnote).foregroundStyle(.secondary)
+                        Button("Réessayer") { Task { await viewModel.loadInitial() } }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                }
             }
         }
+        .refreshable { await viewModel.loadInitial() }
         .navigationTitle("Portefeuille") // titre d'écran non identifié dans le XML non lu
         .task { await viewModel.loadInitial() }
         .alert(selectedDetail?.title ?? "", isPresented: Binding(get: { selectedDetail != nil }, set: { if !$0 { selectedDetail = nil } })) {

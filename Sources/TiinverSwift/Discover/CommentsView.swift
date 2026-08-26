@@ -5,6 +5,10 @@ import SwiftUI
 /// feuille de commentaires d'une publication.
 struct CommentsView: View {
     let activityId: Int
+    /// Port de `this.data.getActor()` (`MyBottomSheetDialogFragment.onPost`, branche cadeau) —
+    /// l'AUTEUR de la publication commentée, destinataire (`receiverId`) d'un cadeau envoyé en
+    /// commentaire. **Ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-048, Phase B P2)**.
+    let postActorId: String?
     @State private var comments: [Comment] = []
     @State private var inputText = ""
     @State private var replyTarget: Comment?
@@ -14,6 +18,11 @@ struct CommentsView: View {
     // V5-F-046 (Phase B P1-20) — réponses imbriquées (threading), voir `repliesSection(for:)`.
     @State private var expandedReplies: [Int: [Comment]] = [:]
     @State private var loadingReplyIds: Set<Int> = []
+    /// Port du panneau cadeau (`giftPanel`) — voir `giftSheet`/`sendGift` (V5-F-048).
+    @State private var showGiftPicker = false
+    @State private var selectedGift: String?
+    @State private var isSendingGift = false
+    @State private var giftError: String?
 
     var body: some View {
         NavigationStack {
@@ -34,6 +43,13 @@ struct CommentsView: View {
                 }
 
                 HStack {
+                    // Port de `btn_gift` (`MyBottomSheetDialogFragment.java:94-131`) — visible
+                    // UNIQUEMENT si `FirebaseConfigManager.allowGiftCommenter()`. **Ajouté le
+                    // 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-048, Phase B P2)** — le
+                    // panneau cadeau-commentaire était entièrement absent côté iOS.
+                    if TiinverFirebaseConfigManager.shared.allowGiftCommenter {
+                        Button { showGiftPicker = true } label: { Image(systemName: "gift") }
+                    }
                     TextField("Ajouter un commentaire…", text: $inputText)
                         .textFieldStyle(.roundedBorder)
                     Button("Envoyer") { Task { await send() } } // pas de libellé Android identifié (layout non fourni)
@@ -45,6 +61,101 @@ struct CommentsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .navigationBarLeading) { Button("Fermer") {} } }
             .task { await loadMore() }
+            .sheet(isPresented: $showGiftPicker) { giftSheet }
+            .alert(
+                "Échec de l'envoi", isPresented: Binding(get: { giftError != nil }, set: { if !$0 { giftError = nil } })
+            ) {
+                Button("OK", role: .cancel) { giftError = nil }
+            } message: {
+                Text(giftError ?? "")
+            }
+        }
+    }
+
+    /// Port du panneau cadeau (`giftPanel`/`GridLayoutManager(4)`/`GiftAdapter`) —
+    /// **ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-048, Phase B P2)**.
+    private var giftSheet: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                Text("Solde : \(Int(UserSession.shared.coinsAmount)) pièces")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                ScrollView {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 16) {
+                        ForEach(GiftCatalog.orderedGiftIds, id: \.self) { giftId in
+                            let resolved = GiftCatalog.resolve(giftId)
+                            Button {
+                                selectedGift = giftId
+                            } label: {
+                                VStack(spacing: 4) {
+                                    Text(resolved?.emoji ?? "🎁").font(.system(size: 32))
+                                    Text("\(resolved?.price ?? 0)").font(.caption2)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(selectedGift == giftId ? Color.accentColor.opacity(0.2) : Color(.secondarySystemBackground))
+                                )
+                            }
+                        }
+                    }
+                    .padding()
+                }
+                if let selectedGift, let resolved = GiftCatalog.resolve(selectedGift) {
+                    let canAfford = Double(resolved.price) <= UserSession.shared.coinsAmount
+                    VStack(spacing: 8) {
+                        Text("\(resolved.emoji)  \(resolved.price) pièces")
+                        if isSendingGift {
+                            ProgressView()
+                        } else {
+                            Button("Envoyer") { Task { await sendGift(giftId: selectedGift, price: resolved.price) } }
+                                .disabled(!canAfford)
+                            if !canAfford {
+                                Text("Solde insuffisant").font(.caption).foregroundStyle(.red)
+                            }
+                        }
+                    }
+                    .padding(.bottom)
+                }
+            }
+            .navigationTitle("Envoyer un cadeau")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Fermer") { showGiftPicker = false } }
+            }
+        }
+    }
+
+    /// Port de `sendGiftComment`/`onPost` (branche cadeau) — **ajouté le 2026-08-26
+    /// (MIGRATION_PARITY_AUDIT_V5.md V5-F-048, Phase B P2)**.
+    ///
+    /// **Vérification financière** : le contrôle d'affordabilité (`gift.getPrice() >
+    /// userCoinBalance`) est fait dans `giftSheet` (désactive le bouton "Envoyer", comme
+    /// `btnSendGift.setEnabled(canAfford)` côté Android) — répété ici comme garde défensive avant
+    /// tout appel réseau. `UserSession.shared.coinsAmount` n'est décrémenté qu'APRÈS un succès
+    /// serveur CONFIRMÉ (`isBackendSuccess`), jamais avant, jamais de façon optimiste — fidèle à
+    /// `onPost` Android : `userCoinBalance -= data.getGiftPrice()` n'existe QUE dans la branche
+    /// `Result.SUCCESS` de `debitCoins`, jamais avant l'envoi. Sur échec, AUCUNE mutation de solde
+    /// (le `userCoinBalance += price` d'Android dans sa branche `ERROR` est un no-op réel — le
+    /// solde n'a jamais été décrémenté avant cet appel sur ce chemin, rien à rembourser ; ni
+    /// persisté via `Settings.setFloatPreference` sur cette branche côté Android non plus).
+    private func sendGift(giftId: String, price: Int) async {
+        guard let myId = UserSession.shared.myId, let receiverId = postActorId else { return }
+        guard Double(price) <= UserSession.shared.coinsAmount else { return }
+        isSendingGift = true
+        defer { isSendingGift = false }
+        do {
+            try await CommentRepository.shared.sendGift(
+                activityId: activityId, userId: myId, giftId: giftId, receiverId: receiverId, amount: price
+            )
+            UserSession.shared.coinsAmount -= Double(price)
+            showGiftPicker = false
+            selectedGift = nil
+            offset = 0
+            comments = []
+            await loadMore()
+        } catch {
+            giftError = "L'envoi du cadeau a échoué — réessaie ou annule."
         }
     }
 

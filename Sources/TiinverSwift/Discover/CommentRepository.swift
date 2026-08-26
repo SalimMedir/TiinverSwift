@@ -63,4 +63,33 @@ final class CommentRepository {
         if let parentId { params["parentId"] = String(parentId) }
         _ = try await APIClient.shared.post(params, endpoint: "comment")
     }
+
+    /// Port de `CommentViewModel.debitCoins`/`MyBottomSheetDialogFragment.onPost` (branche
+    /// `object=="gift"`) — **ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-048, Phase B
+    /// P2)**. Endpoint DISTINCT de `post(activityId:text:parentId:)` ci-dessus : `comment/add`
+    /// (PAS `comment`), débit + commentaire en une SEULE requête serveur (vérifié
+    /// `CommentRepository.java:240-247` : `td.Post(map, "comment/add", ...)`), pas de second appel
+    /// réseau séparé côté client. Réponse `{"error": bool}` — `isBackendSuccess` gère déjà les deux
+    /// conventions bool/string (voir `JSONValue.errorFieldNormalized`), fidèle au
+    /// `object.getBoolean("error")` de ce callback précis (Android utilise `getBoolean` ICI,
+    /// PAS `getString("error").equals("false")` comme `postComment` juste au-dessus — divergence
+    /// réelle déjà neutralisée génériquement côté iOS).
+    ///
+    /// **Vérification financière** : AUCUNE mutation de solde ici — `senderId`/`amount` sont
+    /// transmis au serveur qui applique le débit RÉEL server-side ; le solde local
+    /// (`UserSession.shared.coinsAmount`) n'est décrémenté par l'appelant QU'APRÈS un succès
+    /// confirmé (voir `CommentsView.sendGift`), jamais ici ni de façon optimiste — fidèle à
+    /// `onPost` Android, qui ne touche `userCoinBalance` que dans la branche `Result.SUCCESS` de
+    /// CE callback (jamais avant l'envoi).
+    func sendGift(activityId: Int, userId: String, giftId: String, receiverId: String, amount: Int) async throws {
+        let params = [
+            "activityId": String(activityId), "userId": userId,
+            "comment": giftId, "object": "gift",
+            "senderId": userId, "receiverId": receiverId, "amount": String(amount),
+        ]
+        let value = try await APIClient.shared.post(params, endpoint: "comment/add")
+        guard value.isBackendSuccess else {
+            throw JSONError.typeMismatch(value.backendErrorMessage ?? "comment/add")
+        }
+    }
 }

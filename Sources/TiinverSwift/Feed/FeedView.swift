@@ -266,7 +266,7 @@ struct FeedView: View {
             AnimemesEditorView(onClose: { showAnimems = false })
         }
         .sheet(item: $commentsPost) { post in
-            CommentsView(activityId: post.id)
+            CommentsView(activityId: post.id, postActorId: post.actor)
         }
         // Port de `promoteBtn` — voir déclaration de `boostTargetPost` ci-dessus.
         .sheet(item: $boostTargetPost) { post in
@@ -701,7 +701,7 @@ struct FeedDetailPagerView: View {
             }
         }
         .sheet(item: $commentsPost) { post in
-            CommentsView(activityId: post.id)
+            CommentsView(activityId: post.id, postActorId: post.actor)
         }
         .sheet(item: $boostTargetPost) { post in
             NavigationStack { BoostView(activityId: post.id) }

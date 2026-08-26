@@ -282,8 +282,8 @@ struct PhotoToolsView: View {
 
     /// Aplatit l'image + les traits de peinture + le texte en une seule image bitmap avant
     /// publication (`ImageEditorCompound.saveImageWithPaint`/`saveImageWithText` côté Android — même
-    /// principe, résolution finale ajustée à la résolution PIXEL de l'image source plutôt qu'à la
-    /// taille d'affichage, via `ImageRenderer.scale`).
+    /// principe de composition, résolution finale via `ImageRenderer.scale` — voir la note
+    /// V5-F-088 ci-dessous pour la résolution EXACTE, qui diffère délibérément d'Android).
     ///
     /// **Corrigé le 2026-08-20 (MIGRATION_PARITY_AUDIT_V3.md V3-F-126, reconfirmation de V3-F-039,
     /// Phase B P1)** — avant ce correctif, le composé était rendu à `canvasSize` (le cadre ÉCRAN,
@@ -297,8 +297,22 @@ struct PhotoToolsView: View {
     /// tailles (largeur de trait, taille de police — fixées en points ÉCRAN) sont converties vers
     /// le repère réel de l'image via `screenToImageScale`/`imageSpacePoint`, pour que le résultat
     /// final ait EXACTEMENT la même apparence proportionnelle que ce que l'utilisateur voyait à
-    /// l'écran, fidèle à Android (`ImageEditorCompound` bake le contenu à la résolution pixel de la
-    /// photo, jamais à la résolution d'affichage).
+    /// l'écran.
+    ///
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-088, Phase B P3)** — le
+    /// commentaire ci-dessus affirmait à tort que ce composé "à la résolution pixel de la photo" est
+    /// fidèle à Android. Vérifié par lecture directe : `ImageEditorCompound.fitBitmapToView`
+    /// (`:240-280`) redimensionne la photo de base à la largeur d'écran MESURÉE (`availableWidth`)
+    /// AVANT tout ajout de peinture/texte, et `createImage` (`:818-825`) exporte via
+    /// `getBitmapFromView(mView)` — les dimensions de la VUE écran, PAS celles de la photo source.
+    /// Android exporte donc TOUJOURS à la résolution d'AFFICHAGE (souvent bien inférieure à une
+    /// photo 12 MP+), jamais à la résolution pixel native. Ce composé iOS, lui, est rendu à
+    /// `imageSize = displayedImage.size` (résolution PIXEL complète post-recadrage) — **divergence
+    /// INTENTIONNELLE assumée**, pas une fidélité par erreur : une image finale de meilleure
+    /// qualité/résolution qu'Android pour la même action, sans régression identifiée, jugée
+    /// préférable à reproduire le plafonnement Android. Dimensions de sortie donc NON identiques
+    /// entre les deux plateformes pour une même photo — à garder en tête pour tout test de parité
+    /// s'appuyant sur les dimensions du fichier exporté.
     @MainActor
     private func flatten() -> UIImage {
         guard canvasSize.width > 0, canvasSize.height > 0, !strokes.isEmpty || !texts.isEmpty else {

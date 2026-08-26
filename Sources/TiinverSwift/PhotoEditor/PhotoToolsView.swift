@@ -47,6 +47,9 @@ struct PhotoToolsView: View {
     @State private var newSticker = ""
     @State private var canvasSize: CGSize = .zero
     @State private var errorText: String?
+    /// Port du bouton "recadrer à nouveau" (`ic_repeate`/`onRepeateImage`, V5-F-086) — absent
+    /// jusqu'ici de ce portage.
+    @State private var showRecrop = false
 
     init(sourceImage: UIImage, onDone: @escaping (UIImage) -> Void, onCancel: @escaping () -> Void) {
         self.onDone = onDone
@@ -112,6 +115,24 @@ struct PhotoToolsView: View {
             } message: {
                 Text("Touche le globe du clavier pour choisir un emoji.")
             }
+            // Port de `onRepeateImage` (`ImageEditorCompound.java:861-885`, V5-F-086) — Android
+            // instancie directement `CroperView` (recadrage rectangle simple, PAS le choix de forme
+            // proposé en amont du flux de publication) sur une capture de l'état courant du canevas.
+            .fullScreenCover(isPresented: $showRecrop) {
+                PhotoCropView(
+                    image: flatten(),
+                    onCropped: { cropped in
+                        // Port de `mView.clearBoard()` + `onNewAddBitmap(bitmap, "bitmap", true, true)`
+                        // — remplace TOUT le composite courant par le résultat recadré, efface
+                        // l'historique de traits/texte précédent.
+                        displayedImage = cropped
+                        strokes = []
+                        texts = []
+                        showRecrop = false
+                    },
+                    onCancelled: { showRecrop = false }
+                )
+            }
         }
         .background(Color.black)
     }
@@ -148,6 +169,9 @@ struct PhotoToolsView: View {
                 Button { showTextPrompt = true } label: { Image(systemName: "textformat") }
                 // Port de `ic_smile`/`EmojiView` — clavier emoji système, voir tête de fichier.
                 Button { showStickerPrompt = true } label: { Image(systemName: "face.smiling") }
+                // Port de `ic_repeate`/`onRepeateImage` (V5-F-086) — recadrer à nouveau le composite
+                // courant (traits + texte + image déjà ajoutés).
+                Button { showRecrop = true } label: { Image(systemName: "crop.rotate") }
                 // Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-057, Phase B P2) — voir
                 // `undo()` : ce bouton ne concerne QUE la peinture côté Android, plus de garde sur
                 // `texts`.

@@ -19,14 +19,17 @@ final class SearchRepository {
     func suggest(query: String) async throws -> SearchResults {
         guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return SearchResults() }
         let value = try await APIClient.shared.get("content/search/suggest?q=\(encoded)")
-        return try Self.decodeResults(value, isFull: false)
+        // Port de `searchSuggest` (`RechercheTiinver.java:412-431`) — appelle TOUJOURS
+        // `parseAndDisplay(object, false, "all")`, "all" en dur, indépendant de l'onglet
+        // effectivement sélectionné dans l'UI à cet instant (V5-F-011).
+        return try Self.decodeResults(value, isFull: false, tab: .all)
     }
 
     /// Port de `searchFull` — `types` dérivé de l'onglet actif (`getTypesForTab`). `isFull: true`.
     func search(query: String, tab: SearchTab) async throws -> SearchResults {
         guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return SearchResults() }
         let value = try await APIClient.shared.get("content/search?q=\(encoded)&types=\(tab.apiTypes)&limit=10&offset=0")
-        return try Self.decodeResults(value, isFull: true)
+        return try Self.decodeResults(value, isFull: true, tab: tab)
     }
 
     /// Port de `object.getBoolean("error")`/`JSONObject results = object.getJSONObject("results")` —
@@ -51,13 +54,23 @@ final class SearchRepository {
     /// la réponse — cette garde manquait côté iOS (`decodeResults` ne recevait pas l'information
     /// `isFull`). `posts` vidé après décodage quand `isFull==false`, indépendant du comportement
     /// réel du serveur (défensif par construction, pas besoin d'inspection réseau pour trancher).
-    private static func decodeResults(_ value: JSONValue, isFull: Bool) throws -> SearchResults {
+    ///
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-011, Phase B P3)** — seule la
+    /// garde `showPosts` (ci-dessus) avait été portée ; `parseAndDisplay` applique aussi
+    /// `showUsers = tab=="all"||tab=="users"` (`:473`) et `showHashtags = tab=="all"||tab=="hashtags"`
+    /// (`:505`), INDÉPENDAMMENT de la présence de la clé JSON correspondante — si le backend ne
+    /// respecte pas strictement `types=` (renvoie une catégorie hors-scope malgré tout) ou qu'une
+    /// réponse réseau en vol arrive après un changement d'onglet, Android supprime la catégorie
+    /// hors-scope de l'onglet demandé au moment de la requête, jamais reproduit côté iOS jusqu'ici.
+    private static func decodeResults(_ value: JSONValue, isFull: Bool, tab: SearchTab) throws -> SearchResults {
         guard (try? value.bool("error")) != true else { return SearchResults() }
         guard let data = value["results"]?.rawData else {
             throw APIError.server(message: "results manquant")
         }
         var results = try JSONDecoder().decode(SearchResults.self, from: data)
-        if !isFull { results.posts = [] }
+        if tab != .all, tab != .users { results.users = [] }
+        if tab != .all, tab != .hashtags { results.hashtags = [] }
+        if !isFull || (tab != .all && tab != .posts) { results.posts = [] }
         return results
     }
 }

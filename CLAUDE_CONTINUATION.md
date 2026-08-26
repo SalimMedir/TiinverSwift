@@ -10,8 +10,9 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 ---
 
 # CURRENT HANDOFF (2026-08-26 — cycle V3 clos, **cycle V4 ENTIÈREMENT CLOS (75/75 findings)**,
-**cycle V5 EN COURS** : Phase A [69 findings] + Phase A.2 contre-audit ciblé [30 findings
-supplémentaires, V5-F-070 à V5-F-099] TERMINÉES, **99 findings au total**, Phase B EN COURS —
+**cycle V5 PHASE B INTÉGRALEMENT CLOSE (99/99 findings, P0+P1+P2+P3)** : Phase A [69 findings] +
+Phase A.2 contre-audit ciblé [30 findings supplémentaires, V5-F-070 à V5-F-099] TERMINÉES, **99
+findings au total**, Phase B TERMINÉE —
 **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7, tous BUILD_VALIDATED)** : Lot P0-1 V5-F-094 (export MP4
 Animems bloqué indéfiniment, `AnimemesExporter` variable locale désallouée par ARC, corrigé via
 `activeExporter` propriété stockée) ; Lot P0-2 V5-F-018 (chat ouvert sur messages anciens +
@@ -460,13 +461,32 @@ noir-sur-blanc quand actif. **Commit `dc23492` poussé sur `main`, CI PAS décle
 P3-16 V5-F-088 **IOS_INTENTIONAL_DIFFERENCE, pas de correctif fonctionnel** (résolution d'export
 Photo Editor — commentaire de `flatten()` affirmait à tort "fidèle à Android" [Android exporte
 TOUJOURS à la résolution d'affichage, jamais pixel native, vérifié] ; comportement iOS actuel
-[meilleure résolution] conservé, commentaire corrigé. **Commit `beb9eb8`**). **Prochain finding à
-traiter : V5-F-091** (grep `"^ID : V5-F-091"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à
-confirmer par lecture directe avant tout correctif, comme fait pour chaque finding tout au long de
-cette session ; identifier les P3 restants avec `grep "^PRIORITÉ : P3"` puis chercher lesquels
-n'ont pas encore de bloc `STATUT :` à leur suite). Si l'utilisateur a entre-temps déclenché la CI
-pour les findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur
-statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P3.
+[meilleure résolution] conservé, commentaire corrigé. **Commit `beb9eb8`**). Lot P3-18 V5-F-091 **IOS_INTENTIONAL_DIFFERENCE, pas de correctif** (désélection sur tap vide
+conservée — `selectObject(at:)` corrige un bug de sélection bloquée découvert lors du portage,
+reproduire la persistance "collante" d'Android le réintroduirait. **Commit `2960d89`**) ; Lot
+P3-19 V5-F-092 **IOS_INTENTIONAL_DIFFERENCE, pas de correctif** (même racine/décision que
+V5-F-091 — `GestureListener.onScroll` et la persistance de sélection découlent du MÊME comportement
+Android [`touchDown` ne réinitialise jamais sur un miss], pas un second gap indépendant. **Commit
+`dd147b1`**) ; Lot P3-17 V5-F-093 CODE_COMPLETE/CI_PENDING — **DERNIER P3, BACKLOG P3
+ENTIÈREMENT CLOS (21/21)** (taille par défaut d'un média importé indépendante du canevas — Android
+dimensionne à la moitié du canevas RÉEL [`CELLS=2`], iOS utilisait une constante fixe 220pt.
+Corrigé : `maxDimension = min(canvasSize.width, canvasSize.height) / 2`. **Commit `7622451` poussé
+sur `main`, CI PAS déclenchée**).
+
+**BACKLOG P3 (21/21) ENTIÈREMENT CLOS** — 12 `CODE_COMPLETE/CI_PENDING`, 2 `DUPLICATE` (V5-F-003
+de V5-F-050, V5-F-015 de V5-F-065), 1 `DIFFÉRÉ` (V5-F-053), 5 `IOS_INTENTIONAL_DIFFERENCE`
+(V5-F-075, V5-F-081, V5-F-088, V5-F-091, V5-F-092).
+
+**CYCLE V5 (PHASE B) INTÉGRALEMENT CLOS : P0 (7/7) + P1 (40/40) + P2 (31/31) + P3 (21/21) = 99
+findings traités.** Tous les correctifs restent `CODE_COMPLETE, CI_PENDING` sauf ceux déjà
+`BUILD_VALIDATED` (CI verte confirmée pendant la session, majoritairement en P1/P0) — aucune CI n'a
+pu être déclenchée localement pour le reste (pas d'accès `gh` CLI/jeton API sur cette session
+Windows, `ios-build.yml` étant `workflow_dispatch`-only). **Prochaine étape pour l'utilisateur : déclencher la CI
+par lots pour les findings `CODE_COMPLETE, CI_PENDING` restants et communiquer les résultats**, afin
+de les faire passer à `BUILD_VALIDATED` (ou de traiter un éventuel échec). Si l'utilisateur souhaite
+poursuivre, l'étape suivante logique serait de démarrer un nouveau cycle d'audit (V6) ou de
+retraiter un domaine spécifique signalé par l'utilisateur — aucune instruction en ce sens n'a été
+donnée à ce stade.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

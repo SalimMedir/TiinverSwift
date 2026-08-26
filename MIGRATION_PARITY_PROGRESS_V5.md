@@ -15,7 +15,9 @@ V5-F-079, V5-F-083, V5-F-086, V5-F-090, V5-F-096, V5-F-099]. **BACKLOG P2 ENTIÈ
 (31/31)**. Backlog P3 (21 findings) EN COURS [3/21 clos : V5-F-003 (DUPLICATE de V5-F-050),
 V5-F-011, V5-F-012, V5-F-015 (DUPLICATE de V5-F-065), V5-F-017, V5-F-027, V5-F-028, V5-F-041,
 V5-F-044 (DOCUMENTÉ), V5-F-052, V5-F-053 (DIFFÉRÉ), V5-F-056, V5-F-075 (IOS_INTENTIONAL_DIFFERENCE), V5-F-080, V5-F-081 (IOS_INTENTIONAL_DIFFERENCE),
-V5-F-084, V5-F-087, V5-F-088 (IOS_INTENTIONAL_DIFFERENCE)]. Prochain : V5-F-091.**
+V5-F-084, V5-F-087, V5-F-088 (IOS_INTENTIONAL_DIFFERENCE), V5-F-091 (IOS_INTENTIONAL_DIFFERENCE),
+V5-F-092 (IOS_INTENTIONAL_DIFFERENCE), V5-F-093]. **BACKLOG P3 ENTIÈREMENT CLOS (21/21). CYCLE V5
+(PHASE B) INTÉGRALEMENT CLOS.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2966,6 +2968,53 @@ par lecture directe : `fitBitmapToView`/`createImage` exportent TOUJOURS à la r
 côté Android, jamais à la résolution pixel native. Comportement iOS actuel (meilleure
 qualité/résolution) conservé, documenté comme divergence intentionnelle plutôt qu'une fausse
 fidélité.
+
+## 2026-08-26 — Phase B V5 — Lot P3-18 : V5-F-091 (IOS_INTENTIONAL_DIFFERENCE) — désélection sur tap vide conservée
+
+**Aucun changement fonctionnel** (commit `2960d89`, commentaire uniquement). `selectObject(at:)`
+désélectionne explicitement sur un tap vide — ajoutée précisément pour corriger un bug de sélection
+bloquée découvert lors du portage initial. Reproduire la persistance "collante" d'Android
+(`touchDown` ne réinitialise jamais `objectInAction` sur un miss) réintroduirait ce même bug.
+Décision documentée dans `AnimemesEditorView.swift` (`dragGesture`).
+
+## 2026-08-26 — Phase B V5 — Lot P3-19 : V5-F-092 (IOS_INTENTIONAL_DIFFERENCE) — même racine/décision que V5-F-091
+
+**Aucun changement fonctionnel** (commit `dd147b1`, commentaire uniquement). `GestureListener.
+onScroll` (translation d'un calque sur TOUT glissement une fois sélectionné, même depuis le vide)
+et V5-F-091 (persistance de sélection) découlent de la MÊME racine Android (`touchDown` ne
+réinitialise jamais la sélection sur un miss) — pas un second gap indépendant. Reproduire l'un sans
+l'autre serait incohérent. Documenté dans le même commentaire que V5-F-091.
+
+## 2026-08-26 — Phase B V5 — Lot P3-17 : V5-F-093 (Taille par défaut d'un média importé indépendante du canevas) — DERNIER P3, BACKLOG P3 ENTIÈREMENT CLOS (21/21)
+
+**Commit** : `7622451` — poussé sur `main` (`dd147b1..7622451`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `onNewAddBitmap` (`AnimemesCompound.java:2268-2277`) dimensionne une image
+importée à la MOITIÉ de la largeur/hauteur RÉELLE du canevas actif (`CELLS=2`) — la taille par
+défaut s'adapte donc au ratio choisi (9:16, 1:1, etc.). `AnimemesEditorState.addImage` utilisait une
+constante fixe `maxDimension: 220`, indépendante du canevas — même taille par défaut quel que soit
+le ratio.
+
+**Correction appliquée** : `maxDimension` calculé comme `min(canvasSize.width, canvasSize.height) /
+2` (suggestion de l'audit), réutilise `downscale(maxDimension:)` existant.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorState.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+**BACKLOG P3 (21 findings) ENTIÈREMENT CLOS** : 12 `CODE_COMPLETE/CI_PENDING`, 1 `DUPLICATE`
+(V5-F-003, de V5-F-050), 1 `DUPLICATE` (V5-F-015, de V5-F-065), 1 `DIFFÉRÉ` (V5-F-053), 5
+`IOS_INTENTIONAL_DIFFERENCE` (V5-F-075, V5-F-081, V5-F-088, V5-F-091, V5-F-092). Voir
+`CLAUDE_CONTINUATION.md` pour le détail lot par lot complet.
+
+**CYCLE V5 (Phase B) INTÉGRALEMENT CLOS : P0 (7/7), P1 (40/40), P2 (31/31), P3 (21/21) — 99
+findings au total traités.** Tous les correctifs de code restent `CODE_COMPLETE, CI_PENDING` (sauf
+ceux déjà `BUILD_VALIDATED` avec CI verte confirmée pendant la session) — aucune CI n'a pu être
+déclenchée localement (pas d'accès `gh` CLI/jeton API sur cette session Windows). **Prochaine
+étape : l'utilisateur doit déclencher la CI par lots et communiquer les résultats** pour faire
+passer les findings `CODE_COMPLETE, CI_PENDING` restants à `BUILD_VALIDATED`.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

@@ -3388,6 +3388,13 @@ IMPACT : Comportement différent mais pas nécessairement dégradé : iOS est pl
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Décider explicitement si la désélection sur tap vide (comportement iOS actuel, plus prévisible) est un choix assumé à documenter comme différence intentionnelle, ou s'il faut reproduire la persistance de sélection d'Android pour une parité stricte.
 CONTRE-AUDIT : trouvé par l'agent "Animems Canvas" (Phase A.2, 2026-08-24)
+STATUT : IOS_INTENTIONAL_DIFFERENCE (2026-08-26, Phase B P3) — décision explicite prise :
+désélection sur tap vide CONSERVÉE. `selectObject(at:)` a été ajoutée précisément pour corriger un
+bug de sélection bloquée découvert lors du portage initial (calque restant sélectionné/déplaçable
+indéfiniment après un tap ailleurs) ; reproduire la persistance "collante" d'Android réintroduirait
+ce même bug déjà corrigé pour une parité artificielle. Comportement iOS jugé plus prévisible.
+Décision documentée dans le code : `AnimemesEditorView.swift` (`dragGesture`). Aucun changement
+fonctionnel. Commit `2960d89`, poussé sur `main`.
 ```
 
 ```
@@ -3405,6 +3412,13 @@ IMPACT : Impact mineur en usage normal (l'utilisateur redémarre généralement 
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Évaluer si ce chemin `onScroll` d'Android est un comportement voulu ou un artefact de la composition GestureDetector+boucle manuelle ; s'il est voulu, ajouter un geste équivalent (translation basée sur `selectedId` seul, sans exiger que le glissement démarre sur l'objet) ou documenter la divergence comme assumée.
 CONTRE-AUDIT : trouvé par l'agent "Animems Canvas" (Phase A.2, 2026-08-24)
+STATUT : IOS_INTENTIONAL_DIFFERENCE (2026-08-26, Phase B P3) — MÊME racine Android et MÊME décision
+que V5-F-091 (`touchDown` ne réinitialise jamais la sélection sur un miss) : ce n'est pas un
+second gap indépendant, vu sous un angle différent par un agent d'audit distinct. Reproduire
+V5-F-092 sans reproduire aussi V5-F-091 serait incohérent (le premier callback du geste
+re-désélectionnerait avant de pouvoir continuer à déplacer l'ancien calque). Décision documentée
+dans le même commentaire que V5-F-091 : `AnimemesEditorView.swift` (`dragGesture`). Aucun code
+fonctionnel modifié. Commit `dd147b1`, poussé sur `main`.
 ```
 
 ```
@@ -3422,6 +3436,11 @@ IMPACT : Sur des canevas de tailles/ratios très différents du 360×640 par dé
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Remplacer la constante fixe `maxDimension: 220` par un calcul proportionnel à `canvasSize` (ex. `min(canvasSize.width, canvasSize.height) / 2`), fidèle à `mView.getWidth()/CELLS` d'Android.
 CONTRE-AUDIT : trouvé par l'agent "Animems Canvas" (Phase A.2, 2026-08-24)
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-17 — **DERNIER P3, BACKLOG P3 ENTIÈREMENT
+CLOS 21/21**). RECOMMANDATION appliquée telle quelle : `maxDimension` calculé comme
+`min(canvasSize.width, canvasSize.height) / 2`, réutilise `downscale(maxDimension:)` existant
+(borne unique par plus grand côté). Fichier modifié : `Animems/AnimemesEditorState.swift`. Commit
+`7622451`, poussé sur `main`. CI non déclenchée par cette session.
 ```
 
 ```

@@ -25,6 +25,11 @@ struct ChatView: View {
     /// → `SettingPrivateMessageFragmant` → `profile_btn` → `UserProfile`), pas un accès direct.
     @State private var showPrivateMessageSettings = false
     @FocusState private var inputFocused: Bool
+    // V5-F-033 (Phase B P1-15) — enregistrement/envoi de messages vocaux, voir `inputBar` et
+    // `VoiceRecorder.swift`.
+    @StateObject private var voiceRecorder = VoiceRecorder()
+    @State private var isStartingVoiceRecording = false
+    @State private var voiceRecordPermissionDenied = false
 
     /// `initialInputText` — port de `NewMessage.mMessage` (`roster/NewMessage.java`, 2026-08-18 P2) :
     /// Android pré-remplit le champ de saisie AVANT le premier envoi (l'utilisateur tape le message
@@ -299,28 +304,45 @@ struct ChatView: View {
 
     private var inputBar: some View {
         HStack(spacing: 8) {
-            // Port de `pickImageOrVideo`/`pickMedia` (`ChatFragmentTest.java`, lu en entier,
-            // GAP-004 2026-08-15) — icône séparée non identifiée dans les 3080 lignes lues (bouton
-            // déclencheur hors du fragment, probablement `chat_salon.xml` non fourni), branchée ici
-            // sur un trombone, motif déjà établi ailleurs dans ce portage pour les points d'entrée
-            // non localisés précisément (ex. bouton d'appel, Shareboard — voir commentaires
-            // `outgoingCallProfile`/`showShareboard`).
-            Button { showAttachmentPicker = true } label: { Image(systemName: "paperclip") }
-            Button { showGifPicker = true } label: { Image(systemName: "face.smiling") } // onDisplayGif
-            Button { showGiftPicker = true } label: { Image(systemName: "gift") } // onDisplayGift
-            TextField("Message", text: $viewModel.inputText, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .focused($inputFocused)
-                .onChange(of: viewModel.inputText) { _ in viewModel.onTextChanged() }
-            Button {
-                viewModel.sendText()
-            } label: {
-                Image(systemName: "arrow.up.circle.fill").font(.title2)
+            // Port de `MessageEventLayout` — l'enregistrement remplace tout le
+            // `messageViewContainer` par `recordView` (`safeSetVisibility`, `startRecording`/
+            // `endRecord`) — reproduit ici en substituant tout le contenu de la barre plutôt que de
+            // n'assourdir qu'une icône, fidèle à Android.
+            if voiceRecorder.isRecording {
+                Image(systemName: "waveform")
+                    .foregroundStyle(.red)
+                Text(Self.formattedRecordingDuration(voiceRecorder.elapsedSeconds))
+                    .font(.callout.monospacedDigit())
+                Spacer()
+                Text("‹ glisser pour annuler") // port du hint de glissement de `RecordView`
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                // Port de `pickImageOrVideo`/`pickMedia` (`ChatFragmentTest.java`, lu en entier,
+                // GAP-004 2026-08-15) — icône séparée non identifiée dans les 3080 lignes lues
+                // (bouton déclencheur hors du fragment, probablement `chat_salon.xml` non fourni),
+                // branchée ici sur un trombone, motif déjà établi ailleurs dans ce portage pour les
+                // points d'entrée non localisés précisément (ex. bouton d'appel, Shareboard — voir
+                // commentaires `outgoingCallProfile`/`showShareboard`).
+                Button { showAttachmentPicker = true } label: { Image(systemName: "paperclip") }
+                Button { showGifPicker = true } label: { Image(systemName: "face.smiling") } // onDisplayGif
+                Button { showGiftPicker = true } label: { Image(systemName: "gift") } // onDisplayGift
+                TextField("Message", text: $viewModel.inputText, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($inputFocused)
+                    .onChange(of: viewModel.inputText) { _ in viewModel.onTextChanged() }
             }
-            .disabled(viewModel.inputText.trimmingCharacters(in: .whitespaces).isEmpty)
+            micOrSendButton
         }
         .padding(8)
         .background(.bar)
+        // V5-F-033 (Phase B P1-15) — même motif que l'alerte "Micro requis" existante des appels
+        // (`callCoordinator.micPermissionDenied`), source distincte (`VoiceRecorder`).
+        .alert("Micro requis", isPresented: $voiceRecordPermissionDenied) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Autorisez l'accès au micro dans Réglages pour envoyer un message vocal.")
+        }
         // Port de `onDisplayGif`/`StickerPickerDialog` et `onDisplayGift`/`GiftGalleryView` — les
         // deux écrans-pickers eux-mêmes N'ONT PAS été lus cette passe (fichiers séparés,
         // `StickerPickerDialog.java`/`GiftGalleryView.java`) ; câblés ici via une feuille minimale
@@ -350,6 +372,59 @@ struct ChatView: View {
                 onCancel: { showAttachmentPicker = false }
             )
         }
+    }
+
+    // MARK: - Message vocal (V5-F-033, Phase B P1-15) — port du bouton morphant Android
+    // (`OnRecordClickListener`/`OnRecordListener` de `MessageEventLayout` : tap = envoyer le texte
+    // si non vide, appui maintenu = enregistrer si vide, glissement = annuler).
+
+    @ViewBuilder
+    private var micOrSendButton: some View {
+        if voiceRecorder.isRecording || viewModel.inputText.trimmingCharacters(in: .whitespaces).isEmpty {
+            Image(systemName: voiceRecorder.isRecording ? "mic.circle.fill" : "mic.circle")
+                .font(.title2)
+                .foregroundStyle(voiceRecorder.isRecording ? Color.red : Color.accentColor)
+                .gesture(voiceRecordGesture)
+        } else {
+            Button {
+                viewModel.sendText()
+            } label: {
+                Image(systemName: "arrow.up.circle.fill").font(.title2)
+            }
+        }
+    }
+
+    /// Port de `OnRecordListener.onStart`/`onFinish`/`onCancel` — `DragGesture(minimumDistance: 0)`
+    /// détecte l'appui initial dès `onChanged` (déclenche `startRecording`, gardé par
+    /// `isStartingVoiceRecording` pour ne démarrer qu'une fois malgré les rappels continus du
+    /// glissement) ; `onEnded` distingue annulation (glissement franc vers la gauche, port du geste
+    /// `RecordView` "glisser pour annuler") d'envoi normal.
+    private var voiceRecordGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { _ in
+                guard !voiceRecorder.isRecording, !isStartingVoiceRecording else { return }
+                isStartingVoiceRecording = true
+                Task {
+                    let started = await voiceRecorder.start()
+                    isStartingVoiceRecording = false
+                    if !started { voiceRecordPermissionDenied = true }
+                }
+            }
+            .onEnded { value in
+                guard voiceRecorder.isRecording else { return }
+                if value.translation.width < -80 {
+                    voiceRecorder.cancel()
+                } else if let result = voiceRecorder.stop() {
+                    viewModel.sendMedia(
+                        object: "audio", localFileURI: result.url.absoluteString,
+                        width: nil, height: nil, duration: String(result.durationMillis))
+                }
+            }
+    }
+
+    private static func formattedRecordingDuration(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds)
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     @ToolbarContentBuilder

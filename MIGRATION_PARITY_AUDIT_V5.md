@@ -3048,6 +3048,30 @@ IMPACT : Un envoi de photo/vidéo/cadeau dans une conversation peut rester bloqu
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Basculer `ChatMediaUploadService`/`requestUpload` sur une `URLSessionConfiguration.background` (ou au minimum envelopper l'upload dans `UIApplication.beginBackgroundTask` avec un vrai retry programmé au retour en premier plan, pas seulement au re-`.onAppear` de la bulle), pour rapprocher la résilience du modèle WorkManager d'Android.
 CONTRE-AUDIT : trouvé par l'agent "Lifecycle" (Phase A.2, 2026-08-24)
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P1-38 — dernier P1 du backlog) —
+portée réduite documentée, même politique que V5-F-076 (Feed publish, Lot P1-31) : option "à
+défaut" de la RECOMMANDATION appliquée plutôt que l'infrastructure complète
+`URLSessionConfiguration.background`/file d'attente persistée. `ChatViewModel.requestUpload`
+enveloppé dans `UIApplication.shared.beginBackgroundTask(withName: "ChatMediaUpload")`, `endBackgroundTask`
+appelé dans le `defer` existant (aux côtés de `releaseUpload`, déjà présent depuis V5-F-078) —
+diff strictement additif, aucune ligne de la logique d'upload/mise à jour Core Data/envoi socket
+modifiée. Second demi de la RECOMMANDATION ("retry programmé au retour en premier plan")
+délibérément PAS ajouté séparément : `ChatRepository.resumePendingUploads` (V5-F-078, Lot P1-33,
+déjà en place) couvre déjà ce cas dès que le socket se reconnecte — vérifié qu'aucun observateur
+`UIApplication.didBecomeActiveNotification`/`willEnterForegroundNotification` n'existe nulle part
+dans le dépôt, en ajouter un nouveau pour un gain marginal (le socket se reconnectant
+généralement de toute façon au retour au premier plan) aurait dépassé la portée d'un correctif P1
+isolé. `resumePendingUploads` (chemin socket reconnect) lui-même volontairement PAS enveloppé dans
+un `beginBackgroundTask` supplémentaire — hors du scénario précis ciblé par ce finding (le PREMIER
+essai d'upload juste après l'envoi, pas les reprises ultérieures).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatViewModel.swift`.
+
+**Commit `17238a9`, poussé sur `main`** (`df67ce0..17238a9`). **CI NON déclenchée par cette
+session** — même blocage d'outillage que les Lots P1-35/36/37. **PAS `BUILD_VALIDATED`** tant
+qu'une CI verte n'est pas confirmée.
+```
 ```
 
 ```

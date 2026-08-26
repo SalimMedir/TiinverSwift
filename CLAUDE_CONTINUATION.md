@@ -23,7 +23,8 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [36/40 BUILD_VALIDATED + 3 CODE_COMPLETE/CI_PENDING (V5-F-089, V5-F-095, V5-F-097) : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) **ENTIÈREMENT TRAITÉ (40/40) : 36 BUILD_VALIDATED + 4 CODE_COMPLETE/CI_PENDING**
+(V5-F-089, V5-F-095, V5-F-097, V5-F-098) [détail : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -139,8 +140,27 @@ parallèle avant qu'aucune ne pose le verrou → double débit réel ; corrigé 
 true` synchrone AVANT le `Task` ; `WithdrawView` gagne en plus une boîte de confirmation
 [`showConfirmation`] restaurant `FireMissilesDialogFragment` disparu au portage — vérification
 financière renforcée effectuée, aucune logique de calcul/débit/crédit modifiée. **Commit `1a94d5c`
-poussé sur `main`, CI PAS déclenchée** — même blocage d'outillage)]**. Voir section "Cycle V5" plus
-bas pour le détail complet.)
+poussé sur `main`, CI PAS déclenchée** — même blocage d'outillage) ; Lot P1-38 V5-F-098
+CODE_COMPLETE/CI_PENDING — **dernier P1 du backlog** (continuité d'upload média chat en
+arrière-plan, `ChatViewModel.requestUpload` était un `Task` nu suspendu dans la fenêtre
+d'exécution arrière-plan iOS si l'app quittée juste après l'envoi d'une photo/vidéo/cadeau ; même
+politique que V5-F-076/Lot P1-31 [portée réduite documentée] : enveloppé dans
+`UIApplication.shared.beginBackgroundTask`, `endBackgroundTask` ajouté au `defer` existant aux
+côtés de `releaseUpload` [V5-F-078] ; retry-au-retour-premier-plan délibérément pas ajouté à part —
+`ChatRepository.resumePendingUploads` [V5-F-078] couvre déjà ce cas via la reconnexion socket.
+**Commit `17238a9` poussé sur `main`, CI PAS déclenchée** — même blocage d'outillage)]**. Voir
+section "Cycle V5" plus bas pour le détail complet.)
+
+**BACKLOG P1 ENTIÈREMENT TRAITÉ (40/40)** — 36 `BUILD_VALIDATED` (CI verte confirmée), 4
+`CODE_COMPLETE/CI_PENDING` (V5-F-089/095/097/098, code poussé sur `main`, CI en attente d'un
+déclenchement par lots par l'utilisateur — voir section "Cycle V5" pour le détail du blocage
+d'outillage `gh`/jeton API). **Prochaine étape pour la session suivante : démarrer le backlog P2
+(31 findings)**, dans l'ordre du document `MIGRATION_PARITY_AUDIT_V5.md` (premier P2 non traité —
+vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc `STATUT :` à sa
+suite, comme fait pour identifier le premier P1 restant en début de cette session). Si l'utilisateur
+a entre-temps déclenché la CI pour les 4 findings `CI_PENDING` ci-dessus et communiqué un résultat,
+mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) AVANT de
+commencer le P2.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

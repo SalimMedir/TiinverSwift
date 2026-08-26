@@ -1907,6 +1907,42 @@ Windows, workflow `workflow_dispatch`-only. En attente d'un déclenchement CI pa
 l'utilisateur (accord donné en cours de session). Test réel requis en plus de la CI, vu la nature
 financière : double-tap rapide sur chacun des 3 boutons, confirmer qu'un seul débit/crédit a lieu.
 
+## 2026-08-26 — Phase B V5 — Lot P1-38 : V5-F-098 (Chat — continuité d'upload média en arrière-plan) — **DERNIER P1 DU BACKLOG**
+
+**Commit** : `17238a9` — poussé sur `main` (`df67ce0..17238a9`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les 3 lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `ChatManager.java:261-295` confie l'upload à un `OneTimeWorkRequest`
+WorkManager persistant (contrainte réseau + retry exponentiel), qui survit à la mise en
+arrière-plan ET à un kill du process. Côté iOS, `ChatViewModel.requestUpload` était un `Task {}`
+nu déclenché uniquement par `.onAppear` de la bulle — si l'app passait en arrière-plan juste après
+l'envoi, la tâche était suspendue dans la fenêtre d'exécution limitée iOS, laissant
+`isFileUploaded=0` jusqu'à réouverture manuelle de la conversation.
+
+**Correction appliquée** (portée réduite documentée, même politique que V5-F-076/Lot P1-31) :
+`requestUpload` enveloppé dans `UIApplication.shared.beginBackgroundTask(withName:
+"ChatMediaUpload")`, `endBackgroundTask` ajouté au `defer` existant (aux côtés de `releaseUpload`
+déjà en place depuis V5-F-078) — diff strictement additif, aucune ligne de logique d'upload/mise à
+jour/envoi modifiée. Le second demi de la RECOMMANDATION (retry programmé au retour au premier
+plan) n'est pas ajouté séparément : `ChatRepository.resumePendingUploads` (V5-F-078, déjà en
+place) couvre ce cas dès que le socket se reconnecte, ce qui survient typiquement au retour au
+premier plan.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatViewModel.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les Lots P1-35/36/37. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+---
+
+## **BACKLOG P1 ENTIÈREMENT TRAITÉ (40/40 findings)** — 36 `BUILD_VALIDATED` (CI verte confirmée)
++ 4 `CODE_COMPLETE, CI_PENDING` (V5-F-089, V5-F-095, V5-F-097, V5-F-098 — code poussé sur `main`,
+CI non déclenchée par manque d'outillage `gh`/jeton API dans cette session locale Windows,
+utilisateur informé et a validé la poursuite du travail avec déclenchement CI en lots de son
+côté). Aucun `BLOQUÉ` sur le P1. Prochaine étape : Phase B continue avec le backlog **P2 (31
+findings)**, dans l'ordre du document, dès que le prochain tour reprend — voir
+`CLAUDE_CONTINUATION.md` pour le premier finding P2 à traiter.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

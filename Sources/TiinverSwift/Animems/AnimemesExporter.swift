@@ -122,11 +122,16 @@ final class AnimemesExporter {
                 let durationSeconds = CMTimeGetSeconds(asset.duration)
                 totalFramesForAudio = Int((durationSeconds * Double(Self.frameRate)).rounded(.up))
 
+                // **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-084, Phase B P3)** —
+                // `MP4Encoder.java:1576-1587` (`onStartAudio`, chemin réellement emprunté par
+                // `createVideosFromBitmap`) confirme AAC 128 kbps, 44100 Hz, stéréo — `64000` ici
+                // divisait le débit par 2 (fréquence/canaux déjà identiques), qualité audio
+                // perceptiblement inférieure sans justification.
                 let aInput = AVAssetWriterInput(mediaType: .audio, outputSettings: [
                     AVFormatIDKey: kAudioFormatMPEG4AAC,
                     AVSampleRateKey: 44100,
                     AVNumberOfChannelsKey: 2,
-                    AVEncoderBitRateKey: 64000,
+                    AVEncoderBitRateKey: 128_000,
                 ])
                 aInput.expectsMediaDataInRealTime = false
                 if writer.canAdd(aInput) {

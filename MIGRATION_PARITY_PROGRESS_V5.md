@@ -10,7 +10,7 @@ lot par lot complet. **Backlog P2 (31 findings) EN COURS [20/31 clos, dans l'ord
 V5-F-002, V5-F-004, V5-F-008, V5-F-014, V5-F-024, V5-F-025, V5-F-026
 (IOS_INTENTIONAL_DIFFERENCE), V5-F-030, V5-F-035, V5-F-038, V5-F-039, V5-F-040, V5-F-048,
 V5-F-049, V5-F-051, V5-F-054, V5-F-055 (partiel, écart architectural documenté), V5-F-059,
-V5-F-061, V5-F-065, V5-F-066]. Prochain : V5-F-069. Puis 21 P3.**
+V5-F-061, V5-F-065, V5-F-066, V5-F-069]. Prochain : V5-F-071. Puis 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2450,6 +2450,30 @@ déjà existant (inchangé) remplace l'entrée optimiste par la donnée serveur 
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Discover/CommentsView.swift`,
 `Sources/TiinverSwift/Discover/CommentModels.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P2-22 : V5-F-069 (Téléchargement média chat dupliqué à la réapparition d'une bulle)
+
+**Commit** : `52e91a5` — poussé sur `main` (`a188410..52e91a5`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `uniqueUploadSet`/`uniqueDowloadSet` (`ChatFragmentTest.java:2937-2963`) gardent
+`onUpload`/`onDowload` contre une remise en file du même message tant qu'il est déjà en cours. Côté
+upload, ce gap avait déjà été comblé comme effet de bord de `V5-F-078` (Lot P1-33,
+`ChatMediaUploadService.reserveUpload`/`releaseUpload`, motivé à l'époque par une course avec
+`resumePendingUploads`, pas explicitement identifié comme couvrant aussi ce finding). Côté
+téléchargement, `requestDownload` n'avait toujours AUCUNE garde : une bulle qui défile hors écran
+puis revient pendant un téléchargement en vol (scénario ordinaire, vidéo qui prend plusieurs
+secondes) redéclenche `.onAppear`→`handleAppear`→`requestDownload`, démarrant un second
+`URLSession.download` concurrent sur le même fichier + écritures Core Data non ordonnées.
+
+**Correction appliquée** : nouveau `ChatViewModel.downloadingMessageIds: Set<String>`, testé/rempli
+en tête de `requestDownload` (classe `@MainActor`, accès synchrone, pas de verrou dédié requis —
+même raisonnement que `reserveUpload`), relâché via `defer` à la fin du `Task`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatViewModel.swift`.
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.

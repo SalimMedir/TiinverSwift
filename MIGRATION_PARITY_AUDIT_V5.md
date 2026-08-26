@@ -2648,6 +2648,13 @@ CAUSE : Absence, côté iOS, de l'équivalent du `uniqueUploadSet`/`uniqueDowloa
 IMPACT : Upload/téléchargement CDN dupliqué (bande passante et stockage gaspillés), écritures Core Data concurrentes non ordonnées sur le même enregistrement, et risque de double émission socket du même message vers le pair (mitigé côté réception par la dé-duplication par `messageId`, mais pas côté émetteur/CDN).
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter un `Set<String>` (ou dictionnaire d'état) de messageId actuellement en upload/téléchargement dans `ChatViewModel`, consulté et alimenté par `requestUpload`/`requestDownload` avant de lancer un nouveau `Task`, reproduisant la garde `uniqueUploadSet`/`uniqueDowloadSet` d'Android.
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-22). Côté upload, déjà corrigé par
+V5-F-078/Lot P1-33 (`ChatMediaUploadService.reserveUpload`/`releaseUpload`, effet de bord non
+identifié à l'époque comme couvrant ce finding). Côté téléchargement, toujours ouvert : nouveau
+`ChatViewModel.downloadingMessageIds: Set<String>`, gardé en tête de `requestDownload`, relâché via
+`defer` — même motif que `reserveUpload`/`uniqueDowloadSet`. Fichier modifié :
+`Messagerie/ChatViewModel.swift`. Commit `52e91a5`, poussé sur `main`. CI non déclenchée par cette
+session.
 ```
 
 ---

@@ -305,13 +305,22 @@ l'échec : `getPostliveData`'s observer [ligne 210-211] ne fait RIEN sur `Result
 lecture complète — jugé non "génuinement fonctionnel", non reproduit ; ici entrée retirée + texte
 restauré + erreur explicite [même motif que `giftError`/`deleteError`/`blockError`]. Succès :
 reload serveur déjà existant [inchangé] remplace l'entrée optimiste par la donnée réelle. **Commit
-`d947b36` poussé sur `main`, CI PAS déclenchée**). **Prochain finding à traiter : V5-F-069** (grep
-`"^ID : V5-F-069"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe
-avant tout correctif, comme fait pour chaque finding tout au long de cette session ; identifier les
-findings P2 restants avec `grep "^PRIORITÉ : P2"` puis chercher lesquels n'ont pas encore de bloc
-`STATUT :` à leur suite). Si l'utilisateur a entre-temps déclenché la CI pour les findings
-`CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur statut vers
-`BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P2.
+`d947b36` poussé sur `main`, CI PAS déclenchée**) ; Lot P2-22 V5-F-069 CODE_COMPLETE/CI_PENDING
+(téléchargement média chat dupliqué à la réapparition d'une bulle — `uniqueUploadSet`/
+`uniqueDowloadSet` [`ChatFragmentTest.java:2937-2963`] gardent les deux sens Android contre une
+remise en file du même message déjà en cours. Upload déjà couvert par V5-F-078/Lot P1-33
+[`ChatMediaUploadService.reserveUpload`, effet de bord non identifié à l'époque comme couvrant ce
+finding] ; téléchargement resté sans garde — une bulle qui défile hors écran puis revient pendant
+un téléchargement en vol redéclenchait `.onAppear`→`requestDownload`, second `URLSession.download`
+concurrent sur le même fichier. Corrigé : nouveau `ChatViewModel.downloadingMessageIds:
+Set<String>`, même motif que `reserveUpload` [classe `@MainActor`, pas de verrou dédié requis].
+**Commit `52e91a5` poussé sur `main`, CI PAS déclenchée**). **Prochain finding à traiter :
+V5-F-071** (grep `"^ID : V5-F-071"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par
+lecture directe avant tout correctif, comme fait pour chaque finding tout au long de cette
+session ; identifier les findings P2 restants avec `grep "^PRIORITÉ : P2"` puis chercher lesquels
+n'ont pas encore de bloc `STATUT :` à leur suite). Si l'utilisateur a entre-temps déclenché la CI
+pour les findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur
+statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P2.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

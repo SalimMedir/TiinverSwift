@@ -2120,6 +2120,33 @@ reconsidération si Android corrige un jour ses constantes.
 
 **Statut honnête** : `IOS_INTENTIONAL_DIFFERENCE`. Aucun code modifié, aucune CI applicable.
 
+## 2026-08-26 — Phase B V5 — Lot P2-8 : V5-F-030 (Appels — ROOM.CALL ignoré quand aucun appel en cours)
+
+**Commit** : `70b10ed` — poussé sur `main` (`14c2d56..70b10ed`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `ChatRepository.handleIncomingCall`'s deux branches (`!isOnCall`/`isOnCall`)
+exécutaient exactement le même code (`.onCall` publié), alors qu'Android
+(`ChatRepository.onCall`, `:449-469`) diverge réellement : `!CallService.isOnCall` →
+`lunchcall(Profile)` établit un vrai appel entrant CallKit ; `isOnCall` → publie juste
+`CallModel.ONCALL` (occupation). Le port précédent supposait `ROOM.CALL` mort/jamais émis
+indépendamment de "voicecall" — rien ne le garantit côté serveur, listener Android bien vivant.
+`CallCoordinator.handle(.onCall)` exige `callUUID != nil` pour agir : sans appel en cours,
+`callUUID` est `nil`, aucun `CXProvider.reportNewIncomingCall` jamais déclenché — appel entrant
+silencieusement ignoré.
+
+**Correction appliquée** : branche `!isOnCall` décode le payload `Profile` JSON brut
+(`Self.decodeProfile`, helper déjà existant) et appelle
+`CallCoordinator.shared.handleIncomingCall(profile:chatType:)` directement, même chemin déjà
+utilisé pour "voicecall". Branche occupation inchangée.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Realtime/ChatRepository.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. Zone WebRTC/CallKit sensible : test réel supplémentaire
+requis au-delà de la CI (simuler/observer `ROOM.CALL` serveur reçu app au premier plan sans appel
+en cours, confirmer `CXProvider.reportNewIncomingCall`).
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

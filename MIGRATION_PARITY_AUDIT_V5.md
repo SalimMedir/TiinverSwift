@@ -1272,6 +1272,26 @@ CAUSE : Le port de ChatRepository.handleIncomingCall(_:) pour ROOM.CALL a été 
 IMPACT : Si le serveur émet un jour ROOM.CALL (indépendamment du message "voicecall") pour notifier un appel entrant alors que l'utilisateur iOS n'est pas déjà en communication, celui-ci ne recevra AUCUNE notification CallKit, AUCUNE sonnerie — l'appel entrant est silencieusement ignoré, alors qu'Android l'établirait normalement.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Faire diverger les deux branches de ChatRepository.handleIncomingCall(_:) comme sur Android : quand !Self.isOnCall, décoder le profil et appeler CallCoordinator.shared.handleIncomingCall(profile:chatType:) (comme le fait déjà handleNewMessage pour "voicecall") au lieu de toujours publier .onCall ; conserver .onCall uniquement pour la branche isOnCall==true (détection d'occupation).
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-8) — Vérifié directement :
+`ChatRepository.java:436-469` (`lunchcall`/`onCall` listener, `ROOM.CALL="call"` ligne 110,
+enregistré ligne 247) confirme la divergence réelle. Correctif appliqué exactement comme
+recommandé : branche `!Self.isOnCall` décode le payload JSON `Profile` brut via
+`Self.decodeProfile` (helper déjà existant, déjà utilisé pour `onStartRoom`/`onStartPrivatePBS`)
+et appelle `CallCoordinator.shared.handleIncomingCall(profile:chatType:)` directement — même
+chemin d'établissement d'appel déjà utilisé pour le cas message `"voicecall"`
+(`handleNewMessage`). Branche `isOnCall==true` (détection d'occupation) INCHANGÉE, toujours
+`.onCall` publié — vérifié que `CallCoordinator.handle(.onCall)` (`CallCoordinator.swift:90-102`)
+gère bien ce cas précis (commentaire existant à ce site toujours exact, pas de mise à jour
+nécessaire : il documente spécifiquement le chemin occupation, pas affecté par ce correctif).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Realtime/ChatRepository.swift`.
+
+**Commit `70b10ed`, poussé sur `main`** (`14c2d56..70b10ed`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé. **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas
+confirmée. Test réel à confirmer en plus de la CI (zone WebRTC/CallKit sensible, si l'occasion se
+présente : simuler/observer un événement `ROOM.CALL` serveur reçu app au premier plan sans appel
+en cours, confirmer `CXProvider.reportNewIncomingCall` déclenché).
 ```
 
 ```

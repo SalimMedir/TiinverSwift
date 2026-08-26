@@ -5,9 +5,9 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [6/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
-V5-F-007, V5-F-009, V5-F-010], démarré automatiquement à V5-F-001, dans l'ordre du document.
-Prochain : V5-F-013. Puis 31 P2, 21 P3.**
+temps). Backlog P1 (40 findings) EN COURS [7/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+V5-F-007, V5-F-009, V5-F-010, V5-F-013], démarré automatiquement à V5-F-001, dans l'ordre du
+document. Prochain : V5-F-016. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -567,6 +567,39 @@ utilise ses propres champs CDN sans lien avec cette propriété.
 réel requis : rechercher un terme retournant des posts avec `cdn_content_id` absent/NULL/vide mais
 `cdn_thumbnail_url` renseigné, confirmer l'affichage correct de la vignette CDN dans la grille
 "Publications".
+
+## 2026-08-25 — Phase B V5 — Lot P1-7 : V5-F-013 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `UserProfile.java:1094-1145` (`block()`), branche `USER_UNBLOCKED` lignes 1118-1124
+— `isBlocked=false` PUIS appel explicite à `loadInitialData()` (ligne 1123) →
+`executeTask()`(lignes 723-727, gardée par `if (!isBlocked)`) → `profileViewModel.executeBackTask(...)`,
+relançant immédiatement la requête de la première page de médias et republiant la grille sans que
+l'utilisateur quitte/revienne sur l'écran.
+
+**iOS avant correctif** : `ProfileViewModel.toggleBlock()` mettait à jour `isBlocked` mais
+n'appelait QUE `if blocked { posts = [] }` — rien n'était fait quand `blocked == false`. Comme
+`posts` avait été vidé au blocage et qu'aucun élément n'était présent pour déclencher le
+`.onAppear` qui relance `loadMorePosts()`, la grille restait vide indéfiniment après un déblocage
+réussi, jusqu'à sortie/retour complet de l'écran (nouvelle instance de `ProfileViewModel`).
+
+### Correctif appliqué
+
+Cause : port incomplet de `UserProfile.java:1123` — seul le cas "bloquer" avait été porté, pas le
+cas symétrique "débloquer". `toggleBlock()` gagne un `else` symétrique au `if blocked { posts = [] }`
+existant, appelant `await loadInitialPosts()` (déjà porté pour V4-F-014 : reset `offset=0`/
+`reachedEnd=false`/`posts=[]` puis `loadMorePosts()`) quand `blocked == false`. Diff strictement
+additif.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Profile/ProfileViewModel.swift`.
+
+**Résultat CI** : commit `797e43e`, push confirmé (`c6fed06..797e43e main -> main`), run
+`32915890209` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : bloquer puis débloquer un utilisateur depuis son profil, confirmer la republication
+immédiate de la grille de posts.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

@@ -633,6 +633,23 @@ CAUSE : Port incomplet de UserProfile.java:1123 (`loadInitialData()`) — seul l
 IMPACT : Un utilisateur qui débloque quelqu'un depuis son profil voit un écran vide (aucun post) alors que le blocage est bien levé côté serveur — donne l'impression que le profil n'a aucune publication ou que le déblocage a échoué, contrairement à Android qui republie la grille instantanément.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Dans `toggleBlock()`, ajouter un `else` (ou appel systématique) qui relance `await loadInitialPosts()` quand `blocked == false`, symétriquement au `if blocked { posts = [] }` existant.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-7) — Vérifié directement :
+`UserProfile.java:1118-1124` (branche `USER_UNBLOCKED`) confirme `isBlocked=false` PUIS appel
+explicite à `loadInitialData()` → `executeTask()`, republiant immédiatement la grille.
+`executeTask()` (lignes 723-727) confirmé gardé par `if (!isBlocked)`. Correctif : `toggleBlock()`
+gagne un `else` symétrique au `if blocked { posts = [] }` existant, appelant
+`await loadInitialPosts()` (déjà porté pour V4-F-014, reset `offset=0`/`reachedEnd=false`/
+`posts=[]` puis `loadMorePosts()`) quand `blocked == false`. Diff strictement additif (3 lignes).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Profile/ProfileViewModel.swift`.
+
+**Résultat CI** : commit `797e43e`, push confirmé (`c6fed06..797e43e main -> main`), run
+`32915890209` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : bloquer puis débloquer un utilisateur depuis son
+profil, confirmer que la grille de posts republie immédiatement sans quitter/revenir sur l'écran.
 ```
 
 ```

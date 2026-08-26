@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [6/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [7/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -31,8 +31,9 @@ RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BU
 infinie, jeton de génération `loadGeneration` sur `FeedViewModel`) ; Lot P1-6 V5-F-010
 BUILD_VALIDATED (vignette recherche "Publications" retombait à tort sur object_url,
 `SearchPostResult.thumbnailURL` réécrit en fallback 2 étages fidèle à
-`UniversalSearchAdapter.PostViewHolder`)]**. Voir section "Cycle V5" plus bas pour le détail
-complet.)
+`UniversalSearchAdapter.PostViewHolder`) ; Lot P1-7 V5-F-013 BUILD_VALIDATED (grille de posts
+profil restait vide après déblocage, `else { await loadInitialPosts() }` symétrique ajouté à
+`toggleBlock()`)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -240,29 +241,43 @@ générique de `FeedActivity` [porté par erreur lors de V3-F-009, conçu pour u
 `object_url` même si `cdn_thumbnail_url`/`cdn_content_url` était renseigné. Correctif :
 `thumbnailURL` réécrit en fallback à deux étages littéral, `isVideo`/`hasContentId`/`object_url`
 supprimés de cette propriété. Un seul site d'appel (`SearchView.swift:264`), aucun autre écran
-affecté. **Commit `9418ef4`, CI verte (run `32915044191`)** — `BUILD_VALIDATED`. Détail des 6 lots
-dans `PROGRESS_V5.md`.
+affecté. **Commit `9418ef4`, CI verte (run `32915044191`)** — `BUILD_VALIDATED`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-013** (Profil — la grille de
-posts d'un profil reste vide après avoir débloqué l'utilisateur : Android
-[`UserProfile.java:1094-1145`, méthode `block()`, branche `USER_UNBLOCKED` ligne 1118-1124] met
-`isBlocked=false` PUIS appelle explicitement `loadInitialData()` → `executeTask()` →
-`profileViewModel.executeBackTask(...)`, relançant immédiatement la requête de la première page de
-médias et republiant la grille sans que l'utilisateur quitte/revienne sur l'écran. iOS
-[`ProfileViewModel.swift:144-163` `loadMorePosts()`, `:204-212` `toggleBlock()`] — `toggleBlock()`
-met à jour `isBlocked` mais n'appelle QUE `if blocked { posts = [] }` ; rien n'est fait quand
-`blocked == false`. Comme `posts` a été vidé au blocage et qu'aucun élément n'est présent pour
-déclencher le `.onAppear` qui relance `loadMorePosts()`, la grille reste vide indéfiniment après un
-déblocage réussi, jusqu'à ce que l'utilisateur quitte complètement l'écran et y revienne [nouvelle
-instance de `ProfileViewModel`]. Cause : port incomplet de `UserProfile.java:1123` — seul le cas
-"bloquer" a été porté, pas le cas symétrique "débloquer". Plan : dans `toggleBlock()`, ajouter un
-`else` [ou appel systématique] qui relance `await loadInitialPosts()` quand `blocked == false`,
-symétriquement au `if blocked { posts = [] }` existant), puis continuer AUTOMATIQUEMENT V5-F-016,
-V5-F-019, V5-F-020, V5-F-021, V5-F-022, V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036,
-V5-F-037, V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062,
-V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082,
-V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (33 P1 restants après V5-F-013, dans l'ordre
-exact du document), puis tous les P2 (31), P3 (21), SANS s'arrêter
+**Lot P1-7 traité (V5-F-013)** — Profil, la grille de posts restait vide après avoir débloqué
+l'utilisateur. Vérifié `UserProfile.java:1094-1145` (`block()`, branche `USER_UNBLOCKED` lignes
+1118-1124) : `isBlocked=false` PUIS appel explicite à `loadInitialData()` → `executeTask()`
+(gardée par `if (!isBlocked)`), relançant immédiatement la requête de la première page de médias.
+`ProfileViewModel.toggleBlock()` n'appelait QUE `if blocked { posts = [] }` — rien n'était fait sur
+déblocage, laissant la grille vide (aucun élément pour déclencher le `.onAppear` qui relance
+`loadMorePosts()`) jusqu'à sortie/retour complet de l'écran. Cause : port incomplet de
+`UserProfile.java:1123`, seul le cas "bloquer" avait été porté. Correctif : `else { await
+loadInitialPosts() }` symétrique ajouté (réutilise `loadInitialPosts()` déjà porté pour
+V4-F-014). Diff strictement additif (3 lignes). **Commit `797e43e`, CI verte (run
+`32915890209`)** — `BUILD_VALIDATED`. Détail des 7 lots dans `PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-016** (Messagerie — Groupes
+payants : la vérification d'abonnement appelle un endpoint différent de celui d'Android, le
+blocage du composeur pour abonnement expiré/restreint ne se déclenche jamais. Android
+[`ChatFragmentTest.java:727-728`, `checkSubcribtion`] appelle `group/checksubscription2/{userId}/{groupId}`
+(suffixe "2", confirmé par grep exhaustif — aucune autre occurrence dans tout le code Android) à
+l'ouverture d'une conversation par un membre existant ; si la réponse contient `error:"true"` avec
+`message` = `subscription expires.` [SUBCRIPTION_EXPIRE] ou `Restricted access.`
+[RESTRICTED_ACCESS], la barre de saisie est masquée et une bannière "renouveler"/"s'abonner" est
+insérée, bloquant l'envoi. iOS [`GroupRepository.swift:345-354` `checkSubscription`] appelle
+`group/checksubscription/{userId}/{groupId}` — SANS le suffixe "2" — et utilise `try? await ...
+else { return .active }` : tout échec réseau [ex. 404 sur une route inexistante] fait
+silencieusement retomber sur `.active`. Résultat : `checkGroupSubscription()`
+[`ChatViewModel.swift:126-150`] ne passe jamais dans les branches `.expired`/`.restricted`,
+`isComposerBlocked` reste `false`, le composeur n'est jamais bloqué pour un abonnement expiré/
+restreint. Cause : faute de portage, suffixe numérique "2" omis, combiné au `try?` qui masque
+l'échec réseau résultant. Plan : corriger l'endpoint en `"group/checksubscription2/\(userId)/\(groupId)"`
+dans `GroupRepository.swift:346` ; évaluer si le `try?`/repli silencieux sur `.active` doit aussi
+être resserré pour rendre une régression future détectable plutôt que masquée), puis continuer
+AUTOMATIQUEMENT V5-F-019, V5-F-020, V5-F-021, V5-F-022, V5-F-023, V5-F-029, V5-F-033, V5-F-034,
+V5-F-036, V5-F-037, V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060,
+V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078,
+V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (32 P1 restants après V5-F-016, dans
+l'ordre exact du document), puis tous les P2 (31), P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →
 State/ViewModel → Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale

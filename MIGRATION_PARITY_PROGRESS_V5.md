@@ -11,7 +11,7 @@ V5-F-002, V5-F-004, V5-F-008, V5-F-014, V5-F-024, V5-F-025, V5-F-026
 (IOS_INTENTIONAL_DIFFERENCE), V5-F-030, V5-F-035, V5-F-038, V5-F-039, V5-F-040, V5-F-048,
 V5-F-049, V5-F-051, V5-F-054, V5-F-055 (partiel, écart architectural documenté), V5-F-059,
 V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071, V5-F-073 (DUPLICATE de V5-F-020), V5-F-074,
-V5-F-079, V5-F-083]. Prochain : V5-F-086. Puis 21 P3.**
+V5-F-079, V5-F-083, V5-F-086]. Prochain : V5-F-090. Puis 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2587,6 +2587,29 @@ EXACTES par type d'export : `template_id` JAMAIS inclus pour une image statique,
 `Sources/TiinverSwift/Animems/AnimemesEditorState.swift`,
 `Sources/TiinverSwift/Animems/AnimemesEditorView.swift`,
 `Sources/TiinverSwift/Feed/FeedRepository.swift`, `Sources/TiinverSwift/Feed/PublishComposeView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P2-28 : V5-F-086 (Photo Editor — bouton "recadrer à nouveau" absent)
+
+**Commit** : `c54b97b` — poussé sur `main` (`3ad4694..c54b97b`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `ic_repeate`/`onRepeateImage` (`ImageEditorCompound.java:861-885`) permet de
+figer le canevas courant (peinture+texte+image) en un bitmap, de le recadrer une nouvelle fois via
+une `CroperView` fraîche, puis de remplacer tout le composite par le résultat (`clearBoard()` +
+`onNewAddBitmap`). `PhotoToolsView.swift` n'avait aucun équivalent — le seul recadrage possible
+était celui précédant cet écran, sans retour possible une fois du texte/dessin ajouté.
+
+**Correction appliquée** : nouveau bouton toolbar "crop.rotate" ouvre `PhotoCropView` sur
+`flatten()` (déjà existant, réutilisé tel quel — bake déjà strokes+texts+displayedImage à la
+résolution pixel source). `onCropped` remplace `displayedImage` et vide `strokes`/`texts`. Vérifié
+`onRepeateImage` lu en entier : `CroperView` y est instanciée directement, sans étape de choix de
+forme (contrairement à l'écran de choix en amont du flux de publication) — `PhotoCropView` réutilisé
+avec sa forme par défaut `.rectangle`, fidèle à ce site d'appel précis.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/PhotoEditor/PhotoToolsView.swift`.
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.

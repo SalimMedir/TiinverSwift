@@ -3116,6 +3116,14 @@ IMPACT : Perte fonctionnelle mineure à modérée : les utilisateurs Android peu
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Évaluer la fréquence d'usage réelle de ce bouton avant de porter (feature secondaire) ; si jugé utile, ajouter un bouton 'recadrer' qui aplatit `strokes`/`texts` sur `displayedImage` (réutilisant la logique de `flatten()`), rouvre `PhotoCropView` sur ce résultat, et remplace `displayedImage` en vidant `strokes`/`texts` à la validation.
 CONTRE-AUDIT : trouvé par l'agent "Photo Editor" (Phase A.2, 2026-08-24)
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-28). RECOMMANDATION appliquée telle quelle :
+nouveau bouton toolbar "crop.rotate" ouvre `PhotoCropView` sur `flatten()` (déjà existant, réutilisé
+sans changement) ; `onCropped` remplace `displayedImage` par le résultat et vide `strokes`/`texts`
+[port de `clearBoard()`+`onNewAddBitmap`] ; vérifié `onRepeateImage` (`ImageEditorCompound.java:
+861-885`, lu en entier) : `CroperView` y est instanciée directement, sans étape de choix de forme —
+`PhotoCropView` réutilisé avec sa forme par défaut `.rectangle`, fidèle à ce site d'appel précis.
+Fichier modifié : `PhotoEditor/PhotoToolsView.swift`. Commit `c54b97b`, poussé sur `main`. CI non
+déclenchée par cette session.
 ```
 
 ```

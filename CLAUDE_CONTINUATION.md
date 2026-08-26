@@ -353,13 +353,20 @@ le marque `true` sur les 2 chemins de sortie ; `AnimemesEditorState.activeCommun
 dans `applyTemplate` [même placement qu'Android] ; `FeedRepository.publish` gagne 3 paramètres
 optionnels [défaut `nil`, aucun appelant existant affecté] ; `template_id` JAMAIS inclus pour une
 image statique, fidèle à `createImage()`. **Commit `ca71e91` poussé sur `main`, CI PAS
-déclenchée**). **Prochain finding à traiter : V5-F-086** (grep `"^ID : V5-F-086"` dans
-`MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe avant tout correctif,
-comme fait pour chaque finding tout au long de cette session ; identifier les findings P2 restants
-avec `grep "^PRIORITÉ : P2"` puis chercher lesquels n'ont pas encore de bloc `STATUT :` à leur
-suite). Si l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés
-ci-dessus et communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter
-l'échec le cas échéant) avant de continuer le P2.
+déclenchée**) ; Lot P2-28 V5-F-086 CODE_COMPLETE/CI_PENDING (Photo Editor — bouton "recadrer à
+nouveau" [`ic_repeate`/`onRepeateImage`] absent, aucun moyen de re-recadrer le composite une fois
+texte/dessin ajouté. Corrigé : nouveau bouton toolbar "crop.rotate" ouvre `PhotoCropView` sur
+`flatten()` [déjà existant, réutilisé tel quel] ; `onCropped` remplace `displayedImage` et vide
+`strokes`/`texts` [port de `clearBoard()`+`onNewAddBitmap`] ; `onRepeateImage` lu en entier confirme
+`CroperView` instanciée SANS étape de choix de forme — `PhotoCropView` réutilisé avec sa forme par
+défaut `.rectangle`. **Commit `c54b97b` poussé sur `main`, CI PAS déclenchée**). **Prochain finding
+à traiter : V5-F-090** (grep `"^ID : V5-F-090"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à
+confirmer par lecture directe avant tout correctif, comme fait pour chaque finding tout au long de
+cette session ; identifier les findings P2 restants avec `grep "^PRIORITÉ : P2"` puis chercher
+lesquels n'ont pas encore de bloc `STATUT :` à leur suite). Si l'utilisateur a entre-temps
+déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à
+jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le
+P2.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

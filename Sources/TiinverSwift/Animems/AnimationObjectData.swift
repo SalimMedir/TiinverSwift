@@ -42,22 +42,26 @@ final class AnimationObjectData {
         set { _maskFeather = max(0, min(1, newValue)) }
     }
 
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-041, Phase B P3)** — bornes
+    /// alignées sur `maskApplyDrag`/le clamp de `maskEditScale` (`MemesView2.java:402-404,454-460`) :
+    /// `[-1, 1]` pour le décalage (auparavant `[-2, 2]`, le double), `[0.1, 3.0]` pour l'échelle
+    /// (auparavant `[0.1, 5]`, 67% de plus).
     private var _maskOffsetX: Float = 0
     var maskOffsetX: Float {
         get { _maskOffsetX }
-        set { _maskOffsetX = max(-2, min(2, newValue)) }
+        set { _maskOffsetX = max(-1, min(1, newValue)) }
     }
 
     private var _maskOffsetY: Float = 0
     var maskOffsetY: Float {
         get { _maskOffsetY }
-        set { _maskOffsetY = max(-2, min(2, newValue)) }
+        set { _maskOffsetY = max(-1, min(1, newValue)) }
     }
 
     private var _maskScale: Float = 1
     var maskScale: Float {
         get { _maskScale }
-        set { _maskScale = max(0.1, min(5, newValue)) }
+        set { _maskScale = max(0.1, min(3.0, newValue)) }
     }
 
     private var _maskMirrorGap: Float = 0.06

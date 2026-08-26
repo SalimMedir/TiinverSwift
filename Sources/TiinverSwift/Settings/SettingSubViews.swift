@@ -113,9 +113,29 @@ struct SettingNotificationsView: View {
 }
 
 // MARK: - Stockage et données (port de `SettingStorageFragment.java`, PARTIEL — 3 bascules maîtresses
-// lues en entier ; le détail granulaire par type de média — `storageDataListChoosed` etc., une
-// sélection multiple — PAS reproduit cette session, faute de temps pour lire le reste du fichier
-// (292 lignes) en détail : documenté comme gap plutôt que deviné)
+// reproduites ; le détail granulaire par type de média (`storageDataListChoosed`/
+// `storageWifiListChoosed`/`storageRoamingListChoosed`, 3 dialogues à sélection multiple sous
+// chaque bascule) délibérément PAS porté.
+//
+// **Vérifié le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-053, Phase B P3)** — fichier lu en
+// entier cette fois (les 292 lignes) : `SettingStorageFragment.onDialogPositiveClick` (:262-282)
+// ne fait QUE mettre à jour le sous-titre affiché (`subTitleMobileData.setText(mediaType)`), la
+// persistance réelle des 3 listes a lieu dans `MyFragmentDialog`'s propre callback positif
+// (`edit.putStringSet(...)`, vérifié). MAIS grep exhaustif de `storageDataListChoosed`/
+// `storageWifiListChoosed`/`storageRoamingListChoosed`/`usingDataMobile`/`usingWifi`/
+// `usingRoaming` dans TOUT `app/src/main/java/com/tiinver` : AUCUNE occurrence en dehors du
+// package `setting/` lui-même — ces 6 préférences (les 3 bascules maîtresses déjà portées ci-dessus
+// INCLUSES) ne sont JAMAIS lues par le pipeline de téléchargement/chargement de média réel
+// (`ChatViewModel.requestDownload`, `FeedMediaDownloader`, `VideoCacheManager`, etc., aucun
+// n'inspecte ces clés). C'est un écran de préférences purement DÉCORATIF côté Android lui-même —
+// une UI qui donne l'illusion d'un contrôle réel sur le téléchargement automatique par condition
+// réseau/type de média, sans AUCUN effet fonctionnel sur ce qui est réellement téléchargé, sur
+// AUCUNE des deux plateformes. Construire les 3 dialogues à sélection multiple + leur persistance
+// pour ce seul niveau de parité cosmétique (zéro impact comportemental des deux côtés, contrairement
+// aux 3 bascules déjà portées qui reproduisent au moins fidèlement le même état d'UI non-fonctionnel
+// existant) a été jugé disproportionné par rapport au gain réel — conformément à la politique de ce
+// portage ("ne pas porter du code Android incorrect/mort pour une parité artificielle"), DIFFÉRÉ
+// plutôt qu'implémenté.
 
 struct SettingStorageView: View {
     @AppStorage("usingDataMobile") private var mobileData = true

@@ -1078,6 +1078,27 @@ CAUSE : Le port de la fin d'appel a été factorisé en un point de sortie uniqu
 IMPACT : Quand l'appelant iOS appelle quelqu'un déjà en communication, l'appel se termine silencieusement (CallKit affiche juste la fin d'appel) sans laisser AUCUNE trace dans la conversation — alors qu'Android insère un message "appel manqué" persistant et visible dans l'historique de chat. L'utilisateur iOS n'a donc aucune preuve dans le fil de discussion qu'il a tenté d'appeler.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Dans CallCoordinator.handle(.busyCall), avant d'appeler endCallFromRemote(reason: .unanswered), appeler chatRepository.notifyMissedCall(profile:chatType:object:"missedvoicecall":messageId:) comme le fait déjà performEndCall pour le raccroché local non répondu — reproduire fidèlement la condition Android "isCalleMissedCall encore true à ce moment" (c'est-à-dire : appel sortant, jamais accepté ni terminé par le correspondant, terminé par occupation).
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-14) — Vérifié directement :
+`CallActivity.java:85` (`isCalleMissedCall=true` à l'init), `:483-500` (`callBusy()`, ne réinitialise
+jamais `isCalleMissedCall`), `:509-525` (`endCall()` : `if(isCalleMissedCall) notifyMissedCall`) —
+confirmé que seuls `callEnd()` (:476) et `onAccepCall()` (:506) remettent le flag à `false`, jamais
+`callBusy()`. Correctif : dans `CallCoordinator.handle(.busyCall)`, appel à
+`chatRepository.notifyMissedCall(profile:chatType:object:"missedvoicecall":messageId:)` — même
+appel que `performEndCall` fait déjà pour le raccroché local d'un appel sortant non répondu — avant
+`endCallFromRemote(reason: .unanswered)`, gardé par `isOutgoingCall` (fidèle à `CallActivity`,
+lancée UNIQUEMENT pour un appel sortant côté Android, confirmé via le commentaire V4-F-040 déjà
+présent dans `handleIncomingCall`) et `profile` non-nil.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Calls/CallCoordinator.swift`.
+
+**Résultat CI** : commit `61e9999`, push confirmé (`e57bb9f..61e9999 main -> main`), run
+`32920903373` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis (2 appareils/comptes) : appeler un correspondant
+déjà en communication, confirmer l'insertion d'un message "appel manqué" persistant dans la
+conversation de l'appelant après la fin de l'appel.
 ```
 
 ```
@@ -1212,6 +1233,38 @@ CAUSE : Le portage de la barre de composition du chat n'a jamais implémenté l'
 IMPACT : Fonctionnalité de messagerie de base (message vocal), très utilisée sur mobile, totalement indisponible côté iOS : un utilisateur ne peut jamais envoyer de message vocal à un contact ou un groupe, alors qu'il peut en recevoir et les lire. Asymétrie fonctionnelle complète entre les deux plateformes sur ce type de message.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter un bouton micro dans la barre de composition (ChatView.swift, à côté du bouton paperclip), avec AVAudioRecorder pour capturer un fichier audio temporaire (appui maintenu, relâchement = fin d'enregistrement, glissement pour annuler comme Android RecordView), puis appeler `viewModel.sendMedia(object: "audio", localFileURI: …, duration: …)` — le reste du pipeline (upload BunnyCDN, persistance, envoi socket) est déjà fonctionnel côté iOS et n'a pas besoin d'être modifié.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-15) — Vérifié directement :
+`MessageEventLayout.java` confirme un bouton morphant (`OnRecordClickListener` = tap envoie le
+texte si non vide ; `OnRecordListener` = appui maintenu enregistre si vide, `onCancel`/glissement
+annule) et `AudioManager.java:105-112` confirme l'encodage RÉEL en `AMR_NB`/`THREE_GPP`. Correctif :
+nouveau fichier `VoiceRecorder.swift` (`AVAudioRecorder`, permission micro via
+`AVAudioSession.recordPermission`/`requestRecordPermission`, annulation si <1s — port de
+`onLessThanSecond`) ; bouton morphant câblé dans `ChatView.inputBar` (tap→texte si non vide,
+`DragGesture(minimumDistance: 0)` = appui maintenu→enregistrement si vide, glissement >80pt vers
+la gauche avant relâchement→annulation, port du hint `RecordView` "glisser pour annuler") ; toute
+la barre de composition bascule en affichage waveform+minuteur+hint pendant l'enregistrement, port
+du basculement `messageViewContainer`↔`recordView`. Résultat routé sans changement à travers
+`ChatViewModel.sendMedia(object: "audio", …)` déjà existant (upload BunnyCDN, persistance, envoi
+socket inchangés).
+**Écart technique documenté** : `AVAudioRecorder` (AVFoundation) n'expose PUBLIQUEMENT aucun
+encodeur AMR — capture en AAC/`.m4a` à la place (seul format haute qualité largement disponible
+sans bibliothèque de codec tierce) ; `ChatMediaUploadService` étiquette déjà INCONDITIONNELLEMENT
+tout objet "audio" comme `audio/3gpp`/`.3gp` (comportement PRÉEXISTANT, non modifié) — risque réel
+NON résolu : la lecture d'un message vocal envoyé par iOS pourrait échouer côté récepteur Android
+si son décodeur suppose strictement un flux AMR_NB, nécessite un test croisé réel iOS→Android.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/VoiceRecorder.swift` (nouveau),
+`Sources/TiinverSwift/Messagerie/ChatView.swift`.
+
+**Résultat CI** : commit `b9e549f`, push confirmé (`61e9999..b9e549f main -> main`), run
+`32921757759` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis, PRIORITAIRE et CROISÉ (2 appareils) : enregistrer
+et envoyer un message vocal depuis iOS, confirmer sa lecture correcte côté Android récepteur (le
+risque de codec ci-dessus est le point le plus critique à valider) ; confirmer aussi le geste
+d'annulation par glissement et le blocage <1s.
 ```
 
 ```

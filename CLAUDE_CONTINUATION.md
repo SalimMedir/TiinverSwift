@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [13/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [15/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -45,7 +45,12 @@ même pour un message de chat, `categoryIdentifier` "activity"/"chat_message" aj
 (bouton "Suivre en Retour" postait sur l'endpoint `follow` générique au lieu de `followback`,
 `ProfileRepository.followBack` ajouté) ; Lot P1-13 V5-F-023 BUILD_VALIDATED (zone tapable unique
 avatar+texte→profil dans le centre de notifications, séparée en avatar seul→profil et texte→post
-quand activityId>0)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
+quand activityId>0) ; Lot P1-14 V5-F-029 BUILD_VALIDATED (appel sortant terminé occupé n'insérait
+aucun message "appel manqué", `notifyMissedCall` ajouté dans `handle(.busyCall)`, gardé par
+`isOutgoingCall`) ; Lot P1-15 V5-F-033 BUILD_VALIDATED (message vocal — envoi ENTIÈREMENT absent
+côté iOS, `VoiceRecorder.swift` créé, bouton morphant mic/envoi câblé dans `ChatView.inputBar`,
+écart codec AAC vs AMR_NB Android documenté, test croisé réel iOS→Android requis)]**. Voir
+section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -349,38 +354,73 @@ Correctif : `NavigationLink` restreint à l'avatar seul (→ profil, incondition
 extrait en `nameAndBodyText` (`@ViewBuilder`), enveloppé dans un `Button` → `onOpenPost(post)`
 quand `reconstructedPost != nil`, sinon affiché non tapable — fidèle à
 `body.setClickable(false)`. **Commit `e49cb70`, CI verte (run `32920326997`)** —
-`BUILD_VALIDATED`. Détail des 13 lots dans `PROGRESS_V5.md`.
+`BUILD_VALIDATED`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-029** (Appels audio/vidéo
-WebRTC — signalisation/historique : appel sortant vers un correspondant occupé [BUSY_CALL], aucun
-message "appel manqué" enregistré côté iOS. Android [`messagerie/ui/call/CallActivity.java:85`
-`isCalleMissedCall=true` à l'init ; `:483-500` `callBusy()` : affiche "Occupé" 3s puis
-`initEndCall(false)` ; `:376-384` `initEndCall` appelle `endCall()` ; `:509-525` `endCall()` :
-`if(isCalleMissedCall) callService.notifyMissedCall(...)` — JAMAIS remis à `false` dans le chemin
-`callBusy`, contrairement à `callEnd()` [ligne 476] et `onAccepCall()` [ligne 506] ;
-`messagerie/repository/ChatRepository.java:1045-1057` `notifyMissedCall` insère un vrai message
-"missedvoicecall" persistant] — quand l'appelant reçoit BUSY_CALL, `isCalleMissedCall` reste à
-`true` [jamais réinitialisé dans `callBusy()`], donc `endCall()` insère un message "missedvoicecall"
-persistant visible dans l'historique de chat. iOS [`Calls/CallCoordinator.swift:111-112`
-`case .busyCall: endCallFromRemote(reason: .unanswered)` ; `:326-330` `endCallFromRemote` :
-`callKit.reportCallEnded` + `teardown()`, AUCUN appel à `chatRepository.notifyMissedCall` ;
-`:403-413` `performEndCall` : SEUL point d'appel de `notifyMissedCall`, uniquement sur raccroché
-LOCAL d'un appel sortant non répondu, JAMAIS sur réception `.busyCall`] — l'appel se termine sans
-laisser AUCUNE trace dans la conversation. Cause : la fin d'appel a été factorisée en un point de
-sortie unique [`teardown()`/`endCallFromRemote()`] qui ne reproduit pas la logique
-"`isCalleMissedCall` reste `true` seulement si `callBusy`" d'Android. Plan : dans
-`CallCoordinator.handle(.busyCall)`, avant `endCallFromRemote(reason: .unanswered)`, appeler
-`chatRepository.notifyMissedCall(profile:chatType:object:"missedvoicecall":messageId:)` comme le
-fait déjà `performEndCall` pour le raccroché local non répondu — reproduire fidèlement la
-condition Android "appel sortant, jamais accepté ni terminé par le correspondant, terminé par
-occupation" — lire `CallCoordinator.swift` en entier autour des lignes 100-420 pour la structure
-exacte de `handle(_:)`/`endCallFromRemote`/`performEndCall`/`notifyMissedCall` avant de coder,
-domaine Appels/WebRTC à traiter avec attention particulière selon la directive Phase B), puis
-continuer AUTOMATIQUEMENT V5-F-033, V5-F-034, V5-F-036, V5-F-037, V5-F-043, V5-F-046, V5-F-047,
-V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070,
-V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097,
-V5-F-098 (26 P1 restants après V5-F-029, dans l'ordre exact du document), puis tous les P2 (31),
-P3 (21), SANS s'arrêter
+**Lot P1-14 traité (V5-F-029)** — Appels audio/vidéo WebRTC, appel sortant vers un correspondant
+occupé [BUSY_CALL] n'insérait aucun message "appel manqué" côté iOS. Vérifié
+`CallActivity.java:85` (`isCalleMissedCall=true` init), `:483-500` (`callBusy()`, ne réinitialise
+JAMAIS le flag), `:509-525` (`endCall()` : `if(isCalleMissedCall) notifyMissedCall`) — seuls
+`callEnd()`/`onAccepCall()` remettent le flag à `false`. `CallCoordinator.handle(.busyCall)`
+appelait uniquement `endCallFromRemote(reason: .unanswered)`, jamais `notifyMissedCall` (le seul
+point d'appel existant, `performEndCall`, ne couvre que le raccroché LOCAL non répondu). Correctif :
+appel à `chatRepository.notifyMissedCall(profile:chatType:object:"missedvoicecall":messageId:)`
+avant `endCallFromRemote`, gardé par `isOutgoingCall` (`CallActivity` n'existe côté Android QUE
+pour un appel sortant) et `profile` non-nil. **Commit `61e9999`, CI verte (run `32920903373`)** —
+`BUILD_VALIDATED`.
+
+**Lot P1-15 traité (V5-F-033)** — Pipeline média/Chat, enregistrement et envoi de messages vocaux
+ENTIÈREMENT absent côté iOS (fonctionnalité manquante, pas un bug de comportement). Vérifié
+`MessageEventLayout.java:238-301` (bouton morphant : tap envoie le texte si non vide, appui
+maintenu enregistre si vide, glissement annule) et `AudioManager.java:105-112`
+(`MediaRecorder`/`AudioSource.MIC`/`OutputFormat.THREE_GPP`/`AudioEncoder.AMR_NB` — encodage RÉEL
+AMR_NB/3GP). Grep exhaustif `AVAudioRecorder` = 0 résultat avant correctif ; la RÉCEPTION/lecture
+fonctionnait déjà. Correctif : nouveau fichier `VoiceRecorder.swift` (`AVAudioRecorder` AAC/`.m4a`,
+permission micro, annulation <1s) ; bouton morphant câblé dans `ChatView.inputBar`
+(`DragGesture(minimumDistance: 0)` = appui maintenu, glissement >80pt = annulation, port du hint
+`RecordView`) ; toute la barre de composition bascule en waveform+minuteur+hint pendant
+l'enregistrement (port du basculement `messageViewContainer`↔`recordView`) ; résultat routé SANS
+changement à travers `ChatViewModel.sendMedia(object: "audio", …)` existant. **Écart technique
+documenté** : `AVAudioRecorder` n'expose aucun encodeur AMR public — capture en AAC/`.m4a`, upload
+toujours étiqueté `audio/3gpp`/`.3gp` (comportement préexistant inchangé) — **risque réel NON
+résolu, test croisé iOS→Android prioritaire requis** pour confirmer la lecture côté récepteur
+Android. **Commit `b9e549f`, CI verte (run `32921757759`)** — `BUILD_VALIDATED`. Détail des 15
+lots dans `PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-034** (Galerie/Animems —
+sélection d'une VIDÉO depuis la galerie dans l'éditeur Animems [bouton "+", `ic_add`] silencieusement
+ignorée côté iOS, FONCTIONNALITÉ MANQUANTE. Android
+[`engine/.../AnimemesCompound.java:2108-2113` clic `ic_add` → `addBitmapFromGallerie()` ; `:2251-2253`
+→ `animemesListener.onOpenGalleryImageOnly()` ; `MemesFragment.java:386-388` →
+`onOpenGalleryImageOnly()` → `pickOnlyImage()` ; `:551-559` `pickOnlyImage()` lance le sélecteur
+avec filtre `PickVisualMedia.ImageAndVideo` ; `:561-587` callback : si `isVideo`,
+`videotrimmer.setVideoUri(uri)` + `setVisibility(VISIBLE)` ; `:233-267`
+`videotrimmer.setVideoTrimmerListener` → `onBitmaps(bitmaps)` →
+`animemes_compound.addBitmaps(bitmaps, 33)` puis fermeture du trimmer] — en choisissant une VIDÉO,
+Android ouvre un VRAI écran de recadrage temporel (`VideoTrimmerView`, ratio de crop visible), et
+à la validation extrait une séquence de bitmaps depuis la vidéo trimée pour les ajouter comme
+calque animé sur le canevas — chemin réellement atteignable [bouton câblé, listener non nul,
+`VideoTrimmerView` instancié depuis le layout]. iOS
+[`Sources/TiinverSwift/Animems/AnimemesEditorView.swift:167-178`, sheet du `GalleryPickerView`,
+ligne 175 précisément ; bouton `ic_add` ligne 599] —
+`onVideoPicked: { _ in showGalleryPicker = false }` : la vidéo sélectionnée est TOTALEMENT jetée,
+aucun trimmer, aucune extraction de trame, aucun calque ajouté, la feuille se ferme simplement
+SANS AUCUN message d'erreur. Cause : le port de `GalleryPickerView` pour ce point d'entrée
+n'implémente que la branche image [`state.addImage`, ligne 171-173] ; la branche vidéo n'a jamais
+été câblée vers un équivalent trim+extraction [aucune fonction `addBitmaps`/`extractFrames`
+équivalente dans `AnimemesEditorState.swift`, malgré `addCapturedPaintFrames`, mécanisme
+structurellement proche déjà utilisé pour un autre bouton]. Plan : PREMIÈRE ÉTAPE avant tout code —
+vérifier si `MediaTrimView` existe déjà côté iOS [cité par l'audit comme "existant" mais NON
+confirmé personnellement] et lire `AnimemesEditorState.addCapturedPaintFrames` en entier pour
+évaluer la faisabilité réelle d'un `addVideoFrames(...)` analogue via `AVAssetImageGenerator` avant
+de committer à la portée complète [trim UI + extraction de frames] ; l'audit autorise explicitement
+un repli réduit si le coût est disproportionné : "à défaut, au minimum afficher un message
+d'erreur explicite plutôt que fermer silencieusement la feuille" — domaine Animems, attention
+particulière requise selon la directive Phase B [existing-but-never-called logic, state mutated
+without redraw, mémoire]), puis continuer AUTOMATIQUEMENT V5-F-036, V5-F-037, V5-F-043, V5-F-046,
+V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063, V5-F-067, V5-F-068,
+V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095,
+V5-F-097, V5-F-098 (24 P1 restants après V5-F-034, dans l'ordre exact du document), puis tous les
+P2 (31), P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →
 State/ViewModel → Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale

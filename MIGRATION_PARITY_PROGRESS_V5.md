@@ -5,10 +5,10 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [13/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+temps). Backlog P1 (40 findings) EN COURS [15/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
 V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022,
-V5-F-023], démarré automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-029
-(V5-F-024 à V5-F-028 sont hors P1, voir doc pour les IDs manquants). Puis 31 P2, 21 P3.**
+V5-F-023, V5-F-029, V5-F-033], démarré automatiquement à V5-F-001, dans l'ordre du document.
+Prochain : V5-F-034. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -826,6 +826,94 @@ désactivé. Bouton vignette séparé (existant, hors périmètre) laissé incha
 **Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
 réel requis : like/commentaire sur un post texte, taper le texte de la notification (ouvre le
 post), taper l'avatar (ouvre le profil).
+
+## 2026-08-25 — Phase B V5 — Lot P1-14 : V5-F-029 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `messagerie/ui/call/CallActivity.java:85` (`isCalleMissedCall=true` à l'init) ;
+`:483-500` (`callBusy()` : affiche "Occupé" 3s puis `initEndCall(false)`, ne réinitialise JAMAIS
+`isCalleMissedCall`) ; `:376-384` (`initEndCall` → `endCall()`) ; `:509-525` (`endCall()` :
+`if(isCalleMissedCall) callService.notifyMissedCall(...)` — flag remis à `false` UNIQUEMENT dans
+`callEnd()` [:476] et `onAccepCall()` [:506], jamais dans `callBusy()`) ;
+`messagerie/repository/ChatRepository.java:1045-1057` (`notifyMissedCall` insère un message
+"missedvoicecall" persistant).
+
+**iOS avant correctif** : `CallCoordinator.swift:111-112` (`case .busyCall:
+endCallFromRemote(reason: .unanswered)`) ; `:326-330` (`endCallFromRemote` : `callKit.
+reportCallEnded` + `teardown()`, AUCUN appel à `notifyMissedCall`) ; `:403-413` (`performEndCall`,
+SEUL point d'appel de `notifyMissedCall`, uniquement sur raccroché LOCAL non répondu, jamais sur
+`.busyCall`). L'appel se terminait sans laisser AUCUNE trace dans la conversation.
+
+### Correctif appliqué
+
+Cause : la fin d'appel a été factorisée en un point de sortie unique
+(`teardown()`/`endCallFromRemote()`) qui ne reproduit pas la logique "`isCalleMissedCall` reste
+`true` seulement si `callBusy`" d'Android. Correctif : dans `handle(.busyCall)`, appel à
+`chatRepository.notifyMissedCall(profile:chatType:object:"missedvoicecall":messageId:)` — même
+appel que `performEndCall` — avant `endCallFromRemote(reason: .unanswered)`, gardé par
+`isOutgoingCall` (`CallActivity` n'existe côté Android QUE pour un appel sortant) et `profile`
+non-nil.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Calls/CallCoordinator.swift`.
+
+**Résultat CI** : commit `61e9999`, push confirmé (`e57bb9f..61e9999 main -> main`), run
+`32920903373` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis (2 appareils/comptes) : appeler un correspondant déjà en communication, confirmer
+l'insertion d'un message "appel manqué" dans la conversation de l'appelant.
+
+## 2026-08-25 — Phase B V5 — Lot P1-15 : V5-F-033 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `messagerie/layout/MessageEventLayout.java:238-301` — bouton morphant :
+`OnRecordClickListener` (tap simple) envoie le texte courant si non vide ; `OnRecordListener`
+(appui maintenu) gère `onStart`→`startRecording`/`onFinish`→`endRecord`/`onCancel`→`cancelRecord`/
+`onLessThanSecond`→`cancelRecord`. `messagerie/AudioManager.java:105-112` : `MediaRecorder`,
+`AudioSource.MIC`, `OutputFormat.THREE_GPP`, `AudioEncoder.AMR_NB` — encodage RÉEL AMR_NB/3GP, pas
+une étiquette trompeuse. `ChatFragmentTest.java:823-826`/`:1355-1358` : `onVoiceMessage` →
+`sendAudioMessage` → `prepareFileMessage(detail,"audio",null)`, même pipeline que photo/vidéo.
+
+**iOS avant correctif** : AUCUN bouton micro dans la barre de composition
+(`ChatView.swift:270-317`), `ChatViewModel.sendMedia`/`attachMedia` ne géraient que photo/vidéo,
+grep exhaustif `AVAudioRecorder` = 0 résultat dans tout le projet — fonctionnalité d'ENVOI
+totalement absente (la RÉCEPTION/lecture fonctionnait déjà, `ChatBubbleViews.swift`
+`AudioBubbleBody`).
+
+### Correctif appliqué
+
+Nouveau fichier `VoiceRecorder.swift` : `AVAudioRecorder` (AAC/`.m4a`), permission micro via
+`AVAudioSession.recordPermission`/`requestRecordPermission` (déclenche la demande système comme
+`listener.askPermission()` Android), `start()`/`stop()`/`cancel()`, annulation automatique si
+enregistrement <1s (port de `onLessThanSecond`). Bouton morphant câblé dans `ChatView.inputBar` :
+tap→texte si non vide (inchangé), `DragGesture(minimumDistance: 0)`→appui maintenu déclenche
+l'enregistrement si vide (`onChanged`, gardé par `isStartingVoiceRecording` pour ne démarrer
+qu'une fois), glissement >80pt vers la gauche avant relâchement→annulation (port du hint
+`RecordView` "glisser pour annuler"), sinon envoi normal. Toute la barre de composition bascule en
+affichage waveform+minuteur+hint pendant l'enregistrement (port du basculement
+`messageViewContainer`↔`recordView`). Résultat routé SANS changement à travers
+`ChatViewModel.sendMedia(object: "audio", …)` déjà existant.
+
+**Écart technique documenté (pas une invention)** : `AVAudioRecorder` n'expose PUBLIQUEMENT aucun
+encodeur AMR — capture en AAC/`.m4a` (seul format haute qualité largement disponible sans
+bibliothèque de codec tierce). `ChatMediaUploadService.MessageMediaKind.audio` étiquette déjà
+INCONDITIONNELLEMENT tout objet "audio" comme `audio/3gpp`/`.3gp` (comportement PRÉEXISTANT, non
+modifié) — le fichier envoyé au CDN est donc du contenu AAC réel sous une étiquette `.3gp`.
+**Risque réel NON résolu** : la lecture d'un message vocal envoyé par iOS pourrait échouer côté
+récepteur Android si son décodeur suppose strictement un flux AMR_NB.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/VoiceRecorder.swift` (nouveau),
+`Sources/TiinverSwift/Messagerie/ChatView.swift`.
+
+**Résultat CI** : commit `b9e549f`, push confirmé (`61e9999..b9e549f main -> main`), run
+`32921757759` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel PRIORITAIRE et CROISÉ (2 appareils) requis : enregistrer/envoyer un message vocal depuis iOS,
+confirmer sa lecture correcte côté récepteur Android (risque de codec, point le plus critique) ;
+confirmer aussi le geste d'annulation par glissement et le blocage <1s.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

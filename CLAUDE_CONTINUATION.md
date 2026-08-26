@@ -213,13 +213,19 @@ exécutaient le même code, `CallCoordinator.handle(.onCall)` exige `callUUID !=
 ne fait rien sans appel en cours. Corrigé : branche `!isOnCall` décode le `Profile` JSON brut et
 appelle `CallCoordinator.shared.handleIncomingCall(profile:chatType:)` directement, même chemin
 que "voicecall". **Commit `70b10ed` poussé sur `main`, CI PAS déclenchée** — zone WebRTC/CallKit
-sensible, test réel supplémentaire requis au-delà de la CI). **Prochain finding à traiter :
-V5-F-035** (V5-F-031/032 déjà traités en P0, V5-F-033/034 déjà traités en P1 — V5-F-035 confirmé
-P2 par lecture directe. Vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas encore
-de bloc `STATUT :` à sa suite, comme fait pour identifier chaque finding restant tout au long de
-cette session). Si l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING`
-listés ci-dessus et communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou
-traiter l'échec le cas échéant) avant de continuer le P2.
+sensible, test réel supplémentaire requis au-delà de la CI) ; Lot P2-9 V5-F-035
+CODE_COMPLETE/CI_PENDING (aucune étape de recadrage/aperçu/annulation à l'ajout d'une image
+galerie dans Animems — `AnimemesCompound.add` n'ajoute le bitmap qu'APRÈS validation d'un
+`CroperView`, `onClose()` annule sans rien ajouter ; iOS appelait `state.addImage` immédiatement.
+Corrigé AU-DELÀ du "a minima" recommandé : réutilise `PhotoCropView` déjà porté [même composant
+que `PublishComposeView`/`TOCropViewController`], nouveau `.fullScreenCover` entre sélection et
+ajout au canevas. **Commit `f9b7818` poussé sur `main`, CI PAS déclenchée**). **Prochain finding à
+traiter : V5-F-038** (V5-F-036/037 déjà traités en P1 — V5-F-038 confirmé P2 par lecture directe.
+Vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc `STATUT :` à sa
+suite, comme fait pour identifier chaque finding restant tout au long de cette session). Si
+l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et
+communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le
+cas échéant) avant de continuer le P2.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

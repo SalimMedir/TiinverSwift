@@ -1499,6 +1499,25 @@ CAUSE : Le port n'a pas reproduit CroperView/CropImageView (module de recadrage 
 IMPACT : Perte fonctionnelle réelle (pas de recadrage possible avant ajout) et différence de flux UX : sur Android l'utilisateur voit un aperçu interactif et peut annuler à cette étape précise (le calque n'existe pas encore) ; sur iOS l'image est ajoutée au canevas de façon irréversible dès la sélection, sans étape d'aperçu/validation dédiée — correspond directement au point « aperçu avant validation » du domaine audité.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter une étape de recadrage/aperçu (SwiftUI crop interactif, ou a minima un aperçu avec boutons Valider/Annuler) entre onImagePicked et state.addImage, pour retrouver la possibilité d'ajuster ou d'annuler avant que l'image ne devienne un calque permanent.
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-9) — Correctif appliqué
+AU-DELÀ du "a minima" de la RECOMMANDATION : vrai recadrage interactif, pas seulement un
+aperçu Valider/Annuler. Vérifié directement `AnimemesCompound.add(MediaDataDetail):2441-2469`
+(`CroperView`/`onBitmapCropedResult`/`onClose`). Réutilise `PhotoCropView` (déjà porté,
+`PhotoEditor/PhotoCropView.swift`, wrapper `TOCropViewController`) — le MÊME composant qui
+remplace déjà `CroperView.java` pour `PublishComposeView` (Feed/Profil) — plutôt que de
+réinventer un second recadreur pour ce second point d'entrée. `onImagePicked` stocke maintenant
+l'image dans `pendingCropImage` au lieu d'appeler `state.addImage` directement ; nouveau
+`.fullScreenCover` présente `PhotoCropView` (forme `.rectangle` par défaut — Android n'affiche
+aucun sélecteur de forme dans CE flux précis, contrairement à `PublishComposeView` qui propose
+Rectangle/Ovale) ; `onCropped` appelle enfin `state.addImage` avec l'image RECADRÉE ; `onCancelled`
+efface `pendingCropImage` sans rien ajouter, fidèle à `onClose()`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorView.swift`.
+
+**Commit `f9b7818`, poussé sur `main`** (`c834d8e..f9b7818`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé. **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas
+confirmée.
 ```
 
 ```

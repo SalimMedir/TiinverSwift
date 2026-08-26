@@ -2147,6 +2147,30 @@ d'outillage que les lots précédents. Zone WebRTC/CallKit sensible : test réel
 requis au-delà de la CI (simuler/observer `ROOM.CALL` serveur reçu app au premier plan sans appel
 en cours, confirmer `CXProvider.reportNewIncomingCall`).
 
+## 2026-08-26 — Phase B V5 — Lot P2-9 : V5-F-035 (Animems — étape de recadrage manquante à l'ajout d'image)
+
+**Commit** : `f9b7818` — poussé sur `main` (`c834d8e..f9b7818`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `AnimemesCompound.add(MediaDataDetail)` instancie un `CroperView` et n'ajoute
+le bitmap au canevas (`onNewAddBitmap`) que dans `onBitmapCropedResult`, APRÈS validation du
+recadrage — `onClose()` referme sans rien ajouter. Côté iOS, `state.addImage` était appelé
+IMMÉDIATEMENT depuis `onImagePicked`, sans aucune étape de recadrage/aperçu/annulation.
+
+**Correction appliquée** (au-delà du "a minima" de la RECOMMANDATION — vrai recadrage interactif,
+pas seulement Valider/Annuler) : réutilise `PhotoCropView` déjà porté (même composant que
+`PublishComposeView`, `TOCropViewController`). `onImagePicked` stocke l'image dans
+`pendingCropImage` ; nouveau `.fullScreenCover` présente le recadrage (rectangle par défaut,
+fidèle à l'absence de sélecteur de forme dans ce flux Android précis) ; `onCropped` appelle
+`state.addImage` avec l'image recadrée, `onCancelled` n'ajoute rien.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. Test réel à confirmer : sélectionner une image depuis la
+galerie dans Animems, confirmer l'écran de recadrage interactif, valider ET annuler séparément
+pour confirmer les deux chemins.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

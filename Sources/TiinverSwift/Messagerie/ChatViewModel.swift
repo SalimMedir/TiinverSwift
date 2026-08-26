@@ -149,16 +149,40 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    /// **Ajouté le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-068, Phase B P1-28)** — port de
+    /// `onLoading()` (`MessageListAdapter.java:361-364`) : masque IMMÉDIATEMENT et SYNCHRONEMENT le
+    /// bouton `subscribe`/`renewsubscription` dès le clic, avant l'appel réseau — le bouton n'est
+    /// plus dans la hiérarchie cliquable pendant toute la durée de la requête, empêchant
+    /// MÉCANIQUEMENT un second appui de déclencher un second débit. `Set<String>` (clé = même id
+    /// que celui déjà utilisé pour le retrait de la bannière, `"sub-\(itemId)"`/`"renew-\(itemId)"`)
+    /// plutôt qu'un simple `Bool`, pour permettre plusieurs abonnements/renouvellements EN COURS
+    /// simultanément sur des bannières DIFFÉRENTES (plusieurs groupes payants dans la même
+    /// conversation), sans qu'un verrou global les bloque mutuellement à tort.
+    @Published private(set) var pendingSubscriptionItemIds: Set<String> = []
+
     /// Port commun de `Subscribe.bind`/`RenewSubscription.bind`'s click handlers + `subscribeSuccefully()`
     /// (`ChatFragmentTest.java:3023-3057`) — solde vérifié AVANT l'appel réseau (`coinCount >
     /// mlib.getPrice()`, PAS `>=`, reproduit à l'identique), débit local optimiste + retrait de la
     /// bannière + déblocage du composeur + message système "a rejoint" sur succès. `isRenewal`
     /// distingue `group/subscribe` de `group/renewsubscription`, seule différence réelle entre les
     /// 2 gestionnaires Android (payload et logique de bannière identiques sinon).
+    ///
+    /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-068, Phase B P1-28)** — un
+    /// double-tap rapide, avant que la bannière ne soit retirée de `items` (uniquement après la
+    /// fin du PREMIER `Task`), déclenchait DEUX `Task` concurrents : les deux lisaient
+    /// `coinsAmount` [encore non décrémenté par le premier] et passaient la garde de solde, chacun
+    /// envoyait sa propre requête réseau puis décrémentait `coinsAmount` — lire-puis-écrire NON
+    /// ATOMIQUE aboutissant à un double débit local pour un seul abonnement voulu par
+    /// l'utilisateur. Verrou logique `pendingSubscriptionItemIds` ajouté, fidèle à la neutralisation
+    /// PHYSIQUE du bouton par `onLoading()` côté Android.
     func resolveGroupSubscription(itemId: String, groupId: String, creatorId: String, price: Int, isRenewal: Bool) {
+        let key = isRenewal ? "renew-\(itemId)" : "sub-\(itemId)"
+        guard !pendingSubscriptionItemIds.contains(key) else { return }
         guard UserSession.shared.coinsAmount > Double(price) else { return }
+        pendingSubscriptionItemIds.insert(key)
         Task { [weak self] in
             guard let self else { return }
+            defer { self.pendingSubscriptionItemIds.remove(key) }
             do {
                 if isRenewal {
                     try await GroupRepository.shared.renewGroupSubscription(groupId: groupId, userId: self.myId, creatorId: creatorId, price: price)
@@ -168,7 +192,7 @@ final class ChatViewModel: ObservableObject {
             } catch {
                 return // Port de `onError` — ré-affiche simplement le bouton côté Android, aucun message d'erreur montré.
             }
-            self.items.removeAll { $0.id == (isRenewal ? "renew-\(itemId)" : "sub-\(itemId)") }
+            self.items.removeAll { $0.id == key }
             self.isComposerBlocked = self.items.contains { if case .subscriptionRequired = $0 { return true }; if case .subscriptionRenewal = $0 { return true }; return false }
             UserSession.shared.coinsAmount -= Double(price)
             var joined = self.buildOutgoingBase(object: "information")

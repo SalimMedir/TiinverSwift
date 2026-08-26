@@ -200,11 +200,17 @@ struct ChatView: View {
             GroupHeaderRow(description: description)
         case .subscriptionRequired(let id, let groupName, let groupId, let creatorId, let price):
             // R.string.subscribe_title / R.string.renewable_monthly
-            SubscriptionBannerRow(title: "\(groupName) — abonnement \(price) pièces/mois", isRenewal: false) {
+            SubscriptionBannerRow(
+                title: "\(groupName) — abonnement \(price) pièces/mois", isRenewal: false,
+                isLoading: viewModel.pendingSubscriptionItemIds.contains("sub-\(id)")
+            ) {
                 viewModel.resolveGroupSubscription(itemId: id, groupId: groupId, creatorId: creatorId, price: price, isRenewal: false)
             }
         case .subscriptionRenewal(let id, let groupId, let creatorId, let price):
-            SubscriptionBannerRow(title: "Renouveler pour \(price) pièces", isRenewal: true) {
+            SubscriptionBannerRow(
+                title: "Renouveler pour \(price) pièces", isRenewal: true,
+                isLoading: viewModel.pendingSubscriptionItemIds.contains("renew-\(id)")
+            ) {
                 viewModel.resolveGroupSubscription(itemId: id, groupId: groupId, creatorId: creatorId, price: price, isRenewal: true)
             }
         }

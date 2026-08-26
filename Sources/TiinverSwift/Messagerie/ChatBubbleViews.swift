@@ -363,19 +363,30 @@ struct GroupHeaderRow: View {
 }
 
 /// Port de `Subscribe`/`RenewSubscription` (`subscribe_layout.xml`/`renewsubscription_layout.xml`)
-/// — bandeau de paiement groupe. **PAS fonctionnel** : la vraie action (`group/subscribe`,
-/// `group/renewsubscription`, débit `COINS_AMOUNT`) dépend du module 15 (Wallet/Paiements), pas
-/// encore porté — bouton présent, action réseau différée et documentée plutôt que devinée.
+/// — bandeau de paiement groupe. Action réelle (`group/subscribe`/`group/renewsubscription`,
+/// débit `coinsAmount`) portée dans `ChatViewModel.resolveGroupSubscription`.
+///
+/// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-068, Phase B P1-28)** — port de
+/// `onLoading()` (`MessageListAdapter.java:361-364`, `subscribe.setVisibility(GONE);
+/// progress.setVisibility(VISIBLE)`) : le bouton est désormais remplacé par un indicateur de
+/// chargement pendant la requête (`isLoading`), au lieu de rester actif — reproduit fidèlement la
+/// neutralisation physique du bouton Android, qui empêche mécaniquement un double-tap de
+/// déclencher un second débit.
 struct SubscriptionBannerRow: View {
     let title: String
     let isRenewal: Bool
+    var isLoading: Bool = false
     let action: () -> Void
     var body: some View {
         VStack(spacing: 6) {
             Text(title).font(.footnote)
-            // R.string.renew_subscription / R.string.subscribe
-            Button(isRenewal ? "Renouveler l'abonnement" : "S'abonner", action: action)
-                .buttonStyle(.borderedProminent)
+            if isLoading {
+                ProgressView()
+            } else {
+                // R.string.renew_subscription / R.string.subscribe
+                Button(isRenewal ? "Renouveler l'abonnement" : "S'abonner", action: action)
+                    .buttonStyle(.borderedProminent)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(10)

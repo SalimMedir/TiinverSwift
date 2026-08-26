@@ -29,6 +29,8 @@ struct RootRouterView: View {
     @Environment(\.scenePhase) private var scenePhase
     /// **Ajouté (V5-F-001, 2026-08-24)** — voir `.fullScreenCover` dans `body` ci-dessous.
     @ObservedObject private var callCoordinator: CallCoordinator = .shared
+    /// **Ajouté (V5-F-050, 2026-08-25)** — voir `.alert` dans `body` ci-dessous.
+    @ObservedObject private var deepLinks: DeepLinkCenter = .shared
 
     var body: some View {
         Group {
@@ -112,6 +114,20 @@ struct RootRouterView: View {
         // `CallCoordinator.start()` peut déjà être actif AVANT authentification.
         .fullScreenCover(isPresented: Binding(get: { callCoordinator.state != .idle }, set: { _ in })) {
             CallView(coordinator: callCoordinator)
+        }
+        // **Corrigé (V5-F-050, 2026-08-25)** — port de `ShareActivity.onError` → `showDialog()`,
+        // MÊME alerte que `HomeShellView` (V3-F-138). `.onOpenURL` est monté ICI précisément pour
+        // capter un lien reçu AVANT authentification (voir commentaire ci-dessus), mais jusqu'ici
+        // seul `HomeShellView` consommait `errorMessage` — un lien invalide/en échec réseau tapé
+        // avant connexion (`AuthCoordinatorView` affiché) ne montrait RIEN à l'écran, fidèle à
+        // aucun des deux comportements Android (qui affiche toujours `errorLoad`, connecté ou non).
+        .alert(
+            "Erreur",
+            isPresented: Binding(get: { deepLinks.errorMessage != nil }, set: { if !$0 { deepLinks.errorMessage = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deepLinks.errorMessage ?? "")
         }
     }
 

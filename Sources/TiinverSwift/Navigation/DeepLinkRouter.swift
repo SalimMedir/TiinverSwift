@@ -112,8 +112,17 @@ enum DeepLinkRouter {
     /// myUsername:)` (extraite le 2026-08-18, P1, pour être réutilisée à l'identique par la
     /// recherche de groupe, `ChatSearchView.swift` — MÊME opération qu'un lien profond de groupe :
     /// ouvrir/rejoindre un groupe connu seulement par son id/token).
+    /// **Corrigé (V5-F-050, 2026-08-25)** — retournait auparavant SILENCIEUSEMENT (aucune erreur
+    /// levée) si `myId` était `nil` (pas encore connecté), alors qu'Android affiche toujours
+    /// `errorLoad` sur tout échec de résolution d'un lien profond, connecté ou non
+    /// (`ShareActivity.onError`, indépendant de tout état de session). Cette route nécessite
+    /// réellement `myId` en paramètre serveur (`fetchGroup(token:myId:)`) — impossible à tenter
+    /// sans identité, donc affichage direct de l'erreur plutôt qu'un appel réseau voué à l'échec.
     private static func routeToGroup(token: String) async {
-        guard let myId = UserSession.shared.myId else { return }
+        guard let myId = UserSession.shared.myId else {
+            DeepLinkCenter.shared.showError()
+            return
+        }
         guard let info = try? await GroupRepository.shared.fetchGroup(token: token, myId: myId) else {
             DeepLinkCenter.shared.showError()
             return

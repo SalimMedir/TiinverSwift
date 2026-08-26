@@ -10,8 +10,8 @@ lot par lot complet. **Backlog P2 (31 findings) EN COURS [20/31 clos, dans l'ord
 V5-F-002, V5-F-004, V5-F-008, V5-F-014, V5-F-024, V5-F-025, V5-F-026
 (IOS_INTENTIONAL_DIFFERENCE), V5-F-030, V5-F-035, V5-F-038, V5-F-039, V5-F-040, V5-F-048,
 V5-F-049, V5-F-051, V5-F-054, V5-F-055 (partiel, écart architectural documenté), V5-F-059,
-V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071, V5-F-073 (DUPLICATE de V5-F-020), V5-F-074].
-Prochain : V5-F-079. Puis 21 P3.**
+V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071, V5-F-073 (DUPLICATE de V5-F-020), V5-F-074,
+V5-F-079]. Prochain : V5-F-083. Puis 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2529,6 +2529,32 @@ l'upload (succès ou échec). Portée étendue au-delà du seul `ProfileView` ci
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Profile/ProfileView.swift`,
 `Sources/TiinverSwift/Messagerie/GroupDetailView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P2-26 : V5-F-079 (Pièces jointes chat téléchargées stockées dans Caches, évictable sans recours)
+
+**Commit** : `0ffb9b3` — poussé sur `main` (`c3a4993..0ffb9b3`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : Android écrit les pièces jointes téléchargées dans `Environment.
+DIRECTORY_DOWNLOADS`/stockage externe privé (vocaux), jamais purgés automatiquement par l'OS.
+`ChatViewModel.requestDownload` écrivait dans `.cachesDirectory`, qu'iOS peut purger sous pression
+de stockage — `isFileDownloaded` restait à 1 en Core Data même après éviction, sans aucun
+mécanisme de détection/correction (`handleAppear` ne relance que si `isFileDownloaded==0`).
+
+**Correction appliquée** : Option 1 de la RECOMMANDATION — `mediaDirectory` basculé de
+`.cachesDirectory` vers `.applicationSupportDirectory` (non-évictable). Option 2 (vérifier
+`fileExists`, retomber sur `isFileDownloaded=0`) délibérément ÉCARTÉE après vérification du modèle
+de données réel : `DownloadReceiver.java:149` confirme qu'Android écrase LUI AUSSI `object_url` par
+le chemin local au téléchargement (`cv.put("object_url", Uri.fromFile(file).toString())`) — même
+comportement que `updated.objectUrl = localURL.absoluteString` côté iOS, pas une divergence de
+portage. L'URL CDN distante d'origine est donc irrécupérable après coup des DEUX côtés : Option 2
+aurait réinitialisé `isFileDownloaded` sans qu'aucun retéléchargement ultérieur ne soit possible
+(le garde-fou `http` de `requestDownload` échouerait silencieusement sur une URL déjà locale).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatViewModel.swift`.
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.

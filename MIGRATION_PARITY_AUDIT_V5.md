@@ -2939,6 +2939,16 @@ IMPACT : Sous pression de stockage (fréquent sur les appareils avec peu d'espac
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Stocker les pièces jointes chat téléchargées hors de Caches (ex. Application Support/ChatMedia), ou à défaut vérifier FileManager.fileExists avant utilisation et retomber sur isFileDownloaded=0 (donc re-déclenchement automatique via handleAppear) si le fichier local est absent.
 CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Chat (image/vidéo/fichier/vocal)" (Phase A.2, 2026-08-24)
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-26). Option 1 de la RECOMMANDATION
+appliquée (`.applicationSupportDirectory` au lieu de `.cachesDirectory`) — Option 2 délibérément
+ÉCARTÉE après vérification du modèle de données réel : `DownloadReceiver.java:149` confirme
+qu'Android écrase LUI AUSSI `object_url` par le chemin local au téléchargement (même comportement
+que `updated.objectUrl = localURL.absoluteString` côté iOS, pas une divergence de portage) — l'URL
+CDN distante est irrécupérable après coup des deux côtés, Option 2 aurait réinitialisé
+`isFileDownloaded` sans qu'aucun retéléchargement ultérieur ne soit possible (garde-fou `http` de
+`requestDownload` échouerait silencieusement sur une URL déjà locale). Fichier modifié :
+`Messagerie/ChatViewModel.swift`. Commit `0ffb9b3`, poussé sur `main`. CI non déclenchée par cette
+session.
 ```
 
 ```

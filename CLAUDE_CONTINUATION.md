@@ -334,13 +334,22 @@ sur changement d'URL — placeholder `isUploadingPhoto` inatteignable tant que l
 était déjà chargé [quasi tous les utilisateurs], aucun retour visuel pendant tout l'upload. Corrigé :
 `pendingAvatarImage`/`pendingGroupAvatarImage` peuplés avant l'upload, affichés en priorité,
 effacés à la fin. Portée étendue à `GroupDetailView.groupAvatar` [même gap, pas cité par l'audit].
-**Commit `d9a966a` poussé sur `main`, CI PAS déclenchée**). **Prochain finding à traiter :
-V5-F-079** (grep `"^ID : V5-F-079"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par
-lecture directe avant tout correctif, comme fait pour chaque finding tout au long de cette
-session ; identifier les findings P2 restants avec `grep "^PRIORITÉ : P2"` puis chercher lesquels
-n'ont pas encore de bloc `STATUT :` à leur suite). Si l'utilisateur a entre-temps déclenché la CI
-pour les findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur
-statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P2.
+**Commit `d9a966a` poussé sur `main`, CI PAS déclenchée**) ; Lot P2-26 V5-F-079
+CODE_COMPLETE/CI_PENDING (pièces jointes chat téléchargées stockées dans `.cachesDirectory`,
+évictable par l'OS sans recours — Android écrit dans `Environment.DIRECTORY_DOWNLOADS`/stockage
+externe privé, jamais purgé. Corrigé : basculé vers `.applicationSupportDirectory` [Option 1 de la
+RECOMMANDATION]. Option 2 [`fileExists`+reset `isFileDownloaded=0`] délibérément ÉCARTÉE :
+`DownloadReceiver.java:149` confirme qu'Android écrase LUI AUSSI `object_url` par le chemin local
+au téléchargement, même comportement que le port iOS — l'URL CDN distante est irrécupérable après
+coup des 2 côtés, Option 2 aurait cassé tout retéléchargement futur [garde-fou `http` de
+`requestDownload` échouerait silencieusement]. **Commit `0ffb9b3` poussé sur `main`, CI PAS
+déclenchée**). **Prochain finding à traiter : V5-F-083** (grep `"^ID : V5-F-083"` dans
+`MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe avant tout correctif,
+comme fait pour chaque finding tout au long de cette session ; identifier les findings P2 restants
+avec `grep "^PRIORITÉ : P2"` puis chercher lesquels n'ont pas encore de bloc `STATUT :` à leur
+suite). Si l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés
+ci-dessus et communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter
+l'échec le cas échéant) avant de continuer le P2.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

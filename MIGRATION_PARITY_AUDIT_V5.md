@@ -1862,6 +1862,28 @@ CAUSE : DisplayLinkProxy.onTick capture `self` (AnimationEngine) en [weak self] 
 IMPACT : Fuite de timer classique : chaque session « lecture puis sortie sans re-taper pause » laisse un CADisplayLink actif indéfiniment dans le run loop principal, consommant CPU/batterie en continu sur TOUT le reste de la session app (tous les écrans suivants), jusqu'au kill de l'app. Répété plusieurs fois (l'utilisateur rentre/sort de l'éditeur plusieurs fois en jouant à chaque fois), plusieurs CADisplayLink orphelins s'accumulent simultanément — croissance non bornée du nombre de timers actifs vs le comportement Android qui les arrête systématiquement au niveau du lifecycle.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Ajouter .onDisappear { state.engine.stop() } (ou pause()) sur la vue racine d'AnimemesEditorView, et/ou un deinit dans AnimemesEditorState qui invalide explicitement engine.displayLink, pour reproduire fidèlement onPause/onStop/onDestroyView de MemesFragment.java.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-23) — Vérifié directement :
+`MemesFragment.java:144-176` confirme `onPause`/`onStop`/`onDestroyView` appelant TOUS
+`pause()` + `stopView()`. Cause racine confirmée : `RunLoop.main` retient fortement le
+`CADisplayLink`/son target `DisplayLinkProxy` INDÉPENDAMMENT de `AnimationEngine` (capturé
+`[weak self]` dans `startPlayback`), donc rien n'invalidait jamais le lien à la sortie de l'écran.
+Correctif : `.onDisappear { state.engine.stop() }` ajouté sur la vue racine
+d'`AnimemesEditorView` (port direct et déterministe de `onPause`/`onStop`/`onDestroyView`,
+`engine.stop()` invalide déjà le lien via `stopDisplayLink()` et est sans effet si aucune lecture
+n'est en cours) + `deinit` ajouté sur `AnimationEngine` invalidant `displayLink` comme filet de
+sécurité supplémentaire (cas où l'objet serait désalloué par un autre chemin).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorView.swift`,
+`Sources/TiinverSwift/Animems/AnimationEngine.swift`.
+
+**Résultat CI** : commit `7bbca19` (code), documentation regroupée au commit `76fc029`, push
+confirmé (`65db96d..76fc029 main -> main`), run `32928191420` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis (profiling Instruments) : lancer la lecture dans
+l'éditeur Animems, quitter l'écran sans mettre en pause, confirmer l'absence de `CADisplayLink`
+actif résiduel (CPU/batterie retombant à zéro sur cet écran après sortie).
 ```
 
 ```

@@ -5,11 +5,11 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [22/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+temps). Backlog P1 (40 findings) EN COURS [23/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
 V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022,
 V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037 (IOS_INTENTIONAL_DIFFERENCE),
-V5-F-043, V5-F-046, V5-F-047, V5-F-050], démarré automatiquement à V5-F-001, dans l'ordre du
-document. Prochain : V5-F-057. Puis 31 P2, 21 P3.**
+V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057], démarré automatiquement à V5-F-001, dans
+l'ordre du document. Prochain : V5-F-058. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -1185,6 +1185,43 @@ exige réellement `myId`, donc affichage direct de l'erreur plutôt qu'un appel 
 
 **Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
 réel requis : lien profond invalide avant connexion, confirmer l'alerte visible.
+
+## 2026-08-25 — Phase B V5 — Lot P1-23 : V5-F-057 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `editor/memes/MemesFragment.java:144-176` — `onPause`/`onStop`/`onDestroyView`
+appellent TOUS `animemes_compound.pause()` + `animemes_compound.stopView()`, et `onDestroyView`
+appelle en plus `animemes_compound.onDestroy()`. Le rendu par frame ne peut jamais continuer après
+la sortie de l'écran.
+
+**iOS avant correctif** : `AnimemesEditorState` sans `deinit`, `AnimemesEditorView` sans
+`.onDisappear`. `AnimationEngine.displayLink` n'était arrêté (`stopDisplayLink()`) que par un
+second tap explicite sur pause ou un scrub manuel. Cause racine : `DisplayLinkProxy.onTick`
+capture `self` (`AnimationEngine`) en `[weak self]` (évite un crash), mais `RunLoop.main` retient
+fortement le `CADisplayLink` LUI-MÊME (et son target `DisplayLinkProxy`) INDÉPENDAMMENT de
+`AnimationEngine` — sans `deinit`/`.onDisappear` appelant `engine.stop()`, le lien continue de
+déclencher son callback à chaque rafraîchissement (jusqu'à 60-120Hz) INDÉFINIMENT après la sortie
+de l'écran (le `self?.tick(...)` devient un no-op silencieux, mais le `CADisplayLink` n'est jamais
+libéré).
+
+### Correctif appliqué
+
+`.onDisappear { state.engine.stop() }` ajouté sur la vue racine d'`AnimemesEditorView` — port
+direct et déterministe de `onPause`/`onStop`/`onDestroyView` ; `engine.stop()` invalide déjà le
+lien via `stopDisplayLink()` (préexistant) et est un no-op si aucune lecture n'est en cours.
+`deinit` ajouté sur `AnimationEngine` (`displayLink?.invalidate()`) comme filet de sécurité
+supplémentaire pour un chemin de désallocation qui ne passerait pas par `.onDisappear`.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorView.swift`,
+`Sources/TiinverSwift/Animems/AnimationEngine.swift`.
+
+**Résultat CI** : commit `7bbca19` (code), documentation regroupée au commit `76fc029`, push
+confirmé (`65db96d..76fc029 main -> main`), run `32928191420` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis (profiling Instruments) : lancer la lecture, quitter l'écran sans pause, confirmer
+l'absence de `CADisplayLink` résiduel actif.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

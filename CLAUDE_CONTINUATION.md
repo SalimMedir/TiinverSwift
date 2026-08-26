@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [22/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [23/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -69,8 +69,10 @@ existait déjà mais 0 appelant, `repliesSection(for:)`/`commentLine(_:)` ajout�
 supposait des champs serveur pré-résolus jamais confirmés, résolution basculée côté client via
 `GiftCatalog`) ; Lot P1-22 V5-F-050 BUILD_VALIDATED (alerte d'échec de lien profond invisible
 avant authentification, même `.alert` que `HomeShellView` ajoutée sur `RootRouterView`,
-`routeToGroup` ne retourne plus silencieusement si `myId == nil`)]**. Voir section "Cycle V5" plus
-bas pour le détail complet.)
+`routeToGroup` ne retourne plus silencieusement si `myId == nil`) ; Lot P1-23 V5-F-057
+BUILD_VALIDATED (`CADisplayLink` de l'éditeur Animems jamais invalidé en quittant l'écran pendant
+la lecture, fuite non bornée, `.onDisappear { state.engine.stop() }` + `deinit` sur
+`AnimationEngine`)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -506,11 +508,11 @@ self]`), donc quitter l'écran pendant `isPlaying == true` laissait un timer act
 (jusqu'à 60-120Hz), un par session play-puis-sortie-sans-pause — fuite non bornée. Correctif :
 `.onDisappear { state.engine.stop() }` sur la vue racine de l'éditeur (port direct de
 `onPause`/`onStop`/`onDestroyView`, déterministe) + `deinit` sur `AnimationEngine` invalidant le
-lien comme filet de sécurité supplémentaire. **Commit `7bbca19`, CI dispatchée** (poll en cours).
+lien comme filet de sécurité supplémentaire. **Commit `7bbca19` (code), documentation regroupée au
+commit `76fc029`, CI verte (run `32928191420`)** — `BUILD_VALIDATED`. Détail des 23 lots dans
+`PROGRESS_V5.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Une fois V5-F-057 confirmé vert et documenté (STATUT/Lot déjà
-rédigés dans `AUDIT_V5.md`/`PROGRESS_V5.md`, cette section à mettre à jour avec le commit/run
-final si pas encore fait), enchaîner **automatiquement** sur **V5-F-058** (Performance/mémoire —
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-058** (Performance/mémoire —
 téléchargement et pré-cache vidéo : vidéo ENTIÈRE chargée en RAM avant écriture disque
 (téléchargement Profil + pré-cache Feed), risque réel de jetsam/crash mémoire sur un simple
 défilement. Android [`Activity/service/CacheWorker.java:66-69,231-234`,

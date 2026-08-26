@@ -36,6 +36,14 @@ struct SettingsView: View {
             Section {
                 NavigationLink("Aide") { SettingHelpView() } // case 6
                 NavigationLink("À propos") { SettingAboutView() } // case 8
+                // Port de `header_updateapp` (`Adapter.java:171-176`→`BlankFragment.onAppUpdate()`
+                // →`UpdateApp.java`) — **ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md
+                // V5-F-051, Phase B P2)**. Dernière entrée du menu racine côté Android
+                // (`item_headers_of_settings.xml`, `header_updateapp` après `header_about`),
+                // toujours visible (pas conditionnée), ouvrant la fiche App/Play Store —
+                // `UpdateAppView` (déjà porté) n'avait jusqu'ici qu'un seul appelant, le blocage
+                // forcé de `RootRouterView` : aucun moyen d'y accéder manuellement.
+                NavigationLink("Mise à jour") { UpdateAppView() }
             }
         }
         .navigationTitle("Réglages")

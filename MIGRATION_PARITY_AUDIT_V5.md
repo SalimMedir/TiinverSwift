@@ -698,6 +698,26 @@ CAUSE : Faute de frappe/oubli lors du portage : l'endpoint Android exact `group/
 IMPACT : Un membre d'un groupe payant dont l'abonnement a expiré (ou dont l'accès est marqué restreint côté serveur) peut continuer à lire ET à envoyer des messages sans limite sur iOS, alors qu'Android bloque explicitement la composition tant que l'utilisateur n'a pas renouvelé/payé — perte de la mécanique de monétisation pour les créateurs de groupes payants, et incohérence de comportement entre plateformes pour la même fonctionnalité payante.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Corriger l'endpoint dans GroupRepository.swift:346 en `"group/checksubscription2/\(userId)/\(groupId)"` pour retrouver le comportement exact d'Android. Envisager également de ne PAS retomber silencieusement sur `.active` en cas d'échec réseau franc (ex. distinguer un 404/erreur de route d'un simple timeout), afin qu'une régression future de ce type soit détectable plutôt que masquée.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-8) — Vérifié directement :
+`ChatFragmentTest.java:727-728` confirme l'endpoint exact `group/checksubscription2` (suffixe "2"),
+grep exhaustif sur tout le code Android confirmant qu'aucune autre occurrence n'existe. Correctif :
+endpoint corrigé dans `GroupRepository.checkSubscription` (`group/checksubscription` →
+`group/checksubscription2`). Repli optionnel de la RECOMMANDATION (ne plus retomber
+silencieusement sur `.active` en cas d'échec réseau franc) délibérément NON appliqué : vérifié que
+l'`onError` Android de `checkSubcribtion` ne fait lui-même rien de spécial (pas de blocage) sur
+échec réseau — le "fail open" du `try?` existant est donc déjà fidèle à Android, seul le suffixe
+d'endpoint était la vraie divergence. Diff strictement localisé (1 ligne).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/GroupRepository.swift`.
+
+**Résultat CI** : commit `904d77a`, push confirmé (`8db4f0c..904d77a main -> main`), run
+`32916536677` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : ouvrir la conversation d'un groupe payant dont
+l'abonnement a expiré/est restreint côté serveur, confirmer que le composeur se bloque bien avec la
+bannière "renouveler"/"s'abonner", fidèle à Android.
 ```
 
 ```

@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [7/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [8/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -33,7 +33,9 @@ BUILD_VALIDATED (vignette recherche "Publications" retombait à tort sur object_
 `SearchPostResult.thumbnailURL` réécrit en fallback 2 étages fidèle à
 `UniversalSearchAdapter.PostViewHolder`) ; Lot P1-7 V5-F-013 BUILD_VALIDATED (grille de posts
 profil restait vide après déblocage, `else { await loadInitialPosts() }` symétrique ajouté à
-`toggleBlock()`)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
+`toggleBlock()`) ; Lot P1-8 V5-F-016 BUILD_VALIDATED (endpoint abonnement groupe payant sans le
+suffixe "2" Android, blocage composeur jamais déclenché, endpoint corrigé dans
+`GroupRepository.checkSubscription`)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -253,31 +255,44 @@ déblocage, laissant la grille vide (aucun élément pour déclencher le `.onApp
 `UserProfile.java:1123`, seul le cas "bloquer" avait été porté. Correctif : `else { await
 loadInitialPosts() }` symétrique ajouté (réutilise `loadInitialPosts()` déjà porté pour
 V4-F-014). Diff strictement additif (3 lignes). **Commit `797e43e`, CI verte (run
-`32915890209`)** — `BUILD_VALIDATED`. Détail des 7 lots dans `PROGRESS_V5.md`.
+`32915890209`)** — `BUILD_VALIDATED`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-016** (Messagerie — Groupes
-payants : la vérification d'abonnement appelle un endpoint différent de celui d'Android, le
-blocage du composeur pour abonnement expiré/restreint ne se déclenche jamais. Android
-[`ChatFragmentTest.java:727-728`, `checkSubcribtion`] appelle `group/checksubscription2/{userId}/{groupId}`
-(suffixe "2", confirmé par grep exhaustif — aucune autre occurrence dans tout le code Android) à
-l'ouverture d'une conversation par un membre existant ; si la réponse contient `error:"true"` avec
-`message` = `subscription expires.` [SUBCRIPTION_EXPIRE] ou `Restricted access.`
-[RESTRICTED_ACCESS], la barre de saisie est masquée et une bannière "renouveler"/"s'abonner" est
-insérée, bloquant l'envoi. iOS [`GroupRepository.swift:345-354` `checkSubscription`] appelle
-`group/checksubscription/{userId}/{groupId}` — SANS le suffixe "2" — et utilise `try? await ...
-else { return .active }` : tout échec réseau [ex. 404 sur une route inexistante] fait
-silencieusement retomber sur `.active`. Résultat : `checkGroupSubscription()`
-[`ChatViewModel.swift:126-150`] ne passe jamais dans les branches `.expired`/`.restricted`,
-`isComposerBlocked` reste `false`, le composeur n'est jamais bloqué pour un abonnement expiré/
-restreint. Cause : faute de portage, suffixe numérique "2" omis, combiné au `try?` qui masque
-l'échec réseau résultant. Plan : corriger l'endpoint en `"group/checksubscription2/\(userId)/\(groupId)"`
-dans `GroupRepository.swift:346` ; évaluer si le `try?`/repli silencieux sur `.active` doit aussi
-être resserré pour rendre une régression future détectable plutôt que masquée), puis continuer
-AUTOMATIQUEMENT V5-F-019, V5-F-020, V5-F-021, V5-F-022, V5-F-023, V5-F-029, V5-F-033, V5-F-034,
-V5-F-036, V5-F-037, V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060,
-V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078,
-V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (32 P1 restants après V5-F-016, dans
-l'ordre exact du document), puis tous les P2 (31), P3 (21), SANS s'arrêter
+**Lot P1-8 traité (V5-F-016)** — Messagerie/Groupes payants, la vérification d'abonnement appelait
+un endpoint différent de celui d'Android, le blocage du composeur pour abonnement expiré/restreint
+ne se déclenchait jamais. Vérifié `ChatFragmentTest.java:727-728` (`checkSubcribtion`) : endpoint
+exact `group/checksubscription2/{userId}/{groupId}` (suffixe "2", confirmé par grep exhaustif comme
+seule occurrence dans tout le code Android). `GroupRepository.checkSubscription` appelait
+`group/checksubscription` — SANS le suffixe "2" — combiné au `try? ... else { return .active }`
+existant, tout échec réseau retombait silencieusement sur `.active`, le composeur n'étant jamais
+bloqué. Correctif : endpoint corrigé (`checksubscription` → `checksubscription2`). Repli optionnel
+de la RECOMMANDATION (distinguer échec réseau franc du repli `.active`) délibérément NON appliqué :
+vérifié que l'`onError` Android ne fait lui-même rien de spécial sur échec réseau — le "fail open"
+du `try?` existant est déjà fidèle à Android. Diff strictement localisé (1 ligne + commentaire).
+**Commit `904d77a`, CI verte (run `32916536677`)** — `BUILD_VALIDATED`. Détail des 8 lots dans
+`PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-019** (Écran de conversation
+— bulle d'appel manqué : un tap sur une bulle "appel manqué"/"appel vocal" ne rappelle jamais le
+correspondant. Android [`MissedViewHolder.java:15-39`, `onClick` → `ResultData.CALL` →
+`ChatFragmentTest.java:561-563` → `mListener.onArticleSelected(8,null)` →
+`ActivityMsg.java:516-518`, `case 8: startCall();`] déclenche exactement la même action que le
+bouton d'appel de la barre d'outils : un appel sortant est immédiatement relancé. iOS
+[`ChatView.swift:190-191`, `MissedCallBubbleRow(message:text:) { }`] — le dernier paramètre
+`onTap` est une fermeture totalement VIDE au site d'appel, alors que le fichier possède déjà tout
+le nécessaire (`outgoingCallProfile`/`callCoordinator.startOutgoingCall(...)`, utilisés juste à
+côté pour le bouton de la barre d'outils, lignes 356-359) — le composant `MissedCallBubbleRow`
+lui-même [`ChatBubbleViews.swift:306-322`] est un `Button` fonctionnel, câblé côté vue, mais son
+action n'a jamais été reliée. Cause : point d'entrée UI non câblé lors du portage. Plan :
+remplacer la fermeture vide par
+`{ callCoordinator.startOutgoingCall(profile: outgoingCallProfile, chatType: viewModel.target.type) }`
+au site d'appel de `ChatView.swift:190-191`, en respectant la même garde
+`callCoordinator.state != .idle` déjà utilisée pour le bouton de la barre d'outils, afin d'éviter
+un double-appel concurrent), puis continuer AUTOMATIQUEMENT V5-F-020, V5-F-021, V5-F-022,
+V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037, V5-F-043, V5-F-046, V5-F-047,
+V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070,
+V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097,
+V5-F-098 (31 P1 restants après V5-F-019, dans l'ordre exact du document), puis tous les P2 (31),
+P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →
 State/ViewModel → Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale

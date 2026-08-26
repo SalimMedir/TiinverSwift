@@ -5,9 +5,9 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [7/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
-V5-F-007, V5-F-009, V5-F-010, V5-F-013], démarré automatiquement à V5-F-001, dans l'ordre du
-document. Prochain : V5-F-016. Puis 31 P2, 21 P3.**
+temps). Backlog P1 (40 findings) EN COURS [8/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016], démarré automatiquement à V5-F-001, dans
+l'ordre du document. Prochain : V5-F-019. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -600,6 +600,41 @@ additif.
 **Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
 réel requis : bloquer puis débloquer un utilisateur depuis son profil, confirmer la republication
 immédiate de la grille de posts.
+
+## 2026-08-25 — Phase B V5 — Lot P1-8 : V5-F-016 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `ChatFragmentTest.java:727-728` (`checkSubcribtion`) — endpoint exact
+`group/checksubscription2/{userId}/{groupId}` (suffixe "2"), appelé dès l'ouverture d'une
+conversation de groupe par un membre existant. Réponse `error:"true"` avec `message` =
+`"subscription expires."`/`"Restricted access."` masque la barre de saisie et insère une bannière
+"renouveler"/"s'abonner". Grep exhaustif confirmant qu'aucune autre occurrence de cet endpoint
+n'existe dans tout le code Android (pas de variante sans suffixe).
+
+**iOS avant correctif** : `GroupRepository.checkSubscription` appelait
+`group/checksubscription/{userId}/{groupId}` — SANS le suffixe "2". Combiné au `try? ... else {
+return .active }` existant, tout échec réseau (404 sur une route inexistante) retombait
+silencieusement sur `.active`, empêchant `checkGroupSubscription()` de jamais atteindre les
+branches `.expired`/`.restricted` : le composeur n'était jamais bloqué pour un abonnement payant
+expiré/restreint.
+
+### Correctif appliqué
+
+Endpoint corrigé : `group/checksubscription` → `group/checksubscription2`. Repli optionnel de la
+RECOMMANDATION (distinguer un échec réseau franc du repli `.active`) délibérément NON appliqué :
+vérifié que l'`onError` Android de `checkSubcribtion` ne fait lui-même rien de spécial sur échec
+réseau (pas de blocage) — le "fail open" du `try?` existant est déjà fidèle à Android, seul le
+suffixe d'endpoint était la vraie divergence. Diff strictement localisé (1 ligne + commentaire).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/GroupRepository.swift`.
+
+**Résultat CI** : commit `904d77a`, push confirmé (`8db4f0c..904d77a main -> main`), run
+`32916536677` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : ouvrir la conversation d'un groupe payant avec abonnement expiré/restreint côté
+serveur, confirmer le blocage du composeur et l'affichage de la bannière.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

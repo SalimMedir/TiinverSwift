@@ -484,6 +484,12 @@ final class ChatViewModel: ObservableObject {
     private static func generateThumbnail(for asset: AVURLAsset) -> String? {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
+        // Port de `generateThumbsAsync` (`VideoTrimmerView.java:1019-1032`) — voir doc identique
+        // dans `MediaTrimView.generateThumbnails` (V5-F-059, Phase B P2). Cette vignette de bulle
+        // de chat est affichée à une taille encore plus réduite qu'un bandeau de trim — décoder à
+        // pleine résolution source pour ne produire qu'un JPEG miniature est un gaspillage mémoire
+        // pur, sans aucun bénéfice qualité visible.
+        generator.maximumSize = CGSize(width: 320, height: 180)
         guard let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil),
               let jpegData = UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.8)
         else { return nil }

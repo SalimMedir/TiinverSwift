@@ -361,6 +361,14 @@ struct MediaTrimView: View {
         guard duration > 0 else { return }
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
+        // Port de `generateThumbsAsync` (`VideoTrimmerView.java:1019-1032`) — **ajouté le
+        // 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-059, Phase B P2)** : Android décode
+        // chaque frame plein format puis la réduit IMMÉDIATEMENT à 320×180
+        // (`Bitmap.createScaledBitmap`) et recycle le plein format — jamais plusieurs bitmaps
+        // pleine résolution en mémoire simultanément. `maximumSize` fait sous-échantillonner
+        // ImageIO DÈS le décodage (pas de redimensionnement a posteriori nécessaire), même effet
+        // mémoire pour un bandeau de vignettes affiché à ≈largeur écran/8.
+        generator.maximumSize = CGSize(width: 320, height: 180)
         let count = 8
         var images: [UIImage] = []
         for index in 0..<count {

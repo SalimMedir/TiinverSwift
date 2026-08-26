@@ -75,6 +75,12 @@ struct ProfileView: View {
         ) {
             Button(viewModel.isBlocked ? "Débloquer" : "Bloquer", role: .destructive) { Task { await viewModel.toggleBlock() } }
         }
+        // Port du `Toast` `errorLoad` d'échec de `toggleBlock()` (V5-F-065, voir `ProfileViewModel.toggleBlock`).
+        .alert("Échec du blocage", isPresented: Binding(get: { viewModel.blockError != nil }, set: { if !$0 { viewModel.blockError = nil } })) {
+            Button("OK", role: .cancel) { viewModel.blockError = nil }
+        } message: {
+            Text(viewModel.blockError ?? "")
+        }
         .sheet(isPresented: $showEditProfile) { EditProfileView() }
         .navigationDestination(isPresented: $showReport) {
             ReportView(targetId: viewModel.userId, username: viewModel.profile?.username ?? "", reportType: "user")

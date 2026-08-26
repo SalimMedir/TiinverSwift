@@ -363,6 +363,12 @@ struct FeedView: View {
         } message: {
             Text(viewModel.deleteError ?? "")
         }
+        // Port du `Toast` `errorLoad` d'échec de `block()` (V5-F-065, voir `FeedViewModel.block`).
+        .alert("Échec du blocage", isPresented: Binding(get: { viewModel.blockError != nil }, set: { if !$0 { viewModel.blockError = nil } })) {
+            Button("OK", role: .cancel) { viewModel.blockError = nil }
+        } message: {
+            Text(viewModel.blockError ?? "")
+        }
     }
 
     /// État affiché tant qu'aucun post n'est chargé — distingue explicitement les 3 cas
@@ -808,6 +814,12 @@ struct FeedDetailPagerView: View {
             Button("OK", role: .cancel) { viewModel.deleteError = nil }
         } message: {
             Text(viewModel.deleteError ?? "")
+        }
+        // Port du `Toast` `errorLoad` d'échec de `block()` (V5-F-065, voir `FeedViewModel.block`).
+        .alert("Échec du blocage", isPresented: Binding(get: { viewModel.blockError != nil }, set: { if !$0 { viewModel.blockError = nil } })) {
+            Button("OK", role: .cancel) { viewModel.blockError = nil }
+        } message: {
+            Text(viewModel.blockError ?? "")
         }
     }
 

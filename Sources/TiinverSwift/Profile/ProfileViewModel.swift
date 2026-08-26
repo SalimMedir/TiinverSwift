@@ -21,6 +21,10 @@ final class ProfileViewModel: ObservableObject {
     /// publié) n'était lu par AUCUNE vue (confirmé par grep avant ce correctif).
     @Published var postsLoadError = false
     @Published var isBlocked = false
+    /// Port du `Toast` `errorLoad` de `UserProfile.block()`'s `onError` (V5-F-065) — transitoire,
+    /// affiché par `ProfileView`, publié uniquement sur échec réseau (jamais pour un déblocage
+    /// légitime, voir `toggleBlock()`).
+    @Published var blockError: String?
     @Published var isFollowing = false
     @Published var isUploadingPhoto = false
     /// **Ajouté le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-009, Phase B P2)** — port de
@@ -215,16 +219,25 @@ final class ProfileViewModel: ObservableObject {
     /// `loadInitialData()` après un déblocage réussi, republiant immédiatement la grille. Seul le
     /// cas symétrique "bloquer" (vider `posts`) avait été porté ; ajouté ici le rechargement sur
     /// déblocage pour ne pas laisser la grille vide jusqu'à la sortie/retour de l'écran.
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-065, Phase B P2)** — `try?` avec
+    /// repli `?? isBlocked` avalait silencieusement tout échec réseau, contrairement à
+    /// `UserProfile.block()`'s `onError` (Toast `errorLoad`). `toggleBlock` lève désormais
+    /// distinctement sur échec réseau (transport, voir `APIClient.request`) — `blockError` publié
+    /// uniquement dans cette branche `catch`, état/grille inchangés (même repli qu'avant).
     func toggleBlock() async {
         guard let myUsername = UserSession.shared.username, let myId = UserSession.shared.myId, let targetUsername = profile?.username
         else { return }
-        let blocked = (try? await repository.toggleBlock(myUsername: myUsername, myId: myId, targetUsername: targetUsername, targetUserId: userId)) ?? isBlocked
-        isBlocked = blocked
-        UserDefaults.standard.set(blocked, forKey: targetUsername + "_blocked")
-        if blocked {
-            posts = []
-        } else {
-            await loadInitialPosts()
+        do {
+            let blocked = try await repository.toggleBlock(myUsername: myUsername, myId: myId, targetUsername: targetUsername, targetUserId: userId)
+            isBlocked = blocked
+            UserDefaults.standard.set(blocked, forKey: targetUsername + "_blocked")
+            if blocked {
+                posts = []
+            } else {
+                await loadInitialPosts()
+            }
+        } catch {
+            blockError = "Pas de connexion internet, réessayer plus tard"
         }
     }
 }

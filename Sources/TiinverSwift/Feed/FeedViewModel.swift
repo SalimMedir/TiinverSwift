@@ -19,6 +19,9 @@ final class FeedViewModel: ObservableObject {
     /// Port du `Toast` d'échec de `ActivityAdapter.deleteMyPost`'s `onError` (V4-F-032) — transitoire,
     /// affiché par les vues qui déclenchent `deleteOwnPost` (`FeedView`/`FeedDetailPagerView`).
     @Published var deleteError: String?
+    /// Port du `Toast` `errorLoad` de `MainFragment.block()`'s `onError` (V5-F-065) — transitoire,
+    /// affiché par les mêmes 2 vues que `deleteError`.
+    @Published var blockError: String?
 
     private let repository = FeedRepository()
     private let profileRepository = ProfileRepository.shared
@@ -315,14 +318,25 @@ final class FeedViewModel: ObservableObject {
     /// pour un déblocage légitime ET pour un rejet backend, les distinguer nécessiterait de modifier
     /// `toggleBlock` lui-même, hors périmètre de ce lot ; le comportement correct (ne pas retirer le
     /// post) est identique dans les deux cas.
+    ///
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-065, Phase B P2)** — `try?`
+    /// avalait aussi les échecs RÉSEAU (pas seulement le cas légitime "déblocage" traité ci-dessus),
+    /// sans aucun retour visuel, contrairement à `MainFragment.block()`'s `onError` (Toast
+    /// `errorLoad`). `toggleBlock` lève désormais distinctement sur échec réseau (transport, voir
+    /// `APIClient.request`) — `blockError` publié uniquement dans cette branche `catch`, jamais pour
+    /// un déblocage légitime (`blocked == false` sans erreur levée, toujours silencieux).
     func block(_ post: FeedActivity) async {
         guard let myId = UserSession.shared.myId, let myUsername = UserSession.shared.username,
               let targetUsername = post.username, let actorId = post.actor
         else { return }
-        guard let blocked = try? await profileRepository.toggleBlock(myUsername: myUsername, myId: myId, targetUsername: targetUsername, targetUserId: actorId),
-              blocked
-        else { return }
-        posts.removeAll { $0.id == post.id }
+        do {
+            let blocked = try await profileRepository.toggleBlock(myUsername: myUsername, myId: myId, targetUsername: targetUsername, targetUserId: actorId)
+            if blocked {
+                posts.removeAll { $0.id == post.id }
+            }
+        } catch {
+            blockError = "Pas de connexion internet, réessayer plus tard"
+        }
     }
 
     /// Port de `Report.report()` — voir `FeedRepository.reportUser` pour la note de fidélité sur

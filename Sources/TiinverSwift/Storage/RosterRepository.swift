@@ -1,54 +1,45 @@
 import CoreData
 
 /// Repository pour `RosterEntity` (`wk_roster`) — cas particulier non couvert par
-/// `CoreDataRepository<Entity>` générique, car `StubProvider.java` lui attache deux opérations
-/// spécifiques (voir `StubProvider.query`/`update`, cas `ROSTER_ALL` et `UNREAD_MESSAGE_COUNT`) :
+/// `CoreDataRepository<Entity>` générique, car `StubProvider.java` lui attache une opération
+/// spécifique (voir `StubProvider.update`, cas `UNREAD_MESSAGE_COUNT`) :
 ///
-/// 1. `rosterall` : `SELECT * FROM wk_roster AS r LEFT JOIN wk_messages AS m
-///    ON r.conversationId=m.conversationId ORDER BY stamp ASC` — jointure brute, pas une simple
-///    lecture de table.
-/// 2. `unreadmessagecount` : `UPDATE wk_roster SET unreadCount = unreadCount + 1 WHERE
-///    conversationId = ?` — incrément atomique, pas un `update(values:)` classique.
+/// `unreadmessagecount` : `UPDATE wk_roster SET unreadCount = unreadCount + 1 WHERE
+/// conversationId = ?` — incrément atomique, pas un `update(values:)` classique.
 ///
-/// Core Data n'a pas d'équivalent direct à une jointure SQL brute : on reproduit le même résultat
-/// logique (chaque conversation de `wk_roster`, associée à son dernier message `wk_messages`
-/// correspondant) en deux fetch Core Data + assemblage en mémoire, plutôt que par une requête
-/// jointe native. Fidèle au résultat observable de `StubProvider`, pas à son implémentation SQL.
-struct RosterWithLastMessage {
-    let roster: RosterEntity
-    let lastMessage: MessageEntity?
-}
-
+/// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-072, Phase B P1-30)** — `rosterAll()`
+/// reproduisait auparavant la requête `rosterall` de `StubProvider.java` (`SELECT * FROM wk_roster
+/// AS r LEFT JOIN wk_messages AS m ON r.conversationId=m.conversationId ORDER BY stamp ASC`) via
+/// un second `fetch` `MessageEntity` PAR ligne roster, `fetchLimit = 1`, SANS AUCUN tri —
+/// `ROSTER_ALL_URI` (dont cette requête est le pendant Android) est CONFIRMÉ CODE MORT côté
+/// Android : jamais requêté par aucun appelant réel, seul `ROSTER_URI` dénormalisé est utilisé par
+/// `Roster.java` (l'écran RÉELLEMENT affiché), dont la colonne `wk_roster.lastMessage` est déjà
+/// tenue à jour de façon fiable à chaque réception/envoi (`RosterManager.updateRoster*`, porté
+/// fidèlement ci-dessous). Le résultat non trié de cette jointure inutile était par-dessus le
+/// marché utilisé EN PRIORITÉ par `RosterListView` (`pair.lastMessage?.message ?? entity.
+/// lastMessage`), masquant systématiquement la colonne fiable dès qu'une correspondance existait
+/// (quasi toujours) — affichant potentiellement le PREMIER message jamais envoyé au lieu du
+/// dernier. Supprimé entièrement : `rosterAll()` retourne désormais `[RosterEntity]` brut,
+/// `entity.lastMessage` est l'UNIQUE source du texte affiché, sans requête `MessageEntity`
+/// supplémentaire — plus simple ET plus fidèle au mécanisme Android réel que la jointure morte
+/// qu'il reproduisait.
 final class RosterRepository {
     private let stack: CoreDataStack
     private let roster: CoreDataRepository<RosterEntity>
-    private let messages: CoreDataRepository<MessageEntity>
 
     init(stack: CoreDataStack = .shared) {
         self.stack = stack
         self.roster = CoreDataRepository(stack: stack)
-        self.messages = CoreDataRepository(stack: stack)
     }
 
-    /// Équivalent de la requête `rosterall` (jointure `wk_roster` LEFT JOIN `wk_messages`
-    /// ON `conversationId`), triée par `stamp` ascendant comme l'original.
-    func rosterAll() async throws -> [RosterWithLastMessage] {
+    /// Port de `Roster.java`'s lecture de `ROSTER_URI` (dénormalisé), triée par `stamp` ascendant
+    /// comme l'original.
+    func rosterAll() async throws -> [RosterEntity] {
         let context = stack.newBackgroundContext()
         return try await context.perform {
             let rosterRequest = RosterEntity.fetchRequest()
             rosterRequest.sortDescriptors = [NSSortDescriptor(key: "stamp", ascending: true)]
-            let rosterRows = try context.fetch(rosterRequest)
-
-            return try rosterRows.map { row in
-                var lastMessage: MessageEntity?
-                if let conversationId = row.conversationId {
-                    let messageRequest = MessageEntity.fetchRequest()
-                    messageRequest.predicate = NSPredicate(format: "conversationId == %@", conversationId)
-                    messageRequest.fetchLimit = 1
-                    lastMessage = try context.fetch(messageRequest).first
-                }
-                return RosterWithLastMessage(roster: row, lastMessage: lastMessage)
-            }
+            return try context.fetch(rosterRequest)
         }
     }
 

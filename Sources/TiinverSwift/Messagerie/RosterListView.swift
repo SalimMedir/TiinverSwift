@@ -213,10 +213,13 @@ final class RosterListViewModel: ObservableObject {
     private let repository = RosterRepository()
 
     /// Port de `Roster.messagePrivateRoster` (assemblage `Cursor` → `RosterModel`) + `Roster.
-    /// sortIt()` (tri final DESC par `stamp`) — assemble chaque ligne `wk_roster` (+ son dernier
-    /// message `wk_messages` associé, déjà joint par `RosterRepository.rosterAll()`) en un
+    /// sortIt()` (tri final DESC par `stamp`) — assemble chaque ligne `wk_roster` en un
     /// `RosterModel` prêt à être passé à `ChatView`, exactement comme `Roster.onItemClicked`
     /// transmet son `RosterModel` à `ActivityMsg` côté Android.
+    ///
+    /// **Corrigé le 2026-08-26 (V5-F-072, Phase B P1-30)** — `entity.lastMessage` (colonne
+    /// dénormalisée, tenue à jour par `RosterRepository.updateRoster*`) est désormais l'unique
+    /// source du texte affiché ; voir `RosterRepository.swift` pour le détail de la correction.
     func refresh() async {
         // Log de diagnostic temporaire (2026-08-16) — avant réception des captures Android, le
         // bouton "créer un groupe" avait été relu et confirmé présent/câblé (alors une icône de
@@ -234,8 +237,7 @@ final class RosterListViewModel: ObservableObject {
         let currentUsername = UserSession.shared.username ?? ""
         let currentNikname = UserSession.shared.nikname ?? ""
 
-        rows = entities.compactMap { pair -> Row? in
-            let entity = pair.roster
+        rows = entities.compactMap { entity -> Row? in
             guard let conversationId = entity.conversationId else { return nil }
             let type = entity.type ?? ChatType.chat.wireValue
             let isGroup = type == ChatType.group.wireValue
@@ -263,7 +265,7 @@ final class RosterListViewModel: ObservableObject {
             model.nikname = entity.nikname
             model.groupId = entity.groupId
             model.stamp = entity.stamp
-            model.message = pair.lastMessage?.message ?? entity.lastMessage
+            model.message = entity.lastMessage
             model.object = entity.object
             model.verb = entity.verb
             model.status = Int(entity.status)

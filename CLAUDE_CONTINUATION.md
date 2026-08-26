@@ -190,14 +190,23 @@ supplémentaires avec le même gap confirmés contre leur propre Android :
 confirmés SANS correctif nécessaire : `FeedViewModel.unfollow()` et le bouton "Suivre en Retour"
 de `NotificationsListView` [endpoint `followback`] — leurs callbacks Android respectifs n'ont
 AUCUN `notifyUser`. **Commit `2dca9e8` poussé sur `main`, CI PAS déclenchée** — même blocage
-d'outillage). **Prochain finding à traiter : V5-F-024** (V5-F-016/019/020/021/022/023 déjà
-traités en P1 ; V5-F-015/017/018 sont P3/P0 [déjà traité pour le P0] — V5-F-024 confirmé P2 par
-lecture directe de son bloc. Vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas
-encore de bloc `STATUT :` à sa suite, comme fait pour identifier chaque finding restant tout au
-long de cette session — NE PAS supposer que "prochain ID numérique" = "prochain P2", les
-priorités sont entrelacées dans le document). Si l'utilisateur a entre-temps déclenché la CI pour
-les findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur statut
-vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P2.
+d'outillage) ; Lot P2-5 V5-F-024 CODE_COMPLETE/CI_PENDING (commentaire-cadeau affichait
+l'identifiant brut du cadeau dans le centre de notifications in-app au lieu de emoji+nom —
+`NotificationRow.bodyText` ne testait jamais `noti.payloadType=="gift"`, contrairement à
+`LocalNotificationBuilder` [notification push, déjà correct] dans le même module. Corrigé :
+réutilise `GiftCatalog.emoji(for:)`/`.resolve(_:)?.name`, mêmes helpers que le push. **Commit
+`d04096b` poussé sur `main`, CI PAS déclenchée**) ; Lot P2-6 V5-F-025 CODE_COMPLETE/CI_PENDING
+(notification de transfert de coins n'affichait jamais le montant — `AdapterNoti.TransferVH.bind`
+formate `NotiEntity.commentText` [même champ que texte de commentaire/id de cadeau selon `verb`,
+documenté explicitement sur le modèle Android], jamais lu côté iOS pour ce cas. Corrigé :
+`noti.commentText` inclus dans le texte affiché. **Commit `5b9e9b5` poussé sur `main`, CI PAS
+déclenchée** — même blocage d'outillage pour les deux). **Prochain finding à traiter : V5-F-026**
+(3ᵉ finding consécutif du domaine Notifications, `AdapterNoti.java`/`NotificationsListView.swift`
+— vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc `STATUT :` à
+sa suite, comme fait pour identifier chaque finding restant tout au long de cette session). Si
+l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et
+communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le
+cas échéant) avant de continuer le P2.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

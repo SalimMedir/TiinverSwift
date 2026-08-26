@@ -2079,6 +2079,24 @@ manquait la vérification.
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
 
+## 2026-08-26 — Phase B V5 — Lot P2-6 : V5-F-025 (Notifications — montant de transfert manquant)
+
+**Commit** : `5b9e9b5` — poussé sur `main` (`d04096b..5b9e9b5`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `AdapterNoti.TransferVH.bind` formate le montant transféré depuis
+`NotiEntity.commentText` — le même champ que le texte de commentaire ou l'id de cadeau selon
+`verb`, documenté explicitement `// texte | "gift_diamond_name" | montant` sur le modèle Android.
+`NotificationRow.bodyText` (iOS) ne lisait jamais `commentText` pour le cas `"transfert"`,
+affichant toujours un générique "vous a transféré des coins" sans montant.
+
+**Correction appliquée** : `noti.commentText` (le montant) inclus dans le texte affiché.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/NotificationsListView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

@@ -1133,6 +1133,21 @@ CAUSE : Le switch de `bodyText` n'a pas repris le champ `commentText` pour le ca
 IMPACT : L'utilisateur ne voit jamais combien de coins lui ont été transférés en consultant le centre de notifications, seulement qu'un transfert a eu lieu.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Utiliser `noti.commentText` (le montant) dans le texte affiché pour `verb=="transfert"`, à l'identique d'Android (TransferVH).
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-6) — Vérifié directement :
+`AdapterNoti.TransferVH.bind:530-539` (`"%s %s %s << %s >>"`) ; `NotiEntity.java:26`
+(`commentText; // texte | "gift_diamond_name" | montant` — commentaire de champ Android confirmant
+explicitement la réutilisation polymorphe de cette propriété selon `verb`). Correctif appliqué
+exactement comme recommandé : `noti.commentText` (le montant) inclus dans le texte du cas
+`"transfert"`. Bracket ASCII Android `<< coins >>` non reproduit littéralement — cohérent avec le
+reste du même switch qui adapte déjà la ponctuation Android (guillemets français au lieu du
+formatage brut).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/NotificationsListView.swift`.
+
+**Commit `5b9e9b5`, poussé sur `main`** (`d04096b..5b9e9b5`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé. **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas
+confirmée.
 ```
 
 ```

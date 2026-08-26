@@ -109,6 +109,19 @@ final class CallCoordinator: ObservableObject {
             guard let incoming = Self.decodeProfile(data), incoming.messageId == messageId else { return }
             endCallFromRemote(reason: .remoteEnded)
         case .busyCall:
+            // Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-029, Phase B P1-14) — port
+            // de `CallActivity.callBusy()`/`endCall()` (`:483-500`/`:509-525`) : `isCalleMissedCall`
+            // (init `true`, `CallActivity.java:85`) n'est réinitialisé à `false` que sur
+            // `callEnd()`/`onAccepCall()` — JAMAIS dans `callBusy()` — donc `endCall()` trouve
+            // toujours `isCalleMissedCall == true` après un signal occupé et insère un message
+            // "missedvoicecall" persistant. `endCallFromRemote(reason: .unanswered)` seul ne
+            // reproduisait que la fin d'appel CallKit, jamais l'insertion du message — même appel
+            // que `performEndCall` (ci-dessous) fait déjà pour le raccroché LOCAL d'un appel sortant
+            // non répondu ; `CallActivity` (source de `callBusy()`) n'existe côté Android QUE pour un
+            // appel SORTANT (`isOutgoingCall`, voir commentaire V4-F-040 de `handleIncomingCall`).
+            if isOutgoingCall, let profile {
+                chatRepository.notifyMissedCall(profile: profile, chatType: chatType, object: "missedvoicecall", messageId: messageId ?? "")
+            }
             endCallFromRemote(reason: .unanswered)
         case .webrtcMessage(let data):
             guard let message = Self.decodeWebrtcData(data) else { return }

@@ -1498,6 +1498,92 @@ la conversation (`loadInitial()` trie déjà par `stamp`).
 `COMPLETE_PARITY_VALIDATED` — test réel requis : redélivrance rapprochée du même message
 (coupure réseau/reconnexion), confirmer l'absence de bulle dupliquée persistante.
 
+## 2026-08-26 — Phase B V5 — Lot P1-30 : V5-F-072 (roster — texte du dernier message)
+
+**Commit** : `6404681` — CI **success** (run `32934697138`).
+
+**Cause exacte** : `RosterRepository.rosterAll()` reproduisait la jointure SQL brute `rosterall`
+de `StubProvider.java` — elle-même confirmée **code mort côté Android** (`ROSTER_ALL_URI` jamais
+requêté par aucun appelant réel ; seul `ROSTER_URI` dénormalisé est utilisé par l'écran
+`Roster.java` réellement affiché). Le port faisait, pour chaque ligne roster, un second `fetch`
+`MessageEntity` filtré par `conversationId` avec `fetchLimit = 1` **sans aucun tri** — l'ordre de
+retour de Core Data sans `sortDescriptors` n'est pas garanti être le plus récent (souvent l'ordre
+d'insertion, donc potentiellement le PREMIER message jamais envoyé). `RosterListView.refresh()`
+utilisait ensuite ce résultat non fiable EN PRIORITÉ (`pair.lastMessage?.message ?? entity.
+lastMessage`), masquant systématiquement la colonne `entity.lastMessage` — déjà correctement
+tenue à jour à chaque envoi/réception par `RosterRepository.updateRoster*` (port fidèle de
+`RosterManager.updateRoster*`, confirmé correct) — dès qu'une correspondance existait (quasi
+toujours).
+
+**Correction appliquée** : option 2 de la RECOMMANDATION (plus simple, plus fidèle au mécanisme
+Android réel). Suppression entière de la ré-agrégation : `rosterAll()` retourne désormais
+`[RosterEntity]` brut (plus de `struct RosterWithLastMessage`, plus de propriété `messages:
+CoreDataRepository<MessageEntity>` — confirmée par grep comme n'étant utilisée QUE pour ce join,
+donc supprimable sans reste). `RosterListView.refresh()` consomme directement `[RosterEntity]`
+(suppression de l'indirection `pair.roster`) et assigne `model.message = entity.lastMessage`
+sans repli.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Storage/RosterRepository.swift`,
+`Sources/TiinverSwift/Messagerie/RosterListView.swift`.
+
+**Flux frère vérifié** : `rosterAll()` n'a qu'un seul appelant dans tout le projet
+(`RosterListView.swift`, confirmé par grep) — aucun autre site à mettre à jour.
+`ChatSearchView.swift` référence un champ `.lastMessage` sans rapport (autre `Row` struct), non
+concerné.
+
+**Résultat CI** : commit `6404681`, push confirmé (`cc962db..6404681 main -> main`), run
+`32934697138` → **`conclusion: success`**.
+
+**Statut honnête** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test réel requis :
+vérifier sur device qu'une conversation avec plusieurs messages échangés affiche bien le dernier
+message envoyé/reçu (et non un message plus ancien) dans la liste des conversations, y compris
+juste après réception d'un nouveau message.
+
+## 2026-08-26 — Phase B V5 — Lot P1-31 : V5-F-076 (Feed — résilience arrière-plan de l'upload de publication)
+
+**Commit** : `e1b8b0a` — CI **success** (run `32935455105`).
+
+**Cause exacte** : Android protège tout le flux de publication (upload BunnyCDN photo/vidéo puis
+`POST activity/add`) via un vrai `Service` en foreground (`ActivityService.onStartCommand`,
+`startForeground(NOTIF_ID,...)`), explicitement immunisé contre la suspension liée au passage en
+arrière-plan de l'app, complété par une file d'attente persistée localement
+(`FILE_TRANSFERT_URI`) permettant une reprise après échec. Côté iOS,
+`PublishComposeView.publish()` lançait cet upload dans un `Task` Swift non structuré, déclenché
+depuis un bouton, sans aucune protection (`beginBackgroundTask`) ni `URLSessionConfiguration
+.background`, ni persistance locale de l'état de publication en cours — confirmé par grep
+exhaustif (0 occurrence de ces deux mécanismes dans tout le dépôt iOS).
+
+**Correction appliquée** : option "à défaut" de la RECOMMANDATION (portée réduite, documentée).
+`publish()` enveloppe désormais l'intégralité de son corps dans une paire
+`UIApplication.shared.beginBackgroundTask(withName:expirationHandler:)` /
+`endBackgroundTask` (fin garantie via `defer`, coexistant avec le `defer { isPublishing = false }`
+déjà existant), pour survivre à une mise en arrière-plan brève de l'app (~30s, prolongeable par
+iOS selon la charge système) au lieu d'être suspendu immédiatement.
+
+**Portée délibérément réduite** : l'option complète de la RECOMMANDATION
+(`URLSessionConfiguration(.background)` + persistance Core Data de l'état de publication +
+reprise après échec réseau complet, reproduisant l'intention de `FILE_TRANSFERT_URI`) N'EST PAS
+traitée — bundlerait un changement d'architecture réseau majeur (délégation de session en
+arrière-plan, wiring AppDelegate/SceneDelegate) et une nouvelle infrastructure de file d'attente
+persistée, disproportionné par rapport à ce finding P1 isolé. Le cas réellement corrigé (bascule
+brève vers une autre app ou verrouillage d'écran pendant l'upload) est de loin le plus fréquent en
+usage réel ; le cas non couvert (app tuée par l'utilisateur ou le système, ou backgroundTask expiré
+sur un upload anormalement long) laisse le comportement identique à avant ce correctif.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/PublishComposeView.swift`.
+
+**Flux frère vérifié** : `FeedMediaUploader.swift` (upload BunnyCDN lui-même, endpoints/headers/
+ordre des appels) non modifié — déjà fidèle après plusieurs correctifs V2/V3/V4, seul le manque de
+protection contre la suspension en arrière-plan était en cause ici.
+
+**Résultat CI** : commit `e1b8b0a`, push confirmé (`6404681..e1b8b0a main -> main`), run
+`32935455105` → **`conclusion: success`**.
+
+**Statut honnête** : `BUILD_VALIDATED`, portée réduite documentée. PAS `COMPLETE_PARITY_VALIDATED`
+— test réel requis : lancer une publication (surtout vidéo, upload plus long), basculer vers une
+autre app ou verrouiller l'écran pendant l'upload, confirmer que la publication aboutit malgré tout
+au retour dans l'app (au lieu d'échouer silencieusement comme avant ce correctif).
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

@@ -9,7 +9,7 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
-# CURRENT HANDOFF (2026-08-25 — cycle V3 clos, **cycle V4 ENTIÈREMENT CLOS (75/75 findings)**,
+# CURRENT HANDOFF (2026-08-26 — cycle V3 clos, **cycle V4 ENTIÈREMENT CLOS (75/75 findings)**,
 **cycle V5 EN COURS** : Phase A [69 findings] + Phase A.2 contre-audit ciblé [30 findings
 supplémentaires, V5-F-070 à V5-F-099] TERMINÉES, **99 findings au total**, Phase B EN COURS —
 **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7, tous BUILD_VALIDATED)** : Lot P0-1 V5-F-094 (export MP4
@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [30/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [32/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -88,7 +88,16 @@ instances) ; Lot P1-28 V5-F-068 BUILD_VALIDATED (double-tap abonnement/renouvell
 BUILD_VALIDATED — portée réduite documentée (réception socket concurrente sans sérialisation →
 risque de doublon en base, nouveau `actor SerialTaskQueue` enveloppant `addMessage`/
 `addGroupMessage`, contrainte Core Data et `actor` nu écartés et justifiés, ordre d'affichage non
-traité)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
+traité) ; Lot P1-30 V5-F-072 BUILD_VALIDATED (roster — texte du "dernier message" pouvait afficher
+un message périmé, `RosterRepository.rosterAll()` re-joignait `MessageEntity` avec `fetchLimit=1`
+SANS TRI au lieu d'utiliser la colonne dénormalisée déjà fiable `entity.lastMessage` ; ré-agrégation
+supprimée entièrement, `rosterAll()` retourne `[RosterEntity]` brut, `RosterListView` utilise
+`entity.lastMessage` seul) ; Lot P1-31 V5-F-076 BUILD_VALIDATED — portée réduite documentée
+(upload de publication Feed non protégé contre la mise en arrière-plan, Android utilise un vrai
+`Service` en foreground + file d'attente persistée, `publish()` enveloppé dans
+`UIApplication.shared.beginBackgroundTask` (option "à défaut" de la RECOMMANDATION), persistance/
+reprise après échec réseau complet non traitée)]**. Voir section "Cycle V5" plus bas pour le
+détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -620,36 +629,58 @@ dispatch socket ou de trier `ChatViewModel.items` par `stamp`) — auto-corrigé
 réouverture de la conversation. **Commit `d938554`, CI verte (run `32932952310`)** —
 `BUILD_VALIDATED`, portée réduite documentée. Détail des 30 lots dans `PROGRESS_V5.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-072** (Chat — roster : texte du "dernier message" affiché pour
-chaque conversation peut être PÉRIMÉ/INCORRECT. Android [`roster/RosterManager.java:84,111,135`,
-`updateRoster*` écrit `cv.put("lastMessage", message.getMessage())` directement sur la colonne
-DÉNORMALISÉE `wk_roster.lastMessage` à CHAQUE réception/envoi ; `roster/ui/Roster.java:638-704`,
-`messagePrivateRoster` lit CETTE colonne directement, sans jointure] — le texte affiché provient
-d'une colonne dénormalisée tenue à jour de façon fiable, TOUJOURS le message le plus récent. iOS
-[`Storage/RosterRepository.swift:35-53`, `rosterAll()` refait une jointure MANUELLE en mémoire :
-`fetch` `MessageEntity` filtré par `conversationId`, `fetchLimit = 1`, SANS AUCUN
-`sortDescriptors` — le message retourné par `.first` n'est PAS garanti être le plus récent [ordre
-Core Data non spécifié sans tri explicite, en pratique souvent l'ordre d'insertion = potentiellement
-le PREMIER message jamais envoyé] ; `Messagerie/RosterListView.swift:266`,
-`model.message = pair.lastMessage?.message ?? entity.lastMessage` — ce résultat NON TRIÉ est
-utilisé EN PRIORITÉ, ignorant systématiquement `entity.lastMessage` [le port FIDÈLE du mécanisme
-Android, confirmé CORRECT] dès qu'une correspondance existe [quasi toujours]]. Cause :
-`rosterAll()` reproduit la jointure SQL brute `rosterall` de `StubProvider.java` [elle-même
-CONFIRMÉE CODE MORT côté Android — `ROSTER_ALL_URI` jamais requêté par aucun appelant réel, seul
-`ROSTER_URI` dénormalisé est utilisé par l'écran RÉELLEMENT affiché] sans tri par `stamp`, et sans
-réaliser que la colonne dénormalisée déjà fiable suffisait. Plan [option 2 de la RECOMMANDATION,
-plus simple ET plus fidèle au mécanisme Android réel] : supprimer ENTIÈREMENT cette ré-agrégation
-dans `rosterAll()` et utiliser directement `entity.lastMessage` comme source UNIQUE du texte
-affiché, sans requête `MessageEntity` supplémentaire — lire `RosterRepository.swift` [lignes
-35-53] et `RosterListView.swift` [ligne 266] en entier avant de coder pour confirmer qu'aucun
-AUTRE site ne dépend de `pair.lastMessage` avant de le retirer), puis continuer AUTOMATIQUEMENT
-V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097,
-V5-F-098 (9 P1 restants après V5-F-072, dans l'ordre
-exact du document ; V5-F-060 déjà clos DIFFÉRÉ), puis tous les P2 (31), P3 (21), SANS s'arrêter
-entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
-Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →
-State/ViewModel → Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale
-→ diff revu → commit → push → CI → attente OBLIGATOIRE du résultat → mise à jour des 3 documents
+**Lot P1-30 traité (V5-F-072)** — Chat/roster, texte du "dernier message" affiché pour chaque
+conversation pouvait être PÉRIMÉ/INCORRECT. Vérifié `roster/RosterManager.java:84,111,135`
+(`updateRoster*` écrit `cv.put("lastMessage", message.getMessage())` directement sur la colonne
+DÉNORMALISÉE `wk_roster.lastMessage` à CHAQUE réception/envoi) + `roster/ui/Roster.java:638-704`
+(`messagePrivateRoster` lit CETTE colonne directement, sans jointure) — le texte affiché côté
+Android provient d'une colonne dénormalisée tenue à jour de façon fiable, TOUJOURS le message le
+plus récent. Côté iOS, `RosterRepository.rosterAll()` refaisait une jointure MANUELLE en mémoire
+(`fetch` `MessageEntity` filtré par `conversationId`, `fetchLimit = 1`, SANS AUCUN
+`sortDescriptors`) reproduisant `rosterall` de `StubProvider.java` — elle-même CONFIRMÉE CODE MORT
+côté Android (`ROSTER_ALL_URI` jamais requêté par aucun appelant réel, seul `ROSTER_URI`
+dénormalisé est utilisé par l'écran RÉELLEMENT affiché). `RosterListView.swift` utilisait ce
+résultat NON TRIÉ EN PRIORITÉ (`pair.lastMessage?.message ?? entity.lastMessage`), ignorant
+systématiquement la colonne fiable dès qu'une correspondance existait (quasi toujours). **Option 2
+de la RECOMMANDATION appliquée** (plus simple ET plus fidèle au mécanisme Android réel) :
+ré-agrégation supprimée ENTIÈREMENT — `rosterAll()` retourne désormais `[RosterEntity]` brut (struct
+`RosterWithLastMessage` et propriété `messages: CoreDataRepository<MessageEntity>` supprimées,
+confirmées par grep comme n'étant utilisées QUE pour ce join), `RosterListView.refresh()` utilise
+`entity.lastMessage` seul. Grep confirmé : `rosterAll()` n'a qu'un seul appelant dans tout le
+projet, aucun autre site à mettre à jour. **Commit `6404681`, CI verte (run `32934697138`)** —
+`BUILD_VALIDATED`. Détail des 31 lots dans `PROGRESS_V5.md`.
+
+**Lot P1-31 traité (V5-F-076)** — Pipeline média BunnyCDN, upload de publication Feed
+(photo/vidéo) totalement non protégé contre la mise en arrière-plan de l'app. Vérifié
+`Activity/service/ActivityService.java:107-139` (`onStartCommand` : `startForeground(NOTIF_ID,...)`
+ligne 115, exécution sur un Thread dédié, `START_STICKY`) + `Activity/ui/MainFragment.java:733-769,
+1015-1074` (insertion locale dans `FILE_TRANSFERT_URI` AVANT même le début de l'upload, relecture
+via `CursorLoader` permettant une reprise) — Android protège tout le flux (upload BunnyCDN +
+`POST activity/add`) par un vrai `Service` en foreground, immunisé contre la suspension liée au
+passage en arrière-plan, complété par une file d'attente persistée pour la reprise après échec.
+Côté iOS, `PublishComposeView.publish()` lançait cet upload dans un `Task` Swift non structuré
+depuis un bouton, sans `beginBackgroundTask` ni `URLSessionConfiguration(.background)` ni
+persistance locale de l'état (confirmé par grep exhaustif : 0 occurrence de ces deux mécanismes
+dans tout le dépôt iOS). **Portée réduite documentée** : option "à défaut" de la RECOMMANDATION
+appliquée plutôt que l'option complète (qui bundlerait un changement d'architecture réseau majeur
++ une nouvelle infrastructure de file d'attente persistée, disproportionné pour ce P1 isolé) —
+`publish()` enveloppé dans `UIApplication.shared.beginBackgroundTask(withName:expirationHandler:)`
+/`endBackgroundTask` (fin garantie par `defer`), survit désormais à une bascule brève vers une
+autre app ou un verrouillage d'écran pendant l'upload (~30s, prolongeable par iOS) — le cas le
+plus fréquent en usage réel. La persistance/reprise après échec réseau complet (app tuée,
+backgroundTask expiré) N'EST PAS traitée. **Commit `e1b8b0a`, CI verte (run `32935455105`)** —
+`BUILD_VALIDATED`, portée réduite documentée. Détail des 32 lots dans `PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-077** (prochain P1 dans
+l'ordre exact du document `MIGRATION_PARITY_AUDIT_V5.md`, ligne ~2464 — lire sa fiche complète en
+premier : ID, PRIORITÉ, DOMAINE, FEATURE, ANDROID SOURCE, ANDROID BEHAVIOR, IOS FILES, IOS
+BEHAVIOR, CAUSE, IMPACT, RECOMMANDATION), puis continuer AUTOMATIQUEMENT V5-F-078, V5-F-082,
+V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (7 P1 restants après V5-F-077, dans l'ordre exact
+du document ; V5-F-060 déjà clos DIFFÉRÉ), puis tous les P2 (31), P3 (21), SANS s'arrêter entre les
+lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve Android
+vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI → State/ViewModel →
+Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale → diff revu →
+commit → push → CI → attente OBLIGATOIRE du résultat → mise à jour des 3 documents
 (`MIGRATION_PARITY_AUDIT_V5.md`, `MIGRATION_PARITY_PROGRESS_V5.md`, `CLAUDE_CONTINUATION.md`) →
 finding suivant. Attention particulière aux domaines Animems (chaîne complète UI→gesture→State→
 Transform→Timeline→Keyframes→Renderer→Playback→Export→Audio→Import), Socket.IO/Chat

@@ -355,6 +355,22 @@ CAUSE : `refreshChatUnreadCount()` a été porté comme une lecture ponctuelle (
 IMPACT : Un utilisateur qui reste sur l'onglet Accueil ou Créateurs pendant qu'un nouveau message arrive ne verra JAMAIS le badge de l'onglet Chat apparaître ou s'incrémenter tant qu'il n'a pas quitté puis remonté `HomeShellView` (relance de l'app) — contrairement à Android où le badge de la barre de navigation se met à jour à l'instant même de la réception, peu importe l'onglet affiché.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter dans `HomeShellView` un `.onReceive(ChatRepository.shared.chatEvents)` (filtré sur le cas `.message`) qui relance `refreshChatUnreadCount()`, à l'image de `Roster.addMessage → HomeActivity.refreshChatBadge()`.
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-1 — premier P2 traité) —
+Correctif appliqué EXACTEMENT comme recommandé : `.onReceive(ChatRepository.shared.chatEvents)`
+ajouté à `HomeShellView`, filtré sur `case .message`, relance `refreshChatUnreadCount()` dans un
+`Task`. Vérifié directement que la persistance Core Data (`messages.addMessage`/
+`addGroupMessage`) est TOUJOURS `await`ée avant `chatEvents.send(.message(meta))`
+(`ChatRepository.handleNewMessage`) — pas de risque de lire un `unreadCount` périmé au moment où
+`refreshChatUnreadCount()` re-requête le roster. Diff strictement additif (1 modificateur), aucune
+autre logique touchée.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Navigation/HomeShellView.swift`.
+
+**Commit `66beb6e`, poussé sur `main`** (`712f3bf..66beb6e`). **CI NON déclenchée par cette
+session** — même blocage d'outillage documenté sur les Lots P1-35/36/37/38 (`gh` CLI/jeton API
+absents, workflow `workflow_dispatch`-only, utilisateur a validé continuer avec CI déclenchée par
+lots de son côté). **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas confirmée.
 ```
 
 ```

@@ -1943,6 +1943,31 @@ côté). Aucun `BLOQUÉ` sur le P1. Prochaine étape : Phase B continue avec le 
 findings)**, dans l'ordre du document, dès que le prochain tour reprend — voir
 `CLAUDE_CONTINUATION.md` pour le premier finding P2 à traiter.
 
+## Phase B V5 — BACKLOG P2 (31 findings) DÉMARRÉ (2026-08-26)
+
+## 2026-08-26 — Phase B V5 — Lot P2-1 : V5-F-002 (Navigation — badge onglet Chat)
+
+**Commit** : `66beb6e` — poussé sur `main` (`712f3bf..66beb6e`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots P1 précédents, voir "Statut honnête").
+
+**Cause exacte** : `HomeShellView.chatUnreadCount` (source du badge `.badge(chatUnreadCount)` de
+l'onglet Chat) n'était recalculé qu'une seule fois, au montage (`.task`). `ChatRepository.
+chatEvents` publie pourtant déjà `.message(meta)` à chaque nouveau message privé/groupe reçu par
+socket (persistance Core Data toujours `await`ée avant l'émission, vérifié dans
+`ChatRepository.handleNewMessage`) mais `HomeShellView` ne s'y abonnait nulle part (grep confirmé)
+— un message reçu pendant que l'app est au premier plan sur un autre onglet ne faisait jamais
+apparaître/s'incrémenter le badge avant de quitter/rouvrir l'écran.
+
+**Correction appliquée** : `.onReceive(ChatRepository.shared.chatEvents)` ajouté, filtré sur
+`case .message`, relance `refreshChatUnreadCount()`. Port fidèle de `Roster.addMessage` →
+`HomeActivity.refreshChatBadge()`. Diff strictement additif.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Navigation/HomeShellView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les 4 derniers lots P1. En attente d'un déclenchement CI par lots par
+l'utilisateur.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

@@ -2358,6 +2358,25 @@ actuelle. Nécessiterait un data source AVFoundation segmenté, hors périmètre
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
 
+## 2026-08-26 — Phase B V5 — Lot P2-18 : V5-F-059 (Vignettes vidéo générées à pleine résolution)
+
+**Commit** : `897be79` — poussé sur `main` (`d11b203..897be79`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `VideoTrimmerView.generateThumbsAsync` décode puis réduit IMMÉDIATEMENT
+chaque frame à 320×180 (recycle le plein format). Ni `MediaTrimView.generateThumbnails` (bandeau
+8 vignettes) ni `ChatViewModel.generateThumbnail` (vignette de bulle chat) ne définissaient
+`generator.maximumSize` — ImageIO décodait chaque frame à la résolution native complète.
+
+**Correction appliquée** : `generator.maximumSize = CGSize(width: 320, height: 180)` sur les 2
+générateurs.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/MediaTrimView.swift`,
+`Sources/TiinverSwift/Messagerie/ChatViewModel.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

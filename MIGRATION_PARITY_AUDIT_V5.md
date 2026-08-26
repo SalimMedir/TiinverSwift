@@ -2307,6 +2307,17 @@ CAUSE : Absence de `generator.maximumSize = CGSize(width: 320, height: 180)` (ou
 IMPACT : Pour une vidéo source à haute résolution, MediaTrimView.generateThumbnails maintient simultanément jusqu'à 8 UIImage plein format dans le tableau `images` avant assignation — pic mémoire transitoire important (potentiellement plusieurs dizaines à centaines de Mo selon la résolution source) pour un résultat final affiché en vignettes de quelques dizaines de points ; ChatViewModel.generateThumbnail décode une frame plein format juste pour produire un JPEG de vignette de chat.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Définir generator.maximumSize à une taille cible réduite (ex. CGSize(width: 320, height: 180)) avant chaque appel image(at:)/copyCGImage(at:actualTime:) dans MediaTrimView.generateThumbnails et ChatViewModel.generateThumbnail, pour que ImageIO sous-échantillonne dès la génération de la frame plutôt que de décoder puis jeter le plein format.
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-18) — Correctif appliqué
+exactement comme recommandé : `generator.maximumSize = CGSize(width: 320, height: 180)` ajouté
+aux deux sites (`MediaTrimView.generateThumbnails`, `ChatViewModel.generateThumbnail`).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/MediaTrimView.swift`,
+`Sources/TiinverSwift/Messagerie/ChatViewModel.swift`.
+
+**Commit `897be79`, poussé sur `main`** (`d11b203..897be79`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé. **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas
+confirmée.
 ```
 
 ```

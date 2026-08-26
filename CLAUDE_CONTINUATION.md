@@ -272,13 +272,18 @@ DÉLIBÉRÉMENT NON appliqué — `VideoPlayerManager.swift:87` charge un fichie
 LOCAL COMPLET, pas via un data source segmenté comme `CacheDataSource` ExoPlayer qui rend ce
 plafond sûr côté Android ; le reproduire tronquerait la lecture après quelques secondes pour
 chaque vidéo précachée — régression réelle pire que la surconsommation actuelle. **Commit
-`9d25c37` poussé sur `main`, CI PAS déclenchée** pour les deux). **Prochain finding à traiter :
-V5-F-059** (V5-F-056 est P3, V5-F-057/058 déjà traités en P1 — V5-F-059 confirmé P2 par lecture
-directe. Vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc
-`STATUT :` à sa suite, comme fait pour identifier chaque finding restant tout au long de cette
-session). Si l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés
-ci-dessus et communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter
-l'échec le cas échéant) avant de continuer le P2.
+`9d25c37` poussé sur `main`, CI PAS déclenchée** pour les deux) ; Lot P2-18 V5-F-059
+CODE_COMPLETE/CI_PENDING (vignettes vidéo décodées à pleine résolution native au lieu de
+320×180 — `VideoTrimmerView.generateThumbsAsync` réduit immédiatement après décodage et recycle
+le plein format, ni `MediaTrimView.generateThumbnails` ni `ChatViewModel.generateThumbnail` ne
+définissaient `generator.maximumSize`. Corrigé : `maximumSize = CGSize(width: 320, height: 180)`
+sur les 2 générateurs. **Commit `897be79` poussé sur `main`, CI PAS déclenchée**). **Prochain
+finding à traiter : V5-F-061** (V5-F-060 déjà traité en P1 — V5-F-061 confirmé P2 par lecture
+directe, domaine Permissions système iOS. Vérifier avec `grep "^PRIORITÉ : P2"` puis chercher
+lequel n'a pas encore de bloc `STATUT :` à sa suite, comme fait pour identifier chaque finding
+restant tout au long de cette session). Si l'utilisateur a entre-temps déclenché la CI pour les
+findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur statut vers
+`BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P2.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

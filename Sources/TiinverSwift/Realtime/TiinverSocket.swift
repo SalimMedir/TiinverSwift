@@ -93,11 +93,23 @@ final class TiinverSocket {
     /// Port de `App.resetSocket()` (`App.java:157-171`) — détruit le socket existant (avec le
     /// jeton potentiellement obsolète/absent d'AVANT le login, cas réel si `ChatRepository.shared`
     /// a été touché une première fois avant authentification) et le recrée avec le jeton COURANT.
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-071, Phase B P2)** — le
+    /// commentaire précédent écartait `removeAllHandlers()` par prudence ("API non confirmée
+    /// disponible"), sans vérifier : `.off(_:)`/`.off(clientEvent:)` sont déjà utilisés ailleurs
+    /// dans ce même projet (`ChatRepository.registerAllListeners`), donc l'API `SocketIOClient` est
+    /// bien disponible dans cette version — `removeAllHandlers()` (même famille d'API, présente
+    /// depuis les toutes premières versions publiées de la bibliothèque) l'est tout autant. Port
+    /// fidèle d'`App.resetSocket()` (`App.java:157-171` : `mSocket.off()` PUIS `disconnect()`, dans
+    /// cet ordre) — retire tous les handlers de l'ANCIEN socket AVANT de le déconnecter, pour qu'un
+    /// événement `.disconnect` en attente de dispatch (comportement interne de la bibliothèque non
+    /// garanti synchrone) ne puisse plus jamais exécuter `ChatRepository.onDisconnected` avec des
+    /// données déjà réassignées au nouveau socket — risque documenté d'un `leaveRoom` parasite émis
+    /// juste après une reconnexion, auparavant écarté par la seule désallocation ARC (non garantie
+    /// immédiate/synchrone). Pas d'équivalent iOS aux 3 listeners `.io()`/Manager retirés côté
+    /// Android (`EVENT_RECONNECT`/`_ATTEMPT`/`_ERROR`) — aucun listener n'est enregistré sur
+    /// `manager` nulle part dans ce projet (grep exhaustif), rien à nettoyer à ce niveau.
     func reset(apiKey: String?) {
-        // Pas de `removeAllHandlers()` (API non confirmée disponible dans cette version de la
-        // bibliothèque, non utilisée ailleurs dans ce projet) — `disconnect()` suffit, l'ancienne
-        // instance `SocketIOClient` est de toute façon abandonnée juste après (ARC), ses handlers
-        // ne peuvent plus jamais se déclencher une fois `socket = nil` ci-dessous.
+        socket?.removeAllHandlers()
         socket?.disconnect()
         manager = nil
         socket = nil
@@ -110,7 +122,11 @@ final class TiinverSocket {
     /// fidèlement : cette méthode reste disponible mais n'est pas câblée au logout iOS non plus
     /// (voir `SettingSubViews.logout()`), pour rester fidèle au comportement RÉEL Android, pas à
     /// son commentaire aspirant.
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-071, Phase B P2)** — même
+    /// correctif que `reset(apiKey:)` ci-dessus, même source Android (`disconnectSocket()`,
+    /// `App.java:136-151` : `mSocket.off()` PUIS `disconnect()`, identique à `resetSocket()`).
     func disconnect() {
+        socket?.removeAllHandlers()
         socket?.disconnect()
         manager = nil
         socket = nil

@@ -656,11 +656,36 @@ final class AnimemesEditorState: ObservableObject {
         version += 1
     }
 
-    /// Port d'`undo` → `mView.deletePrecedenteDraw()` — supprime le DERNIER calque ajouté (pas une
-    /// pile d'annulation multi-niveaux généralisée, fidèle à ce bouton précis côté Android).
+    /// Port d'`undo` → `mView.deletePrecedenteDraw()`.
+    ///
+    /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-036, Phase B P1-17)** — le
+    /// commentaire précédent affirmait à tort la fidélité à ce bouton Android précis. Vérifié
+    /// `ImageViewCanvas.java:317-326` (`deletePrecedenteDraw`) : opère sur
+    /// `composer.getPaintLayers()`, une `ArrayList` SÉPARÉE de `composer.getLayers()`
+    /// (`core/AnimationComposer.java:10,46-47`) — retire le DERNIER TRAIT DE DESSIN LIBRE
+    /// uniquement, jamais une image/un sticker/un texte, et ne fait RIEN si `paintLayers` est
+    /// vide (garde ligne 318). L'ancien `dropLast()` sur `composer.layers` retirait le dernier
+    /// calque TOUTES catégories confondues — perte de données silencieuse (undo d'un trait
+    /// pouvait en réalité supprimer le dernier sticker/image/texte).
+    ///
+    /// **Écart architectural assumé, documenté** : Android stocke les traits dans un conteneur
+    /// RÉELLEMENT séparé (jamais mêlé aux calques normaux, jamais animé, toujours composité en
+    /// arrière-plan avant tout le reste — `drawPath(canvas)` appelé AVANT la boucle sur
+    /// `getLayers()`). Séparer réellement le conteneur côté iOS obligerait à ajouter un second
+    /// passage de rendu à CHAQUE site (canevas live, miniature, export MP4/image) — hors périmètre
+    /// de ce correctif. Un trait reste donc un `AnimationObjectData` `.bitmap` ordinaire dans
+    /// `composer.layers` (rendu, animation, export inchangés), marqué `isFreehandStroke = true`
+    /// (`addFreehandDrawing` ci-dessous) — `removeLast()` retrouve et retire spécifiquement le
+    /// DERNIER calque ainsi marqué (peu importe sa position dans `composer.layers`), laissant tout
+    /// le reste intact, fidèle au comportement OBSERVABLE d'Android (jamais d'image/sticker/texte
+    /// supprimé), sans reproduire la règle de composition "toujours en arrière-plan".
     func removeLast() {
-        guard !composer.layers.isEmpty else { return }
-        composer.setLayers(Array(composer.layers.dropLast()))
+        guard let index = composer.layers.lastIndex(where: { $0.isFreehandStroke }) else { return }
+        let removedId = composer.layers[index].id
+        var updated = composer.layers
+        updated.remove(at: index)
+        composer.setLayers(updated)
+        if selectedId == removedId { selectedId = nil }
         syncTimeline()
         version += 1
     }
@@ -736,6 +761,10 @@ final class AnimemesEditorState: ObservableObject {
         guard let cgImage = image.cgImage else { return }
         let obj = AnimationObjectData()
         obj.objectType = .bitmap
+        // V5-F-036 (Phase B P1-17) — marque ce calque comme trait de dessin libre, seul type que
+        // `removeLast()`/le bouton "undo" doivent pouvoir retirer, voir sa doc pour le détail
+        // complet.
+        obj.isFreehandStroke = true
         obj.addBitmap(cgImage)
         configureNewObject(obj, canvasSize: canvasSize, size: image.size)
         obj.offsetX = 0

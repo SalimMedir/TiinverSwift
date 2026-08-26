@@ -296,6 +296,18 @@ final class AnimationObjectData {
     var objectPath: String?
     var emojiBitmap: String?
     var locked: Bool = false
+    /// **Ajouté le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-036, Phase B P1-17)** — Android
+    /// stocke les traits de dessin libre dans `AnimationComposer.paintLayers`, une `ArrayList`
+    /// SÉPARÉE des calques normaux (`layers`) — voir `AnimemesEditorState.removeLast()` pour la
+    /// discussion complète. Un trait iOS reste un `AnimationObjectData` `.bitmap` ordinaire dans
+    /// `composer.layers` (pas de vraie séparation de conteneur — voir la note de tête de
+    /// `removeLast()` pour la justification), donc ce booléen est la marque minimale nécessaire
+    /// pour que `removeLast()`/le bouton "undo" puissent identifier UNIQUEMENT les traits, fidèle
+    /// au comportement OBSERVABLE d'Android (undo ne retire jamais une image/un sticker/un texte),
+    /// sans reproduire la séparation de conteneur ni la règle de composition "toujours dessiné en
+    /// premier plan arrière" (qui exigerait de toucher le rendu live, la miniature ET l'export —
+    /// hors périmètre de ce correctif, documenté comme un écart assumé).
+    var isFreehandStroke: Bool = false
     var easing: [Float]?
     var id: String = ""
     var recomposeGroupId: String?
@@ -598,6 +610,7 @@ final class AnimationObjectData {
         copy.width = data.width
         copy.height = data.height
         copy.bitmapChangeIntervalMs = data.bitmapChangeIntervalMs
+        copy.isFreehandStroke = data.isFreehandStroke
         copy.visible = true
         copy.isBackgroundTransparent = data.isBackgroundTransparent
         copy.shapeColor = data.shapeColor

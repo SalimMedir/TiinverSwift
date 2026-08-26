@@ -1000,8 +1000,14 @@ struct AnimemesEditorView: View {
                 bottomButton(icon: "arrow.counterclockwise", label: "réinitialiser") { state.resetSelected() }
                     .disabled(state.selectedId == nil)
                 bottomButton(icon: "clock", label: "chronologie") { showTimeline.toggle() }
+                // Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-036, Phase B P1-17) —
+                // était `.disabled(state.layers.isEmpty)` : actif dès qu'il y avait N'IMPORTE
+                // QUEL calque (sticker/image/texte inclus), permettant de supprimer silencieusement
+                // le dernier élément placé même en l'absence de tout trait de dessin. Gardé
+                // maintenant sur la présence d'un trait undoable spécifiquement, fidèle à la garde
+                // `paintLayers` vide d'Android (`ImageViewCanvas.java:318`) — voir `removeLast()`.
                 bottomButton(icon: "arrow.uturn.backward", label: "undo") { state.removeLast() }
-                    .disabled(state.layers.isEmpty)
+                    .disabled(!state.layers.contains { $0.isFreehandStroke })
             }
             .padding(.horizontal)
         }

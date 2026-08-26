@@ -925,6 +925,27 @@ CAUSE : Le portage a réutilisé le repository de follow générique déjà exis
 IMPACT : Si le backend traite `followback` différemment de `follow` (ex. suppression d'une entrée "vous devriez suivre en retour" côté serveur, notification spécifique à l'autre utilisateur, comptabilisation différente), l'action de follow-back depuis le centre de notifications iOS peut réussir en apparence côté client (follow effectif) tout en laissant un état serveur incohérent avec ce qu'Android produit pour la même action utilisateur.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Ajouter une méthode dédiée (ex. `ProfileRepository.followBack`) postant sur l'endpoint `followback` avec les mêmes paramètres `{userId, followId}`, et l'utiliser spécifiquement depuis `NotificationsListView`'s bouton "Suivre en Retour", en laissant `follow()` pour les autres points d'entrée (profil, suggestions).
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-12) — Vérifié directement :
+`NotiLikecmt/AdapterNoti.java:420-441` (`FollowVH.bind`) confirme `td.Post(map, "followback", ...)`
+avec `{userId: e.userId, followId: myId}`, seul appelant de cet endpoint dans tout le code Android ;
+`SuggestionVH` (ligne 511) confirmé poster sur l'endpoint `follow` générique via `Following()`, PAS
+`followback`. Correctif : nouvelle méthode `ProfileRepository.followBack(userId:followerId:)`
+(mêmes paramètres `{userId, followId}` que `follow`, endpoint `followback`), site d'appel du
+bouton "Suivre en Retour" (`NotificationsListView.swift`) basculé dessus. Vérifié par grep que les
+3 autres appelants de `ProfileRepository.follow` (`FollowListView.swift`, `SearchView.swift`,
+`SuggestionsCarouselView.swift`) restent inchangés, fidèles à `follow` générique.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Profile/ProfileRepository.swift`,
+`Sources/TiinverSwift/Notifications/NotificationsListView.swift`.
+
+**Résultat CI** : commit `2a41e27`, push confirmé (`3ffe89a..2a41e27 main -> main`), run
+`32919699798` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis (accès réseau/back-office) : taper "Suivre en
+Retour" depuis le centre de notifications, confirmer que la requête réseau cible bien
+`followback`, pas `follow`.
 ```
 
 ```

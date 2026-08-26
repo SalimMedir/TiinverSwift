@@ -5,9 +5,9 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [11/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
-V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021], démarré
-automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-022. Puis 31 P2, 21 P3.**
+temps). Backlog P1 (40 findings) EN COURS [12/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022], démarré
+automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-023. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -755,6 +755,42 @@ inchangée). `didReceive` route désormais `.notifications` UNIQUEMENT pour `cat
 **Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
 réel requis : taper sur une notification de chat (ouvre l'accueil) et sur une notification
 d'activité (ouvre le centre de notifications).
+
+## 2026-08-25 — Phase B V5 — Lot P1-12 : V5-F-022 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `NotiLikecmt/AdapterNoti.java:420-441` (`FollowVH.bind`'s
+`butSeguir.setOnClickListener`) — `td.Post(map, "followback", ...)` avec `{userId: e.userId,
+followId: myId}`. SEUL appelant de l'endpoint `followback` dans tout le code Android (vérifié).
+`Http/TransportData.java:1428-1430` (`Following()` → `volleyPost(..., "follow")`) utilisé par
+`SuggestionVH` (ligne 511, "suggestions de comptes"), endpoint DIFFÉRENT.
+
+**iOS avant correctif** : `NotificationsListView.swift`, bouton "Suivre en Retour" — appelait
+`ProfileRepository.shared.follow(userId: String(noti.userId), followerId: myId)`, qui poste
+TOUJOURS sur l'endpoint générique `follow`, jamais `followback`.
+
+### Correctif appliqué
+
+Cause : le portage a réutilisé le repository de follow générique déjà existant au lieu de
+reproduire l'appel réseau spécifique de `FollowVH`. Correctif : nouvelle méthode
+`ProfileRepository.followBack(userId:followerId:)` (mêmes paramètres `{userId, followId}` que
+`follow`, endpoint `followback`), site d'appel du bouton basculé dessus. Rollback optimiste (fix
+V3-F-107 antérieur, même fichier) préservé sans modification.
+
+**Flux frère vérifié** : grep sur `ProfileRepository.shared.follow(` — 3 autres appelants
+(`FollowListView.swift`, `SearchView.swift`, `SuggestionsCarouselView.swift`) confirmés inchangés,
+fidèles à l'endpoint `follow` générique.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Profile/ProfileRepository.swift`,
+`Sources/TiinverSwift/Notifications/NotificationsListView.swift`.
+
+**Résultat CI** : commit `2a41e27`, push confirmé (`3ffe89a..2a41e27 main -> main`), run
+`32919699798` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : taper "Suivre en Retour" depuis le centre de notifications, confirmer via
+inspection réseau que la requête cible `followback`.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

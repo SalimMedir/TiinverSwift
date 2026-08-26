@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [11/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [12/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -41,8 +41,10 @@ BUILD_VALIDATED (repli REST manquant pour l'historique de groupe quand le cache 
 `GroupRepository.fetchOlderGroupMessages` ajouté + câblé dans `ChatViewModel.loadMore()`) ; Lot
 P1-11 V5-F-021 BUILD_VALIDATED (tap notification routait toujours vers le centre de notifications
 même pour un message de chat, `categoryIdentifier` "activity"/"chat_message" ajouté +
-`didReceive` distingue maintenant .notifications/.home)]**. Voir section "Cycle V5" plus bas pour
-le détail complet.)
+`didReceive` distingue maintenant .notifications/.home) ; Lot P1-12 V5-F-022 BUILD_VALIDATED
+(bouton "Suivre en Retour" postait sur l'endpoint `follow` générique au lieu de `followback`,
+`ProfileRepository.followBack` ajouté)]**. Voir section "Cycle V5" plus bas pour le détail
+complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -318,33 +320,48 @@ justification confondait "écran d'accueil par défaut" et "centre de notificati
 `LocalNotificationBuilder.activityNotificationContent`/`chatMessageNotificationContent` ;
 `didReceive` route désormais `.notifications` uniquement pour `"activity"`, `.home` (déjà câblé,
 `HomeShellView.swift:283`) pour tout le reste. **Commit `846eae1`, CI verte (run
-`32919120599`)** — `BUILD_VALIDATED`. Détail des 11 lots dans `PROGRESS_V5.md`.
+`32919120599`)** — `BUILD_VALIDATED`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-022** (Notifications —
-bouton "Suivre en Retour" du centre de notifications appelle un endpoint backend différent
-d'Android. Android [`NotiLikecmt/AdapterNoti.java:420-441`, `FollowVH.bind`,
-`td.Post(map, "followback", ...)`] — SEUL appelant de l'endpoint `followback` dans tout le code
-Android, à comparer avec `Http/TransportData.java:1428-1430` [`Following()` →
-`volleyPost(..., "follow")`], utilisé lui par `AdapterNoti.java:511` dans `SuggestionVH` [la ligne
-"suggestions de comptes", pas la ligne "follow-back"] : le bouton de follow-back affiché sur une
-notification `verb=="follow"` poste sur l'endpoint `followback`, distinct de l'endpoint générique
-`follow` utilisé partout ailleurs [profil, suggestions]. iOS
-[`Notifications/NotificationsListView.swift:135-146`, bouton "Suivre en Retour"] appelle
-`ProfileRepository.shared.follow(...)` [`Profile/ProfileRepository.swift:88-90`], qui poste TOUJOURS
-sur l'endpoint générique `follow` — jamais `followback`. Cause : portage a réutilisé le repository
-de follow générique déjà existant au lieu de reproduire l'appel réseau spécifique de `FollowVH`.
-Impact : si le backend traite `followback` différemment de `follow` [suppression d'une entrée
-"vous devriez suivre en retour" côté serveur, notification spécifique à l'autre utilisateur,
-comptabilisation différente], l'action de follow-back depuis le centre de notifications iOS peut
-réussir en apparence tout en laissant un état serveur incohérent. Plan : ajouter une méthode dédiée
-[ex. `ProfileRepository.followBack`] postant sur l'endpoint `followback` avec les mêmes paramètres
-`{userId, followId}`, l'utiliser spécifiquement depuis le bouton "Suivre en Retour" de
-`NotificationsListView`, en laissant `follow()` inchangée pour les autres points d'entrée [profil,
-suggestions]), puis continuer AUTOMATIQUEMENT V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036,
-V5-F-037, V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062,
-V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082,
-V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (28 P1 restants après V5-F-022, dans l'ordre
-exact du document), puis tous les P2 (31), P3 (21), SANS s'arrêter
+**Lot P1-12 traité (V5-F-022)** — Notifications, bouton "Suivre en Retour" appelait un endpoint
+backend différent d'Android. Vérifié `NotiLikecmt/AdapterNoti.java:420-441` (`FollowVH.bind`) :
+`td.Post(map, "followback", ...)` avec `{userId: e.userId, followId: myId}`, SEUL appelant de cet
+endpoint dans tout le code Android — `SuggestionVH` (ligne 511) confirmé poster sur `follow`
+générique. `NotificationsListView.swift`, bouton "Suivre en Retour", appelait
+`ProfileRepository.shared.follow(...)`, qui poste TOUJOURS sur `follow` — jamais `followback`.
+Cause : portage a réutilisé le repository de follow générique existant au lieu de reproduire
+l'appel réseau spécifique de `FollowVH`. Correctif : nouvelle méthode
+`ProfileRepository.followBack(userId:followerId:)` (mêmes paramètres, endpoint `followback`),
+site d'appel du bouton basculé dessus ; rollback optimiste (fix V3-F-107 antérieur) préservé.
+Vérifié par grep que les 3 autres appelants de `follow` (`FollowListView`/`SearchView`/
+`SuggestionsCarouselView`) restent inchangés. **Commit `2a41e27`, CI verte (run
+`32919699798`)** — `BUILD_VALIDATED`. Détail des 12 lots dans `PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-023** (Notifications —
+centre de notifications iOS : aucun moyen d'ouvrir la publication concernée pour une notification
+SANS vignette (like/commentaire sur un post texte). Android [`NotiLikecmt/AdapterNoti.java:
+612-625`, `bindBodyClick`, attaché au conteneur `body` = titre/texte ; `:586-600`,
+`bindAvatarClick`, attaché SEULEMENT à `contentAvatar`] — deux zones tapables DISTINCTES avec deux
+destinations différentes [`body`→`FullScreenMedia` si `activityId>0`, `contentAvatar`→
+`UserProfile`], indépendamment de la présence d'une vignette [`bindThumb`, `:564-584`, peut
+masquer complètement le conteneur photo sans désactiver le clic sur `body`] : sur un like/
+commentaire concernant un post TEXTE [sans photo/vidéo, donc sans vignette affichée], l'utilisateur
+peut quand même taper sur le TEXTE de la ligne pour ouvrir le post visé, tant que `activityId>0`.
+iOS [`Notifications/NotificationsListView.swift:108-124`, `NavigationLink` unique enveloppant
+avatar+nom+bodyText → `ProfileView` ; `:152-160`, `Button` distinct UNIQUEMENT si
+`thumbnailURL != nil` → `onOpenPost`] — le bloc avatar+nom+texte est un SEUL `NavigationLink` qui
+va TOUJOURS vers `ProfileView` [jamais vers le post] ; le seul accès au post est le bouton
+vignette séparé, absent pour un post texte. Cause : le portage a fusionné les deux zones tapables
+Android [avatar→profil, corps→post] en une seule [avatar+texte→profil], gardant l'accès au post
+uniquement via la vignette pas toujours présente. Plan : séparer la zone tapable en deux comme
+Android — un tap sur l'avatar seul ouvre le profil, un tap sur le bloc nom/texte ouvre le post
+[`reconstructedPost`] quand `noti.activityId > 0`, indépendamment de la présence d'une vignette —
+lire `NotificationsListView.swift` en entier autour des lignes 108-160 pour la structure exacte
+du `NavigationLink`/`Button` actuels avant de restructurer), puis continuer AUTOMATIQUEMENT
+V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037, V5-F-043, V5-F-046, V5-F-047, V5-F-050,
+V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072,
+V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (27 P1
+restants après V5-F-023, dans l'ordre exact du document), puis tous les P2 (31), P3 (21), SANS
+s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →
 State/ViewModel → Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale

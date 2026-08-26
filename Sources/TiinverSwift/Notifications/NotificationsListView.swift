@@ -24,14 +24,25 @@ struct NotificationsListView: View {
     var body: some View {
         NavigationStack {
             Group {
+                // Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-062, Phase B P1-25) —
+                // la branche "vide" (garde `notifications.isEmpty`) est un SUR-ENSEMBLE strict de
+                // la garde de la branche "erreur" (`errorMessage != nil && notifications.isEmpty`)
+                // et était testée AVANT elle — dès que `isLoading` repasse à `false` (le `defer`
+                // de `fetchNotifications` s'exécute toujours), "Aucune notification" captait
+                // systématiquement le cas, y compris quand `errorMessage` était non-nil, rendant
+                // la branche erreur strictement inatteignable. Port de `ShowNoti.setupObservers`
+                // (`:107-142`) : `messageError` (Observer 2, état réseau `ERROR`) est distinct de
+                // `messageEmpty` (Observer 1, liste vide ET réseau terminé) — l'erreur doit être
+                // testée AVANT le vide, même motif déjà correct dans
+                // `FeedView.emptyOrStatusState`/`ProfileView.header`.
                 if viewModel.isLoading && viewModel.notifications.isEmpty {
                     ProgressView()
-                } else if viewModel.notifications.isEmpty {
-                    Text("Aucune notification") // messageEmpty
-                        .foregroundStyle(.secondary)
                 } else if let error = viewModel.errorMessage, viewModel.notifications.isEmpty {
                     Text(error) // messageError
                         .foregroundStyle(.red)
+                } else if viewModel.notifications.isEmpty {
+                    Text("Aucune notification") // messageEmpty
+                        .foregroundStyle(.secondary)
                 } else {
                     List(viewModel.notifications, id: \.id) { noti in
                         NotificationRow(noti: noti, onOpenPost: { detailPost = $0 })

@@ -23,14 +23,18 @@ struct Comment: Codable, Identifiable, Equatable {
     var isReply: Bool?
     var stamp: String?
 
-    /// Port du "commentaire cadeau" (`giftEmoji`/`giftName`/`giftPrice`/`hasGift`) — commentaire
-    /// payant en pièces, même catalogue que `GiftCatalog` (module 11). **Envoi PAS porté cette
-    /// session** — `CommentRepository.debitCoins`/endpoint `comment/add` identifiés mais l'UI de
-    /// sélection de cadeau (`GiftAdapter.java`, pas lu) ne l'est pas ; lecture seule ici.
-    var giftEmoji: String?
-    var giftName: String?
-    var giftPrice: Int?
-    var hasGift: Bool?
+    /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-047, Phase B P1-21)** — port de
+    /// `CommentModel.java:300-330` : le serveur n'envoie, pour un commentaire-cadeau, que
+    /// `object="gift"` et `comments="gift_thumb_name"` (l'identifiant technique du cadeau, dans
+    /// `commentText` ci-dessus) — AUCUNE preuve que des champs séparés `giftEmoji`/`giftName`/
+    /// `giftPrice`/`hasGift` soient envoyés par le backend pour cet endpoint (`resolveGift(Context)`
+    /// résout ENTIÈREMENT l'affichage CÔTÉ CLIENT via `GiftCatalogHelper`, à partir de `object`/
+    /// `commentText` seuls — ne lit jamais de getters gift directs). Les 4 champs décodés
+    /// précédemment (supposant un serveur pré-résolu, jamais confirmé) sont retirés ; voir
+    /// `CommentsView.commentLine` pour la résolution via `GiftCatalog.resolve(commentText)`,
+    /// fidèle à `resolveGift`.
+    var object: String?
+    var isGiftComment: Bool { object == "gift" }
 
     var belongsToCurrentUser: Bool { actor.map { String($0) == UserSession.shared.myId } ?? false }
 
@@ -55,9 +59,6 @@ struct Comment: Codable, Identifiable, Equatable {
         status = container.decodeLenientIntIfPresent(forKey: .status)
         isReply = container.decodeLenientBoolIfPresent(forKey: .isReply)
         stamp = try container.decodeIfPresent(String.self, forKey: .stamp)
-        giftEmoji = try container.decodeIfPresent(String.self, forKey: .giftEmoji)
-        giftName = try container.decodeIfPresent(String.self, forKey: .giftName)
-        giftPrice = container.decodeLenientIntIfPresent(forKey: .giftPrice)
-        hasGift = container.decodeLenientBoolIfPresent(forKey: .hasGift)
+        object = try container.decodeIfPresent(String.self, forKey: .object)
     }
 }

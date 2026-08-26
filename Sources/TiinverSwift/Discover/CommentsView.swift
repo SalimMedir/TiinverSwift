@@ -127,11 +127,21 @@ struct CommentsView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(comment.actor == nil)
-                if comment.hasGift == true, let emoji = comment.giftEmoji {
-                    Label("\(emoji) \(comment.giftName ?? "") — \(comment.giftPrice ?? 0)", systemImage: "gift.fill")
+                // Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-047, Phase B P1-21) —
+                // port de `CommentAdapter.bindGiftView`/`CommentModel.resolveGift` : le serveur
+                // n'envoie que `object="gift"` + `comments=<gift_id>` pour un commentaire-cadeau,
+                // résolu ENTIÈREMENT côté client via `GiftCatalog` (mêmes tables que le chat), pas
+                // via des champs serveur pré-résolus (jamais confirmés envoyés par le backend).
+                // Emoji/prix résolus INDÉPENDAMMENT (même motif que `LocalNotificationBuilder`,
+                // V4-F-071) : un id de cadeau inconnu affiche quand même 🎁, jamais un id brut.
+                if comment.isGiftComment {
+                    let emoji = GiftCatalog.emoji(for: comment.commentText)
+                    let price = GiftCatalog.price(for: comment.commentText)
+                    Label("\(emoji) \(comment.commentText ?? "cadeau") — \(price)", systemImage: "gift.fill")
                         .font(.caption2).foregroundStyle(.orange)
+                } else {
+                    Text(comment.commentText ?? "").font(.subheadline)
                 }
-                Text(comment.commentText ?? "").font(.subheadline)
                 Button("Répondre") { replyTarget = comment } // pas de libellé Android identifié
                     .font(.caption2)
             }

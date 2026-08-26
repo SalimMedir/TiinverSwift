@@ -2246,6 +2246,37 @@ suppression reste fidèle à 100% quel que soit le zoom.
 d'outillage que les lots précédents. Test réel à confirmer en plus de la CI (icône affichée +
 suppression dans la zone, pas de suppression hors zone).
 
+## 2026-08-26 — Phase B V5 — Lot P2-13 : V5-F-048 (Commentaires — envoi de cadeau totalement absent, FINANCIER)
+
+**Commit** : `4757b49` — poussé sur `main` (`77c7454..4757b49`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `MyBottomSheetDialogFragment` porte un panneau cadeau complet (grille 4
+colonnes, 12 cadeaux) jamais construit côté iOS — le code source iOS lui-même reconnaissait "Envoi
+PAS porté cette session". Endpoint `comment/add` (débit + commentaire en une seule requête),
+distinct de l'endpoint `comment` des commentaires normaux.
+
+**Vérification financière renforcée effectuée AVANT tout code** : lecture ligne par ligne
+d'`onPost`/`debitCoins`. Confirmé qu'Android décrémente le solde UNIQUEMENT dans la branche
+`Result.SUCCESS` — aucun débit optimiste avant confirmation serveur. La ligne `+= price` de la
+branche `ERROR` est un no-op réel (rien n'a été soustrait avant), non reproduite (aucun effet
+observable à dupliquer).
+
+**Correction appliquée** : `CommentRepository.sendGift` (nouvel endpoint `comment/add`, aucune
+mutation de solde) ; `CommentsView.sendGift` décrémente `UserSession.shared.coinsAmount`
+UNIQUEMENT après succès confirmé, garde d'affordabilité en double (bouton désactivé + garde
+défensive) ; `GiftCatalog.orderedGiftIds` ajouté pour la grille ; `allowGiftCommenter` (déjà porté,
+0 appelant) enfin câblé comme garde d'affichage.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/CommentsView.swift`,
+`Sources/TiinverSwift/Discover/CommentRepository.swift`, `Sources/TiinverSwift/Models/GiftCatalog.swift`,
+`Sources/TiinverSwift/Feed/FeedView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. Vu la nature financière, test réel supplémentaire requis en
+plus de la CI : envoyer un cadeau réel, confirmer débit serveur = débit local, provoquer un échec
+réseau simulé et confirmer qu'AUCUN débit local n'a lieu.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

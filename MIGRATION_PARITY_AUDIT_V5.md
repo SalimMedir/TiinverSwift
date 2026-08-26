@@ -1972,6 +1972,39 @@ CAUSE : Fonctionnalité jamais portée — explicitement reconnu par le commenta
 IMPACT : Asymétrie fonctionnelle complète sur une fonctionnalité économique (monétisation par pièces) explicitement dans le périmètre du domaine audité ("cadeaux en commentaire") — les utilisateurs iOS ne peuvent pas participer à cette interaction sociale/monétaire du tout.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Porter le panneau de sélection de cadeau et l'appel comment/add (débit + commentaire), en réutilisant GiftCatalog déjà disponible côté iOS pour le catalogue statique (emoji/prix/nom).
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-13 — **FINDING FINANCIER,
+vérification renforcée effectuée**) — Vérifié directement `MyBottomSheetDialogFragment.
+java:450-503` (`onPost`, branche `object=="gift"`) et `CommentRepository.java:240-281`
+(`debitCoins`, `POST comment/add`, réponse `{"error": bool}`). **Point critique confirmé par
+lecture ligne à ligne** : `userCoinBalance -= data.getGiftPrice()` n'existe QUE dans la branche
+`Result.SUCCESS` du callback — Android ne décrémente JAMAIS le solde avant confirmation serveur,
+aucun débit optimiste. La branche `ERROR` fait `userCoinBalance += price` mais c'est un NO-OP réel
+(rien n'a été soustrait avant sur ce chemin, et cette ligne n'est même pas persistée via
+`Settings.setFloatPreference` contrairement à la branche succès) — pas reproduit tel quel (aucun
+effet observable à reproduire), documenté explicitement plutôt que copié aveuglément.
+- `CommentRepository.sendGift(activityId:userId:giftId:receiverId:amount:)` — nouvel endpoint
+  `comment/add` (DISTINCT de `comment`, vérifié), AUCUNE mutation de solde dans cette fonction.
+- `CommentsView.sendGift` — décrémente `UserSession.shared.coinsAmount` UNIQUEMENT après
+  `isBackendSuccess` confirmé ; garde d'affordabilité en double (bouton désactivé dans le picker +
+  garde défensive avant l'appel réseau, fidèle à `btnSendGift.setEnabled(canAfford)` +
+  `sendGiftComment()`'s garde d'entrée).
+- `GiftCatalog.orderedGiftIds` ajouté (ordre prix croissant, port de `buildGiftCatalog()` —
+  `entries` existant est un dictionnaire sans ordre garanti, insuffisant seul pour une grille).
+- `allowGiftCommenter` (déjà porté dans `TiinverFirebaseConfigManager`, 0 appelant avant ce
+  correctif) enfin câblé comme garde d'affichage du bouton cadeau.
+- `CommentsView`/`FeedView` : nouveau paramètre `postActorId` (auteur de la publication,
+  `receiverId` du cadeau) — 2 sites d'appel mis à jour.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/CommentsView.swift`,
+`Sources/TiinverSwift/Discover/CommentRepository.swift`, `Sources/TiinverSwift/Models/GiftCatalog.swift`,
+`Sources/TiinverSwift/Feed/FeedView.swift`.
+
+**Commit `4757b49`, poussé sur `main`** (`77c7454..4757b49`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé. **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas
+confirmée. Test réel à confirmer en plus de la CI, vu la nature financière : envoyer un cadeau
+réel, confirmer le débit serveur ET local correspondent, provoquer un échec réseau simulé et
+confirmer qu'AUCUN débit local n'a lieu.
 ```
 
 ```

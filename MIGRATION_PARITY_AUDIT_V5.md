@@ -429,6 +429,25 @@ CAUSE : `FeedDetailPagerView` est réutilisé par 6 écrans iOS différents avec
 IMPACT : Un utilisateur qui ouvre n'importe quel post d'un autre utilisateur en plein écran depuis le fil d'accueil (le point d'entrée le plus fréquent de l'app) ne peut jamais télécharger ce média, alors qu'Android le permet systématiquement à cet endroit précis.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Passer `includesDownload: true` à l'appel de `FeedDetailPagerView` dans `FeedView.swift:136-139` (le `.fullScreenCover` du fil Home), au même titre que `ProfileView`.
+
+STATUT : BUILD_VALIDATED (2026-08-24, Phase B V5, Lot P1-3) — Vérifié directement :
+`FeedFragment.java:1246-1247,1360-1365` confirme `R.id.download` câblé et masqué uniquement sur
+les posts propres via `idContentHide`, déjà reproduit fidèlement par la garde `if !isOwnPost`
+existante autour du bouton "Télécharger" — il ne manquait que le paramètre. Correctif :
+`includesDownload: true` ajouté à l'appel de `FeedDetailPagerView` dans le `.fullScreenCover` du
+fil Home. Commentaire stale de `FeedMediaDownloader.swift` corrigé au passage (affirmait à tort
+que Profile était le SEUL contexte Android câblé, sans avoir vérifié `FeedFragment.java`).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedView.swift`,
+`Sources/TiinverSwift/Feed/FeedMediaDownloader.swift`.
+
+**Résultat CI** : commit `8157db3`, push confirmé (`95db132..8157db3 main -> main`), run
+`32913100968` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : ouvrir le post d'un autre utilisateur en plein
+écran depuis la grille Home, confirmer que "Télécharger" apparaît dans le menu "..." (et reste
+absent sur ses propres posts).
 ```
 
 ```

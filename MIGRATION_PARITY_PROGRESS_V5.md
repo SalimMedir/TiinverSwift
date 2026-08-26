@@ -378,6 +378,75 @@ compte, doublon de V5-F-005 résolu en même temps). Aucun `BLOQUÉ`, aucun `DIF
 Backlog P1 (40 findings) démarré immédiatement après, sans confirmation utilisateur
 supplémentaire, conformément à l'instruction explicite de continuation automatique.
 
+## 2026-08-24 — Phase B V5 — Lot P1-1 : V5-F-001 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `AndroidManifest.xml:347-353` confirme `CallActivity`/`IncomingCallActivity` comme
+Activities `exported` indépendantes. `CallService.java:571-617` confirme leur lancement
+inconditionnel via `FLAG_ACTIVITY_NEW_TASK` depuis un Service, atteignables par-dessus n'importe
+quel écran.
+
+**iOS avant correctif** : `CallView` n'était présenté que via un `.fullScreenCover` LOCAL à
+`ChatView` — si l'utilisateur n'était pas précisément sur le ChatView de la conversation en cours
+d'appel (autre onglet, autre conversation, app relancée en arrière-plan après réponse CallKit
+depuis l'écran verrouillé), aucun contrôle muet/haut-parleur/raccrocher n'était disponible.
+
+### Correctif appliqué
+
+`.fullScreenCover` déplacé de `ChatView.swift` vers `RootRouterView.swift` — choisi plutôt que
+`HomeShellView.swift` car un commentaire existant dans `RootRouterView.swift` confirme que
+`CallCoordinator.start()` peut déjà être actif AVANT authentification ; seul `RootRouterView`
+(monté dans TOUS les états de l'app) garantit la disponibilité totale. L'alerte "Micro requis"
+reste dans `ChatView.swift`, liée au bouton d'appel sortant qui vit sur cet écran précis.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Navigation/RootRouterView.swift`,
+`Sources/TiinverSwift/Messagerie/ChatView.swift`.
+
+**Résultat CI** : commit `7c77d7b`, push confirmé (`a59e01b..7c77d7b main -> main`), run
+`32912327146` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis (device + backend d'appel fonctionnel).
+
+## 2026-08-24 — Phase B V5 — Lot P1-2 : V5-F-005 (DUPLICATE de V5-F-064)
+
+Code exact identique (`SettingSubViews.swift:35-61`), même citation Android, même cause, même
+recommandation que V5-F-064 (P0, déjà corrigé — commit `dd67146`, CI run `32894676015`). Trouvé
+indépendamment par 2 agents distincts de la Phase A. Aucune modification de code supplémentaire,
+conformément à la règle « ne pas modifier le code inutilement » pour un finding déjà résolu par un
+autre commit.
+
+**Fichiers modifiés** : `MIGRATION_PARITY_AUDIT_V5.md` (STATUT `DUPLICATE` uniquement).
+
+## 2026-08-24 — Phase B V5 — Lot P1-3 : V5-F-006 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `FeedFragment.java:1246-1247,1360-1365` — `R.id.download` inclus dans le menu "..."
+du plein écran Home, câblé sur `addingDownloadingFileToQueue`/`checkBestQualityAndDownload`,
+masqué uniquement sur les posts PROPRES via `idContentHide`.
+
+**iOS avant correctif** : `FeedView.swift`'s `.fullScreenCover` (grille Home) n'appelait PAS
+`includesDownload: true` — la garde `if !isOwnPost { if includesDownload { ... } }` existait déjà
+et reproduisait fidèlement le masquage Android, seul le paramètre manquait.
+
+### Correctif appliqué
+
+`includesDownload: true` ajouté à l'appel de `FeedDetailPagerView` dans le `.fullScreenCover` du
+fil Home. Corrigé au passage le commentaire stale de `FeedMediaDownloader.swift` (affirmait à tort
+que Profile était le SEUL contexte Android câblé — analyse incomplète, n'avait pas vérifié
+`FeedFragment.java`).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Feed/FeedView.swift`,
+`Sources/TiinverSwift/Feed/FeedMediaDownloader.swift`.
+
+**Résultat CI** : commit `8157db3`, push confirmé (`95db132..8157db3 main -> main`), run
+`32913100968` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : confirmer "Télécharger" visible sur les posts d'autrui, absent sur ses propres posts.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

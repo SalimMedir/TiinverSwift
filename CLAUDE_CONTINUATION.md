@@ -23,7 +23,10 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) DÉMARRÉ**, premier : V5-F-001. Voir section "Cycle V5" plus bas pour le détail complet.)
+findings) EN COURS [3/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
+(includesDownload: true sur le fullScreenCover Home)]**. Voir section "Cycle V5" plus bas pour le
+détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -178,35 +181,50 @@ V5-F-094, V5-F-018, V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064. Aucun `BLO
 `DIFFÉRÉ` — tous étaient de vraies divergences corrigeables sans dépendance externe. Aucun
 `COMPLETE_PARITY_VALIDATED`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur le backlog P1 (40 findings),
-premier dans l'ordre du document : **V5-F-001** (Architecture/navigation — écran d'appel
-[`CallView`] accessible uniquement depuis la conversation d'origine, pas globalement : Android
-[`AndroidManifest.xml:347-353`, `CallService.java:571-617`] lance `CallActivity`/
-`IncomingCallActivity` depuis un Service via `FLAG_ACTIVITY_NEW_TASK`, TOUJOURS atteignable
-pendant un appel quel que soit l'écran affiché ; iOS [`ChatView.swift:70-72`] présente `CallView`
-via un `.fullScreenCover` LOCAL à `ChatView` — si l'utilisateur n'est pas précisément sur le
-ChatView de la conversation en cours d'appel [autre onglet, autre conversation, app relancée en
-arrière-plan après réponse CallKit depuis l'écran verrouillé], aucun contrôle muet/haut-parleur/
-raccrocher n'est disponible ; grep confirmé : `HomeShellView`/`RootRouterView` n'observent
-`CallCoordinator.shared.state` nulle part — recommandation de l'audit : déplacer le
-`.fullScreenCover` vers `HomeShellView`/`RootRouterView`, qui restent montés quel que soit l'écran
-affiché), puis continuer AUTOMATIQUEMENT V5-F-005 (marquer `DUPLICATE` de V5-F-064, déjà corrigé —
-ne PAS re-corriger), V5-F-006, V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019,
-V5-F-020, V5-F-021, V5-F-022, V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037,
-V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063,
-V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085,
-V5-F-089, V5-F-095, V5-F-097, V5-F-098 (39 P1 restants après V5-F-001, dans l'ordre exact du
-document), puis tous les P2 (31), P3 (21), SANS s'arrêter entre les lots (instruction explicite de
-l'utilisateur), en respectant à chaque fois : preuve Android vérifiée personnellement → code Swift
-vérifié → chaîne complète tracée (UI → State/ViewModel → Repository/API/Socket → réponse → rendu,
-des deux côtés) → correction minimale → diff revu → commit → push → CI → attente OBLIGATOIRE du
-résultat → mise à jour des 3 documents (`MIGRATION_PARITY_AUDIT_V5.md`,
-`MIGRATION_PARITY_PROGRESS_V5.md`, `CLAUDE_CONTINUATION.md`) → finding suivant. Attention
-particulière aux domaines Animems (chaîne complète UI→gesture→State→Transform→Timeline→
-Keyframes→Renderer→Playback→Export→Audio→Import), Socket.IO/Chat (reconnexion, doublons, ordre,
-pagination), BunnyCDN/médias (sélection→préparation→upload→URL→backend→cache→affichage), et Wallet
-(vérification financière double : paramètres envoyés, delta, solde, réponse serveur, rollback UI,
-idempotence). Repo Android source de vérité :
+**Lot P1-1 traité (V5-F-001)** — CallView déplacé de `ChatView.swift` vers `RootRouterView.swift`
+(seul point toujours monté, y compris avant authentification). Alerte micro restée dans `ChatView`.
+**Commit `7c77d7b`, CI verte (run `32912327146`)** — `BUILD_VALIDATED`.
+
+**Lot P1-2 traité (V5-F-005)** — `DUPLICATE` confirmé de V5-F-064 (P0, déjà corrigé commit
+`dd67146`). Code exact identique, même cause, même recommandation. Aucune modification de code.
+
+**Lot P1-3 traité (V5-F-006)** — `includesDownload: true` ajouté au `.fullScreenCover` du fil Home
+dans `FeedView.swift` ; la garde `if !isOwnPost { if includesDownload {...} }` existait déjà et
+masquait correctement "Télécharger" sur ses propres posts, seul le paramètre manquait. Commentaire
+stale de `FeedMediaDownloader.swift` corrigé au passage. **Commit `8157db3`, CI verte (run
+`32913100968`)** — `BUILD_VALIDATED`. Détail des 3 lots dans `PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-007** (Feed/plein écran
+Home/Signalement — un signalement envoyé depuis le plein écran Home cible génériquement
+l'UTILISATEUR au lieu du POST précis : Android [`FeedFragment.java:1351-1359`] remplit
+`target_id`/`report_type="content"` en plus de userId/username pour un signalement content, alors
+que `MainFragment.OnclickMoreExpand` [la grille] les laisse vides — 2 comportements Android
+distincts selon la classe ; iOS [`FeedViewModel.report`/`FeedRepository.reportUser`] utilise la
+MÊME fonction avec `target_id`/`report_type` codés en dur à `""` pour les DEUX contextes [grille ET
+`FeedDetailPagerView`, déjà vérifié Android : `ProfileFeedFragment.java`/`HashtagProfile.java`
+remplissent aussi ces champs pour LEUR plein écran respectif] — `FeedDetailPagerView` est un seul
+struct partagé par 6 écrans parents [Home/Profile/Hashtag/Search/Notifications/HomeShellView
+deep-link], donc corriger son unique site d'appel `viewModel.report(...)` [ligne ~653] pour
+inclure `post.id`/`"content"` corrige correctement TOUS ces contextes plein écran d'un coup,
+fidèle au pattern Android général ; le site d'appel de la GRILLE [ligne ~259, dans `FeedView`
+elle-même] doit rester inchangé, vide, fidèle à `MainFragment` — plan : ajouter un paramètre
+`includesTarget: Bool = false` à `FeedViewModel.report`/`FeedRepository.reportUser`, passé `true`
+uniquement depuis l'appel de `FeedDetailPagerView`), puis continuer AUTOMATIQUEMENT V5-F-009,
+V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022, V5-F-023, V5-F-029,
+V5-F-033, V5-F-034, V5-F-036, V5-F-037, V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057,
+V5-F-058, V5-F-060, V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072, V5-F-076,
+V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (36 P1 restants
+après V5-F-007, dans l'ordre exact du document), puis tous les P2 (31), P3 (21), SANS s'arrêter
+entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
+Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →
+State/ViewModel → Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale
+→ diff revu → commit → push → CI → attente OBLIGATOIRE du résultat → mise à jour des 3 documents
+(`MIGRATION_PARITY_AUDIT_V5.md`, `MIGRATION_PARITY_PROGRESS_V5.md`, `CLAUDE_CONTINUATION.md`) →
+finding suivant. Attention particulière aux domaines Animems (chaîne complète UI→gesture→State→
+Transform→Timeline→Keyframes→Renderer→Playback→Export→Audio→Import), Socket.IO/Chat
+(reconnexion, doublons, ordre, pagination), BunnyCDN/médias (sélection→préparation→upload→URL→
+backend→cache→affichage), et Wallet (vérification financière double : paramètres envoyés, delta,
+solde, réponse serveur, rollback UI, idempotence). Repo Android source de vérité :
 `C:\Users\helen\AndroidStudioProjects\tiinver\app\src\main\java\com\tiinver\`.
 
 ## Cycle V3 (CLOS pour ce cycle — voir `MIGRATION_PARITY_AUDIT_V3.md`/`PROGRESS_V3.md`)

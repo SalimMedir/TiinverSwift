@@ -898,6 +898,16 @@ struct AnimemesEditorView: View {
                 // éviter le bug de sélection bloquée décrit ci-dessus, découvert lors du portage —
                 // reproduire la persistance Android réintroduirait ce même bug déjà corrigé.
                 // Comportement iOS jugé plus prévisible, conservé délibérément.
+                //
+                // **Même décision couvre V5-F-092** (`GestureListener.onScroll`, `MemesView2.java:
+                // 1575-1580` — translate `objectInAction` sur TOUT glissement une fois un calque
+                // sélectionné, même démarré depuis le vide) : c'est la MÊME racine Android que
+                // V5-F-091 (`touchDown` ne réinitialise jamais la sélection sur un miss), vue sous
+                // un angle différent par un agent d'audit distinct — pas un second gap indépendant.
+                // Reproduire V5-F-092 sans reproduire aussi V5-F-091 serait incohérent (un
+                // glissement démarré dans le vide ré-désélectionnerait AVANT de pouvoir continuer à
+                // déplacer l'ancien calque, via ce même `selectObject(at:)` juste en dessous) ; les
+                // deux découlent du même choix assumé de ne PAS reproduire la sélection "collante".
                 if value.translation == .zero {
                     _ = state.selectObject(at: value.startLocation)
                 }

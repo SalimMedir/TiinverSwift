@@ -10,7 +10,7 @@ lot par lot complet. **Backlog P2 (31 findings) EN COURS [20/31 clos, dans l'ord
 V5-F-002, V5-F-004, V5-F-008, V5-F-014, V5-F-024, V5-F-025, V5-F-026
 (IOS_INTENTIONAL_DIFFERENCE), V5-F-030, V5-F-035, V5-F-038, V5-F-039, V5-F-040, V5-F-048,
 V5-F-049, V5-F-051, V5-F-054, V5-F-055 (partiel, écart architectural documenté), V5-F-059,
-V5-F-061, V5-F-065, V5-F-066, V5-F-069]. Prochain : V5-F-071. Puis 21 P3.**
+V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071]. Prochain : V5-F-073. Puis 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2474,6 +2474,28 @@ en tête de `requestDownload` (classe `@MainActor`, accès synchrone, pas de ver
 même raisonnement que `reserveUpload`), relâché via `defer` à la fin du `Task`.
 
 **Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatViewModel.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P2-23 : V5-F-071 (Socket.IO — listeners de l'ancien socket non détachés avant reset/disconnect)
+
+**Commit** : `0dc6bd2` — poussé sur `main` (`d2e241c..0dc6bd2`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `App.resetSocket()`/`App.disconnectSocket()` (`App.java:157-171`/`136-151`)
+appellent tous deux `mSocket.off()` AVANT `disconnect()`, retirant tous les handlers de l'ancien
+socket avant de l'abandonner. `TiinverSocket.reset()`/`disconnect()` comptaient uniquement sur la
+désallocation ARC après `disconnect()` — un commentaire écartait `removeAllHandlers()` par prudence
+("API non confirmée disponible"), sans vérifier : `.off(_:)`/`.off(clientEvent:)` sont déjà utilisés
+dans ce même projet (`ChatRepository.registerAllListeners`), confirmant l'API disponible.
+
+**Correction appliquée** : `socket?.removeAllHandlers()` ajouté avant `disconnect()` dans
+`reset(apiKey:)` ET `disconnect()`, même ordre qu'Android. Aucun listener Manager/`.io()`
+enregistré nulle part dans ce projet (grep exhaustif) — les 3 `EVENT_RECONNECT*` retirés côté
+Android n'ont pas d'équivalent à nettoyer côté iOS.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Realtime/TiinverSocket.swift`.
 
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.

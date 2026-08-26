@@ -2776,6 +2776,13 @@ IMPACT : Risque d'un leaveRoom parasite émis juste après une reconnexion (chaq
 SUGGESTED_STATUS : CODE_PRESENT_UNVERIFIED
 RECOMMANDATION : Appeler socket?.off() (et socket?.off(clientEvent:) pour chaque événement enregistré, ou l'équivalent disponible dans la version de Socket.IO-Client-Swift utilisée) sur l'ancien socket AVANT disconnect() dans TiinverSocket.reset(), à l'identique d'App.resetSocket() côté Android, pour éliminer ce risque plutôt que de compter sur la seule désallocation ARC.
 CONTRE-AUDIT : trouvé par l'agent "Socket.IO / temps réel" (Phase A.2, 2026-08-24)
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-23). `removeAllHandlers()` confirmé
+disponible (même famille d'API que `.off(_:)`/`.off(clientEvent:)` déjà utilisés dans
+`ChatRepository.registerAllListeners`) — ajouté avant `disconnect()` dans `reset(apiKey:)` ET
+`disconnect()` [même pattern Android, `App.disconnectSocket()`]. Aucun listener Manager/`.io()`
+enregistré nulle part dans ce projet (grep exhaustif) — rien à nettoyer côté `EVENT_RECONNECT*`.
+Fichier modifié : `Realtime/TiinverSocket.swift`. Commit `0dc6bd2`, poussé sur `main`. CI non
+déclenchée par cette session.
 ```
 
 ```

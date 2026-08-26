@@ -5,12 +5,12 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [28/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+temps). Backlog P1 (40 findings) EN COURS [30/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
 V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022,
 V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037 (IOS_INTENTIONAL_DIFFERENCE),
 V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060 (DIFFÉRÉ), V5-F-062,
-V5-F-063, V5-F-067], démarré automatiquement à V5-F-001, dans l'ordre du document. Prochain :
-V5-F-068. Puis 31 P2, 21 P3.**
+V5-F-063, V5-F-067, V5-F-068, V5-F-070], démarré automatiquement à V5-F-001, dans l'ordre du
+document. Prochain : V5-F-072. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -1402,6 +1402,101 @@ statique intrinsèquement isolé sans `actor` dédié.
 **Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
 réel requis : rafale de push ou push pendant l'écran Notifications ouvert, confirmer l'absence de
 bannières système dupliquées.
+
+## 2026-08-25 — Phase B V5 — Lot P1-28 : V5-F-068 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `messagerie/ui/adapter/MessageListAdapter.java:322-365` (`Subscribe.bind`,
+`subscribe.setOnClickListener` → `td.Post(..., "group/subscribe", Callback)`) et `:420+`
+(`RenewSubscription`, même motif) — `onLoading()` (`:361-364`) exécute
+`subscribe.setVisibility(GONE); progress.setVisibility(VISIBLE)` SYNCHRONEMENT dès le clic, avant
+l'appel réseau : le bouton n'est plus dans la hiérarchie cliquable pendant toute la durée de la
+requête, empêchant MÉCANIQUEMENT un second appui de déclencher un second débit.
+
+**iOS avant correctif** : `SubscriptionBannerRow` — `Button` TOUJOURS actif, aucun état
+`isLoading`/`disabled`. `ChatViewModel.resolveGroupSubscription` — vérifie
+`coinsAmount > Double(price)` PUIS lance un `Task` réseau, SANS aucun flag "requête déjà en cours
+pour cet item" ; `coinsAmount -= Double(price)` exécuté APRÈS chaque appel réseau réussi, SANS
+idempotence.
+
+### Vérification financière DOUBLE (règle Wallet)
+
+(1) Paramètres envoyés/calcul du delta/appel serveur INCHANGÉS — seul un verrou ajouté ; rollback
+sur erreur inchangé (`catch { return }`, fidèle à `onError` Android qui ré-affiche simplement le
+bouton sans message — `defer` libère le verrou dans ce même chemin, aucun débit n'a lieu sur ce
+chemin, avant comme après ce correctif). (2) Confirmé par relecture qu'un double-tap AVANT ce
+correctif produisait un lire-puis-écrire NON ATOMIQUE sur `coinsAmount` : les 2 `Task` concurrents
+lisaient le solde AVANT que le premier ne le décrémente, passaient chacun la garde, envoyaient
+chacun leur requête serveur, puis décrémentaient chacun `coinsAmount` — double débit local RÉEL
+pour une seule action utilisateur, scénario UI ordinaire (double-tap accidentel).
+
+### Correctif appliqué
+
+`ChatViewModel.pendingSubscriptionItemIds: Set<String>` ajouté — verrou logique PAR ITEM (clé =
+`"sub-\(itemId)"`/`"renew-\(itemId)"`, la MÊME déjà utilisée pour le retrait de bannière), pas un
+booléen global, pour ne pas bloquer à tort 2 bannières de groupes DIFFÉRENTS en cours
+simultanément. `resolveGroupSubscription` retourne immédiatement si la même clé est déjà
+présente dans le Set. `SubscriptionBannerRow` gagne un paramètre `isLoading` remplaçant le bouton
+par un `ProgressView` pendant la requête — analogue visuel direct du `setVisibility(GONE)`/
+`setVisibility(VISIBLE)` Android. Commentaire de tête de fichier corrigé au passage (affirmait à
+tort "PAS fonctionnel", obsolète depuis le portage réel de `resolveGroupSubscription`).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatViewModel.swift`,
+`Sources/TiinverSwift/Messagerie/ChatBubbleViews.swift`,
+`Sources/TiinverSwift/Messagerie/ChatView.swift`.
+
+**Résultat CI** : commit `ee9f40b`, push confirmé (`533fdef..ee9f40b main -> main`), run
+`32932069058` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : double-tap rapide sur "S'abonner"/"Renouveler l'abonnement", confirmer un SEUL
+débit et une SEULE requête réseau.
+
+## 2026-08-25 — Phase B V5 — Lot P1-29 : V5-F-070 (BUILD_VALIDATED, portée réduite documentée)
+
+### Vérification
+
+**Android** : `messagerie/repository/ChatRepository.java:780-818` (`NewPrivateMessage`, poste sur
+`Handler(Looper.getMainLooper())`) + `Utils/DecodeThreadPool.java:8-19` (`ThreadPoolExecutor
+corePoolSize=1` + `LinkedBlockingQueue` non bornée ⇒ UN SEUL thread de décodage en pratique) +
+`messagerie/ui/ChatManager.java:1156-1159` (`addMessage(MessageLib)` déclarée `synchronized`,
+check-then-insert protégé). Trois mécanismes garantissant que le couple vérifier-existe+insérer
+est atomique et que 2 événements ne peuvent jamais s'entrelacer.
+
+**iOS avant correctif** : `MessageRepository.addMessage`/`addGroupMessage` — `guard
+!(try await messageExists(messageId:))` PUIS `try await messages.insert { ... }`, deux `await`
+séparés SANS verrou entre eux ; aucune contrainte d'unicité Core Data sur `messageId`. Deux
+événements socket portant le même `messageId` (redélivrance après reconnexion) pouvaient chacun
+passer le guard avant qu'aucun n'ait terminé son insert.
+
+### Décision et correctif appliqué
+
+**Option Core Data (contrainte d'unicité) délibérément ÉCARTÉE** : `messageId` est `optional`
+avec `defaultValueString="0"` — une contrainte dure risquerait d'échouer sur des bases locales
+EXISTANTES ayant déjà des collisions issues de ce même bug, changement de schéma/migration à
+risque réel sur des installations en production. **Option `actor` simple également écartée** : la
+réentrance des `actor` Swift n'empêcherait PAS la course ici (un `await` interne à l'opération
+protégée laisse une fenêtre pour un second appel concurrent).
+
+Correctif : nouveau `actor SerialTaskQueue` (enchaînement EXPLICITE par continuation `Task`, pas
+une réentrance d'actor nue) enveloppant `addMessage`/`addGroupMessage` en entier — UNE SEULE
+instance partagée entre les deux méthodes (même table `wk_messages`).
+
+**Portée délibérément réduite** : seul le risque de DOUBLON EN BASE (le plus sévère des 2
+impacts) est corrigé. L'ordre d'affichage entre 2 messages arrivés en rafale N'EST PAS traité —
+nécessiterait de sérialiser tout le pipeline de dispatch socket, un chantier plus large touchant
+l'architecture temps réel ; risque cosmétique mineur, auto-corrigé à la prochaine réouverture de
+la conversation (`loadInitial()` trie déjà par `stamp`).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Storage/MessageRepository.swift`.
+
+**Résultat CI** : commit `d938554`, push confirmé (`ee9f40b..d938554 main -> main`), run
+`32932952310` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`, portée réduite documentée. PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : redélivrance rapprochée du même message
+(coupure réseau/reconnexion), confirmer l'absence de bulle dupliquée persistante.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

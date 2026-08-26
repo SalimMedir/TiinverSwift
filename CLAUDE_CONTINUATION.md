@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [28/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [30/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -82,7 +82,13 @@ notifications inatteignable, ordre des conditions inversé) ; Lot P1-26 V5-F-063
 `.refreshable` ajoutés, reprise auto silencieuse à 5s d'Android non reproduite) ; Lot P1-27 V5-F-067 BUILD_VALIDATED
 (rafraîchissements concurrents de `fetchNotifications` sans verrou global → notifications
 système dupliquées, `private static var isSyncing` ajouté, verrou partagé par TOUTES les
-instances)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
+instances) ; Lot P1-28 V5-F-068 BUILD_VALIDATED (double-tap abonnement/renouvellement groupe payant
+→ double débit local FINANCIER, verrou logique par item `pendingSubscriptionItemIds` +
+`isLoading` visuel ajoutés, vérification financière double effectuée) ; Lot P1-29 V5-F-070
+BUILD_VALIDATED — portée réduite documentée (réception socket concurrente sans sérialisation →
+risque de doublon en base, nouveau `actor SerialTaskQueue` enveloppant `addMessage`/
+`addGroupMessage`, contrainte Core Data et `actor` nu écartés et justifiés, ordre d'affichage non
+traité)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -580,39 +586,65 @@ les instances, `fetchNotifications` retourne immédiatement si déjà en cours (
 **Commit `df56d8b`, CI verte (run `32931145696`)** — `BUILD_VALIDATED`. Détail des 28 lots dans
 `PROGRESS_V5.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-068** (Messagerie —
-concurrence transversale : double-tap sur le bouton d'abonnement/renouvellement de groupe payant
-→ DOUBLE DÉBIT local de pièces et double requête réseau, FINDING FINANCIER, vérification double
-requise. Android [`messagerie/ui/adapter/MessageListAdapter.java:322-365`, `Subscribe.bind`,
-`subscribe.setOnClickListener` → `td.Post(..., "group/subscribe", Callback)` ; `onLoading()`
-`:361-364` exécute `subscribe.setVisibility(GONE); progress.setVisibility(VISIBLE)` de façon
-SYNCHRONE avant l'appel réseau ; `:420+` `RenewSubscription`, même motif] — dès le clic,
-`onLoading()` masque IMMÉDIATEMENT le bouton et affiche une barre de progression — le bouton
-n'est PLUS dans la hiérarchie cliquable pendant toute la durée de l'appel réseau, empêchant
-MÉCANIQUEMENT un second appui de déclencher un second débit tant que le premier n'est pas résolu.
-iOS [`Messagerie/ChatBubbleViews.swift:369-385`, `SubscriptionBannerRow` — `Button` TOUJOURS actif,
-AUCUN état `isLoading`/`disabled` ; `Messagerie/ChatViewModel.swift:158-179`,
-`resolveGroupSubscription` — vérifie `UserSession.shared.coinsAmount > Double(price)` PUIS lance
-un `Task` réseau, SANS AUCUN flag "requête déjà en cours pour cet item" ; ligne 173
-`UserSession.shared.coinsAmount -= Double(price)` exécuté APRÈS chaque appel réseau réussi, SANS
-idempotence] — un double-tap rapide avant que la bannière ne soit retirée de `items` [retrait
-seulement après la fin du PREMIER `Task`] déclenche DEUX `Task` concurrents : les deux lisent
-`coinsAmount` [encore non décrémenté par le premier] et passent la garde, envoient chacun leur
-`POST group/subscribe`/`renewsubscription`, puis chacun décrémente `coinsAmount` — un
-lire-puis-écrire NON ATOMIQUE aboutissant à un double débit local pour un seul abonnement voulu.
-Cause : absence de protection double-tap côté iOS [ni désactivation visuelle, ni verrou logique
-par `itemId`/`groupId`], alors qu'Android neutralise PHYSIQUEMENT le bouton dès le premier clic.
-Impact : perte financière locale [solde débité deux fois pour un seul abonnement, potentiellement
-2 requêtes serveur distinctes] sur un double-tap ORDINAIRE — scénario UI courant, facilement
-déclenché par accident. Plan : désactiver visuellement le bouton [ou le remplacer par un
-indicateur de chargement] dès le PREMIER tap, ET ajouter un verrou logique [`Set<String>` des
-`itemId` en cours de traitement] dans `resolveGroupSubscription` pour ignorer tout appel
-concurrent sur le même item — lire `ChatBubbleViews.swift` [`SubscriptionBannerRow`] et
-`ChatViewModel.swift` [`resolveGroupSubscription`, lignes 158-179] en entier avant de coder ;
-VÉRIFICATION FINANCIÈRE DOUBLE requise selon la directive Phase B : paramètres envoyés, delta,
-solde, réponse serveur, rollback UI, idempotence), puis continuer AUTOMATIQUEMENT V5-F-070,
-V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097,
-V5-F-098 (11 P1 restants après V5-F-068, dans l'ordre
+**Lot P1-28 traité (V5-F-068)** — Messagerie, double-tap sur le bouton d'abonnement/renouvellement
+de groupe payant → DOUBLE DÉBIT local de pièces (FINDING FINANCIER). Vérifié
+`MessageListAdapter.java:361-364` : `onLoading()` masque SYNCHRONEMENT le bouton avant l'appel
+réseau, neutralisation physique empêchant mécaniquement un second débit. **Vérification
+financière DOUBLE effectuée** : (1) paramètres/delta/appel serveur inchangés, seul un verrou
+ajouté, rollback sur erreur inchangé ; (2) confirmé qu'un double-tap produisait un
+lire-puis-écrire non atomique sur `coinsAmount` (double débit réel). Correctif :
+`ChatViewModel.pendingSubscriptionItemIds: Set<String>` (verrou PAR ITEM, pas global) +
+`SubscriptionBannerRow.isLoading` remplaçant le bouton par un `ProgressView` pendant la requête.
+**Commit `ee9f40b`, CI verte (run `32932069058`)** — `BUILD_VALIDATED`.
+
+**Lot P1-29 traité (V5-F-070)** — Socket.IO/temps réel, traitement concurrent des
+événements de réception de message (new message/new message group) sans sérialisation côté iOS →
+risque de doublon EN BASE si le serveur redélivre le même `messageId` après reconnexion (2 `Task`
+concurrentes passant toutes deux le `guard !messageExists` avant qu'aucune n'ait terminé son
+`insert`, aucune contrainte d'unicité Core Data pour rattraper la course). Vérifié
+`ChatManager.java:1156-1159` (`addMessage` `synchronized`) + `DecodeThreadPool.java:8-19` (1 seul
+thread de décodage en pratique) + `Handler.post` (1 Runnable atomique) — 3 mécanismes Android
+garantissant l'atomicité du couple vérifier-existe+insérer. **Option Core Data
+(`uniquenessConstraints` sur `messageId`) délibérément ÉCARTÉE** : `messageId` est `optional`
+avec `defaultValueString="0"`, une contrainte dure risquerait d'échouer sur des bases locales
+existantes ayant DÉJÀ des collisions issues de ce même bug — changement de schéma/migration à
+risque réel sur des installations existantes. **Option `actor` simple aussi écartée** : la
+réentrance des `actor` Swift n'empêcherait PAS la course ici (un `await` interne à l'opération
+protégée laisse une place à un second appel concurrent). Correctif : nouveau
+`actor SerialTaskQueue` (enchaînement explicite par continuation, PAS une réentrance d'actor nue)
+enveloppant `MessageRepository.addMessage`/`addGroupMessage` en entier (une seule instance
+partagée entre les deux, même table `wk_messages`). **Portée délibérément réduite** : seul le
+risque de doublon EN BASE est corrigé ; l'ordre d'affichage de 2 messages arrivés en rafale (impact
+secondaire, plus cosmétique) N'EST PAS traité (nécessiterait de sérialiser tout le pipeline de
+dispatch socket ou de trier `ChatViewModel.items` par `stamp`) — auto-corrigé à la prochaine
+réouverture de la conversation. **Commit `d938554`, CI verte (run `32932952310`)** —
+`BUILD_VALIDATED`, portée réduite documentée. Détail des 30 lots dans `PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-072** (Chat — roster : texte du "dernier message" affiché pour
+chaque conversation peut être PÉRIMÉ/INCORRECT. Android [`roster/RosterManager.java:84,111,135`,
+`updateRoster*` écrit `cv.put("lastMessage", message.getMessage())` directement sur la colonne
+DÉNORMALISÉE `wk_roster.lastMessage` à CHAQUE réception/envoi ; `roster/ui/Roster.java:638-704`,
+`messagePrivateRoster` lit CETTE colonne directement, sans jointure] — le texte affiché provient
+d'une colonne dénormalisée tenue à jour de façon fiable, TOUJOURS le message le plus récent. iOS
+[`Storage/RosterRepository.swift:35-53`, `rosterAll()` refait une jointure MANUELLE en mémoire :
+`fetch` `MessageEntity` filtré par `conversationId`, `fetchLimit = 1`, SANS AUCUN
+`sortDescriptors` — le message retourné par `.first` n'est PAS garanti être le plus récent [ordre
+Core Data non spécifié sans tri explicite, en pratique souvent l'ordre d'insertion = potentiellement
+le PREMIER message jamais envoyé] ; `Messagerie/RosterListView.swift:266`,
+`model.message = pair.lastMessage?.message ?? entity.lastMessage` — ce résultat NON TRIÉ est
+utilisé EN PRIORITÉ, ignorant systématiquement `entity.lastMessage` [le port FIDÈLE du mécanisme
+Android, confirmé CORRECT] dès qu'une correspondance existe [quasi toujours]]. Cause :
+`rosterAll()` reproduit la jointure SQL brute `rosterall` de `StubProvider.java` [elle-même
+CONFIRMÉE CODE MORT côté Android — `ROSTER_ALL_URI` jamais requêté par aucun appelant réel, seul
+`ROSTER_URI` dénormalisé est utilisé par l'écran RÉELLEMENT affiché] sans tri par `stamp`, et sans
+réaliser que la colonne dénormalisée déjà fiable suffisait. Plan [option 2 de la RECOMMANDATION,
+plus simple ET plus fidèle au mécanisme Android réel] : supprimer ENTIÈREMENT cette ré-agrégation
+dans `rosterAll()` et utiliser directement `entity.lastMessage` comme source UNIQUE du texte
+affiché, sans requête `MessageEntity` supplémentaire — lire `RosterRepository.swift` [lignes
+35-53] et `RosterListView.swift` [ligne 266] en entier avant de coder pour confirmer qu'aucun
+AUTRE site ne dépend de `pair.lastMessage` avant de le retirer), puis continuer AUTOMATIQUEMENT
+V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097,
+V5-F-098 (9 P1 restants après V5-F-072, dans l'ordre
 exact du document ; V5-F-060 déjà clos DIFFÉRÉ), puis tous les P2 (31), P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →

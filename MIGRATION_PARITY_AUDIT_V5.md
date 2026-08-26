@@ -2207,6 +2207,33 @@ CAUSE : Absence de protection contre le double-tap côté iOS (ni désactivation
 IMPACT : Perte financière locale pour l'utilisateur (solde de pièces débité deux fois pour un seul abonnement, potentiellement deux requêtes serveur `group/subscribe`/`group/renewsubscription` distinctes) sur un double-tap ordinaire — scénario UI courant et facilement déclenché par accident.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Désactiver visuellement le bouton (ou le remplacer par un indicateur de chargement) dès le premier tap, ET ajouter un verrou logique (ex. Set<String> des `itemId` en cours de traitement) dans `resolveGroupSubscription` pour ignorer tout appel concurrent sur le même item, comme le fait implicitement Android en masquant le bouton.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-28) — Vérifié directement :
+`MessageListAdapter.java:361-364` (`onLoading()`) confirme `subscribe.setVisibility(GONE);
+progress.setVisibility(VISIBLE)` exécuté SYNCHRONEMENT dès le clic, avant l'appel réseau —
+neutralisation physique du bouton. **Vérification financière DOUBLE effectuée** : (1) paramètres
+envoyés/calcul du delta/appel serveur INCHANGÉS, seul un verrou ajouté ; rollback sur erreur
+inchangé (`catch { return }`, fidèle à `onError` Android qui ré-affiche simplement le bouton sans
+message — `defer` libère le verrou dans ce même chemin) ; (2) confirmé qu'un double-tap AVANT ce
+correctif produisait un lire-puis-écrire non atomique sur `coinsAmount` (les 2 `Task` lisaient le
+solde AVANT que le premier ne le décrémente), causant un double débit local RÉEL pour une seule
+action utilisateur. Correctif : `ChatViewModel.pendingSubscriptionItemIds: Set<String>` ajouté —
+verrou PAR ITEM (pas un booléen global, pour ne pas bloquer à tort 2 bannières de groupes
+DIFFÉRENTS en cours simultanément) ; `resolveGroupSubscription` retourne immédiatement si la même
+clé est déjà en cours. `SubscriptionBannerRow` gagne un paramètre `isLoading` remplaçant le
+bouton par un `ProgressView` pendant la requête — analogue visuel direct du
+`setVisibility(GONE)`/`setVisibility(VISIBLE)` Android.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Messagerie/ChatViewModel.swift`,
+`Sources/TiinverSwift/Messagerie/ChatBubbleViews.swift`,
+`Sources/TiinverSwift/Messagerie/ChatView.swift`.
+
+**Résultat CI** : commit `ee9f40b`, push confirmé (`533fdef..ee9f40b main -> main`), run
+`32932069058` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : double-tap rapide sur "S'abonner"/"Renouveler
+l'abonnement", confirmer un SEUL débit de pièces et une SEULE requête réseau.
 ```
 
 ```
@@ -2294,6 +2321,39 @@ IMPACT : Deux conséquences dans le périmètre explicitement visé par la missi
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Sérialiser le traitement des événements socket entrants côté iOS — par exemple un actor dédié (ou une file FIFO explicite) par lequel tout événement newMessage/newGroupMessage/onDeleteMessage/offlineStatus transite avant que la Task suivante ne soit autorisée à démarrer son propre traitement, reproduisant l'atomicité que le pipeline Android obtient via le pool à 1 thread + Handler.post + méthode synchronized. À défaut, ajouter au minimum une contrainte d'unicité Core Data sur messageId pour éliminer le risque de doublon en base (n'éliminerait pas le risque d'ordre d'affichage).
 CONTRE-AUDIT : trouvé par l'agent "Socket.IO / temps réel" (Phase A.2, 2026-08-24)
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-29) — Vérifié directement :
+`ChatManager.java:1156-1159` (`addMessage` `synchronized`) + `DecodeThreadPool.java:8-19` (1 seul
+thread de décodage en pratique) + `Handler.post` (1 Runnable atomique) confirmés — 3 mécanismes
+garantissant que le couple vérifier-existe+insérer est atomique côté Android. **Option Core Data
+(contrainte d'unicité sur `messageId`) délibérément ÉCARTÉE** : `messageId` est `optional` avec
+`defaultValueString="0"` — une contrainte dure risquerait d'échouer au premier lancement sur des
+bases locales EXISTANTES ayant déjà des collisions issues de ce même bug, un changement de
+schéma/migration à risque réel sur des installations en production. **Option `actor` simple
+également écartée** : la réentrance des `actor` Swift n'empêcherait PAS la course ici — un
+`await` interne à l'opération protégée (`messageExists` PUIS `insert`, 2 `await` séparés) laisse
+une fenêtre pour qu'un second appel concurrent démarre pendant que le premier est suspendu.
+Correctif : nouveau `actor SerialTaskQueue` (enchaînement EXPLICITE par continuation, pas une
+réentrance d'actor nue) enveloppant `MessageRepository.addMessage`/`addGroupMessage` en entier —
+UNE SEULE instance partagée entre les deux méthodes, puisque toutes deux interrogent/écrivent la
+même table `wk_messages`.
+
+**Portée délibérément réduite** : seul le risque de DOUBLON EN BASE (le plus sévère des 2 impacts)
+est corrigé. L'ordre d'affichage entre 2 messages arrivés en rafale N'EST PAS traité —
+nécessiterait de sérialiser TOUT le pipeline de dispatch socket (newMessage/newGroupMessage/
+onDeleteMessage/etc.), un chantier plus large touchant l'architecture temps réel ; risque
+cosmétique mineur, auto-corrigé à la prochaine réouverture de la conversation
+(`loadInitial()` trie déjà par `stamp`).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Storage/MessageRepository.swift`.
+
+**Résultat CI** : commit `d938554`, push confirmé (`ee9f40b..d938554 main -> main`), run
+`32932952310` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée), portée réduite
+documentée ci-dessus. PAS `COMPLETE_PARITY_VALIDATED` — test réel requis : provoquer une
+redélivrance rapprochée du même message (coupure réseau/reconnexion), confirmer l'absence de
+bulle dupliquée persistante en base.
 ```
 
 ```

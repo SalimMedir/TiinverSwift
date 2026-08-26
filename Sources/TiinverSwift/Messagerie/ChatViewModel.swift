@@ -626,12 +626,19 @@ final class ChatViewModel: ObservableObject {
 
     /// Port de `MessageActionListener.onDowload`/`checkAndDownloadFile`/`downloadFile(...)` →
     /// `DownloadReceiver.getDownloadedFilePath` (lu en entier, GAP-003, 2026-08-16) — **implémenté**.
-    /// Android utilise `DownloadManager` (GET simple, pas d'en-tête d'auth : les URL CDN
-    /// BunnyCDN/backend Tiinver déjà stockées dans `objectUrl` sont publiquement lisibles une fois
-    /// uploadées — confirmé, `DownloadManager.Request` n'attache aucun header dans le fichier lu).
-    /// Port fidèle via `URLSession.download(from:)`, pas de service `WorkManager`/notification
-    /// système équivalents (pas de notifications système de progression téléchargement portées —
-    /// écart d'UX mineur assumé, le spinner déjà affiché par `ChatBubbleViews` suffit).
+    /// Pas de service `WorkManager`/notification système équivalents (pas de notifications système
+    /// de progression téléchargement portées — écart d'UX mineur assumé, le spinner déjà affiché
+    /// par `ChatBubbleViews` suffit).
+    ///
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-077, Phase B P1-32)** — le
+    /// commentaire précédent affirmait à tort que `DownloadManager.Request` n'attache aucun header
+    /// sur Android ; vérifié directement dans `ChatFragmentTest.java:3159` :
+    /// `request.addRequestHeader("Referer", "https://tiinver.com")` — MÊME en-tête que TOUS les
+    /// autres chemins CDN déjà portés côté iOS (`FeedMediaDownloader`, `CDNAsyncImage`,
+    /// `VideoPlayerManager`, etc.), plusieurs documentant que ce Referer est une exigence RÉELLE du
+    /// CDN Tiinver confirmée par test. `URLSession.shared.download(from:)` (sans `URLRequest` ni
+    /// en-tête) manquait cet en-tête ; basculé vers `download(for:)` avec un `URLRequest` portant
+    /// `Referer: https://tiinver.com`, à l'identique des autres chemins CDN du projet.
     private func requestDownload(_ mlib: MessageLib) {
         guard let messageId = mlib.messageId, let remoteURLString = mlib.objectUrl,
               let remoteURL = URL(string: remoteURLString), remoteURL.scheme?.hasPrefix("http") == true
@@ -639,7 +646,9 @@ final class ChatViewModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let (tempURL, response) = try await URLSession.shared.download(from: remoteURL)
+                var request = URLRequest(url: remoteURL)
+                request.setValue("https://tiinver.com", forHTTPHeaderField: "Referer")
+                let (tempURL, response) = try await URLSession.shared.download(for: request)
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                     try? FileManager.default.removeItem(at: tempURL)
                     return

@@ -278,9 +278,15 @@ final class FeedViewModel: ObservableObject {
     }
 
     /// Port de `Report.report()` — voir `FeedRepository.reportUser` pour la note de fidélité sur
-    /// `target_id`/`report_type` vides depuis ce point d'entrée.
-    func report(_ post: FeedActivity, reason: String) async {
+    /// `target_id`/`report_type` selon le contexte (grille vide, plein écran rempli).
+    ///
+    /// **Corrigé (V5-F-007, 2026-08-24)** — `includesTarget` distingue les 2 comportements Android
+    /// (`MainFragment` grille vs `FeedFragment`/`ProfileFeedFragment`/`HashtagProfile` plein écran).
+    func report(_ post: FeedActivity, reason: String, includesTarget: Bool = false) async {
         guard let actorId = post.actor, let username = post.username else { return }
-        try? await repository.reportUser(userId: actorId, username: username, message: reason)
+        try? await repository.reportUser(
+            userId: actorId, username: username, message: reason,
+            targetId: includesTarget ? String(post.id) : "", reportType: includesTarget ? "content" : ""
+        )
     }
 }

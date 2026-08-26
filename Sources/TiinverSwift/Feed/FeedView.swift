@@ -647,10 +647,16 @@ struct FeedDetailPagerView: View {
                 Button("Annuler", role: .cancel) {}
             }
         }
+        // **Corrigé (V5-F-007, 2026-08-24)** — `includesTarget: true` : ce `confirmationDialog`
+        // appartient à `FeedDetailPagerView` (plein écran, tous contextes parents confondus),
+        // fidèle à `FeedFragment.java`/`ProfileFeedFragment.java`/`HashtagProfile.java` qui
+        // remplissent tous `target_id`/`report_type="content"` pour un signalement de contenu
+        // depuis LEUR plein écran respectif — contrairement au site frère de `FeedView` (grille,
+        // ligne ~259 ci-dessus) qui reste fidèle à `MainFragment` (vide).
         .confirmationDialog("Motif du signalement", isPresented: $showReportReasons, titleVisibility: .visible) {
             ForEach(feedReportReasons, id: \.self) { reason in
                 Button(reason) {
-                    if let post = reportTargetPost { Task { await viewModel.report(post, reason: reason) } }
+                    if let post = reportTargetPost { Task { await viewModel.report(post, reason: reason, includesTarget: true) } }
                 }
             }
             Button("Annuler", role: .cancel) { reportTargetPost = nil }

@@ -319,14 +319,21 @@ final class FeedRepository {
         guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.backendErrorMessage ?? "deleteactivity") }
     }
 
-    /// Port de `Report.report()` — endpoint `report`. `target_id`/`report_type` VIDES depuis ce
-    /// point d'entrée précis (Feed) : `MainFragment.OnclickMoreExpand` (`report_content`) ne les
+    /// Port de `Report.report()` — endpoint `report`. `target_id`/`report_type` VIDES par défaut
+    /// depuis la GRILLE (Feed) : `MainFragment.OnclickMoreExpand` (`report_content`) ne les
     /// renseigne PAS dans l'intent lancé vers `Report.java` (seuls `userId`/`username`/`nikname` le
-    /// sont) — reproduit fidèlement (un signalement déclenché depuis le Feed cible l'UTILISATEUR,
-    /// pas la publication précise, au niveau de CET appel réseau), pas "corrigé" en inventant un
-    /// `target_id` qu'Android lui-même n'envoie pas ici.
-    func reportUser(userId: String, username: String, message: String) async throws {
-        let params: [String: String] = ["userId": userId, "username": username, "message": message, "target_id": "", "report_type": ""]
+    /// sont) — reproduit fidèlement pour ce contexte précis.
+    ///
+    /// **Corrigé (V5-F-007, 2026-08-24)** — ajout de `targetId`/`reportType`, remplis par
+    /// `FeedDetailPagerView` (plein écran, tous contextes confondus : Home/Profile/Hashtag/
+    /// Search/Notifications). Vérifié : `FeedFragment.java:1351-1359` (plein écran Home) remplit
+    /// `target_id`/`report_type="content"` EN PLUS de userId/username/nikname pour un
+    /// signalement de contenu — comportement DISTINCT de la grille (`MainFragment`), confirmé par
+    /// `ProfileFeedFragment.java`/`HashtagProfile.java` (mêmes 2 champs remplis pour LEUR propre
+    /// plein écran). `Report.java:70-71,149-150` lit ces extras et les envoie tels quels dans le
+    /// `map` POST — aucune valeur par défaut ni transformation.
+    func reportUser(userId: String, username: String, message: String, targetId: String = "", reportType: String = "") async throws {
+        let params: [String: String] = ["userId": userId, "username": username, "message": message, "target_id": targetId, "report_type": reportType]
         let value = try await APIClient.shared.post(params, endpoint: "report")
         guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.backendErrorMessage ?? "report") }
     }

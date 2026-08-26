@@ -181,6 +181,15 @@ final class ChatViewModel: ObservableObject {
     /// Port de `loadMoreData` (déclenché par `onScrolled`/`RecyclerView` proche du haut, ou par le
     /// `FOOTER_TYPE`/`LoadMoreDataListener.readyToLoad` — les deux mènent au même
     /// `LoaderManager.restartLoader`, consolidé en une seule méthode ici).
+    ///
+    /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-020, Phase B P1-10)** — Android
+    /// (`ChatFragmentTest.onLoadFinished`, lignes 1415-1430) bascule sur un repli REST
+    /// (`ChatRepository.loadMoreFromServeur`) quand le `CursorLoader` local retourne 0 ligne
+    /// pendant un scroll-up, pour un GROUPE uniquement. Cette fonction retournait auparavant sans
+    /// rien faire dès que la page Core Data locale était vide, quel que soit le type de
+    /// conversation — l'historique de groupe non intégralement présent en cache local (
+    /// réinstallation, groupe rejoint avant sync, cache purgé) semblait alors tronqué côté iOS sans
+    /// aucune indication, alors qu'Android continue de charger depuis le serveur.
     func loadMore() async {
         guard !isLoadingPage else { return }
         isLoadingPage = true
@@ -188,10 +197,45 @@ final class ChatViewModel: ObservableObject {
         offset += pageSize
         let page = try? await messages.page(
             conversationId: target.conversationId ?? "", limit: pageSize, offset: offset, currentUsername: currentUsername)
-        guard let page, !page.isEmpty else { return }
+        if let page, !page.isEmpty {
+            var prepended: [ChatListItem] = []
+            for mlib in page { appendWithDateSeparator(mlib, into: &prepended) }
+            items.insert(contentsOf: prepended, at: 0)
+            return
+        }
+        await loadOlderGroupMessagesFromServer()
+    }
+
+    /// Port de la branche générique de `ChatManager.prepareOldGroupMessage` (voir la doc de
+    /// `GroupRepository.fetchOlderGroupMessages` pour la portée exacte, notamment les 2 branches
+    /// d'effets de bord d'appel `voicecall`/`missedvoicecall` délibérément non portées). `lastDate`
+    /// = stamp du plus ancien message actuellement chargé (fidèle à `ChatFragmentTest.java:203/
+    /// 1731`). Résultats triés chronologiquement avant insertion (l'ordre exact renvoyé par cet
+    /// endpoint n'a pas pu être confirmé par lecture du seul code Android ; la page LOCALE
+    /// équivalente — `MessageRepository.page` — est déjà toujours croissante avant insertion en
+    /// tête, ce repli reproduit la même garantie).
+    private func loadOlderGroupMessagesFromServer() async {
+        guard target.isGroup, let groupId = target.groupId, !groupId.isEmpty,
+              let lastDate = oldestLoadedStamp
+        else { return }
+        guard let fetched = try? await GroupRepository.shared.fetchOlderGroupMessages(groupId: groupId, lastDate: lastDate, limit: pageSize),
+              !fetched.isEmpty
+        else { return }
+        let sorted = fetched.sorted { (Double($0.stamp ?? "") ?? 0) < (Double($1.stamp ?? "") ?? 0) }
         var prepended: [ChatListItem] = []
-        for mlib in page { appendWithDateSeparator(mlib, into: &prepended) }
+        for meta in sorted {
+            guard let messageId = meta.messageId, !items.contains(where: { $0.messageId == messageId }) else { continue }
+            try? await messages.addGroupMessage(meta)
+            appendWithDateSeparator(meta, into: &prepended)
+        }
         items.insert(contentsOf: prepended, at: 0)
+    }
+
+    private var oldestLoadedStamp: String? {
+        for item in items {
+            if case .message(let mlib) = item, let stamp = mlib.stamp, !stamp.isEmpty { return stamp }
+        }
+        return nil
     }
 
     /// Port du corps commun à `displayMessageOnInicialPage`/`displayMoreMessageOnScroll`/`addMessage`

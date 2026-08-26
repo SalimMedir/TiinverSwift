@@ -359,6 +359,45 @@ final class GroupRepository {
         }
     }
 
+    /// **Ajouté le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-020, Phase B P1-10)** — port de
+    /// `ChatRepository.loadMoreFromServeur` (`messagerie/repository/ChatRepository.java:1129-1177`) :
+    /// repli REST pour l'historique de GROUPE quand le cache local Core Data est épuisé. `GET
+    /// group/{groupId}/messages?lastDate={lastDate}&limit={limit}`, réponse `{error, data: [...]}` —
+    /// `error` est un booléen JSON natif chez Android (`object.getBoolean("error")`, pas la
+    /// convention chaîne habituelle), déjà tolérée par `isBackendSuccess`/`errorFieldNormalized`
+    /// sans changement. Décodage per-item + diagnostic, même motif que `fetchMembers`/
+    /// `searchGroups` ci-dessus.
+    ///
+    /// **Portée délibérément limitée** : `ChatManager.prepareOldGroupMessage` (le récepteur Android
+    /// de cette réponse, ligne 1090-1155, lu en entier) contient aussi des branches spéciales pour
+    /// `object == "voicecall"`/`"missedvoicecall"` qui déclenchent des effets de bord de
+    /// signalisation d'appel (accusé de livraison, lancement/déclin d'appel via `CallService`) —
+    /// spécifiques à l'infrastructure d'appel Android (`CallService.isOnCall`), sans équivalent 1:1
+    /// évident avec `CallCoordinator` iOS, et hors du périmètre de CE finding (Socket.IO/historique,
+    /// pas Calls). Seule la branche générique (persister + afficher) est portée ici ; les 2 branches
+    /// d'effets de bord d'appel dans l'historique de groupe restent NON portées, documenté plutôt
+    /// que deviné.
+    func fetchOlderGroupMessages(groupId: String, lastDate: String, limit: Int) async throws -> [MessageLib] {
+        let value = try await APIClient.shared.get("group/\(groupId)/messages?lastDate=\(lastDate)&limit=\(limit)")
+        guard value.isBackendSuccess, let array = value.looselyEncodedJSON("data")?.toArray() else { return [] }
+        let decoded = array.compactMap { item -> MessageLib? in
+            guard let data = item.rawData else {
+                print("GROUP HISTORY: item.rawData nil for one message — raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+            do {
+                return try JSONDecoder().decode(MessageLib.self, from: data)
+            } catch {
+                print("GROUP HISTORY: decode failure for one message — error=\(error) raw=\(item.toDictionary() ?? [:])")
+                return nil
+            }
+        }
+        if decoded.count != array.count {
+            print("GROUP HISTORY: received=\(array.count) messages, only \(decoded.count) decoded successfully — \(array.count - decoded.count) silently dropped, see decode failures above")
+        }
+        return decoded
+    }
+
     /// Port de `Subscribe.bind`'s `subscribe.setOnClickListener` (`MessageListAdapter.java:267-314`)
     /// — `POST group/subscribe`. Champs fidèles à l'original, y compris `joined`/`invited`/`role`
     /// toujours fixés à `"1"`/`"0"`/`"user"` (aucune variation observée dans le code source). Voir

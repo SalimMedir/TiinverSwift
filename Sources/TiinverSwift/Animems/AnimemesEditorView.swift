@@ -166,6 +166,17 @@ struct AnimemesEditorView: View {
             }
             bottomToolbar
         }
+        // **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-057, Phase B P1-23)** — port
+        // de `MemesFragment.onPause`/`onStop`/`onDestroyView` (`:144-176`, appellent tous
+        // `animemes_compound.pause()` + `stopView()`) : Android arrête TOUJOURS explicitement la
+        // lecture/le rendu par frame en quittant l'écran. Sans ceci, quitter l'éditeur pendant que
+        // `isPlaying == true` (bouton retour, changement d'onglet, mise en arrière-plan) laissait
+        // le `CADisplayLink` du `AnimationEngine` actif indéfiniment dans le run loop principal —
+        // `RunLoop.main` retient fortement le `CADisplayLink`/son target `DisplayLinkProxy`
+        // INDÉPENDAMMENT de `AnimationEngine` (capturé `[weak self]`, voir `startPlayback`), donc
+        // rien ne l'invalidait jamais. `engine.stop()` invalide déjà le lien (`stopDisplayLink()`)
+        // et est sans effet si aucune lecture n'est en cours (`if displayLink != nil` guard).
+        .onDisappear { state.engine.stop() }
         .background(Color.black)
         .statusBarHidden(false)
         .sheet(isPresented: $showGalleryPicker) {

@@ -54,6 +54,14 @@ final class AnimationEngine {
 
     weak var delegate: AnimationEnginePlaybackDelegate?
 
+    /// **Ajouté le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-057, Phase B P1-23)** — filet de
+    /// sécurité : `AnimemesEditorView.onDisappear` (le correctif principal, voir sa doc) invalide
+    /// déjà le lien à la sortie normale de l'écran ; ce `deinit` couvre le cas où `AnimationEngine`
+    /// serait désalloué par un autre chemin sans que `.onDisappear` se soit déclenché.
+    deinit {
+        displayLink?.invalidate()
+    }
+
     func setViewSize(width: CGFloat, height: CGFloat) {
         if width > 0 { viewWidth = width }
         if height > 0 { viewHeight = height }

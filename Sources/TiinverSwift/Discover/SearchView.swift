@@ -43,7 +43,14 @@ struct SearchView: View {
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
-            .onChange(of: tab) { _ in runSearch(full: true) }
+            // Port de `selectTab` (`RechercheTiinver.java:341-350`, V5-F-012) — annule tout debounce
+            // de frappe en attente AVANT de relancer la recherche pour le nouvel onglet, sinon le
+            // `Task` programmé par la dernière frappe (`.onChange(of: query)` ci-dessous) se
+            // déclenche ~300ms plus tard et relance `runSearch` une seconde fois, redondant.
+            .onChange(of: tab) { _ in
+                searchTask?.cancel()
+                runSearch(full: true)
+            }
 
             List {
                 if query.isEmpty {

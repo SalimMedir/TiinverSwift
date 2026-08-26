@@ -27,6 +27,11 @@ final class MessageRepository {
     /// dedans, intentionnellement.
     private let groupMessages: CoreDataRepository<GroupMessageEntity>
     private let roster: RosterRepository
+    /// **Ajouté le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-070, Phase B P1-29)** — voir la
+    /// doc de `SerialTaskQueue` et d'`addMessage`/`addGroupMessage` ci-dessous pour le raisonnement
+    /// complet. Sérialise le couple vérifier-si-existe + insérer, seul point protégé par ce
+    /// correctif (portée volontairement réduite, voir doc).
+    private let insertSerializer = SerialTaskQueue()
 
     init(stack: CoreDataStack = .shared, roster: RosterRepository = RosterRepository()) {
         self.messages = CoreDataRepository(stack: stack)
@@ -96,33 +101,56 @@ final class MessageRepository {
     /// Android : les listeners socket `ON_DELETE_PRIVATE_MESSAGE`/`ON_DELETE_GROUP_MESSAGE`
     /// (`ChatRepository.onDeleteMessage` → `AsyncDeleteMessage` → `deleteMessageForEveryOne`), déjà
     /// câblé dans `ChatRepository.swift.handleDeleteMessage`.
+    ///
+    /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-070, Phase B P1-29)** — le
+    /// couple `messageExists`+`insert` n'était protégé par AUCUN verrou : deux événements socket
+    /// portant le MÊME `messageId` (redélivrance serveur après reconnexion, scénario réaliste)
+    /// pouvaient chacun passer le `guard !messageExists` avant qu'aucun des deux n'ait terminé son
+    /// `insert` — Core Data n'a aucune contrainte d'unicité sur `messageId` pour rattraper la
+    /// course, produisant potentiellement 2 lignes `MessageEntity` pour le même message (bulle
+    /// dupliquée persistante). Fidèle à Android : `ChatManager.addMessage` est `synchronized`, et
+    /// le pipeline entier (1 thread de décodage + 1 Runnable atomique sur le Main Looper) garantit
+    /// qu'un événement est traité intégralement avant le suivant. Désormais sérialisé via
+    /// `insertSerializer` (voir sa doc pour la raison d'un utilitaire dédié plutôt qu'un simple
+    /// `actor`, vulnérable à sa propre réentrance ici).
+    ///
+    /// **Portée délibérément réduite** : seul le risque de DOUBLON EN BASE (le plus sévère des 2
+    /// impacts identifiés) est corrigé. L'ordre d'affichage entre 2 messages arrivés en rafale
+    /// (l'autre impact cité) N'EST PAS traité ici — nécessiterait de sérialiser TOUT le pipeline
+    /// d'événements socket (newMessage/newGroupMessage/onDeleteMessage/etc., pas seulement la
+    /// persistance) ou de trier `ChatViewModel.items` par `stamp` à chaque insertion, un chantier
+    /// plus large touchant l'architecture de dispatch temps réel — risque cosmétique mineur,
+    /// auto-corrigé à la prochaine réouverture de la conversation (`loadInitial()` trie par
+    /// `stamp`), documenté plutôt que deviné.
     @discardableResult
     func addMessage(_ meta: MessageLib) async throws -> MessagePacket? {
-        let messageId = meta.messageId ?? "error"
-        guard !(try await messageExists(messageId: messageId)) else { return nil }
+        try await insertSerializer.run { [self] in
+            let messageId = meta.messageId ?? "error"
+            guard !(try await messageExists(messageId: messageId)) else { return nil }
 
-        let conversationId = ConversationIdGenerator.conversationId(
-            currentUser: meta.receiver ?? "", remoteUser: meta.sender ?? "")
-        var stored = meta
-        stored.conversationId = conversationId
-        stored.username = meta.from
-        stored.message = meta.object == "graphic" ? meta.mgGraphic : meta.message
+            let conversationId = ConversationIdGenerator.conversationId(
+                currentUser: meta.receiver ?? "", remoteUser: meta.sender ?? "")
+            var stored = meta
+            stored.conversationId = conversationId
+            stored.username = meta.from
+            stored.message = meta.object == "graphic" ? meta.mgGraphic : meta.message
 
-        try await messages.insert { entity in
-            Self.apply(stored, to: entity, status: 1, vu: "false")
-            entity.thumbnailUri = meta.thumbnailUrl
-            entity.stamp = String(Int64(Date().timeIntervalSince1970 * 1000))
-            entity.regroupage = meta.from
+            try await messages.insert { entity in
+                Self.apply(stored, to: entity, status: 1, vu: "false")
+                entity.thumbnailUri = meta.thumbnailUrl
+                entity.stamp = String(Int64(Date().timeIntervalSince1970 * 1000))
+                entity.regroupage = meta.from
+            }
+            try await roster.updateRoster(message: stored, isFromServer: true)
+
+            var packet = MessagePacket()
+            packet.to = meta.from
+            packet.from = meta.to
+            packet.messageId = messageId
+            packet.type = meta.type
+            packet.object = meta.object
+            return packet
         }
-        try await roster.updateRoster(message: stored, isFromServer: true)
-
-        var packet = MessagePacket()
-        packet.to = meta.from
-        packet.from = meta.to
-        packet.messageId = messageId
-        packet.type = meta.type
-        packet.object = meta.object
-        return packet
     }
 
     /// Port de `addGroupMessage(MessageLib, boolean)` (ligne 1190, lu en entier) — réception d'un
@@ -144,36 +172,43 @@ final class MessageRepository {
     /// justifié en détail là-bas). La notification push locale
     /// (`MyFirebaseMessagingService.notificationShow`, branche `verb == "post"`) reste hors
     /// périmètre (module notifications).
+    ///
+    /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-070, Phase B P1-29)** — même
+    /// correctif et même raisonnement que `addMessage` ci-dessus (couple messageExists+insert
+    /// sérialisé via `insertSerializer`, PARTAGÉ entre les deux méthodes puisque toutes deux
+    /// interrogent/écrivent la MÊME table `wk_messages`).
     @discardableResult
     func addGroupMessage(_ meta: MessageLib) async throws -> MessagePacket? {
-        let messageId = meta.messageId ?? "error"
-        guard let groupId = meta.groupId, meta.token != nil else { return nil }
-        guard !(try await messageExists(messageId: messageId)) else { return nil }
+        try await insertSerializer.run { [self] in
+            let messageId = meta.messageId ?? "error"
+            guard let groupId = meta.groupId, meta.token != nil else { return nil }
+            guard !(try await messageExists(messageId: messageId)) else { return nil }
 
-        let conversationId = ConversationIdGenerator.groupConversationId(currentUser: UserSession.shared.myId ?? "", remoteUser: groupId)
-        var stored = meta
-        stored.conversationId = conversationId
-        stored.username = meta.from
-        stored.message = meta.object == "graphic" ? meta.mgGraphic : meta.message
+            let conversationId = ConversationIdGenerator.groupConversationId(currentUser: UserSession.shared.myId ?? "", remoteUser: groupId)
+            var stored = meta
+            stored.conversationId = conversationId
+            stored.username = meta.from
+            stored.message = meta.object == "graphic" ? meta.mgGraphic : meta.message
 
-        try await messages.insert { entity in
-            Self.apply(stored, to: entity, status: 1, vu: "false")
-            if let thumbUrl = meta.thumbnailUrl, !thumbUrl.isEmpty {
-                entity.thumbnailUri = thumbUrl
+            try await messages.insert { entity in
+                Self.apply(stored, to: entity, status: 1, vu: "false")
+                if let thumbUrl = meta.thumbnailUrl, !thumbUrl.isEmpty {
+                    entity.thumbnailUri = thumbUrl
+                }
+                entity.stamp = String(Int64(Date().timeIntervalSince1970 * 1000))
+                entity.regroupage = meta.token
             }
-            entity.stamp = String(Int64(Date().timeIntervalSince1970 * 1000))
-            entity.regroupage = meta.token
-        }
-        try await roster.updateRoster(message: stored, isFromServer: true)
+            try await roster.updateRoster(message: stored, isFromServer: true)
 
-        guard meta.verb == "post" else { return nil }
-        var packet = MessagePacket()
-        packet.to = meta.from
-        packet.from = meta.to
-        packet.messageId = messageId
-        packet.type = meta.type
-        packet.object = meta.object
-        return packet
+            guard meta.verb == "post" else { return nil }
+            var packet = MessagePacket()
+            packet.to = meta.from
+            packet.from = meta.to
+            packet.messageId = messageId
+            packet.type = meta.type
+            packet.object = meta.object
+            return packet
+        }
     }
 
     /// Port de `deleteMessageForEveryOne` — si le message existe déjà, le remplace par un
@@ -404,5 +439,43 @@ final class MessageRepository {
         // `MessageLib.imageByte` (ce fichier) est un vrai `[UInt8]` décodé du JSON serveur —
         // conversion différée plutôt que devinée, à trancher en portant l'écran de chat
         // (`MessageListAdapter`/`ChatFragmentTest`, pas encore lus).
+    }
+}
+
+/// **Ajouté le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-070, Phase B P1-29)** — sérialise des
+/// opérations async pour garantir qu'elles s'exécutent STRICTEMENT l'une après l'autre, jamais en
+/// chevauchement, même si chaque opération contient elle-même des points de suspension internes
+/// (ce qui est le cas ici : `messageExists` PUIS `insert`, deux `await` séparés).
+///
+/// **Pourquoi pas un simple `actor` ?** Un `actor` isole l'accès à son état mutable, mais reste
+/// RÉENTRANT à chaque point de suspension : si la méthode protégée elle-même contient un `await`
+/// interne, un DEUXIÈME appel peut commencer à s'exécuter PENDANT que le premier est suspendu sur
+/// SON PROPRE `await` — recréant exactement la même course que celle qu'on cherche à éliminer
+/// (`messageExists` de l'appel B pourrait s'exécuter entre le `messageExists` et l'`insert` de
+/// l'appel A). Cette file utilitaire enchaîne explicitement chaque nouvelle opération à la fin de
+/// la précédente via un `Task` de continuation, sans jamais laisser deux opérations protégées se
+/// chevaucher, y compris à travers leurs propres `await` internes.
+///
+/// Port de l'atomicité qu'Android obtient nativement via `DecodeThreadPool` (1 seul thread de
+/// décodage en pratique) + `Handler.post` (1 Runnable exécuté intégralement) +
+/// `ChatManager.addMessage` `synchronized` — trois mécanismes distincts qui, ensemble, garantissent
+/// qu'un événement socket entrant est traité de bout en bout avant que le suivant ne commence.
+actor SerialTaskQueue {
+    private var tail: Task<Void, Never>?
+
+    func run<T>(_ operation: @escaping () async throws -> T) async throws -> T {
+        let previous = tail
+        return try await withCheckedThrowingContinuation { continuation in
+            let task = Task {
+                _ = await previous?.value
+                do {
+                    let result = try await operation()
+                    continuation.resume(returning: result)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+            tail = Task { _ = await task.value }
+        }
     }
 }

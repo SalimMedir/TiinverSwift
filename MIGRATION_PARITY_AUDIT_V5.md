@@ -2170,6 +2170,27 @@ CAUSE : Absence de verrou/guard de type "single-flight" côté iOS : contraireme
 IMPACT : L'utilisateur reçoit des notifications système dupliquées (2 bannières identiques pour le même like/commentaire/follow) lors de rafales de push — bug visible et dérangeant, sans perte de données mais avec une expérience utilisateur clairement dégradée par rapport à Android.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Ajouter une sérialisation globale (ex. un `Task` unique partagé/`actor` avec déduplication par identifiant, ou un flag statique partagé entre toutes les instances) autour de `fetchNotifications`, et/ou faire écrire `triggerSystemNotifications` un marqueur "déjà notifié" avant de présenter, pour empêcher deux exécutions concurrentes de notifier la même entrée.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-27) — Vérifié directement :
+`MyFirebaseMessagingService.java:109-119` confirme `WorkManager.enqueueUniqueWork("FCM_SYNC_WORK",
+ExistingWorkPolicy.KEEP, syncWork)` — une synchro déjà en file/en cours fait IGNORER la nouvelle
+(sémantique "skip", pas "queue"). Correctif : `private static var isSyncing` ajouté sur
+`NotificationCenterViewModel` — verrou GLOBAL partagé par TOUTES les instances (contrairement à
+`isLoading`, propriété d'instance rendue inefficace par le fait qu'`AppDelegate.
+didReceiveRemoteNotification` instancie un ViewModel FRAIS à chaque push) ; `fetchNotifications`
+retourne immédiatement si une synchro est déjà en cours, reproduisant fidèlement la sémantique
+`KEEP`. Classe déjà `@MainActor`, donc l'accès au membre statique est intrinsèquement isolé sans
+`actor` dédié.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/NotificationCenterViewModel.swift`.
+
+**Résultat CI** : commit `df56d8b`, push confirmé (`246b159..df56d8b main -> main`), run
+`32931145696` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : recevoir plusieurs push en rafale (ou un push
+pendant que le centre de notifications est déjà ouvert), confirmer l'absence de bannières système
+dupliquées pour la même notification serveur.
 ```
 
 ```

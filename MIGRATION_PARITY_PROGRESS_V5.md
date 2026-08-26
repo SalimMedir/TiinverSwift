@@ -5,12 +5,12 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [27/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+temps). Backlog P1 (40 findings) EN COURS [28/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
 V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022,
 V5-F-023, V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037 (IOS_INTENTIONAL_DIFFERENCE),
 V5-F-043, V5-F-046, V5-F-047, V5-F-050, V5-F-057, V5-F-058, V5-F-060 (DIFFÉRÉ), V5-F-062,
-V5-F-063], démarré automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-067.
-Puis 31 P2, 21 P3.**
+V5-F-063, V5-F-067], démarré automatiquement à V5-F-001, dans l'ordre du document. Prochain :
+V5-F-068. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -1363,6 +1363,45 @@ qu'un ancien message persiste après une reprise réussie.
 
 **Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
 réel requis : Portefeuille avec réseau instable, confirmer message d'erreur + bouton "Réessayer".
+
+## 2026-08-25 — Phase B V5 — Lot P1-27 : V5-F-067 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `back_sync/MyFirebaseMessagingService.java:109-119` (`onMessageReceived` →
+`WorkManager.enqueueUniqueWork("FCM_SYNC_WORK", ExistingWorkPolicy.KEEP, syncWork)`) — une synchro
+déjà en file/en cours fait IGNORER la nouvelle. `NotiLikecmt/NotificationRepository.java:89-120`
+(`fetchNotifications`, appelé par `TiinverSyncWorker.visiteServeur`, un seul exécutant garanti par
+la clé unique WorkManager) ne peut donc jamais s'exécuter deux fois en parallèle.
+
+**iOS avant correctif** : `AppDelegate.didReceiveRemoteNotification` instancie un
+`NotificationCenterViewModel()` FRAIS à chaque push (donc `isLoading` toujours `false` au
+départ) ; `NotificationCenterViewModel.fetchNotifications` n'avait AUCUNE garde `isLoading` avant
+de lancer le fetch ; `NotificationsListView.task` appelle aussi `fetchNotifications` sur SA
+PROPRE instance, indépendante. Une rafale de push, ou un push pendant que le centre de
+notifications est déjà ouvert, faisait tourner plusieurs exécutions concurrentes de
+`fetchNotifications`/`triggerSystemNotifications` sans synchronisation — chaque exécution relisait
+`isRead == 0` pour les mêmes lignes avant qu'aucune ne l'ait marquée lue, et
+`LocalNotificationBuilder.present` utilisant un UUID aléatoire à chaque appel, aucune
+déduplication système n'était possible.
+
+### Correctif appliqué
+
+Cause : absence de verrou "single-flight" côté iOS, et `isLoading` (propriété d'instance) rendu
+inefficace par la recréation d'instance à chaque push. Correctif : `private static var isSyncing`
+ajouté sur `NotificationCenterViewModel` — verrou GLOBAL partagé par TOUTES les instances ;
+`fetchNotifications` retourne immédiatement si une synchro est déjà en cours, reproduisant la
+sémantique `ExistingWorkPolicy.KEEP` (skip, pas queue). Classe déjà `@MainActor`, accès au membre
+statique intrinsèquement isolé sans `actor` dédié.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/NotificationCenterViewModel.swift`.
+
+**Résultat CI** : commit `df56d8b`, push confirmé (`246b159..df56d8b main -> main`), run
+`32931145696` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : rafale de push ou push pendant l'écran Notifications ouvert, confirmer l'absence de
+bannières système dupliquées.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

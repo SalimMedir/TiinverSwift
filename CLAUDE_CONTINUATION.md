@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [27/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [28/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -79,8 +79,10 @@ synchronisation en arrière-plan, capability build + 3 comportements distincts +
 précédent V3-F-095) ; Lot P1-25 V5-F-062 BUILD_VALIDATED (branche erreur du centre de
 notifications inatteignable, ordre des conditions inversé) ; Lot P1-26 V5-F-063 BUILD_VALIDATED
 (erreur de chargement de l'historique Wallet jamais affichée, bandeau + bouton "Réessayer" +
-`.refreshable` ajoutés, reprise auto silencieuse à 5s d'Android non reproduite)]**. Voir section
-"Cycle V5" plus bas pour le détail complet.)
+`.refreshable` ajoutés, reprise auto silencieuse à 5s d'Android non reproduite) ; Lot P1-27 V5-F-067 BUILD_VALIDATED
+(rafraîchissements concurrents de `fetchNotifications` sans verrou global → notifications
+système dupliquées, `private static var isSyncing` ajouté, verrou partagé par TOUTES les
+instances)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -565,44 +567,52 @@ testée AVANT vide, même motif que `FeedView.emptyOrStatusState`/`ProfileView.h
 `aa922ad`, CI verte (run `32929729728`)** — `BUILD_VALIDATED`. Détail des 26 lots dans
 `PROGRESS_V5.md`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-067** (Notifications —
-concurrence transversale : rafraîchissements concurrents de `fetchNotifications()` sans verrou
-global → notifications système DUPLIQUÉES. Android
-[`back_sync/MyFirebaseMessagingService.java:109-119`, `onMessageReceived` →
-`WorkManager.enqueueUniqueWork("FCM_SYNC_WORK", ExistingWorkPolicy.KEEP, syncWork)` ;
-`NotiLikecmt/NotificationRepository.java:89-120`, `fetchNotifications`, appelé par
-`TiinverSyncWorker.visiteServeur`, UN SEUL exécutant garanti par la clé unique WorkManager] —
-chaque push FCM entrant enfile un travail sous la clé unique "FCM_SYNC_WORK" avec
-`ExistingWorkPolicy.KEEP` : si une synchro est déjà en file/en cours, le nouveau est IGNORÉ —
-`fetchNotifications`/`triggerSystemNotifications` [affiche les notifications système] ne peut
-JAMAIS s'exécuter deux fois en parallèle, même en rafale de push. iOS
-[`App/AppDelegate.swift:120-134`, `didReceiveRemoteNotification`, instancie un
-`NotificationCenterViewModel()` FRAIS à CHAQUE appel puis appelle `fetchNotifications` ;
-`Notifications/NotificationCenterViewModel.swift:21-52`, `fetchNotifications`, AUCUNE garde
-`isLoading` avant de lancer le fetch, et `:96-115` `triggerSystemNotifications` lit
-`row.isRead == 0` sans jamais l'écrire à 1 dans ce chemin ;
-`Notifications/LocalNotificationBuilder.swift:128-129`, `present(_:identifier:)` — identifiant
-par défaut = `UUID().uuidString` ALÉATOIRE à chaque appel, AUCUNE déduplication système possible ;
-`Notifications/NotificationsListView.swift:43-46`, `.task` appelle AUSSI `fetchNotifications` sur
-SA PROPRE instance `@StateObject`, indépendante de celle d'`AppDelegate`] — chaque push distant
-crée une NOUVELLE instance (donc `isLoading` toujours `false` au départ, sans mémoire des appels
-précédents) ; si l'écran Notifications est ouvert [sa propre instance a déjà un fetch en vol] ou
-si plusieurs push arrivent en rafale, PLUSIEURS exécutions tournent en parallèle sans aucune
-synchronisation — chaque exécution concurrente relit `isRead == 0` pour les mêmes lignes AVANT
-qu'aucune ne l'ait marquée lue, et appelle `present` avec un UUID distinct à chaque fois → AUCUNE
-déduplication système, la même notification serveur déclenche plusieurs bannières identiques.
-Cause : absence de verrou/garde "single-flight" côté iOS — contrairement à
-`WorkManager.enqueueUniqueWork(..., KEEP, ...)`, rien n'empêche deux exécutions concurrentes, et
-`AppDelegate` recrée une instance différente du ViewModel à chaque appel, rendant même un simple
-`isLoading` sur l'instance inefficace comme protection. Plan : ajouter une sérialisation globale
-[ex. un `Task` unique partagé/`actor` avec déduplication par identifiant, ou un flag STATIQUE
-partagé entre TOUTES les instances, pas un flag d'instance] autour de `fetchNotifications`, et/ou
-faire écrire `triggerSystemNotifications` un marqueur "déjà notifié" AVANT de présenter — lire
-`AppDelegate.swift`, `NotificationCenterViewModel.swift`, `LocalNotificationBuilder.swift` et
-`NotificationsListView.swift` en entier avant de coder ; domaine mémoire/concurrence, attention
-particulière requise selon la directive Phase B), puis continuer AUTOMATIQUEMENT V5-F-068,
-V5-F-070, V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095,
-V5-F-097, V5-F-098 (12 P1 restants après V5-F-067, dans l'ordre
+**Lot P1-27 traité (V5-F-067)** — Notifications, rafraîchissements concurrents de
+`fetchNotifications()` sans verrou global → notifications système DUPLIQUÉES. Vérifié
+`MyFirebaseMessagingService.java:109-119` : `WorkManager.enqueueUniqueWork("FCM_SYNC_WORK",
+ExistingWorkPolicy.KEEP, syncWork)` — une synchro déjà en file/en cours fait IGNORER la nouvelle.
+`AppDelegate.didReceiveRemoteNotification` instanciait un `NotificationCenterViewModel()` FRAIS à
+chaque push (rendant tout `isLoading` d'instance inefficace) ; `NotificationsListView` appelait
+aussi `fetchNotifications` sur SA PROPRE instance indépendante ; `LocalNotificationBuilder.present`
+utilise un UUID aléatoire par appel, aucune déduplication système possible. Correctif : `private
+static var isSyncing` ajouté sur `NotificationCenterViewModel` — verrou GLOBAL partagé par TOUTES
+les instances, `fetchNotifications` retourne immédiatement si déjà en cours (sémantique `KEEP`).
+**Commit `df56d8b`, CI verte (run `32931145696`)** — `BUILD_VALIDATED`. Détail des 28 lots dans
+`PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-068** (Messagerie —
+concurrence transversale : double-tap sur le bouton d'abonnement/renouvellement de groupe payant
+→ DOUBLE DÉBIT local de pièces et double requête réseau, FINDING FINANCIER, vérification double
+requise. Android [`messagerie/ui/adapter/MessageListAdapter.java:322-365`, `Subscribe.bind`,
+`subscribe.setOnClickListener` → `td.Post(..., "group/subscribe", Callback)` ; `onLoading()`
+`:361-364` exécute `subscribe.setVisibility(GONE); progress.setVisibility(VISIBLE)` de façon
+SYNCHRONE avant l'appel réseau ; `:420+` `RenewSubscription`, même motif] — dès le clic,
+`onLoading()` masque IMMÉDIATEMENT le bouton et affiche une barre de progression — le bouton
+n'est PLUS dans la hiérarchie cliquable pendant toute la durée de l'appel réseau, empêchant
+MÉCANIQUEMENT un second appui de déclencher un second débit tant que le premier n'est pas résolu.
+iOS [`Messagerie/ChatBubbleViews.swift:369-385`, `SubscriptionBannerRow` — `Button` TOUJOURS actif,
+AUCUN état `isLoading`/`disabled` ; `Messagerie/ChatViewModel.swift:158-179`,
+`resolveGroupSubscription` — vérifie `UserSession.shared.coinsAmount > Double(price)` PUIS lance
+un `Task` réseau, SANS AUCUN flag "requête déjà en cours pour cet item" ; ligne 173
+`UserSession.shared.coinsAmount -= Double(price)` exécuté APRÈS chaque appel réseau réussi, SANS
+idempotence] — un double-tap rapide avant que la bannière ne soit retirée de `items` [retrait
+seulement après la fin du PREMIER `Task`] déclenche DEUX `Task` concurrents : les deux lisent
+`coinsAmount` [encore non décrémenté par le premier] et passent la garde, envoient chacun leur
+`POST group/subscribe`/`renewsubscription`, puis chacun décrémente `coinsAmount` — un
+lire-puis-écrire NON ATOMIQUE aboutissant à un double débit local pour un seul abonnement voulu.
+Cause : absence de protection double-tap côté iOS [ni désactivation visuelle, ni verrou logique
+par `itemId`/`groupId`], alors qu'Android neutralise PHYSIQUEMENT le bouton dès le premier clic.
+Impact : perte financière locale [solde débité deux fois pour un seul abonnement, potentiellement
+2 requêtes serveur distinctes] sur un double-tap ORDINAIRE — scénario UI courant, facilement
+déclenché par accident. Plan : désactiver visuellement le bouton [ou le remplacer par un
+indicateur de chargement] dès le PREMIER tap, ET ajouter un verrou logique [`Set<String>` des
+`itemId` en cours de traitement] dans `resolveGroupSubscription` pour ignorer tout appel
+concurrent sur le même item — lire `ChatBubbleViews.swift` [`SubscriptionBannerRow`] et
+`ChatViewModel.swift` [`resolveGroupSubscription`, lignes 158-179] en entier avant de coder ;
+VÉRIFICATION FINANCIÈRE DOUBLE requise selon la directive Phase B : paramètres envoyés, delta,
+solde, réponse serveur, rollback UI, idempotence), puis continuer AUTOMATIQUEMENT V5-F-070,
+V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097,
+V5-F-098 (11 P1 restants après V5-F-068, dans l'ordre
 exact du document ; V5-F-060 déjà clos DIFFÉRÉ), puis tous les P2 (31), P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →

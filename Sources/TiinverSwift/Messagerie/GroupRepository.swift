@@ -342,8 +342,14 @@ final class GroupRepository {
         case restricted
     }
 
+    /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-016, Phase B P1-8)** — l'endpoint
+    /// Android exact est `group/checksubscription2` (avec le chiffre "2", `ChatFragmentTest.java:727`,
+    /// confirmé par grep exhaustif — aucune autre occurrence dans tout le code Android). Le suffixe
+    /// numérique avait été omis lors du portage, faisant échouer silencieusement chaque appel
+    /// (retombant sur `.active` via le `try?` ci-dessous) et empêchant tout blocage du composeur
+    /// pour un abonnement expiré/restreint.
     func checkSubscription(userId: String, groupId: String) async -> GroupSubscriptionState {
-        guard let value = try? await APIClient.shared.get("group/checksubscription/\(userId)/\(groupId)")
+        guard let value = try? await APIClient.shared.get("group/checksubscription2/\(userId)/\(groupId)")
         else { return .active }
         guard !value.isBackendSuccess, let message = value.backendErrorMessage else { return .active }
         switch message {

@@ -1701,6 +1701,40 @@ CAUSE : Le geste de glisser-déposer-pour-supprimer n'a jamais été porté lors
 IMPACT : Perte d'un raccourci de suppression rapide et intuitif (pattern courant des éditeurs de stickers/mèmes façon Stories) : sur iOS, la suppression d'un calque exige systématiquement un aller-retour vers la barre d'outils du bas au lieu d'un simple glisser-déposer en haut de l'écran pendant la manipulation. Fonctionnalité non bloquante (le bouton "supprimer" reste disponible) mais un geste réel et atteignable d'Android est totalement absent côté iOS.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter dans `dragGesture`/`AnimemesEditorState` (mode normal, hors édition de masque) : afficher une icône de corbeille dans `AnimemesEditorView` pendant que `state.selectedId != nil` et qu'un glissement est en cours, tester à `dragEnded()` si `value.location` (dernière position connue) tombe dans cette zone de dépôt, et appeler `state.deleteSelected()` (ou une variante "soft delete" fidèle à `deleteObjectDrawed` si la distinction visible=false/endFrame vs suppression complète du tableau est jugée importante à préserver).
+
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-12) — Vérifié directement :
+`MemesView2.java:1355-1361` (`drawDeleterIcon`/`mDeleteBound`, carré 70×70 démarrant au centre
+horizontal, `top=10`) ; `:1749-1763` (`executeTouchEvent` — `touchUp` PUIS `executeDeleterObjeect`
+sur `ACTION_UP`, gardé par `!isOnAutoMode`) ; `:1765-1769` (`executeDeleterObjeect`, zone de
+détection généreuse `mDeleteBound.left-30`→`right+80`, `y` 10→100) ; `:589-597`
+(`deleteObjectDrawed`, soft-delete `visible=false`+`endFrame`) vs `:501-514`
+(`deleteObjectById`, hard-remove — c'est CETTE méthode que `state.deleteSelected()` porte déjà
+fidèlement pour le bouton toolbar). Correctif appliqué en suivant l'option "de repli" explicitement
+offerte par la RECOMMANDATION : réutilise `state.deleteSelected()` (hard-delete) plutôt que de
+porter une seconde sémantique `deleteObjectDrawed` (soft-delete) séparée — pas de fonctionnalité
+de "dé-suppression" identifiée côté Android qui exploiterait cette distinction.
+- `isDraggingSelectedObject` (nouveau state) piloté par `dragGesture.onChanged`, port de
+  `onFingerMoving`.
+- `deleteDropZoneIcon` (nouvelle vue) affichée pendant le glissement, port de `drawDeleterIcon`.
+- `dragGesture.onEnded` teste `Self.isInDeleteDropZone(value.location, canvasWidth:)` (coordonnées
+  canevas locales, port fidèle de `executeDeleterObjeect`) et appelle `state.deleteSelected()` si
+  hors mode auto-capture et dans la zone.
+
+**Approximation assumée, documentée** : l'icône est positionnée en espace ÉCRAN (sibling du
+`Canvas`, PAS à l'intérieur du groupe qui reçoit `zoomState.currentScale` — restructurer cette
+composition de gestes documentée comme fragile pour l'y inclure a été jugé trop risqué pour ce
+correctif P2) — à zoom par défaut (cas courant) la position visuelle est exacte ; à un autre
+niveau de zoom, l'icône reste fixe à l'écran pendant que le contenu zoome sous elle. La LOGIQUE de
+suppression, elle, reste fidèle à 100% quel que soit le zoom (coordonnées canevas locales,
+non affectées par `.scaleEffect`, invariant déjà documenté sur `canvasArea`).
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorView.swift`.
+
+**Commit `e163190`, poussé sur `main`** (`89ebfc8..e163190`). **CI NON déclenchée par cette
+session** — blocage d'outillage inchangé. **PAS `BUILD_VALIDATED`** tant qu'une CI verte n'est pas
+confirmée. Test réel à confirmer en plus de la CI : sélectionner un calque, le glisser vers le
+haut-centre du canevas, confirmer l'apparition de l'icône et la suppression au relâchement dans
+la zone ; confirmer qu'un relâchement HORS zone déplace normalement le calque sans le supprimer.
 ```
 
 ```

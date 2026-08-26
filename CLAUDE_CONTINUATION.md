@@ -233,11 +233,19 @@ exprimé en fraction de durée `0.001`/`0.999` au lieu d'un seuil absolu 100ms c
 `VideoTrimmerView.java:238` — divergent sur vidéos longues [seuil trop large, un vrai trim
 republiait l'original] et courtes [seuil trop strict]. Corrigé : seuil recalculé en secondes
 absolues `0.1s` contre la durée réelle. **Commit `3edca15` poussé sur `main`, CI PAS
-déclenchée**). **Prochain finding à traiter : V5-F-040** (confirmé P2 par lecture directe, domaine
-Animems — interactions canvas. Vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas
-encore de bloc `STATUT :` à sa suite, comme fait pour identifier chaque finding restant tout au
-long de cette session). Si l'utilisateur a entre-temps déclenché la CI pour les findings
-`CI_PENDING` listés ci-dessus et communiqué un
+déclenchée**) ; Lot P2-12 V5-F-040 CODE_COMPLETE/CI_PENDING (glisser-déposer sur icône corbeille
+pour supprimer un calque, absent côté iOS — `MemesView2.drawDeleterIcon`/`executeDeleterObjeect`,
+second moyen de suppression purement gestuel indépendant du bouton toolbar. Corrigé : réutilise
+`state.deleteSelected()` [hard-delete, option de repli offerte par la RECOMMANDATION plutôt que la
+sémantique soft-delete séparée `deleteObjectDrawed`], nouvel `isDraggingSelectedObject`/
+`deleteDropZoneIcon`, zone de dépôt testée en coordonnées canevas locales [fidèle indépendamment
+du zoom]. Approximation documentée : icône en espace écran, hors du groupe zoomé [restructuration
+jugée trop risquée]. **Commit `e163190` poussé sur `main`, CI PAS déclenchée**). **Prochain
+finding à traiter : V5-F-048** (V5-F-041/044 sont P3, V5-F-042/043/045/046/047 déjà traités en
+P0/P1 — V5-F-048 confirmé P2 par lecture directe, domaine Commentaires — cadeaux. Vérifier avec
+`grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc `STATUT :` à sa suite, comme
+fait pour identifier chaque finding restant tout au long de cette session). Si l'utilisateur a
+entre-temps déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et communiqué un
 résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant)
 avant de continuer le P2.
 

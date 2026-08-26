@@ -2216,6 +2216,36 @@ trim republiait l'original non coupé) et courtes (<100s, seuil iOS trop strict)
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
 
+## 2026-08-26 — Phase B V5 — Lot P2-12 : V5-F-040 (Animems — glisser-déposer pour supprimer absent)
+
+**Commit** : `e163190` — poussé sur `main` (`89ebfc8..e163190`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `MemesView2.drawDeleterIcon` affiche une icône corbeille (70×70, haut-centre du
+canevas) pendant qu'un calque sélectionné est glissé ; relâcher dans une zone de détection élargie
+autour (`executeDeleterObjeect`) supprime le calque relâché — un second moyen de suppression
+purement gestuel, indépendant du bouton toolbar (`deleteObjectById`). Totalement absent côté iOS :
+glisser un calque en haut du canevas ne faisait que le déplacer.
+
+**Correction appliquée** (option de repli explicitement offerte par la RECOMMANDATION) : réutilise
+`state.deleteSelected()` (hard-delete, déjà fidèle à `deleteObjectById` pour le bouton toolbar)
+plutôt que de porter la sémantique séparée `deleteObjectDrawed` (soft-delete `visible=false`+
+`endFrame`) — aucune fonctionnalité de "dé-suppression" Android identifiée qui exploiterait cette
+distinction. Nouveau `isDraggingSelectedObject` (port de `onFingerMoving`), nouvelle vue
+`deleteDropZoneIcon`, `dragGesture.onEnded` teste la zone de dépôt (coordonnées canevas locales,
+fidèles indépendamment du zoom) et supprime si hors mode auto-capture et dans la zone.
+
+**Approximation assumée et documentée** : icône positionnée en espace écran (hors du groupe
+zoomé, restructuration jugée trop risquée pour ce correctif P2) — exacte à zoom par défaut, fixe à
+l'écran à d'autres niveaux de zoom pendant que le contenu zoome sous elle. La logique de
+suppression reste fidèle à 100% quel que soit le zoom.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Animems/AnimemesEditorView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. Test réel à confirmer en plus de la CI (icône affichée +
+suppression dans la zone, pas de suppression hors zone).
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

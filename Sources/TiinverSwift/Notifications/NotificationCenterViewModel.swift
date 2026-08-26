@@ -13,15 +13,34 @@ final class NotificationCenterViewModel: ObservableObject {
 
     private let repository: NotiRepository
 
+    /// **Ajouté le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-067, Phase B P1-27)** — port de
+    /// `MyFirebaseMessagingService.onMessageReceived` →
+    /// `WorkManager.enqueueUniqueWork("FCM_SYNC_WORK", ExistingWorkPolicy.KEEP, syncWork)` : si une
+    /// synchro est déjà en file/en cours, la nouvelle est IGNORÉE — `fetchNotifications`/
+    /// `triggerSystemNotifications` ne peut jamais s'exécuter deux fois en parallèle côté Android.
+    /// Verrou GLOBAL statique (partagé par TOUTES les instances de cette classe), PAS un
+    /// `isLoading` d'instance : `AppDelegate.didReceiveRemoteNotification` instancie un
+    /// `NotificationCenterViewModel()` FRAIS à chaque push, rendant un verrou par instance
+    /// totalement inefficace (chaque nouvelle instance démarre avec `isLoading == false`, sans
+    /// mémoire des appels en vol sur une AUTRE instance — ex. celle de `NotificationsListView`,
+    /// indépendante). `@MainActor` sur la classe isole aussi ses membres statiques, donc cet accès
+    /// est déjà sans data race sans `actor` dédié.
+    private static var isSyncing = false
+
     init(repository: NotiRepository = NotiRepository()) {
         self.repository = repository
     }
 
     /// Port de `NotificationRepository.fetchNotifications(userId)`.
     func fetchNotifications(userId: String) async {
+        guard !Self.isSyncing else { return }
+        Self.isSyncing = true
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer {
+            Self.isSyncing = false
+            isLoading = false
+        }
 
         do {
             // Convention CONFIRMÉE différente des autres endpoints : "error" est ici un booléen

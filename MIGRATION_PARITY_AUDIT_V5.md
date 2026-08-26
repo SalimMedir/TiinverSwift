@@ -563,6 +563,28 @@ CAUSE : Réutilisation par erreur de la logique CDN générique `FeedActivity`/`
 IMPACT : Pour tout post retourné par la recherche universelle (onglet "Tous" ou "Publications", requête ≥2 caractères) dont `cdn_content_id` est absent/NULL/vide mais dont `cdn_thumbnail_url` (ou `cdn_content_url` pour une photo) est bien renseigné, Android affiche la vignette correcte alors qu'iOS l'ignore et retombe sur `object_url` — pouvant afficher une image différente, une image obsolète, ou une case vide (placeholder gris) si `object_url` est lui-même absent. Grille de résultats "Publications" potentiellement dégradée de façon reproductible pour une partie significative des posts.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Remplacer `SearchPostResult.thumbnailURL` par le fallback fidèle à Android : `cdn_thumbnail_url` non vide → l'utiliser ; sinon `cdn_content_url` non vide → l'utiliser ; sinon nil (placeholder gris) — sans dépendre de `object_url` ni de `cdn_content_id` ni du type vidéo/photo, exactement comme UniversalSearchAdapter.java:270-282.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-6) — Vérifié directement :
+`UniversalSearchAdapter.PostViewHolder.bind()` (lignes 270-282) confirme le fallback à deux étages
+exact (`getThumbnail()` → `getContentUrl()` → fond gris), sans branche vidéo/photo, sans référence
+à `cdn_content_id` ni `object_url`. Cause confirmée : le correctif V3-F-009 avait par erreur
+réutilisé la logique de priorité CDN générique de `FeedActivity.thumbnailURL` (conçue pour un
+endpoint différent où `object_url` fait foi) pour cette structure, alors que
+`UniversalSearchAdapter` a sa propre logique bien plus simple pour l'endpoint `content/search`.
+Correctif : `SearchPostResult.thumbnailURL` réécrit en fallback à deux étages littéral
+(`cdn_thumbnail_url` non vide → l'utiliser ; sinon `cdn_content_url` non vide → l'utiliser ; sinon
+nil), suppression complète de `isVideo`/`hasContentId`/`object_url` de cette propriété. Un seul
+site d'appel confirmé par `grep` (`SearchView.swift:264`), aucun autre site affecté.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/SearchModels.swift`.
+
+**Résultat CI** : commit `9418ef4`, push confirmé (`9f33822..9418ef4 main -> main`), run
+`32915044191` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : rechercher un terme retournant des posts dont
+`cdn_content_id` est absent/NULL/vide mais `cdn_thumbnail_url` renseigné, confirmer que la grille
+"Publications" affiche bien la vignette CDN et non `object_url`/un placeholder gris incorrect.
 ```
 
 ```

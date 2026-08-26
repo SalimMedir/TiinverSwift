@@ -5,9 +5,9 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [5/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
-V5-F-007, V5-F-009], démarré automatiquement à V5-F-001, dans l'ordre du document. Prochain :
-V5-F-010. Puis 31 P2, 21 P3.**
+temps). Backlog P1 (40 findings) EN COURS [6/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+V5-F-007, V5-F-009, V5-F-010], démarré automatiquement à V5-F-001, dans l'ordre du document.
+Prochain : V5-F-013. Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -529,6 +529,44 @@ aucune modification nécessaire de leur côté.
 réel requis : atteindre le seuil de pagination infinie, tirer pour rafraîchir avant la réponse
 réseau, confirmer l'absence de flux figé sur une ancienne page et l'absence de doublons à la
 pagination suivante.
+
+## 2026-08-25 — Phase B V5 — Lot P1-6 : V5-F-010 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `UniversalSearchAdapter.java`, `PostViewHolder.bind()` lignes 270-282 — fallback
+simple à DEUX étages : `item.getThumbnail()` (`cdn_thumbnail_url`) non vide → l'utiliser ; sinon
+`item.getContentUrl()` (`cdn_content_url`) non vide → l'utiliser ; sinon fond gris uni. Aucune
+branche vidéo/photo, `object_url` (pourtant stocké via `setObjectUrl`) n'est JAMAIS lu par ce
+ViewHolder — confirmé par lecture complète de `bind()`.
+
+**iOS avant correctif** : `SearchPostResult.thumbnailURL` réimplémentait l'algorithme de priorité
+CDN générique utilisé pour `FeedActivity` (fil principal) : `isVideo`/`hasContentId` déterminés,
+puis repli sur `object_url` dès que `cdn_content_id` était absent/NULL/vide — même si
+`cdn_thumbnail_url`/`cdn_content_url` était renseigné et non vide.
+
+### Correctif appliqué
+
+Cause confirmée : le correctif V3-F-009 (2026-08-19) avait par erreur porté la logique de
+`FeedActivity.thumbnailURL` (endpoint différent où `object_url` fait foi) sur cette structure,
+alors qu'`UniversalSearchAdapter` a sa propre logique bien plus simple pour l'endpoint
+`content/search`. `SearchPostResult.thumbnailURL` réécrit en fallback à deux étages littéral,
+suppression complète de `isVideo`/`hasContentId`/`object_url` de cette propriété. Diff minimal et
+strictement localisé.
+
+**Flux frère vérifié** : `grep thumbnailURL` — un seul site d'appel (`SearchView.swift:264`),
+aucun autre écran affecté. `asFeedActivity` (conversion pour le plein écran au tap) inchangée,
+utilise ses propres champs CDN sans lien avec cette propriété.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Discover/SearchModels.swift`.
+
+**Résultat CI** : commit `9418ef4`, push confirmé (`9f33822..9418ef4 main -> main`), run
+`32915044191` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : rechercher un terme retournant des posts avec `cdn_content_id` absent/NULL/vide mais
+`cdn_thumbnail_url` renseigné, confirmer l'affichage correct de la vignette CDN dans la grille
+"Publications".
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

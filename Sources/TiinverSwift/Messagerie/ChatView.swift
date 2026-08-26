@@ -240,6 +240,7 @@ struct ChatView: View {
         default:
             ChatBubbleRow(
                 message: mlib, isGroup: viewModel.target.isGroup,
+                hasDownloadFailed: mlib.messageId.map(viewModel.failedDownloadMessageIds.contains) ?? false,
                 onAppearEffects: { viewModel.handleAppear(of: mlib) },
                 onTapQuoteSwipe: { viewModel.startQuote(for: mlib) },
                 onTapMedia: { _ in },

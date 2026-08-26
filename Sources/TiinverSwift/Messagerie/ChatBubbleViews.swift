@@ -30,6 +30,10 @@ enum MessageBubbleAlignment {
 struct ChatBubbleRow: View {
     let message: MessageLib
     let isGroup: Bool
+    /// Port du `Toast` d'échec de téléchargement (V5-F-080) — `true` si le dernier essai de
+    /// téléchargement de CE message a échoué, distinct de "en cours" (`isFileDownloaded == 0` sans
+    /// échec connu). `false` par défaut pour tout message texte/déjà prêt.
+    var hasDownloadFailed: Bool = false
     let onAppearEffects: () -> Void
     let onTapQuoteSwipe: () -> Void
     let onTapMedia: (ResultDataAction) -> Void
@@ -72,8 +76,8 @@ struct ChatBubbleRow: View {
         case "text", "ai": TextBubbleBody(message: message)
         case "audio": AudioBubbleBody(message: message, isMine: isMine)
         case "photo", "sticker", "gif":
-            MediaImageBubbleBody(message: message, isMine: isMine, onTap: { onTapMedia(.zoom(.photo)) })
-        case "video": VideoBubbleBody(message: message, isMine: isMine, onTap: { onTapMedia(.zoom(.video)) })
+            MediaImageBubbleBody(message: message, isMine: isMine, hasFailed: hasDownloadFailed, onTap: { onTapMedia(.zoom(.photo)) })
+        case "video": VideoBubbleBody(message: message, isMine: isMine, hasFailed: hasDownloadFailed, onTap: { onTapMedia(.zoom(.video)) })
         case "gift": GiftBubbleBody(message: message)
         case "graphic": GraphicPlaceholderBubbleBody(message: message)
         case "deletemessage":
@@ -194,6 +198,7 @@ struct AudioBubbleBody: View {
 struct MediaImageBubbleBody: View {
     let message: MessageLib
     let isMine: Bool
+    var hasFailed: Bool = false
     let onTap: () -> Void
 
     private var sourcePath: String? {
@@ -220,7 +225,13 @@ struct MediaImageBubbleBody: View {
         .overlay(alignment: .center) {
             let uploaded = isMine ? message.isFileUploaded == 1 : true
             let downloaded = !isMine ? message.isFileDownloaded == 1 : true
-            if !uploaded || !downloaded {
+            // **Corrigé (V5-F-080)** — port du `Toast` d'échec `DownloadReceiver.
+            // handleDownloadError` : distingue "échoué" de "en cours", jusqu'ici indiscernables
+            // (les deux affichaient le même spinner indéfiniment).
+            if hasFailed {
+                Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
+                    .font(.title2).foregroundStyle(.white)
+            } else if !uploaded || !downloaded {
                 ProgressView().tint(.white)
             }
         }
@@ -238,6 +249,7 @@ struct MediaImageBubbleBody: View {
 struct VideoBubbleBody: View {
     let message: MessageLib
     let isMine: Bool
+    var hasFailed: Bool = false
     let onTap: () -> Void
 
     var body: some View {
@@ -255,8 +267,13 @@ struct VideoBubbleBody: View {
                 Color(.tertiarySystemBackground)
             }
             let ready = isMine ? message.isFileUploaded == 1 : message.isFileDownloaded == 1
+            // **Corrigé (V5-F-080)** — voir `MediaImageBubbleBody`, même distinction "échoué" vs
+            // "en cours".
             if ready {
                 Image(systemName: "play.circle.fill").font(.largeTitle).foregroundStyle(.white)
+            } else if hasFailed {
+                Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
+                    .font(.title2).foregroundStyle(.white)
             } else {
                 ProgressView().tint(.white)
             }

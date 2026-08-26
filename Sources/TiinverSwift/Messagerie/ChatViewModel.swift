@@ -22,6 +22,12 @@ final class ChatViewModel: ObservableObject {
     /// composeur désactivé tant qu'un groupe payant affiche une bannière d'abonnement/renouvellement
     /// non résolue.
     @Published private(set) var isComposerBlocked = false
+    /// Port du `Toast` d'échec de `DownloadReceiver.handleDownloadError` (V5-F-080) — Android
+    /// affiche un message adapté à la cause précise (espace insuffisant/erreur HTTP/etc., non
+    /// distinguées ici, une seule icône d'échec générique) ; `requestDownload` n'avait jusqu'ici
+    /// AUCUN retour visuel sur échec, indiscernable d'un téléchargement "en cours" pour
+    /// l'utilisateur.
+    @Published private(set) var failedDownloadMessageIds: Set<String> = []
 
     /// Port de `RosterModel` passé en argument de `ChatFragmentTest.newInstance` — identité de la
     /// conversation ouverte, fournie par l'appelant (écran de liste des conversations, PAS encore
@@ -716,6 +722,9 @@ final class ChatViewModel: ObservableObject {
               let remoteURL = URL(string: remoteURLString), remoteURL.scheme?.hasPrefix("http") == true
         else { return }
         guard ChatMediaDownloadService.shared.reserveDownload(messageId: messageId) else { return }
+        // Port du `Toast` d'échec (V5-F-080) — retiré au début d'un NOUVEL essai (bulle "en cours"
+        // plutôt que de rester marquée "échoué" pendant la relance).
+        failedDownloadMessageIds.remove(messageId)
         Task { [weak self] in
             guard let self else { return }
             defer { ChatMediaDownloadService.shared.releaseDownload(messageId: messageId) }
@@ -730,6 +739,9 @@ final class ChatViewModel: ObservableObject {
             } catch {
                 // `isFileDownloaded` reste à 0 — un prochain `handleAppear` relance l'essai, comme
                 // côté upload (`requestUpload`), même politique de retry sans compteur de tentatives.
+                // **Corrigé (V5-F-080)** — `failedDownloadMessageIds` publié pour donner un retour
+                // visuel, absent jusqu'ici (bloc `catch` totalement silencieux).
+                self.failedDownloadMessageIds.insert(messageId)
             }
         }
     }

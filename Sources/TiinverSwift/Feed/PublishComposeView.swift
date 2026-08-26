@@ -23,6 +23,16 @@ enum PublishMedia: Identifiable {
     var id: String { if case .photo = self { "photo" } else { "video" } }
 }
 
+/// Port des 3 champs `content_type`/`style`/`template_id` propagés UNIQUEMENT pour une publication
+/// issue de l'éditeur Animems (`AnimemesCompound.java:2597-2648`, V5-F-083) — `nil` pour tout autre
+/// flux de publication (Galerie/caméra), voir `PublishComposeView.animemsMetadata`.
+struct AnimemsPublishMetadata {
+    /// `AnimemesEditorState.activeCommunityTemplateId` — `nil` sauf si un modèle COMMUNAUTAIRE
+    /// (pas un modèle sauvegardé localement) est actif au moment de l'export. Utilisé UNIQUEMENT
+    /// pour une vidéo/animation (`createImage()` côté Android n'inclut jamais `template_id`).
+    var templateId: String?
+}
+
 struct PublishComposeView: View {
     private enum Stage {
         case cropModeChoice
@@ -33,6 +43,9 @@ struct PublishComposeView: View {
     }
 
     let media: PublishMedia
+    /// `nil` pour tout flux de publication standard (Galerie/caméra) — renseigné uniquement par
+    /// `AnimemesEditorView` (V5-F-083, voir `AnimemsPublishMetadata`).
+    var animemsMetadata: AnimemsPublishMetadata?
     var onPublished: () -> Void
     var onCancel: () -> Void
 
@@ -61,8 +74,9 @@ struct PublishComposeView: View {
 
     private static let captionLimit = 80
 
-    init(media: PublishMedia, onPublished: @escaping () -> Void, onCancel: @escaping () -> Void) {
+    init(media: PublishMedia, animemsMetadata: AnimemsPublishMetadata? = nil, onPublished: @escaping () -> Void, onCancel: @escaping () -> Void) {
         self.media = media
+        self.animemsMetadata = animemsMetadata
         self.onPublished = onPublished
         self.onCancel = onCancel
         if case .photo = media { _stage = State(initialValue: .cropModeChoice) } else { _stage = State(initialValue: .caption) }
@@ -357,7 +371,11 @@ struct PublishComposeView: View {
                 try await FeedRepository().publish(
                     actorId: actorId, object: "photos", message: caption, hashtags: hashtags,
                     fileData: jpegData, category: resolvedCategory, width: Int(pixelSize.width), height: Int(pixelSize.height),
-                    consentAi: acceptAiConsent
+                    consentAi: acceptAiConsent,
+                    // Port de `createImage()` (`AnimemesCompound.java:2597-2602`, V5-F-083) —
+                    // `template_id` JAMAIS inclus pour une image statique, même côté Android.
+                    contentType: animemsMetadata != nil ? "image" : nil,
+                    style: animemsMetadata != nil ? "animemes" : nil
                 )
             case .video(let url):
                 // Corrigé (V3-F-019, BUNNY-03) : ne charge plus toute la vidéo en `Data` avant
@@ -401,6 +419,11 @@ struct PublishComposeView: View {
                     videoFileURL: url, category: resolvedCategory, width: videoWidth, height: videoHeight,
                     videoDurationMs: videoDurationMs, consentAi: acceptAiConsent,
                     videoFps: videoFps, videoHasAudio: videoHasAudio,
+                    // Port de `createVideosFromBitmap()` (`AnimemesCompound.java:2645-2647`,
+                    // V5-F-083) — `template_id` seulement si un modèle COMMUNAUTAIRE était actif.
+                    contentType: animemsMetadata != nil ? "animation" : nil,
+                    style: animemsMetadata != nil ? "animemes" : nil,
+                    templateId: animemsMetadata?.templateId,
                     uploadProgress: { fraction in
                         Task { @MainActor in videoUploadProgress = fraction }
                     }

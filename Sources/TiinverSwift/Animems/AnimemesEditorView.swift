@@ -337,6 +337,10 @@ struct AnimemesEditorView: View {
         .fullScreenCover(item: $pendingPublishMedia) { media in
             PublishComposeView(
                 media: media,
+                // Port de `template_id` (V5-F-083) — `nil` sauf si un modèle COMMUNAUTAIRE (pas un
+                // modèle sauvegardé localement) était actif au moment de l'export, voir
+                // `AnimemesEditorState.applyTemplate`.
+                animemsMetadata: AnimemsPublishMetadata(templateId: state.activeCommunityTemplateId),
                 onPublished: {
                     pendingPublishMedia = nil
                     onClose() // Port du retour à l'app hôte après `PublishFragment` réussi — Android

@@ -962,7 +962,15 @@ final class AnimemesEditorState: ObservableObject {
     /// dans `spinnerResolution`, changer silencieusement ce réglage depuis un template serait une
     /// action inattendue non demandée par l'audit ; les icônes de piste (`updateTrackIcon`) —
     /// détail visuel de la timeline Android, sans équivalent dans `TimelineView.swift` actuel.
+    /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-083, Phase B P2)** — port de
+    /// `applyMotionTemplate`/`activeCommunityTemplateId` (`AnimemesCompound.java:2646-2647,
+    /// 2671-2672`) : Android fixe cet identifiant EN PREMIER, inconditionnellement, à chaque
+    /// application de template (communautaire OU local — `null` dans ce dernier cas), avant même
+    /// de tester si les calques existants suffisent. Consommé par `AnimemesEditorView.publishMedia`
+    /// pour peupler `template_id` sur un export vidéo publié — jamais sur un export image statique
+    /// (`createImage()` côté Android n'inclut pas ce champ).
     func applyTemplate(_ template: MotionTemplate, canvasSize: CGSize) {
+        activeCommunityTemplateId = template.isFromCommunity ? template.id : nil
         let tracks = template.tracks
         guard !tracks.isEmpty else { return }
         let cW = Int(canvasSize.width), cH = Int(canvasSize.height)
@@ -1018,6 +1026,11 @@ final class AnimemesEditorState: ObservableObject {
     /// RÉEL plutôt qu'à son apparence à 3 boutons.
     @Published var templateMismatch: (needed: Int, has: Int)?
     private var pendingTemplateApplication: (() -> Void)?
+
+    /// Port de `activeCommunityTemplateId` (`AnimemesCompound.java:147`) — voir `applyTemplate`
+    /// pour où il est fixé (V5-F-083). Lu par `AnimemesEditorView.publishMedia` pour peupler
+    /// `template_id` sur un export vidéo.
+    private(set) var activeCommunityTemplateId: String?
 
     func confirmTemplateMismatch() {
         pendingTemplateApplication?()

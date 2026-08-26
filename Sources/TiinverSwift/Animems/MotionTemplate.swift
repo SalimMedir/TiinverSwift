@@ -16,6 +16,19 @@ struct MotionTemplate: Codable, Identifiable {
     var audioFileName: String?
     var totalFrames: Int
     var tracks: [MotionTrack]
+    /// Port de `MotionTemplate.java:10` (`isFromCommunity`, "vient du serveur ?") — mis à `true`
+    /// UNIQUEMENT par `CommunityTemplateRepository` (comme `CommunityTemplateGalleryView.java:
+    /// 619-620` le fait côté Android), jamais persisté dans le fichier `.tmpl` lui-même (fidèle à
+    /// l'original Java, un champ runtime jamais sérialisé avec l'objet — voir `CodingKeys`
+    /// ci-dessous, **V5-F-083**). Exclu de `CodingKeys` : un fichier `.tmpl` déjà sauvegardé
+    /// localement (avant ce correctif) ou un JSON de template communautaire téléchargé n'a jamais
+    /// cette clé — l'omettre du décodage synthétisé (au lieu d'un `Bool` non-optionnel requis)
+    /// évite un échec de décodage sur CHAQUE modèle déjà persisté sur l'appareil.
+    var isFromCommunity: Bool = false
+
+    private enum CodingKeys: String, CodingKey {
+        case id, createdAt, canvasWidth, canvasHeight, hasAudio, audioLocalPath, audioFileName, totalFrames, tracks
+    }
 
     /// Port de `resolveAudio`/`AudioResult` — simplifié en 3 cas directement testables, pas un enum
     /// séparé côté Swift (appelé une seule fois, à l'endroit d'usage).

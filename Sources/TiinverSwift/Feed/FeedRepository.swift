@@ -173,11 +173,19 @@ final class FeedRepository {
     /// est ignoré pour une photo (upload trop court pour qu'une barre de progression soit utile,
     /// fidèle à l'absence de source de streaming côté client pour ce cas précis — voir le
     /// commentaire de `FeedMediaUploader.uploadVideo`).
+    /// `contentType`/`style`/`templateId` : **étendu le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md
+    /// V5-F-083, Phase B P2)** — `nil`/vide par défaut pour préserver le comportement Galerie déjà
+    /// fidèle décrit ci-dessus (Android n'assigne jamais ces champs dans `PublishFragment.java`),
+    /// mais renseignés par `PublishComposeView` pour un export produit par l'éditeur Animems
+    /// (`AnimemesCompound.java:2597-2648` : `contentType="image"`/`style="animemes"` pour une image
+    /// statique, `contentType="animation"` + `template_id` pour une vidéo/animation — SEULE la
+    /// branche vidéo inclut `template_id`, jamais la branche image, reproduit fidèlement).
     func publish(
         actorId: String, object: String, message: String, hashtags: [String],
         fileData: Data? = nil, videoFileURL: URL? = nil,
         category: String? = nil, width: Int? = nil, height: Int? = nil, videoDurationMs: Int? = nil,
         consentAi: Bool = false, videoFps: Int? = nil, videoHasAudio: Bool? = nil,
+        contentType: String? = nil, style: String? = nil, templateId: String? = nil,
         uploadProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws {
         // `category` : **corrigé le 2026-08-19 (V3-F-058 PROFILE-03)** — désormais transmis par
@@ -236,10 +244,10 @@ final class FeedRepository {
             format: object == "videos" ? nil : "image/jpeg",
             // `style`/`content_type` : déclarés côté Android mais JAMAIS assignés dans
             // `PublishFragment.java` (aucun `style = ...`/`contentType = ...` trouvé par grep
-            // exhaustif) — restent `null` dans CHAQUE publication Android réelle, reproduit à
-            // l'identique plutôt qu'une valeur inventée.
-            content_type: nil,
-            style: nil,
+            // exhaustif) pour le flux Galerie standard — restent `null` ici sauf si l'APPELANT
+            // (export Animems, V5-F-083) les fournit explicitement.
+            content_type: contentType,
+            style: style,
             language: deviceLocale.language.languageCode?.identifier,
             country: deviceLocale.region?.identifier,
             locale: deviceLocale.identifier
@@ -259,11 +267,10 @@ final class FeedRepository {
             "cdn_content_url": cdnContentUrl,
             "object_url": cdnContentUrl,
             // Port de `ActivityService.java:186-197` — voir `MediaMetaData` ci-dessus (V4-F-029).
-            // `template_id` reste vide : aucun gabarit Animems n'est sélectionnable depuis ce flux
-            // Galerie standard côté Android non plus (valeur réelle seulement pour un export
-            // Animems, flux séparé, pas construit ici).
+            // `template_id` reste vide pour le flux Galerie standard (aucun gabarit sélectionnable
+            // côté Android non plus) — renseigné par l'appelant pour un export Animems (V5-F-083).
             "metadata": metadataJSON,
-            "template_id": "",
+            "template_id": templateId ?? "",
             "consentAi": consentAi ? "1" : "0",
         ]
         if let cdnThumbnailUrl { params["cdn_thumbnail_url"] = cdnThumbnailUrl }

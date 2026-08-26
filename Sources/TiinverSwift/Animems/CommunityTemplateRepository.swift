@@ -50,11 +50,19 @@ enum CommunityTemplateRepository {
     /// métadonnées, fidèle à `rebuildFromRemote`. Le son, quand présent, est réellement téléchargé
     /// et fonctionnel (simple fichier audio, aucun problème de sérialisation).
     static func downloadAndPrepare(_ remote: TemplateRemoteModel) async throws -> MotionTemplate {
-        if let cached = MotionTemplateManager.load(id: remote.id) {
+        // **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-083, Phase B P2)** — port de
+        // `CommunityTemplateGalleryView.java:619-620` (`template.setFromCommunity(true)`), qui
+        // marque le modèle à CHAQUE fois qu'il est servi depuis ce chemin communautaire, cache
+        // local inclus (`isFromCommunity` n'est jamais persisté, voir `MotionTemplate.CodingKeys` —
+        // doit donc être réappliqué sur les 2 chemins de sortie, pas seulement au premier
+        // téléchargement).
+        if var cached = MotionTemplateManager.load(id: remote.id) {
+            cached.isFromCommunity = true
             return cached
         }
 
         var template = await fetchTemplateFile(remote) ?? rebuildFromRemote(remote)
+        template.isFromCommunity = true
 
         if remote.hasAudio, let audioCdnUrl = remote.audioCdnUrl {
             template.hasAudio = true

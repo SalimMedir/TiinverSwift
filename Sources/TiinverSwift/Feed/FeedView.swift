@@ -33,6 +33,19 @@ let feedReportReasons = [
     "Vente non autorisée", "Discours de haine", "Terrorisme", "Moins de 13 ans",
 ]
 
+/// Port de `ViewPagerAdapter.isAdPosition` (`position > 0 && position < list.size() && position
+/// % ADS_ON_FEED_POST == 0`) — l'annonce REMPLACE le post à cette position plutôt que d'ajouter
+/// un élément supplémentaire (voir note de `NativeAdLoader.adsOnFeedPost`). Accès fichier (pas
+/// `private` d'une seule struct) — **partagé depuis le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md
+/// V5-F-008, Phase B P2)** entre `FeedDetailPagerView` (pager plein écran, déjà câblé) et
+/// `FeedView` (grille Home, jusque-là dépourvue de toute publicité, voir `feedGridSegments`
+/// ci-dessous) : `ActivityAdapter.isAdPosition`/`ViewPagerAdapter.isAdPosition` utilisent la MÊME
+/// constante `ADS_ON_FEED_POST=7` côté Android — pas une coïncidence à dupliquer en 2 formules
+/// pouvant diverger.
+func isAdPosition(_ index: Int, count: Int) -> Bool {
+    index > 0 && index < count && index % NativeAdLoader.adsOnFeedPost == 0
+}
+
 struct FeedView: View {
     // Port de `MainFragment.OnLikeClicked`/`OnclickCommentaire`/`OnclickPrtg` → `notifyUser` —
     // câblé pour ce contexte (V4-F-030).
@@ -59,6 +72,34 @@ struct FeedView: View {
     @State private var statsTargetPost: FeedActivity?
 
     private let columns = [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)]
+
+    /// Port de `ActivityAdapter.isAdPosition`/`getItemViewType`→`TYPE_ITEM_ADS` — **ajouté le
+    /// 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-008, Phase B P2)**. Vérifié directement :
+    /// `ActivityAdapter.java:158-161` (`isAdPosition`, `position % ADS_ON_FEED_POST == 0`) et
+    /// `:179-181` (`getItemCount() = mediaObjects.size() + 2` — l'annonce REMPLACE un post plutôt
+    /// que d'agrandir la liste, contrairement à une simple insertion) ; `MainFragment.
+    /// java:709-723` (`SpanSizeLookup` force `span=2`, c'est-à-dire une ligne PLEINE LARGEUR, aux
+    /// positions publicitaires). Découpe `viewModel.posts` en tronçons consécutifs de posts,
+    /// séparés par `.ad` à chaque `isAdPosition` — le `body` rend chaque tronçon dans son propre
+    /// `LazyVGrid` (2 colonnes) et chaque `.ad` comme `FeedGridAdCell()` pleine largeur entre les
+    /// deux, reproduisant le même effet visuel que le `span=2` Android (qui force lui aussi un
+    /// retour à la ligne) sans avoir besoin d'un span par-item que `LazyVGrid` n'expose pas.
+    private var feedGridSegments: [FeedGridSegment] {
+        var segments: [FeedGridSegment] = []
+        var current: [FeedGridItem] = []
+        for (index, post) in viewModel.posts.enumerated() {
+            if isAdPosition(index, count: viewModel.posts.count) {
+                if !current.isEmpty {
+                    segments.append(.posts(current))
+                    current = []
+                }
+                segments.append(.ad)
+            }
+            current.append(FeedGridItem(index: index, post: post))
+        }
+        if !current.isEmpty { segments.append(.posts(current)) }
+        return segments
+    }
 
     /// Port de `feed_header_layout.xml` — item `TYPE_HEADER` en position 0 du `RecyclerView`
     /// (`ActivityAdapter.HeaderViewHolder`), pas un composant décoratif mort : `contacts_suggest`
@@ -93,26 +134,41 @@ struct FeedView: View {
             } else {
                 ScrollView {
                     homeHeader
-                    LazyVGrid(columns: columns, spacing: 1) {
-                        ForEach(Array(viewModel.posts.enumerated()), id: \.offset) { index, post in
-                            FeedGridCell(
-                                post: post,
-                                onLike: { viewModel.toggleLike(post) },
-                                onComment: { commentsPost = post; viewModel.notifyCommentOpened(post) },
-                                onShare: { Task { await viewModel.toggleShare(post) } },
-                                onMore: { moreActionsPost = post }
-                            )
-                                .onTapGesture {
-                                    detailStartIndex = index
-                                    showDetail = true
-                                }
-                                .onAppear {
-                                    // Port de `PreLoadingGridLayoutManager` (pagination anticipée) —
-                                    // même seuil que l'ancien pager (2 items avant la fin).
-                                    if index == viewModel.posts.count - 2 {
-                                        Task { await viewModel.loadNextPage() }
+                    // **Ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-008, Phase B P2)**
+                    // — voir doc de `feedGridSegments` : plusieurs `LazyVGrid` consécutifs
+                    // (un par tronçon de posts) séparés par `FeedGridAdCell()` aux positions
+                    // publicitaires, plutôt qu'un unique `LazyVGrid` (qui ne peut pas faire
+                    // occuper 2 colonnes à un seul item).
+                    VStack(spacing: 1) {
+                        ForEach(Array(feedGridSegments.enumerated()), id: \.offset) { _, segment in
+                            switch segment {
+                            case .posts(let items):
+                                LazyVGrid(columns: columns, spacing: 1) {
+                                    ForEach(items) { item in
+                                        FeedGridCell(
+                                            post: item.post,
+                                            onLike: { viewModel.toggleLike(item.post) },
+                                            onComment: { commentsPost = item.post; viewModel.notifyCommentOpened(item.post) },
+                                            onShare: { Task { await viewModel.toggleShare(item.post) } },
+                                            onMore: { moreActionsPost = item.post }
+                                        )
+                                            .onTapGesture {
+                                                detailStartIndex = item.index
+                                                showDetail = true
+                                            }
+                                            .onAppear {
+                                                // Port de `PreLoadingGridLayoutManager` (pagination
+                                                // anticipée) — même seuil que l'ancien pager (2
+                                                // items avant la fin).
+                                                if item.index == viewModel.posts.count - 2 {
+                                                    Task { await viewModel.loadNextPage() }
+                                                }
+                                            }
                                     }
                                 }
+                            case .ad:
+                                FeedGridAdCell()
+                            }
                         }
                     }
                     .padding(1)
@@ -361,6 +417,49 @@ struct FeedView: View {
     }
 }
 
+/// Port d'un `mediaObjects`+position — voir doc de `FeedView.feedGridSegments`. `id` = l'index
+/// dans `viewModel.posts` (stable pour la durée d'affichage, comme le `id: \.offset` déjà utilisé
+/// ailleurs dans ce fichier pour le même tableau).
+private struct FeedGridItem: Identifiable {
+    let index: Int
+    let post: FeedActivity
+    var id: Int { index }
+}
+
+/// Voir doc de `FeedView.feedGridSegments`.
+private enum FeedGridSegment {
+    case posts([FeedGridItem])
+    case ad
+}
+
+/// Port de `AdsViewHolder`/`CustomAdsSmallView` — cellule publicitaire COMPACTE de la grille Home,
+/// **distincte de `FeedAdCell`** (plein écran, réservée au pager de détail plus bas dans ce
+/// fichier). **Ajoutée le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-008, Phase B P2)**.
+/// Vérifié directement : `ActivityAdapter.java:205,217-231` (`AdsViewHolder.setPlaceholder` —
+/// commentaire Android explicite : *"contrairement au feed plein écran (ViewPager2), la grille
+/// tolère une hauteur réduite — pas de shimmer, juste une case basse et neutre le temps qu'une
+/// annonce arrive"*, alpha 0.25, hauteur fixe 48dp tant qu'aucune annonce n'est chargée, puis
+/// `WRAP_CONTENT` une fois chargée) — d'où un placeholder discret ici plutôt que le `ProgressView`
+/// sur fond noir de `FeedAdCell`. `NativeAdContentView` (déjà porté, `AdMobManager.swift`) est
+/// réutilisé tel quel : sa mise en page compacte (icône+titre/corps+CTA, ~56pt) correspond déjà au
+/// "small template" qu'Android utilise ici, sans besoin d'un rendu séparé.
+private struct FeedGridAdCell: View {
+    @StateObject private var loader = NativeAdLoader()
+
+    var body: some View {
+        Group {
+            if let nativeAd = loader.nativeAd {
+                NativeAdContentView(nativeAd: nativeAd)
+            } else {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(.secondarySystemBackground).opacity(0.25))
+                    .frame(height: 48)
+            }
+        }
+        .onAppear { loader.load() }
+    }
+}
+
 /// Port de `ActivityAdapter.ViewHolder`/`les_pub_affiche2.xml` — cellule de grille : vignette
 /// (photo ou 1ʳᵉ image vidéo), nom d'utilisateur, compteurs like/commentaire/partage en
 /// surimpression bas-gauche (`nikname`/`ShowJaimeNum`/`commentQte`, mêmes champs que
@@ -533,7 +632,7 @@ struct FeedDetailPagerView: View {
                 TabView(selection: $currentIndex) {
                     ForEach(Array(posts.enumerated()), id: \.offset) { index, post in
                         Group {
-                            if Self.isAdPosition(index, count: posts.count) {
+                            if isAdPosition(index, count: posts.count) {
                                 FeedAdCell()
                             } else {
                                 FeedDetailCell(
@@ -683,13 +782,6 @@ struct FeedDetailPagerView: View {
         } message: {
             Text(viewModel.deleteError ?? "")
         }
-    }
-
-    /// Port de `ViewPagerAdapter.isAdPosition` (`position > 0 && position < list.size() && position
-    /// % ADS_ON_FEED_POST == 0`) — l'annonce REMPLACE le post à cette position plutôt que d'ajouter
-    /// une page (voir note de `NativeAdLoader.adsOnFeedPost`).
-    private static func isAdPosition(_ index: Int, count: Int) -> Bool {
-        index > 0 && index < count && index % NativeAdLoader.adsOnFeedPost == 0
     }
 
     /// Port de `ExoPlayerManager.smartPreload`/`PreloadScheduler` (fenêtre `currentIndex ± 2`) —

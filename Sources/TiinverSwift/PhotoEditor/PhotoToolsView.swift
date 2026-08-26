@@ -16,6 +16,20 @@ import SwiftUI
 /// déplaçable — CE portage réutilise directement le clavier emoji SYSTÈME d'iOS (via un `TextField`,
 /// bouton globe pour basculer dessus) plutôt qu'une grille custom, fidèle au principe "clavier
 /// emoji standard", pas une grille d'assets à maintenir.
+///
+/// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-085, Phase B P1-34)** — port de
+/// `ImageViewCanvas.java` `GestureListener`/`ScaleListener`/la rotation à deux doigts
+/// (`:1156-1358`) : chaque texte/sticker placé peut désormais être glissé (un doigt), redimensionné
+/// (pincer, bornes `MIN_SCALE`/`MAX_SCALE` = 0.3...5.0, valeurs EXACTES d'`ImageViewCanvas.java:
+/// 73-74`) et pivoté librement (rotation à deux doigts) — voir `PlacedItemView` ci-dessous. Le
+/// commentaire de tête ci-dessus affirmait auparavant "PAS de glisser-déposer du texte/sticker une
+/// fois placé" comme un périmètre volontairement réduit ; ce n'était en réalité jamais formalisé
+/// comme un écart évalué, corrigé par ce finding. **Écart mineur assumé** : pas d'indicateur visuel
+/// de sélection dédié (`objectInAction`/surbrillance côté Android) — SwiftUI route déjà chaque
+/// geste au bon calque via son propre hit-testing (`ForEach($texts)`, un geste par vue), rendant un
+/// état de sélection explicite superflu pour le comportement observable (glisser/pincer/pivoter
+/// fonctionne directement sur l'élément touché), juste sans highlight visuel pendant la
+/// manipulation.
 struct PhotoToolsView: View {
     var onDone: (UIImage) -> Void
     var onCancel: () -> Void
@@ -53,11 +67,9 @@ struct PhotoToolsView: View {
                         if let currentStroke { Self.draw(currentStroke, in: context) }
                     }
                     .allowsHitTesting(false)
-                    ForEach(texts) { item in
-                        Text(item.text)
-                            .font(.system(size: item.isSticker ? 64 : 30, weight: item.isSticker ? .regular : .bold))
-                            .foregroundStyle(item.color)
-                            .position(item.position)
+                    ForEach($texts) { $item in
+                        PlacedItemView(item: $item)
+                            .allowsHitTesting(!isDrawMode)
                     }
                 }
                 .contentShape(Rectangle())
@@ -287,6 +299,8 @@ struct PhotoToolsView: View {
                 Text(item.text)
                     .font(.system(size: (item.isSticker ? 64 : 30) / screenToImageScale, weight: item.isSticker ? .regular : .bold))
                     .foregroundStyle(item.color)
+                    .scaleEffect(item.scale)
+                    .rotationEffect(item.rotation)
                     .position(item.position)
             }
         }
@@ -311,4 +325,78 @@ struct PlacedText: Identifiable {
     /// `true` pour un emoji ajouté via `PhotoToolsView.addSticker` — rendu plus grand, sans
     /// pertinence de `color` (un glyphe emoji ignore `.foregroundStyle`).
     var isSticker: Bool = false
+    /// **Ajouté le 2026-08-26 (V5-F-085, Phase B P1-34)** — port de `ImageViewCanvas.scale`/
+    /// `PROP_MATRIX`, manipulable via pincer-zoomer (`PlacedItemView`). Bornes `MIN_SCALE`/
+    /// `MAX_SCALE` EXACTES d'`ImageViewCanvas.java:73-74` appliquées dans `PlacedItemView`, pas ici.
+    var scale: CGFloat = 1
+    /// Port de `ImageViewCanvas.rotate` (rotation libre à deux doigts) — angle appliqué via
+    /// `.rotationEffect`, aucune borne côté Android (rotation libre 360°), reproduit à l'identique.
+    var rotation: Angle = .zero
+}
+
+/// **Ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-085, Phase B P1-34)** — port de
+/// `ImageViewCanvas.GestureListener`/`ScaleListener`/rotation à deux doigts, appliqués ICI à un
+/// calque individuel (texte ou sticker) plutôt qu'au canevas entier, contrairement à `drawGesture`
+/// (mode peinture, attaché au `ZStack` global) : SwiftUI route chaque geste au calque effectivement
+/// touché via son propre hit-testing, reproduisant l'effet observable de la sélection
+/// `objectInAction` d'Android sans avoir besoin d'un état de sélection explicite séparé (voir note
+/// de tête de fichier pour l'écart mineur assumé : pas de surbrillance visuelle pendant la
+/// manipulation).
+private struct PlacedItemView: View {
+    @Binding var item: PlacedText
+
+    @GestureState private var dragOffset: CGSize = .zero
+    @GestureState private var magnifyBy: CGFloat = 1
+    @GestureState private var rotateBy: Angle = .zero
+
+    private static let minScale: CGFloat = 0.3
+    private static let maxScale: CGFloat = 5.0
+
+    var body: some View {
+        Text(item.text)
+            .font(.system(size: item.isSticker ? 64 : 30, weight: item.isSticker ? .regular : .bold))
+            .foregroundStyle(item.color)
+            .scaleEffect(item.scale * magnifyBy)
+            .rotationEffect(item.rotation + rotateBy)
+            .position(x: item.position.x + dragOffset.width, y: item.position.y + dragOffset.height)
+            .gesture(dragGesture)
+            .simultaneousGesture(magnifyGesture)
+            .simultaneousGesture(rotateGesture)
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture()
+            .updating($dragOffset) { value, state, _ in state = value.translation }
+            .onEnded { value in
+                item.position.x += value.translation.width
+                item.position.y += value.translation.height
+            }
+    }
+
+    /// Port de `ScaleListener.onScale` — clampe DÉJÀ pendant le geste (pas seulement au relâché),
+    /// fidèle à `ImageViewCanvas.scale` qui corrige `scaleFactor` en temps réel dès que la borne est
+    /// dépassée (`:1371-1374`), pas seulement au `onEnded`.
+    private var magnifyGesture: some Gesture {
+        MagnificationGesture()
+            .updating($magnifyBy) { value, state, _ in
+                let proposed = item.scale * value
+                if proposed < Self.minScale {
+                    state = Self.minScale / item.scale
+                } else if proposed > Self.maxScale {
+                    state = Self.maxScale / item.scale
+                } else {
+                    state = value
+                }
+            }
+            .onEnded { value in
+                let proposed = item.scale * value
+                item.scale = min(max(proposed, Self.minScale), Self.maxScale)
+            }
+    }
+
+    private var rotateGesture: some Gesture {
+        RotationGesture()
+            .updating($rotateBy) { value, state, _ in state = value }
+            .onEnded { value in item.rotation += value }
+    }
 }

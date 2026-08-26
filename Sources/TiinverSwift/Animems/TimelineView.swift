@@ -313,6 +313,22 @@ struct TimelineView: View {
             }
     }
 
+    /// **Vérifié le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-044, Phase B P3)** — Android
+    /// (`TimelineView.java:258-295`, `buildScaleDetector`) ancre le pincement-zoom sous le point
+    /// focal RÉEL du geste (`ScaleGestureDetector.getFocusX()`), qui reste stable sous les doigts
+    /// pendant tout le geste. `MagnificationGesture` de SwiftUI ne transmet AUCUNE localisation
+    /// (API vérifiée : seul un facteur d'échelle scalaire est exposé, contrairement à
+    /// `ScaleGestureDetector` Android) — `focusX` reste donc fixé au centre horizontal de la vue
+    /// ci-dessous, une approximation assumée plutôt qu'un centre choisi arbitrairement au hasard.
+    /// **Correctif "au minimum" de la RECOMMANDATION appliqué** (documenter l'approximation) plutôt
+    /// que le correctif complet (`UIPinchGestureRecognizer` enveloppé dans un `UIViewRepresentable`
+    /// pour récupérer `location(in:)`) : cette vue compose déjà `combinedDragGesture` ET
+    /// `magnificationGesture` simultanément (voir doc de tête de fichier, `.gesture`+
+    /// `.simultaneousGesture`) — introduire un second système de reconnaissance de gestes (UIKit)
+    /// sur cette composition déjà documentée comme fragile, sans pouvoir la tester sur un appareil
+    /// réel dans cet environnement (pas d'Xcode/simulateur), risquerait une vraie régression de
+    /// geste (drag/redimensionnement d'item cassé) pour un correctif purement cosmétique — reporté
+    /// à une session dédiée avec accès à un test réel.
     private func magnificationGesture(model: TimelineViewModel) -> some Gesture {
         MagnificationGesture()
             .onChanged { value in

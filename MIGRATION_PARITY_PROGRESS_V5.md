@@ -14,7 +14,7 @@ V5-F-061, V5-F-065, V5-F-066, V5-F-069, V5-F-071, V5-F-073 (DUPLICATE de V5-F-02
 V5-F-079, V5-F-083, V5-F-086, V5-F-090, V5-F-096, V5-F-099]. **BACKLOG P2 ENTIÈREMENT CLOS
 (31/31)**. Backlog P3 (21 findings) EN COURS [3/21 clos : V5-F-003 (DUPLICATE de V5-F-050),
 V5-F-011, V5-F-012, V5-F-015 (DUPLICATE de V5-F-065), V5-F-017, V5-F-027, V5-F-028, V5-F-041,
-V5-F-044 (DOCUMENTÉ)]. Prochain : V5-F-052.**
+V5-F-044 (DOCUMENTÉ), V5-F-052, V5-F-053 (DIFFÉRÉ)]. Prochain : V5-F-056.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -2835,6 +2835,33 @@ de gestes déjà documentée fragile — introduire un second système de reconn
 pouvoir tester sur appareil réel risquerait une régression de geste réelle pour un correctif
 purement cosmétique (P3). Option "à minima" de la RECOMMANDATION appliquée : approximation
 documentée en commentaire dans `TimelineView.swift` (commit `99fca23`).
+
+## 2026-08-26 — Phase B V5 — Lot P3-10 : V5-F-052 (Raccourci "Activer les publicités" absent de l'écran Parrainage)
+
+**Commit** : `b6ca82d` — poussé sur `main` (`29edff5..b6ca82d`). **CI non déclenchée par cette
+session** (même blocage d'outillage que les lots précédents, voir "Statut honnête").
+
+**Cause exacte** : `ReferralActivity.java:160-165` affiche un bouton permanent qui saute
+directement vers Réglages > Publicité. `ReferralView.swift` n'avait aucun équivalent, ni documenté
+comme gap connu (contrairement aux autres simplifications déjà notées en tête de fichier).
+
+**Correction appliquée** : `NavigationLink` vers `SettingAdvertisementView` (sans paramètre, navigation
+directe) ajouté à côté du bouton "Regarder une vidéo" existant.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Wallet/ReferralView.swift`.
+
+**Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
+d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
+
+## 2026-08-26 — Phase B V5 — Lot P3-11 : V5-F-053 (DIFFÉRÉ) — sélection granulaire par type de média non portée
+
+**Aucun changement fonctionnel** (commit `2766fb9`, commentaire uniquement). `SettingStorageFragment.
+java` lu en entier (292 lignes) : grep exhaustif des 6 préférences concernées (3 listes par type de
+média + 3 bascules maîtresses déjà portées) dans TOUT le code Android confirme qu'AUCUNE n'est
+jamais lue par le pipeline de téléchargement média réel — écran purement décoratif côté Android
+lui-même. Construire les 3 dialogues à sélection multiple pour une parité purement cosmétique (zéro
+impact comportemental des deux côtés) jugé disproportionné. Décision documentée dans
+`Settings/SettingSubViews.swift`.
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

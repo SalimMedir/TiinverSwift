@@ -2167,6 +2167,10 @@ CAUSE : Portage incomplet de `ReferralActivity.java` — le commentaire de tête
 IMPACT : Perte d'un raccourci UX réel : sur Android, un utilisateur qui n'a pas encore autorisé les publicités personnalisées peut le faire en un tap depuis l'écran Parrainage ; sur iOS il doit naviguer manuellement jusqu'à Réglages > Publicité.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter un bouton « Activer la visualisation des publicités maintenant » dans `ReferralView.swift` qui navigue vers `SettingAdvertisementView` (ou présente `SettingsView(startAtAccount: false)` positionné sur cet écran, à l'image du mécanisme déjà utilisé pour `.settingsAccount`).
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-10). RECOMMANDATION appliquée (variante la
+plus simple : `SettingAdvertisementView` n'a aucun paramètre, navigation directe sans passer par
+`SettingsView`). Fichier modifié : `Wallet/ReferralView.swift`. Commit `b6ca82d`, poussé sur
+`main`. CI non déclenchée par cette session.
 ```
 
 ```
@@ -2183,6 +2187,19 @@ CAUSE : Portage partiel documenté par le code source iOS lui-même (faute de te
 IMPACT : Perte de contrôle utilisateur fin : impossible sur iOS de restreindre le téléchargement automatique par type de média (ex. autoriser les photos mais pas les vidéos en itinérance) alors que c'est possible sur Android.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter les 3 lignes de sélection multiple par type de média sous chaque interrupteur, avec persistance locale des 3 listes équivalentes à storageDataListChoosed/storageWifiListChoosed/storageRoamingListChoosed.
+STATUT : DIFFÉRÉ (2026-08-26, Phase B P3) — décision de non-port, PAS un correctif de code, après
+lecture complète de `SettingStorageFragment.java` (292 lignes). Grep exhaustif de
+`storageDataListChoosed`/`storageWifiListChoosed`/`storageRoamingListChoosed`/`usingDataMobile`/
+`usingWifi`/`usingRoaming` dans TOUT `app/src/main/java/com/tiinver` : AUCUNE occurrence en dehors
+du package `setting/` — ces 6 préférences (les 3 bascules maîtresses déjà portées côté iOS
+INCLUSES) ne sont JAMAIS lues par le pipeline de téléchargement/chargement de média réel
+(`ChatViewModel.requestDownload`, `FeedMediaDownloader`, `VideoCacheManager`, etc.). Écran
+purement DÉCORATIF côté Android lui-même, zéro effet fonctionnel sur AUCUNE des deux plateformes —
+construire les 3 dialogues à sélection multiple + persistance pour ce seul niveau de parité
+cosmétique jugé disproportionné, conformément à la politique de ce portage. Décision documentée
+directement dans le code : `Settings/SettingSubViews.swift` (commentaire de tête de
+`SettingStorageView`). Commit `2766fb9` (commentaire uniquement, aucun changement fonctionnel),
+poussé sur `main`.
 ```
 
 ```

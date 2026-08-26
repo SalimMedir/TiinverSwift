@@ -424,12 +424,22 @@ SwiftUI n'expose aucune localisation, contrairement à `ScaleGestureDetector` An
 complet [`UIPinchGestureRecognizer`/`UIViewRepresentable`] écarté : cette vue compose déjà 2
 gestes simultanément sur une composition déjà fragile, introduire un 3ᵉ système UIKit sans test
 réel possible risquerait une régression pour un correctif purement cosmétique P3. Approximation
-documentée en commentaire. **Commit `99fca23` poussé sur `main`**). **Prochain finding à traiter :
-V5-F-052** (grep `"^ID : V5-F-052"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par
-lecture directe avant tout correctif, comme fait pour chaque finding tout au long de cette
-session ; identifier les P3 restants avec `grep "^PRIORITÉ : P3"` puis chercher lesquels n'ont pas
-encore de bloc `STATUT :` à leur suite). Si l'utilisateur a entre-temps déclenché la CI pour les
-findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur statut vers
+documentée en commentaire. **Commit `99fca23` poussé sur `main`**) ; Lot P3-10 V5-F-052 CODE_COMPLETE/CI_PENDING (raccourci
+"Activer les publicités" absent de l'écran Parrainage — Android saute directement vers Réglages >
+Publicité depuis un bouton permanent. Corrigé : `NavigationLink` vers `SettingAdvertisementView`
+[sans paramètre] ajouté. **Commit `b6ca82d` poussé sur `main`, CI PAS déclenchée**) ; Lot P3-11
+V5-F-053 **DIFFÉRÉ, pas de correctif de code** (sélection granulaire par type de média —
+`SettingStorageFragment.java` lu en entier cette fois : grep exhaustif confirme que les 6
+préférences concernées [3 listes + 3 bascules maîtresses déjà portées] ne sont JAMAIS lues par le
+pipeline de téléchargement média réel côté Android — écran purement décoratif des DEUX côtés.
+Construire 3 dialogues à sélection multiple pour une parité cosmétique sans aucun effet
+comportemental jugé disproportionné. Décision documentée dans `SettingSubViews.swift`. **Commit
+`2766fb9` poussé sur `main`**). **Prochain finding à traiter : V5-F-056** (grep
+`"^ID : V5-F-056"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à confirmer par lecture directe
+avant tout correctif, comme fait pour chaque finding tout au long de cette session ; identifier les
+P3 restants avec `grep "^PRIORITÉ : P3"` puis chercher lesquels n'ont pas encore de bloc
+`STATUT :` à leur suite). Si l'utilisateur a entre-temps déclenché la CI pour les findings
+`CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur statut vers
 `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P3.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22

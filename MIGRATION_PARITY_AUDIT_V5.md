@@ -2953,6 +2953,11 @@ IMPACT : Pour une image non carrée ou dont le sujet n'est pas centré, le centr
 SUGGESTED_STATUS : IOS_INTENTIONAL_DIFFERENCE
 RECOMMANDATION : Aucune action requise si l'écart reste assumé ; si un vrai recadrage est souhaité, ajouter une étape d'édition (ex. `PhotosUI` + un contrôle de recadrage maison ou `TOCropViewController`-like) entre la sélection et l'appel à `uploadProfilePicture`/`uploadPhoto`.
 CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Avatar" (Phase A.2, 2026-08-24)
+STATUT : IOS_INTENTIONAL_DIFFERENCE (2026-08-26, Phase B P3) — écart déjà pleinement documenté
+dans le code source lui-même (GAP-004, `ProfileView.swift`/`GroupDetailView.swift` : "Android
+recadre AVANT l'envoi, ici l'image est envoyée telle quelle... le serveur affiche déjà l'avatar en
+cercle recadré côté client de toute façon"), confirmé par la propre `SUGGESTED_STATUS` du finding.
+Aucune action requise, aucun code modifié.
 ```
 
 ```
@@ -3051,6 +3056,15 @@ IMPACT : Impact UX mineur : un échec persistant (ex. Referer manquant du findin
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter un indicateur d'erreur (icône ou toast) sur la bulle média après un échec de téléchargement, au moins pour différencier "en cours" de "échoué".
 CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Chat (image/vidéo/fichier/vocal)" (Phase A.2, 2026-08-24)
+STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-13). RECOMMANDATION appliquée (icône
+générique, pas de message par cause précise comme Android — hors périmètre) : nouveau
+`ChatViewModel.failedDownloadMessageIds`, publié dans le `catch` de `requestDownload`, retiré au
+début d'un nouvel essai ; threadé via `ChatBubbleRow`→`MediaImageBubbleBody`/`VideoBubbleBody`
+(les 2 bulles ayant déjà un état "en cours") comme paramètre optionnel par défaut `false`, aucun
+autre appelant affecté. `AudioBubbleBody` n'a aucune plomberie d'état "en cours" existante — laissé
+inchangé, hors périmètre de ce correctif. Fichiers modifiés : `Messagerie/ChatViewModel.swift`,
+`Messagerie/ChatBubbleViews.swift`, `Messagerie/ChatView.swift`. Commit `09e4294`, poussé sur
+`main`. CI non déclenchée par cette session.
 ```
 
 ```

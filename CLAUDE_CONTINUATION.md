@@ -441,8 +441,15 @@ nouveau `ChatMediaDownloadService` [mirroir de `ChatMediaUploadService`] + rése
 `MessageRepository.pendingDownloads` symétrique de `pendingUploads`, `ChatRepository.
 resumePendingDownloads` appelé depuis `onConnected()` — symétrique exact de V5-F-078 côté upload.
 `downloadingMessageIds` local à l'instance `ChatViewModel` [V5-F-069] remplacé par la réservation
-partagée. **Commit `6ae581c` poussé sur `main`, CI PAS déclenchée**). **Prochain finding à
-traiter : V5-F-075** (grep `"^ID : V5-F-075"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à
+partagée. **Commit `6ae581c` poussé sur `main`, CI PAS déclenchée**) ; Lot P3-13bis V5-F-075
+**IOS_INTENTIONAL_DIFFERENCE, pas de correctif** (recadrage interactif de l'avatar avant envoi
+absent — écart déjà pleinement documenté dans le code source lui-même, GAP-004, confirmé par la
+propre `SUGGESTED_STATUS` du finding, aucune action requise) ; Lot P3-13 V5-F-080
+CODE_COMPLETE/CI_PENDING (aucun retour utilisateur en cas d'échec de téléchargement de pièce
+jointe chat — bulle en échec indiscernable de "en cours". Corrigé : nouveau `ChatViewModel.
+failedDownloadMessageIds`, icône d'échec threadée via `ChatBubbleRow`→`MediaImageBubbleBody`/
+`VideoBubbleBody`. **Commit `09e4294` poussé sur `main`, CI PAS déclenchée**). **Prochain finding
+à traiter : V5-F-081** (grep `"^ID : V5-F-081"` dans `MIGRATION_PARITY_AUDIT_V5.md` — domaine à
 confirmer par lecture directe avant tout correctif, comme fait pour chaque finding tout au long de
 cette session ; identifier les P3 restants avec `grep "^PRIORITÉ : P3"` puis chercher lesquels
 n'ont pas encore de bloc `STATUT :` à leur suite). Si l'utilisateur a entre-temps déclenché la CI

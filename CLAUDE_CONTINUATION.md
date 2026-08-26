@@ -200,13 +200,19 @@ réutilise `GiftCatalog.emoji(for:)`/`.resolve(_:)?.name`, mêmes helpers que le
 formate `NotiEntity.commentText` [même champ que texte de commentaire/id de cadeau selon `verb`,
 documenté explicitement sur le modèle Android], jamais lu côté iOS pour ce cas. Corrigé :
 `noti.commentText` inclus dans le texte affiché. **Commit `5b9e9b5` poussé sur `main`, CI PAS
-déclenchée** — même blocage d'outillage pour les deux). **Prochain finding à traiter : V5-F-026**
-(3ᵉ finding consécutif du domaine Notifications, `AdapterNoti.java`/`NotificationsListView.swift`
-— vérifier avec `grep "^PRIORITÉ : P2"` puis chercher lequel n'a pas encore de bloc `STATUT :` à
-sa suite, comme fait pour identifier chaque finding restant tout au long de cette session). Si
-l'utilisateur a entre-temps déclenché la CI pour les findings `CI_PENDING` listés ci-dessus et
-communiqué un résultat, mettre à jour leur statut vers `BUILD_VALIDATED` (ou traiter l'échec le
-cas échéant) avant de continuer le P2.
+déclenchée** — même blocage d'outillage pour les deux) ; Lot P2-7 V5-F-026
+`IOS_INTENTIONAL_DIFFERENCE` — décision NON-PORT, PAS un correctif de code (rappel local "Mise à
+jour" Android, `TiinverSyncWorker.visiteServeur`, se déclenche quasi à chaque sync push à cause de
+`infoContract.EXPIRE_DAY/MONTH/YEAR` tous à 0 [valeurs réelles prévues commentées, jamais
+réactivées] — configuration cassée côté Android, pas un comportement produit intentionnel ; porter
+fidèlement spammerait l'utilisateur iOS sans valeur réelle. Documenté explicitement dans l'en-tête
+de `LocalNotificationBuilder.swift`. **Commit `6bd14c2` poussé sur `main`**, aucune CI applicable
+[commentaire seul]). **Prochain finding à traiter : V5-F-030** (V5-F-027/028 sont P3, V5-F-029
+déjà traité en P1 — V5-F-030 confirmé P2 par lecture directe. Vérifier avec `grep "^PRIORITÉ :
+P2"` puis chercher lequel n'a pas encore de bloc `STATUT :` à sa suite, comme fait pour identifier
+chaque finding restant tout au long de cette session). Si l'utilisateur a entre-temps déclenché la
+CI pour les findings `CI_PENDING` listés ci-dessus et communiqué un résultat, mettre à jour leur
+statut vers `BUILD_VALIDATED` (ou traiter l'échec le cas échéant) avant de continuer le P2.
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3

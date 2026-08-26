@@ -2097,6 +2097,29 @@ affichant toujours un générique "vous a transféré des coins" sans montant.
 **Statut honnête** : `CODE_COMPLETE, CI_PENDING` — **PAS `BUILD_VALIDATED`**. Même blocage
 d'outillage que les lots précédents. En attente d'un déclenchement CI par lots par l'utilisateur.
 
+## 2026-08-26 — Phase B V5 — Lot P2-7 : V5-F-026 (Notifications — rappel "Mise à jour", décision NON-PORT)
+
+**Commit** : `6bd14c2` — poussé sur `main` (`6518128..6bd14c2`). Décision documentée, PAS un
+correctif de code — pas de CI applicable (aucun fichier `.swift` fonctionnel modifié, seulement un
+commentaire de documentation).
+
+**Cause exacte** : `TiinverSyncWorker.visiteServeur` poste une notification locale "Mise à jour"
+quasi systématiquement, à cause de `infoContract.EXPIRE_DAY/MONTH/YEAR` tous à `0` (les valeurs
+réelles prévues, `DAY=1/MONTH=6/YEAR=2026`, sont commentées juste au-dessus dans le même fichier,
+jamais réactivées) — une configuration cassée côté Android, pas un comportement produit
+intentionnel.
+
+**Décision** : `IOS_INTENTIONAL_DIFFERENCE`, NON porté. Porter fidèlement produirait un spam de
+notifications parasites côté iOS sans valeur produit réelle, contraire à la règle "ne pas porter
+du code Android incorrect pour une parité artificielle". Documenté explicitement dans l'en-tête de
+`LocalNotificationBuilder.swift` (liste "PAS portés ici, volontairement"), avec condition de
+reconsidération si Android corrige un jour ses constantes.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/LocalNotificationBuilder.swift`
+(commentaire uniquement, aucun changement fonctionnel).
+
+**Statut honnête** : `IOS_INTENTIONAL_DIFFERENCE`. Aucun code modifié, aucune CI applicable.
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

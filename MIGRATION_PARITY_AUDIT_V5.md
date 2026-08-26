@@ -1164,6 +1164,29 @@ CAUSE : Le portage du module Notifications s'est concentré sur `displayNoMessag
 IMPACT : Les utilisateurs Android reçoivent périodiquement (à chaque sync déclenchée par push, vu la mauvaise configuration des constantes EXPIRE_*) une notification système "Mise à jour" ; les utilisateurs iOS n'en voient jamais l'équivalent — divergence de contenu notifié, même si son origine côté Android tient elle-même d'une configuration probablement non-intentionnelle (constantes à 0).
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Décider explicitement (documenter) si ce comportement Android est un bug de configuration à ne pas reproduire, ou porter un équivalent minimal ; dans tous les cas, l'absence actuelle n'est pour l'instant pas documentée comme un choix délibéré dans LocalNotificationBuilder.swift.
+
+STATUT : IOS_INTENTIONAL_DIFFERENCE (2026-08-26, Phase B V5, Lot P2-7) — Décision de NE PAS
+porter, PAS un correctif de code. Vérifié directement : `infoContract.java:71-79` — les 3
+constantes réellement actives (`EXPIRE_DAY=0`, `EXPIRE_MONTH=0`, `EXPIRE_YEAR=0`) sont des
+valeurs de repli, les valeurs RÉELLES prévues (`DAY=1, MONTH=6, YEAR=2026`) étant intégralement
+COMMENTÉES juste au-dessus dans le même fichier — jamais réactivées. `TiinverSyncWorker.
+visiteServeur:75-88` : avec ces constantes à 0, `lastTime` (dérivé via `MyTimeManager.
+getTimeInMillis(0,-1,0)`) est dégénéré, rendant la condition `currentTime > lastTime - 604800`
+VRAIE À CHAQUE SYNC déclenchée par push — càd un rappel "Mise à jour" spammé à quasi chaque
+notification push reçue côté Android AUJOURD'HUI. Ce n'est manifestement PAS un comportement
+produit intentionnel mais une configuration cassée/oubliée : porter fidèlement produirait un spam
+de notifications parasites côté iOS, une régression UX, pas une parité utile — conforme à la règle
+du projet de ne pas porter du code Android incorrect pour une parité artificielle.
+
+**Décision documentée** dans `LocalNotificationBuilder.swift` (en-tête de fichier, section "PAS
+portés ici, volontairement"), avec la citation Android complète et la condition de
+reconsidération (si un futur correctif Android RÉEL restaure des constantes `EXPIRE_*` sensées).
+**Aucun changement fonctionnel.**
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/LocalNotificationBuilder.swift`
+(commentaire uniquement).
+
+**Commit `6bd14c2`, poussé sur `main`** (`6518128..6bd14c2`).
 ```
 
 ```

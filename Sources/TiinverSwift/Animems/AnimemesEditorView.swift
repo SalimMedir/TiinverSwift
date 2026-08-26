@@ -41,6 +41,10 @@ struct AnimemesEditorView: View {
     @StateObject private var state = AnimemesEditorState()
     @State private var canvasSize: CGSize = CGSize(width: 360, height: 640)
     @State private var showGalleryPicker = false
+    // V5-F-034 (Phase B P1-16) — voir `onVideoPicked` du `GalleryPickerView` ci-dessous : import
+    // vidéo (recadrage temporel + extraction de trames) non porté, alerte explicite à la place
+    // d'une fermeture silencieuse.
+    @State private var showVideoImportUnsupportedAlert = false
     @State private var showTextPrompt = false
     @State private var newText = ""
     @State private var showStickerPrompt = false
@@ -172,9 +176,29 @@ struct AnimemesEditorView: View {
                         state.addImage(image, canvasSize: canvasSize)
                     }
                 },
-                onVideoPicked: { _ in showGalleryPicker = false },
+                // **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-034, Phase B P1-16)**
+                // — Android [`AnimemesCompound.java:2108-2113,2251-2253`, `MemesFragment.java:
+                // 386-388,551-587,233-267`] ouvre un vrai écran de recadrage temporel
+                // (`VideoTrimmerView`) puis extrait une séquence de bitmaps ajoutée comme calque
+                // animé (`addBitmaps(bitmaps, 33)`) — non porté ici (recadrage temporel +
+                // extraction de trames pour l'éditeur Animems spécifiquement, périmètre distinct
+                // du trim vidéo du Feed déjà porté dans `MediaTrimView.swift`). Avant ce correctif,
+                // la vidéo choisie était silencieusement jetée sans AUCUNE indication ; port du
+                // repli minimal explicitement autorisé par l'audit ("à défaut, au minimum afficher
+                // un message d'erreur explicite plutôt que fermer silencieusement la feuille")
+                // plutôt que d'improviser le pipeline d'extraction complet sans preuve suffisante
+                // de la géométrie canevas/calque attendue par `AnimemesEditorState`.
+                onVideoPicked: { _ in
+                    showGalleryPicker = false
+                    showVideoImportUnsupportedAlert = true
+                },
                 onCancel: { showGalleryPicker = false }
             )
+        }
+        .alert("Vidéo non prise en charge", isPresented: $showVideoImportUnsupportedAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("L'ajout d'une vidéo comme calque animé n'est pas encore disponible sur iOS. Choisissez une image à la place.")
         }
         .alert("Ajouter du texte", isPresented: $showTextPrompt) {
             TextField("Texte", text: $newText)

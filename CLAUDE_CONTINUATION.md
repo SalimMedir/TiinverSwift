@@ -23,7 +23,7 @@ verrouillage de piste ignoré, nouveau cas `DragMode.lockedTap(id:)`) ; Lot P0-6
 (commentaires, mauvaise clé JSON `commentText`→`comment`) ; Lot P0-7 V5-F-064 (logout/suppression
 de compte purgeaient même sur échec réseau, `try?`→`do/catch`, **doublon de V5-F-005** résolu en
 même temps, à marquer `DUPLICATE` sans re-corriger quand le P1 l'atteindra). **BACKLOG P1 (40
-findings) EN COURS [12/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
+findings) EN COURS [13/40 clos : Lot P1-1 V5-F-001 BUILD_VALIDATED (CallView déplacé vers
 RootRouterView) ; Lot P1-2 V5-F-005 DUPLICATE de V5-F-064 ; Lot P1-3 V5-F-006 BUILD_VALIDATED
 (includesDownload: true sur le fullScreenCover Home) ; Lot P1-4 V5-F-007 BUILD_VALIDATED
 (target_id/report_type manquants au signalement plein écran, `includesTarget` sur
@@ -43,8 +43,9 @@ P1-11 V5-F-021 BUILD_VALIDATED (tap notification routait toujours vers le centre
 même pour un message de chat, `categoryIdentifier` "activity"/"chat_message" ajouté +
 `didReceive` distingue maintenant .notifications/.home) ; Lot P1-12 V5-F-022 BUILD_VALIDATED
 (bouton "Suivre en Retour" postait sur l'endpoint `follow` générique au lieu de `followback`,
-`ProfileRepository.followBack` ajouté)]**. Voir section "Cycle V5" plus bas pour le détail
-complet.)
+`ProfileRepository.followBack` ajouté) ; Lot P1-13 V5-F-023 BUILD_VALIDATED (zone tapable unique
+avatar+texte→profil dans le centre de notifications, séparée en avatar seul→profil et texte→post
+quand activityId>0)]**. Voir section "Cycle V5" plus bas pour le détail complet.)
 
 **Résumé cycle V4 (CLOS)** : Phase B V4 traitée exhaustivement — P0 (4/4), P1 (23/23, 22
 BUILD_VALIDATED + V4-F-003 BLOQUÉ), P2 (27/27, 22 BUILD_VALIDATED + 1 BLOQUÉ + 4 différés), P3
@@ -334,34 +335,52 @@ l'appel réseau spécifique de `FollowVH`. Correctif : nouvelle méthode
 site d'appel du bouton basculé dessus ; rollback optimiste (fix V3-F-107 antérieur) préservé.
 Vérifié par grep que les 3 autres appelants de `follow` (`FollowListView`/`SearchView`/
 `SuggestionsCarouselView`) restent inchangés. **Commit `2a41e27`, CI verte (run
-`32919699798`)** — `BUILD_VALIDATED`. Détail des 12 lots dans `PROGRESS_V5.md`.
+`32919699798`)** — `BUILD_VALIDATED`.
 
-**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-023** (Notifications —
-centre de notifications iOS : aucun moyen d'ouvrir la publication concernée pour une notification
-SANS vignette (like/commentaire sur un post texte). Android [`NotiLikecmt/AdapterNoti.java:
-612-625`, `bindBodyClick`, attaché au conteneur `body` = titre/texte ; `:586-600`,
-`bindAvatarClick`, attaché SEULEMENT à `contentAvatar`] — deux zones tapables DISTINCTES avec deux
-destinations différentes [`body`→`FullScreenMedia` si `activityId>0`, `contentAvatar`→
-`UserProfile`], indépendamment de la présence d'une vignette [`bindThumb`, `:564-584`, peut
-masquer complètement le conteneur photo sans désactiver le clic sur `body`] : sur un like/
-commentaire concernant un post TEXTE [sans photo/vidéo, donc sans vignette affichée], l'utilisateur
-peut quand même taper sur le TEXTE de la ligne pour ouvrir le post visé, tant que `activityId>0`.
-iOS [`Notifications/NotificationsListView.swift:108-124`, `NavigationLink` unique enveloppant
-avatar+nom+bodyText → `ProfileView` ; `:152-160`, `Button` distinct UNIQUEMENT si
-`thumbnailURL != nil` → `onOpenPost`] — le bloc avatar+nom+texte est un SEUL `NavigationLink` qui
-va TOUJOURS vers `ProfileView` [jamais vers le post] ; le seul accès au post est le bouton
-vignette séparé, absent pour un post texte. Cause : le portage a fusionné les deux zones tapables
-Android [avatar→profil, corps→post] en une seule [avatar+texte→profil], gardant l'accès au post
-uniquement via la vignette pas toujours présente. Plan : séparer la zone tapable en deux comme
-Android — un tap sur l'avatar seul ouvre le profil, un tap sur le bloc nom/texte ouvre le post
-[`reconstructedPost`] quand `noti.activityId > 0`, indépendamment de la présence d'une vignette —
-lire `NotificationsListView.swift` en entier autour des lignes 108-160 pour la structure exacte
-du `NavigationLink`/`Button` actuels avant de restructurer), puis continuer AUTOMATIQUEMENT
-V5-F-029, V5-F-033, V5-F-034, V5-F-036, V5-F-037, V5-F-043, V5-F-046, V5-F-047, V5-F-050,
-V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070, V5-F-072,
-V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097, V5-F-098 (27 P1
-restants après V5-F-023, dans l'ordre exact du document), puis tous les P2 (31), P3 (21), SANS
-s'arrêter
+**Lot P1-13 traité (V5-F-023)** — Notifications, centre de notifications : aucun moyen d'ouvrir la
+publication concernée pour une notification SANS vignette (like/commentaire sur un post texte).
+Vérifié `NotiLikecmt/AdapterNoti.java:586-600` (`bindAvatarClick`, SEULEMENT `contentAvatar` →
+`UserProfile`) et `:612-625` (`bindBodyClick`, conteneur `body` → `FullScreenMedia` si
+`activityId>0`, sinon `body.setClickable(false)` explicite) — deux zones tapables DISTINCTES,
+indépendamment de la vignette. `NotificationsListView.swift` enveloppait avatar+nom+texte dans un
+SEUL `NavigationLink` allant TOUJOURS vers `ProfileView` ; seul accès au post = bouton vignette
+séparé, absent pour un post texte. Cause : fusion des deux zones tapables Android en une seule.
+Correctif : `NavigationLink` restreint à l'avatar seul (→ profil, inconditionnel) ; bloc nom/texte
+extrait en `nameAndBodyText` (`@ViewBuilder`), enveloppé dans un `Button` → `onOpenPost(post)`
+quand `reconstructedPost != nil`, sinon affiché non tapable — fidèle à
+`body.setClickable(false)`. **Commit `e49cb70`, CI verte (run `32920326997`)** —
+`BUILD_VALIDATED`. Détail des 13 lots dans `PROGRESS_V5.md`.
+
+**PROCHAINE TÂCHE EXACTE** : Enchaîner **automatiquement** sur **V5-F-029** (Appels audio/vidéo
+WebRTC — signalisation/historique : appel sortant vers un correspondant occupé [BUSY_CALL], aucun
+message "appel manqué" enregistré côté iOS. Android [`messagerie/ui/call/CallActivity.java:85`
+`isCalleMissedCall=true` à l'init ; `:483-500` `callBusy()` : affiche "Occupé" 3s puis
+`initEndCall(false)` ; `:376-384` `initEndCall` appelle `endCall()` ; `:509-525` `endCall()` :
+`if(isCalleMissedCall) callService.notifyMissedCall(...)` — JAMAIS remis à `false` dans le chemin
+`callBusy`, contrairement à `callEnd()` [ligne 476] et `onAccepCall()` [ligne 506] ;
+`messagerie/repository/ChatRepository.java:1045-1057` `notifyMissedCall` insère un vrai message
+"missedvoicecall" persistant] — quand l'appelant reçoit BUSY_CALL, `isCalleMissedCall` reste à
+`true` [jamais réinitialisé dans `callBusy()`], donc `endCall()` insère un message "missedvoicecall"
+persistant visible dans l'historique de chat. iOS [`Calls/CallCoordinator.swift:111-112`
+`case .busyCall: endCallFromRemote(reason: .unanswered)` ; `:326-330` `endCallFromRemote` :
+`callKit.reportCallEnded` + `teardown()`, AUCUN appel à `chatRepository.notifyMissedCall` ;
+`:403-413` `performEndCall` : SEUL point d'appel de `notifyMissedCall`, uniquement sur raccroché
+LOCAL d'un appel sortant non répondu, JAMAIS sur réception `.busyCall`] — l'appel se termine sans
+laisser AUCUNE trace dans la conversation. Cause : la fin d'appel a été factorisée en un point de
+sortie unique [`teardown()`/`endCallFromRemote()`] qui ne reproduit pas la logique
+"`isCalleMissedCall` reste `true` seulement si `callBusy`" d'Android. Plan : dans
+`CallCoordinator.handle(.busyCall)`, avant `endCallFromRemote(reason: .unanswered)`, appeler
+`chatRepository.notifyMissedCall(profile:chatType:object:"missedvoicecall":messageId:)` comme le
+fait déjà `performEndCall` pour le raccroché local non répondu — reproduire fidèlement la
+condition Android "appel sortant, jamais accepté ni terminé par le correspondant, terminé par
+occupation" — lire `CallCoordinator.swift` en entier autour des lignes 100-420 pour la structure
+exacte de `handle(_:)`/`endCallFromRemote`/`performEndCall`/`notifyMissedCall` avant de coder,
+domaine Appels/WebRTC à traiter avec attention particulière selon la directive Phase B), puis
+continuer AUTOMATIQUEMENT V5-F-033, V5-F-034, V5-F-036, V5-F-037, V5-F-043, V5-F-046, V5-F-047,
+V5-F-050, V5-F-057, V5-F-058, V5-F-060, V5-F-062, V5-F-063, V5-F-067, V5-F-068, V5-F-070,
+V5-F-072, V5-F-076, V5-F-077, V5-F-078, V5-F-082, V5-F-085, V5-F-089, V5-F-095, V5-F-097,
+V5-F-098 (26 P1 restants après V5-F-029, dans l'ordre exact du document), puis tous les P2 (31),
+P3 (21), SANS s'arrêter
 entre les lots (instruction explicite de l'utilisateur), en respectant à chaque fois : preuve
 Android vérifiée personnellement → code Swift vérifié → chaîne complète tracée (UI →
 State/ViewModel → Repository/API/Socket → réponse → rendu, des deux côtés) → correction minimale

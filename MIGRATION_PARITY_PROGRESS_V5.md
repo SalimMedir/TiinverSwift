@@ -5,9 +5,10 @@ Journal de correction du cycle d'audit V5 (`MIGRATION_PARITY_AUDIT_V5.md`).
 **État actuel (2026-08-25) : Phase A (Audit) TERMINÉE. Phase A.2 (contre-audit ciblé) TERMINÉE.
 Phase B (correction) EN COURS — **BACKLOG P0 ENTIÈREMENT TRAITÉ (7/7)** : V5-F-094, V5-F-018,
 V5-F-031, V5-F-032, V5-F-042, V5-F-045, V5-F-064 (V5-F-064 = doublon de V5-F-005, résolu en même
-temps). Backlog P1 (40 findings) EN COURS [12/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
-V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022], démarré
-automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-023. Puis 31 P2, 21 P3.**
+temps). Backlog P1 (40 findings) EN COURS [13/40 clos : V5-F-001, V5-F-005 (DUPLICATE), V5-F-006,
+V5-F-007, V5-F-009, V5-F-010, V5-F-013, V5-F-016, V5-F-019, V5-F-020, V5-F-021, V5-F-022,
+V5-F-023], démarré automatiquement à V5-F-001, dans l'ordre du document. Prochain : V5-F-029
+(V5-F-024 à V5-F-028 sont hors P1, voir doc pour les IDs manquants). Puis 31 P2, 21 P3.**
 
 `MIGRATION_PARITY_AUDIT_V5.md` contient **99 findings** (V5-F-001 à V5-F-099) au total :
 
@@ -791,6 +792,40 @@ fidèles à l'endpoint `follow` générique.
 **Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
 réel requis : taper "Suivre en Retour" depuis le centre de notifications, confirmer via
 inspection réseau que la requête cible `followback`.
+
+## 2026-08-25 — Phase B V5 — Lot P1-13 : V5-F-023 (BUILD_VALIDATED)
+
+### Vérification
+
+**Android** : `NotiLikecmt/AdapterNoti.java:586-600` (`bindAvatarClick`, attaché SEULEMENT à
+`contentAvatar` → `UserProfile`) et `:612-625` (`bindBodyClick`, attaché au conteneur `body` =
+titre/texte → `FullScreenMedia` si `activityId>0`, sinon `body.setClickable(false)` explicite).
+Deux zones tapables DISTINCTES avec deux destinations différentes, indépendamment de la présence
+d'une vignette (`bindThumb`, `:564-584`, peut masquer tout le conteneur photo sans désactiver le
+clic sur `body`).
+
+**iOS avant correctif** : `NotificationsListView.swift` — bloc avatar+nom+texte enveloppé dans un
+SEUL `NavigationLink` allant TOUJOURS vers `ProfileView`. Seul accès au post : le bouton vignette
+séparé, existant UNIQUEMENT si `thumbnailURL != nil` — absent pour un post texte (sans photo/
+vidéo).
+
+### Correctif appliqué
+
+Cause : le portage a fusionné les deux zones tapables Android (avatar→profil, corps→post) en une
+seule (avatar+texte→profil). Correctif : `NavigationLink` restreint à l'avatar seul
+(inconditionnel → profil) ; bloc nom/texte extrait en `nameAndBodyText` (`@ViewBuilder`),
+enveloppé dans un `Button` → `onOpenPost(post)` quand `reconstructedPost != nil` (`activityId>0`),
+sinon affiché tel quel non tapable — fidèle à `body.setClickable(false)`, pas un `Button`
+désactivé. Bouton vignette séparé (existant, hors périmètre) laissé inchangé.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/NotificationsListView.swift`.
+
+**Résultat CI** : commit `e49cb70`, push confirmé (`a72684c..e49cb70 main -> main`), run
+`32920326997` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED`. PAS `COMPLETE_PARITY_VALIDATED` — test
+réel requis : like/commentaire sur un post texte, taper le texte de la notification (ouvre le
+post), taper l'avatar (ouvre le profil).
 
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 

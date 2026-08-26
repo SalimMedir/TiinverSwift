@@ -962,6 +962,26 @@ CAUSE : Le portage a fusionné les deux zones tapables Android (avatar→profil,
 IMPACT : Pour toute notification like/commentaire sur une publication sans image/vidéo (texte, sondage, etc.), l'utilisateur iOS ne peut PAS accéder au post concerné depuis le centre de notifications — alors qu'Android le permet en tapant le texte de la ligne.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Séparer la zone tapable en deux comme Android : un tap sur l'avatar seul ouvre le profil, un tap sur le bloc nom/texte ouvre le post (reconstructedPost) quand `noti.activityId > 0`, indépendamment de la présence d'une vignette.
+
+STATUT : BUILD_VALIDATED (2026-08-25, Phase B V5, Lot P1-13) — Vérifié directement :
+`bindAvatarClick` (`:586-600`) et `bindBodyClick` (`:612-625`) confirmés comme deux zones tapables
+distinctes, `bindBodyClick` désactivant explicitement le clic (`body.setClickable(false)`) quand
+`activityId<=0`. Correctif : `NavigationLink` restreint à l'avatar seul (→ profil,
+inconditionnel) ; bloc nom/texte extrait en `nameAndBodyText` (`@ViewBuilder`), enveloppé dans un
+`Button` → `onOpenPost(post)` quand `reconstructedPost != nil` (`activityId>0`), sinon affiché
+tel quel, non tapable — fidèle à `setClickable(false)`, pas un `Button` désactivé (pas de retour
+visuel de bouton non plus côté Android). Bouton vignette séparé (existant, hors périmètre de ce
+finding) laissé inchangé.
+
+**Fichiers modifiés** : `Sources/TiinverSwift/Notifications/NotificationsListView.swift`.
+
+**Résultat CI** : commit `e49cb70`, push confirmé (`a72684c..e49cb70 main -> main`), run
+`32920326997` → **`conclusion: success`**.
+
+**Statut honnête après correction** : `BUILD_VALIDATED` (CI verte confirmée). PAS
+`COMPLETE_PARITY_VALIDATED` — test réel requis : recevoir un like/commentaire sur un post texte
+(sans vignette), taper le texte de la notification, confirmer l'ouverture du post ; taper l'avatar,
+confirmer l'ouverture du profil.
 ```
 
 ```

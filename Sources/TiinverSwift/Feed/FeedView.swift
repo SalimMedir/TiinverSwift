@@ -149,28 +149,6 @@ struct FeedView: View {
         .padding(.top, 8)
     }
 
-    /// Diagnostic TEMPORAIRE (2026-08-27, BUG 1 grille Home) — AFFICHÉ À L'ÉCRAN plutôt que
-    /// seulement dans la console (l'utilisateur n'a pas confirmé avoir accès à la console Xcode
-    /// pendant le test), pour vérifier directement sur l'appareil quelles valeurs de champs média
-    /// (`cdn_content_url`/`object_url`) et quelle URL résolue (`thumbnailURL`) l'app reçoit
-    /// réellement pour les premiers posts du fil Home, en comparaison avec le JSON attendu.
-    /// Retiré une fois la cause confirmée — voir `PHYSICAL_DEVICE_VALIDATION_V5.md`.
-    @ViewBuilder
-    private var thumbnailDiagnosticsBanner: some View {
-        if !viewModel.thumbnailDiagnostics.isEmpty {
-            // Passage en retour à la ligne (au lieu du défiler horizontal, qui coupait la partie
-            // la plus importante — `resolved=` — hors de l'écran sur la 1ʳᵉ capture reçue).
-            Text(viewModel.thumbnailDiagnostics)
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(.white)
-                .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(6)
-                .background(Color.red.opacity(0.85))
-        }
-    }
-
     var body: some View {
         Group {
             if viewModel.posts.isEmpty {
@@ -182,7 +160,6 @@ struct FeedView: View {
             } else {
                 ScrollView {
                     homeHeader
-                    thumbnailDiagnosticsBanner
                     // **Ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-008, Phase B P2)**
                     // — voir doc de `feedGridSegments` : plusieurs `LazyVGrid` consécutifs
                     // (un par tronçon de posts) séparés par `FeedGridAdCell()` aux positions
@@ -537,41 +514,29 @@ struct FeedGridCell: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            Color(.secondarySystemBackground)
+            // Corrigé (2026-08-27, BUG 1, correctif final) — après 4 tours de diagnostic (données
+            // reçues confirmées correctes sur l'appareil, CDN+Referer confirmés corrects au `curl`,
+            // aucune erreur `AsyncImagePhase.failure` observée), convergé sur EXACTEMENT le pattern
+            // déjà éprouvé et fonctionnel de `ProfileView.postCell` plutôt que de continuer à
+            // deviner un mécanisme SwiftUI en cause : `.aspectRatio(...)` posé sur CHAQUE branche
+            // individuellement (photo chargée / placeholder / pas d'URL), PAS sur le `ZStack`
+            // entier comme avant (seule différence structurelle jamais isolée avec certitude entre
+            // les deux grilles) — et variante `CDNAsyncImage(url:targetSize:content:placeholder:)`
+            // (image/placeholder), identique à celle de Profile, plutôt que la variante `phase`
+            // brute. Toute la scaffolding de diagnostic (bandeau, étiquettes par case) retirée —
+            // objectif : converger vers l'implémentation dont le fonctionnement est confirmé,
+            // plutôt que d'isoler la cause exacte de la divergence.
             if let thumb = post.thumbnailURL {
                 // V4-F-073 — tuile de grille 2 colonnes (`FeedView.columns`/`HashtagFeedView.
                 // columns`, `spacing: 1`, les deux écrans qui réutilisent cette cellule), largeur
                 // ≈ moitié de l'écran.
-                CDNAsyncImage(url: thumb, targetSize: CGSize(width: UIScreen.main.bounds.width / 2, height: UIScreen.main.bounds.width / 2)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    case .failure(let error):
-                        Text(error.localizedDescription)
-                            .font(.system(size: 7)).foregroundStyle(.white)
-                            .padding(2).background(Color.red.opacity(0.9)).multilineTextAlignment(.center)
-                    case .empty:
-                        // Diagnostic TEMPORAIRE (2026-08-27, BUG 1, round 4) — le bandeau séparé
-                        // (`thumbnailDiagnosticsBanner`) ne reflète que la DERNIÈRE page chargée, pas
-                        // forcément les posts VISIBLES à l'écran (pagination) — capture reçue montrant
-                        // 2 cases blanches dont AUCUNE ne figurait dans le bandeau, donc aucune preuve
-                        // directe sur CES posts précis. Étiquette directement sur chaque case,
-                        // garantissant une correspondance 1:1 sans ambiguïté : distingue ici
-                        // `.empty` PERSISTANT (le chargement ne s'est jamais déclenché ou reste bloqué,
-                        // ni succès ni échec observé) — seul cas encore inexpliqué après 3 tours.
-                        Text("EMPTY").font(.system(size: 8)).foregroundStyle(.white)
-                            .padding(2).background(Color.blue.opacity(0.9))
-                    @unknown default:
-                        EmptyView()
-                    }
-                }
-                .overlay(alignment: .topLeading) {
-                    Text("#\(post.id)").font(.system(size: 7)).foregroundStyle(.yellow)
-                        .padding(2).background(Color.black.opacity(0.6))
+                CDNAsyncImage(url: thumb, targetSize: CGSize(width: UIScreen.main.bounds.width / 2, height: UIScreen.main.bounds.width / 2)) {
+                    $0.resizable().aspectRatio(0.8, contentMode: .fill).clipped()
+                } placeholder: {
+                    Color(.secondarySystemBackground).aspectRatio(0.8, contentMode: .fill)
                 }
             } else {
-                Text("#\(post.id) NIL URL").font(.system(size: 8)).foregroundStyle(.white)
-                    .padding(2).background(Color.orange.opacity(0.9))
+                Color(.secondarySystemBackground).aspectRatio(0.8, contentMode: .fill)
             }
             if post.isVideo {
                 Image(systemName: "play.fill")
@@ -612,7 +577,6 @@ struct FeedGridCell: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(4)
         }
-        .aspectRatio(0.8, contentMode: .fill)
         .clipped()
     }
 }

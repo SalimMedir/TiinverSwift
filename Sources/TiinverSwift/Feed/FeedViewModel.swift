@@ -16,12 +16,6 @@ final class FeedViewModel: ObservableObject {
     /// depuis Appetize) — demande explicite de l'utilisateur suite à plusieurs tours de rapports
     /// "Home vide" non résolus par la seule lecture de code. Retiré une fois la cause confirmée.
     @Published var diagnostics: String = ""
-    /// Diagnostic TEMPORAIRE (2026-08-27, BUG 1 grille Home) — AFFICHÉ À L'ÉCRAN (pas seulement
-    /// console) : l'utilisateur n'a pas confirmé avoir accès à la console Xcode pendant le test.
-    /// Même motif que `diagnostics` ci-dessus (déjà utilisé pour un mystère Home similaire). Vide
-    /// = rien à signaler, contenu = imprimé sous forme de bandeau visible en haut de la grille
-    /// Home (`FeedView.thumbnailDiagnosticsBanner`). Retiré une fois la cause confirmée.
-    @Published var thumbnailDiagnostics: String = ""
     /// Port du `Toast` d'échec de `ActivityAdapter.deleteMyPost`'s `onError` (V4-F-032) — transitoire,
     /// affiché par les vues qui déclenchent `deleteOwnPost` (`FeedView`/`FeedDetailPagerView`).
     @Published var deleteError: String?
@@ -160,25 +154,6 @@ final class FeedViewModel: ObservableObject {
             let responseLine = "FEED RESPONSE: server sent \(result.receivedCount) activities, \(page.count) decoded successfully" + (result.receivedCount != page.count ? " — \(result.receivedCount - page.count) DROPPED BY DECODE FAILURE" : "")
             print(responseLine)
             diagnostics += "\n" + responseLine
-            // Diagnostic TEMPORAIRE (2026-08-27, BUG 1 grille Home persistant après 2 correctifs de
-            // logique de sélection d'URL — voir PHYSICAL_DEVICE_VALIDATION_V5.md) : les 2 correctifs
-            // précédents portaient sur QUELLE URL choisir (cdn_content_url vs cdn_thumbnail_url vs
-            // object_url), sans jamais avoir pu observer les valeurs RÉELLEMENT reçues pour cet
-            // endpoint précis (aucun simulateur/débogueur disponible). Si le problème persiste malgré
-            // une logique de sélection désormais correcte, l'hypothèse restante est que ces champs
-            // sont eux-mêmes absents/vides dans la réponse JSON de CET endpoint (`feedtimeline/
-            // {userId}/{limit}/{offset}`, générique) — à trancher ici plutôt que deviner un 3ᵉ
-            // correctif à l'aveugle. Consultable dans la console Xcode (build Debug lancé depuis
-            // Xcode) sans nécessiter de nouvelle capture d'écran.
-            var thumbLines: [String] = []
-            for item in page.prefix(6) {
-                // `resolved=` en PREMIER (le plus important) — le reste était coupé hors écran par
-                // le défilement horizontal de la 1ʳᵉ version de ce bandeau.
-                let line = "#\(item.id) resolved=\(item.thumbnailURL?.absoluteString ?? "NIL") | object=\(item.object ?? "nil") cdn_content_url=\(item.cdn_content_url ?? "nil")"
-                print("THUMBNAIL DEBUG: " + line)
-                thumbLines.append(line)
-            }
-            thumbnailDiagnostics = thumbLines.joined(separator: "\n")
             try? await repository.cache(page)
             let hidden = hiddenPostIDs
             let visible = page.filter { !hidden.contains($0.id) }

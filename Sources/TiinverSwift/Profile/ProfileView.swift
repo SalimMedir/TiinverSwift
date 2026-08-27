@@ -347,28 +347,39 @@ struct ProfileView: View {
     /// utilisateurs), le placeholder `isUploadingPhoto` restait inatteignable : aucun retour visuel
     /// pendant tout l'upload. `pendingAvatarImage` (peuplé par `.onChange(of: avatarPickerItem)`
     /// ci-dessus) prend maintenant la priorité d'affichage tant que non-nil.
+    /// **Corrigé le 2026-08-27 (échec CI, run 33027551088)** — logique conditionnelle
+    /// (`pendingAvatarImage` présent ou non) EXTRAITE dans une fonction ordinaire ci-dessous : un
+    /// corps `@ViewBuilder` applique sa transformation de result builder à CHAQUE instruction, y
+    /// compris une affectation `image = ...` dans une branche `if/else` — Swift interprète alors
+    /// cette affectation elle-même comme une "expression de vue" via `buildExpression`, qui échoue
+    /// puisqu'une affectation ne produit aucune `View` (`() `). Confirmé par le compilateur réel en
+    /// CI (`error: 'buildExpression' is unavailable: this expression does not conform to 'View'`,
+    /// lignes 354/356) — jamais détectable par relecture seule dans cet environnement sans Xcode.
+    /// Un simple `let framed = avatarImage(profile)...` (liaison SANS branchement conditionnel
+    /// direct dans le corps `@ViewBuilder`) est en revanche pleinement supporté.
+    private func avatarImage(_ profile: User?) -> AnyView {
+        if let pendingAvatarImage {
+            return AnyView(Image(uiImage: pendingAvatarImage).resizable().aspectRatio(contentMode: .fill))
+        }
+        return AnyView(
+            CDNAsyncImage(url: URL(string: profile?.profile ?? ""), targetSize: CGSize(width: 84, height: 84)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+                if viewModel.isUploadingPhoto {
+                    ProgressView()
+                } else {
+                    Color(.secondarySystemBackground)
+                        .overlay {
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 32))
+                                .foregroundStyle(.secondary)
+                        }
+                }
+            }
+        )
+    }
+
     @ViewBuilder
     private func avatar(_ profile: User?) -> some View {
-        let image: AnyView
-        if let pendingAvatarImage {
-            image = AnyView(Image(uiImage: pendingAvatarImage).resizable().aspectRatio(contentMode: .fill))
-        } else {
-            image = AnyView(
-                CDNAsyncImage(url: URL(string: profile?.profile ?? ""), targetSize: CGSize(width: 84, height: 84)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
-                    if viewModel.isUploadingPhoto {
-                        ProgressView()
-                    } else {
-                        Color(.secondarySystemBackground)
-                            .overlay {
-                                Image(systemName: "person.fill")
-                                    .font(.system(size: 32))
-                                    .foregroundStyle(.secondary)
-                            }
-                    }
-                }
-            )
-        }
-        let framed = image
+        let framed = avatarImage(profile)
             .frame(width: 84, height: 84).clipShape(Circle())
         // Port de `ProfileAdapter2.java:281-285` (état `profilepicturestateloading==3`, icône
         // d'erreur superposée) — V4-F-009 : `photoUploadFailed` n'était lu nulle part côté vue

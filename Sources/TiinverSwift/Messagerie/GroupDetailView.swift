@@ -270,25 +270,32 @@ struct GroupDetailView: View {
     /// **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-074, Phase B P2)** — même
     /// correctif que `ProfileView.avatar` : `pendingGroupAvatarImage` prend la priorité d'affichage
     /// tant que non-nil, fidèle à `onUriResult` qui affiche le bitmap AVANT `sendFotoPerfilToServer`.
+    /// **Corrigé le 2026-08-27 (échec CI, run 33027551088)** — même correctif que
+    /// `ProfileView.avatarImage` : la logique conditionnelle est extraite dans une fonction
+    /// ordinaire (PAS `@ViewBuilder`), un corps `@ViewBuilder` ne supportant pas d'affectation
+    /// (`image = ...`) dans une branche `if/else` (`buildExpression` échoue, confirmé par le
+    /// compilateur réel en CI — jamais détectable par relecture seule dans cet environnement sans
+    /// Xcode). Un `let framed = groupAvatarImage()...` (liaison simple) reste supporté.
+    private func groupAvatarImage() -> AnyView {
+        if let pendingGroupAvatarImage {
+            return AnyView(Image(uiImage: pendingGroupAvatarImage).resizable().aspectRatio(contentMode: .fill))
+        }
+        return AnyView(
+            CDNAsyncImage(url: groupProfile.flatMap(URL.init), targetSize: CGSize(width: 56, height: 56)) { image in
+                image.resizable().aspectRatio(contentMode: .fill)
+            } placeholder: {
+                if isUploadingPhoto {
+                    ProgressView()
+                } else {
+                    Color(.tertiarySystemFill)
+                }
+            }
+        )
+    }
+
     @ViewBuilder
     private var groupAvatar: some View {
-        let image: AnyView
-        if let pendingGroupAvatarImage {
-            image = AnyView(Image(uiImage: pendingGroupAvatarImage).resizable().aspectRatio(contentMode: .fill))
-        } else {
-            image = AnyView(
-                CDNAsyncImage(url: groupProfile.flatMap(URL.init), targetSize: CGSize(width: 56, height: 56)) { image in
-                    image.resizable().aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    if isUploadingPhoto {
-                        ProgressView()
-                    } else {
-                        Color(.tertiarySystemFill)
-                    }
-                }
-            )
-        }
-        let framed = image
+        let framed = groupAvatarImage()
             .frame(width: 56, height: 56).clipShape(Circle())
 
         if isCurrentUserAdmin {

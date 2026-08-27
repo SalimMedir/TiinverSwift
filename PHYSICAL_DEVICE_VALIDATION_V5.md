@@ -11,6 +11,23 @@ source de vérité. Cycle par bug : capture → code iOS → code Android → co
 sur ÉCHEC, corriger/commit/push/re-déclencher → validé UNIQUEMENT après un run CI VERT réel.
 Jamais plusieurs correctifs non validés empilés.
 
+## Statut global (2026-08-27) — les 8 bugs
+
+Les 8 bugs sont tous `CODE_COMPLETE` + `BUILD_VALIDATED` par le run CI groupé final
+[33062002222](https://github.com/SalimMedir/TiinverSwift/actions/runs/33062002222) (SUCCESS).
+Aucun n'est encore `COMPLETE_PARITY_VALIDATED` — cela nécessite un vrai test sur appareil
+physique, qui n'a pas eu lieu depuis ces correctifs (aucun simulateur/appareil disponible dans
+cet environnement de développement).
+
+| Bug | Statut | Commit(s) |
+|---|---|---|
+| 1 — Grille Home vignettes invisibles | BUILD_VALIDATED | `eaecb9c` |
+| 2/3 — Plein écran boutons absents + mauvaise échelle | BUILD_VALIDATED | `0225267` |
+| 4 — Carrousel suggestions absent | DÉJÀ_CORRECT (aucun code changé) | — |
+| 5 — Puces IA manquantes | BUILD_VALIDATED | `f42453b` |
+| 6/7 — Barre du bas absente + timeline hauteur fixe | BUILD_VALIDATED | `a5723c4` |
+| 8 — Play n'anime pas | BUILD_VALIDATED | `e13ea4f` |
+
 ## Inventaire des captures (12 fichiers, dossier fourni par l'utilisateur)
 
 Dossier : `C:\Users\helen\OneDrive\Pictures\photo\Product hunt\ios-example\`
@@ -157,10 +174,10 @@ séparément.
 (`FeedDetailPagerView.body`, une seule ligne de frame).
 
 **Commit** : `0225267`
-**CI run** : en attente (build complet groupé en fin des 8 bugs, sur demande explicite de
-l'utilisateur — plus de test/CI intermédiaire par bug)
-**Résultat** : NON confirmé visuellement (aucun accès simulateur/appareil sur cette machine) —
-`CODE_COMPLETE`, nécessitera une validation physique finale groupée avec les autres bugs.
+**CI run** : [33062002222](https://github.com/SalimMedir/TiinverSwift/actions/runs/33062002222) — SUCCESS (2026-08-27, build groupé final des 8 bugs)
+**Résultat** : `BUILD_VALIDATED` (compile réellement, run CI vert confirmé). NON confirmé
+visuellement (aucun accès simulateur/appareil sur cette machine) — nécessite encore une
+validation physique finale groupée.
 
 ## BUG 4 — Accueil : carrousel de comptes suggérés absent
 
@@ -215,17 +232,119 @@ dans le handler réel).
 nouvelles fonctions/propriétés privées, aucun fichier de modèle/viewmodel touché).
 
 **Commit** : `f42453b`
-**CI run** : en attente (build groupé de fin de lot)
-**Résultat** : NON confirmé visuellement — `CODE_COMPLETE`.
+**CI run** : [33062002222](https://github.com/SalimMedir/TiinverSwift/actions/runs/33062002222) — SUCCESS (2026-08-27, build groupé final des 8 bugs)
+**Résultat** : `BUILD_VALIDATED`. NON confirmé visuellement.
 
 ## BUG 6 — Animems : barre d'outils du bas absente
-
-**Statut : NON DÉMARRÉ**
-
 ## BUG 7 — Animems : hauteur de piste de la timeline ne grandit pas
 
-**Statut : NON DÉMARRÉ**
+**Statut : CODE_COMPLETE — MÊME CAUSE RACINE, fusionnés (voir règle de fusion)**
+
+**Découverte clé** : `AnimemesEditorView.bottomToolbar` (`AnimemesEditorView.swift:1079-1165`)
+existait DÉJÀ, entièrement câblé, avec BEAUCOUP plus que les 8 boutons cités dans le rapport :
+Generate with AI (code mort côté Android lui-même, fidèlement reproduit), Compose, Load compose
+(différé, grisé), Modèle, masque, propriétés, dupliquer, bezier, fond (suppression d'arrière-
+plan), supprimer, réinitialiser, chronologie, undo. Reconstruit lors d'un audit dédié antérieur
+(« capture d'écran réelle 2026-08-16 », voir en-tête de fichier) — PAS une fonctionnalité à
+construire. L'overlay de debug (`gestureDiagnosticsHUD`) était DÉJÀ gaté `#if DEBUG`
+(`AnimemesEditorView.swift:146-153`, corrigé V4-F-055 2026-08-24) — n'apparaît QUE dans un build
+Debug (Xcode "Run" direct sur l'appareil), déjà absent de tout build Release/TestFlight ;
+aucune action requise pour la « production ».
+
+**Cause racine réelle** : `AnimemesEditorState.syncTimeline()` (`AnimemesEditorState.swift:210`)
+fixait `timeline.trackCount = max(5, composer.layers.count)` — un PLANCHER de 5 pistes TOUJOURS
+réservé, même avec 0, 1 ou 2 calques réels. `TimelineView.body` (`TimelineView.swift:60,78`)
+calcule sa hauteur comme `rulerHeight + trackCount * (trackHeight + trackGap) + 8` — donc figée à
+la hauteur de 5 pistes tant que le nombre de calques restait ≤ 5 (BUG 7 : aucune croissance
+visible entre 1 et 2 calques). Cette hauteur fixe (~240pt) était réservée dans le `VStack`
+NON-scrollable de `AnimemesEditorView.body` (topBar → canevas → barre de lecture → timeline →
+`bottomToolbar`), squeezant le canevas (confirmé par le texte de debug de la capture :
+`canvasSize=202×360`, anormalement petit) ET poussant `bottomToolbar`, dernier élément du
+`VStack`, hors de l'écran visible (BUG 6). `syncTimeline()` n'était de plus appelée qu'APRÈS
+chaque ajout/suppression de calque, jamais à l'ouverture de l'éditeur — l'écran vide
+(`calques=0`, exactement la capture `animemes-menu en bas abscent.png`) restait donc sur le
+défaut de classe `TimelineViewModel.trackCount = 5` (jamais synchronisé) tant qu'aucun calque
+n'avait encore été ajouté.
+
+**Comportement Android confirmé** : `AnimemesCompound.java:1744/1781/3606` appellent TOUS
+`timelineView.setTrackCount(mView.getComposer().getLayers().size())` — le nombre EXACT de
+calques ; `TimelineView.setTrackCount` (`android/views/TimelineView.java:307`) ne clampe qu'à un
+PLANCHER de 1 (`Math.max(1, count)`), jamais 5. Le défaut interne `private int trackCount = 5`
+(`TimelineView.java:73`) existe aussi côté Android, mais UNIQUEMENT comme valeur de classe avant
+tout appel réel — jamais destiné à survivre à l'écran affiché.
+
+**Correctif appliqué** : `syncTimeline()` — `max(5, ...)` → `max(1, composer.layers.count)`
+(fidèle à Android). `AnimemesEditorState.init()` appelle désormais `syncTimeline()` (au lieu de
+seulement `timeline.layers = composer.layers`), pour que `trackCount` soit correct (`1`) dès
+l'ouverture de l'éditeur plutôt que de dépendre du défaut de classe non synchronisé. AUCUN
+nouveau bouton créé — le toolbar existant est déjà complet et déjà audité contre de vraies
+captures Android.
+
+**Fichier(s) modifié(s)** : `Sources/TiinverSwift/Animems/AnimemesEditorState.swift`
+(`syncTimeline()`, `init()`).
+
+**Commit** : `a5723c4`
+**CI run** : [33062002222](https://github.com/SalimMedir/TiinverSwift/actions/runs/33062002222) — SUCCESS (2026-08-27, build groupé final des 8 bugs)
+**Résultat** : `BUILD_VALIDATED`. NON confirmé visuellement. Point nécessitant une validation
+physique : confirmer que `bottomToolbar` est bien visible ET que la timeline grandit visiblement
+avec 2+ calques sur un appareil réel — la logique de hauteur est vérifiée algébriquement mais pas
+testée à l'écran (aucun simulateur/appareil disponible dans cet environnement).
 
 ## BUG 8 — Animems : le bouton Play n'anime pas le canvas
 
-**Statut : NON DÉMARRÉ**
+**Statut : CODE_COMPLETE**
+
+**Problème observé** (`animemes.click.play-pas de animation.png`) : bouton Play visible et
+apparemment fonctionnel (icône), mais le canevas reste figé.
+
+**Pipeline tracé en entier** (aucune supposition) : Play → `AnimemesEditorState.togglePlayback()`
+(`:899`) → `preparePlayback()` + `engine.play(composer:layer: 0)` → `AnimationEngine.play()`
+(`:158`, garde `!composer.layers.isEmpty`) → `startPlayback()` (`:178`) → crée un vrai
+`CADisplayLink` (`:183-189`, pas un timer factice) → `tick(composer:layer:timestamp:)` (`:202`,
+appelé ~60×/s par le displaylink) → **ICI, cause racine** : `guard !composer.layers[layer]
+.transforms.isEmpty else { return }` — retour IMMÉDIAT, `totalFrame` jamais incrémenté,
+`isPlaying` jamais mis à `true` (l'affectation est À L'INTÉRIEUR de la boucle jamais atteinte),
+tant que `composer.layers[0].transforms` est vide. En aval (jamais atteint dans ce cas) : le reste
+du pipeline (interpolation clé/image, `LayerRenderer`, invalidation `@Published`/`renderVersion`,
+`Canvas` de `AnimemesEditorView.canvasArea`) est correctement câblé — vérifié en lisant le
+délégué `AnimationEnginePlaybackDelegate` (`AnimemesEditorState.swift:1199-1216`) : `didPlayFrame`
+met à jour `timeline.playheadFrame` + `isPlaying` + `bumpRenderVersion()`, tous `@Published`,
+observés par SwiftUI. Le problème n'est PAS un timer non démarré, ni un déclenchement UI cassé,
+ni un moteur non observé — c'est un retour anticipé qui empêche TOUT le reste de s'exécuter.
+
+**Pourquoi `transforms` est vide** : `autoCaptureEnabled` (case "Capture automatique") vaut
+`false` par défaut (`AnimemesEditorState.swift:78`) ; `dragEnded()` (`:437-440`) n'enregistre une
+keyframe QUE si cette case est cochée. Un simple glissement au doigt (capture d'écran "DRAG at
+(...) → calque #0 déplacé") ne peuple donc `transforms` d'AUCUN calque sans elle.
+
+**Cause racine réelle et divergence Android assumée** : `layer: 0` est TOUJOURS le paramètre
+utilisé côté iOS (`togglePlayback`, `:904`). Côté Android (`AnimationEngine.java:200-207`, MÊME
+garde `if (tfm.isEmpty()) return;`), la valeur RÉELLE de `layer` transmise par `MemesView2.play()`
+(`:1948-1951`) n'est PAS un choix délibéré de « calque principal » : `layer` est un simple champ
+MUTÉ COMME EFFET DE BORD de la dernière boucle de dessin (`seekDraw`/`playPreview`,
+`MemesView2.java:794/832`, `layer = i` à chaque calque bitmap/forme dessiné) — sa valeur au
+moment du tap sur Play dépend donc de l'ordre/type des calques dessinés juste avant, pas d'une
+intention. Bloquer l'avancement GLOBAL de `totalFrame` (qui pilote déjà TOUS les calques via
+`transformationArray`, construit calque par calque dans `prepareFrame`, indépendamment de
+`layer`) sur les seuls `transforms` d'UN calque arbitraire est contraire à l'intention
+fonctionnelle réelle — PAS un comportement Android intentionnel à reproduire (conformément à la
+consigne explicite de ne pas copier aveuglément un bug/effet de bord Android).
+
+**Correctif appliqué** : retrait de la garde `layer < composer.layers.count` /
+`!transforms.isEmpty` dans `AnimationEngine.tick()` — l'avancement de `totalFrame` ne dépend plus
+que de `totalFramesMinus1` (déjà calculé sur TOUS les calques par `prepare()`), plus de la
+présence de données sur un calque arbitraire. La seule garde réellement significative
+(`!composer.layers.isEmpty`) reste dans `play()`, inchangée. Aucun comportement forcé/inventé —
+si AUCUN calque n'a de keyframe, `totalFramesMinus1` reste à 0 et Play n'a toujours rien à animer
+(comportement correct : rien à animer = rien ne bouge), mais dès qu'UN calque a des données
+(quel que soit son index), Play les anime désormais réellement.
+
+**Fichier(s) modifié(s)** : `Sources/TiinverSwift/Animems/AnimationEngine.swift` (`tick(composer:
+layer:timestamp:)`).
+
+**Commit** : `e13ea4f`
+**CI run** : [33062002222](https://github.com/SalimMedir/TiinverSwift/actions/runs/33062002222) — SUCCESS (2026-08-27, build groupé final des 8 bugs)
+**Résultat** : `BUILD_VALIDATED`. NON confirmé visuellement. Point nécessitant une validation
+physique : confirmer qu'un calque avec des keyframes RÉELLEMENT enregistrées (case "Capture
+automatique" cochée, ou keyframe posée via le bouton ◆/propriétés) s'anime bien au Play. Un
+calque SANS aucune keyframe n'a, par design (Android et iOS), rien à animer — pas un bug distinct.

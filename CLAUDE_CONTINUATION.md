@@ -9,6 +9,46 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
+# CURRENT HANDOFF (2026-08-27 — Phase D : 8 bugs de test physique corrigés, voir `PHYSICAL_DEVICE_VALIDATION_V5.md`)
+
+Nouvelle phase distincte de V5 : 12 captures d'écran réelles fournies par l'utilisateur
+(`C:\Users\helen\OneDrive\Pictures\photo\Product hunt\ios-example\`) ont révélé 8 bugs
+comportementaux non détectables par audit de code seul. Suivi COMPLET dans le nouveau fichier
+`PHYSICAL_DEVICE_VALIDATION_V5.md` (créé cette session) — NE PAS confondre avec les findings
+`MIGRATION_PARITY_AUDIT_V5.md`, périmètre volontairement séparé.
+
+**Les 8 bugs sont tous `CODE_COMPLETE` + `BUILD_VALIDATED`** (run CI groupé final
+[33062002222](https://github.com/SalimMedir/TiinverSwift/actions/runs/33062002222), SUCCESS).
+Aucun n'est encore `COMPLETE_PARITY_VALIDATED` (nécessite un vrai test sur appareil physique,
+pas fait depuis ces correctifs — aucun simulateur/appareil disponible dans cet environnement).
+
+Résumé (détail complet + citations Android dans `PHYSICAL_DEVICE_VALIDATION_V5.md`) :
+- **BUG 1** (grille Home, vignettes invisibles) : `FeedActivity.thumbnailURL` gate à tort
+  `cdn_content_url` sur la présence de `cdn_content_id` pour les photos — corrigé pour l'utiliser
+  sans condition (règle confirmée par l'utilisateur via JSON réel). Commit `eaecb9c`.
+- **BUG 2/3** (plein écran, boutons absents + mauvaise échelle) — MÊME CAUSE RACINE : le
+  contournement "TabView pivoté à 90° pour pagination verticale" (`FeedDetailPagerView`) donnait
+  à tort le frame ÉCHANGÉ du conteneur à chaque PAGE individuelle. Un seul `.frame()` corrigé ;
+  `FeedDetailCell` avait DÉJÀ tout le rail d'actions/avatar/"S'abonner" câblé, rien n'était
+  réellement manquant. Commit `0225267`.
+- **BUG 4** (carrousel suggestions Home) : DÉJÀ CORRECT — `SuggestionsCarouselView` existe, câblé,
+  réel API. Aucun code changé, probablement données vides pour le compte testé.
+- **BUG 5** (puces IA manquantes) : chips de `TiinverGeminiAIChat.setupChips()` jamais portées —
+  ajoutées, réutilisent `sendText()`/`generateImage()`/`PhotosPicker` existants. Commit `f42453b`.
+- **BUG 6/7** (Animems, barre du bas absente + timeline ne grandit pas) — MÊME CAUSE RACINE :
+  `syncTimeline()` forçait `trackCount = max(5, layers.count)` (devrait être `max(1, ...)`,
+  vérifié contre Android) — hauteur de timeline figée à 5 pistes, squeezant le canevas ET
+  poussant `bottomToolbar` (déjà entièrement câblé, 13 boutons réels) hors écran. Commit `a5723c4`.
+- **BUG 8** (Animems, Play n'anime pas) : `AnimationEngine.tick()` bloquait l'avancement GLOBAL
+  du temps sur les `transforms` d'UN SEUL calque arbitraire (`layer: 0` côté iOS, effet de bord
+  incident côté Android — pas un choix délibéré) — garde retirée. Commit `e13ea4f`.
+
+**Prochaine étape pour une future session/l'utilisateur** : validation physique groupée des 8
+bugs sur un vrai appareil (screenshots ou test direct), puis mise à jour du statut vers
+`COMPLETE_PARITY_VALIDATED` dans `PHYSICAL_DEVICE_VALIDATION_V5.md`.
+
+---
+
 # CURRENT HANDOFF (2026-08-27 — Phase C V5 : validation CI réelle, `gh` CLI restauré)
 
 **`gh` CLI installé et authentifié** sur cette session Windows (`SalimMedir`, scope `workflow`) —

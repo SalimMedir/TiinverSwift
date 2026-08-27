@@ -547,21 +547,31 @@ struct FeedGridCell: View {
                     case .success(let image):
                         image.resizable().aspectRatio(contentMode: .fill)
                     case .failure(let error):
-                        // Diagnostic TEMPORAIRE (2026-08-27, BUG 1, round 3) — les données reçues
-                        // (`cdn_content_url`) et le CDN (testé au `curl` avec le même `Referer`)
-                        // sont confirmés corrects ; seul le résultat RÉEL de `CDNAsyncImage.load()`
-                        // sur l'appareil peut encore trancher entre un succès masqué par autre
-                        // chose (ordre de rendu, opacité...) et un vrai échec réseau/décodage
-                        // spécifique à l'appareil, invisible depuis `curl` sur cette machine.
                         Text(error.localizedDescription)
                             .font(.system(size: 7)).foregroundStyle(.white)
                             .padding(2).background(Color.red.opacity(0.9)).multilineTextAlignment(.center)
                     case .empty:
-                        EmptyView()
+                        // Diagnostic TEMPORAIRE (2026-08-27, BUG 1, round 4) — le bandeau séparé
+                        // (`thumbnailDiagnosticsBanner`) ne reflète que la DERNIÈRE page chargée, pas
+                        // forcément les posts VISIBLES à l'écran (pagination) — capture reçue montrant
+                        // 2 cases blanches dont AUCUNE ne figurait dans le bandeau, donc aucune preuve
+                        // directe sur CES posts précis. Étiquette directement sur chaque case,
+                        // garantissant une correspondance 1:1 sans ambiguïté : distingue ici
+                        // `.empty` PERSISTANT (le chargement ne s'est jamais déclenché ou reste bloqué,
+                        // ni succès ni échec observé) — seul cas encore inexpliqué après 3 tours.
+                        Text("EMPTY").font(.system(size: 8)).foregroundStyle(.white)
+                            .padding(2).background(Color.blue.opacity(0.9))
                     @unknown default:
                         EmptyView()
                     }
                 }
+                .overlay(alignment: .topLeading) {
+                    Text("#\(post.id)").font(.system(size: 7)).foregroundStyle(.yellow)
+                        .padding(2).background(Color.black.opacity(0.6))
+                }
+            } else {
+                Text("#\(post.id) NIL URL").font(.system(size: 8)).foregroundStyle(.white)
+                    .padding(2).background(Color.orange.opacity(0.9))
             }
             if post.isVideo {
                 Image(systemName: "play.fill")

@@ -158,13 +158,16 @@ struct FeedView: View {
     @ViewBuilder
     private var thumbnailDiagnosticsBanner: some View {
         if !viewModel.thumbnailDiagnostics.isEmpty {
-            ScrollView(.horizontal, showsIndicators: true) {
-                Text(viewModel.thumbnailDiagnostics)
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .padding(6)
-            }
-            .background(Color.red.opacity(0.85))
+            // Passage en retour à la ligne (au lieu du défiler horizontal, qui coupait la partie
+            // la plus importante — `resolved=` — hors de l'écran sur la 1ʳᵉ capture reçue).
+            Text(viewModel.thumbnailDiagnostics)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.white)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(6)
+                .background(Color.red.opacity(0.85))
         }
     }
 
@@ -540,8 +543,23 @@ struct FeedGridCell: View {
                 // columns`, `spacing: 1`, les deux écrans qui réutilisent cette cellule), largeur
                 // ≈ moitié de l'écran.
                 CDNAsyncImage(url: thumb, targetSize: CGSize(width: UIScreen.main.bounds.width / 2, height: UIScreen.main.bounds.width / 2)) { phase in
-                    if case .success(let image) = phase {
+                    switch phase {
+                    case .success(let image):
                         image.resizable().aspectRatio(contentMode: .fill)
+                    case .failure(let error):
+                        // Diagnostic TEMPORAIRE (2026-08-27, BUG 1, round 3) — les données reçues
+                        // (`cdn_content_url`) et le CDN (testé au `curl` avec le même `Referer`)
+                        // sont confirmés corrects ; seul le résultat RÉEL de `CDNAsyncImage.load()`
+                        // sur l'appareil peut encore trancher entre un succès masqué par autre
+                        // chose (ordre de rendu, opacité...) et un vrai échec réseau/décodage
+                        // spécifique à l'appareil, invisible depuis `curl` sur cette machine.
+                        Text(error.localizedDescription)
+                            .font(.system(size: 7)).foregroundStyle(.white)
+                            .padding(2).background(Color.red.opacity(0.9)).multilineTextAlignment(.center)
+                    case .empty:
+                        EmptyView()
+                    @unknown default:
+                        EmptyView()
                     }
                 }
             }

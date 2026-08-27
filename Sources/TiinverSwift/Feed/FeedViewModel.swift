@@ -172,7 +172,9 @@ final class FeedViewModel: ObservableObject {
             // Xcode) sans nécessiter de nouvelle capture d'écran.
             var thumbLines: [String] = []
             for item in page.prefix(6) {
-                let line = "#\(item.id) \(item.username ?? "?") object=\(item.object ?? "nil") cdn_content_url=\(item.cdn_content_url ?? "nil") object_url=\(item.object_url ?? "nil") → resolved=\(item.thumbnailURL?.absoluteString ?? "NIL")"
+                // `resolved=` en PREMIER (le plus important) — le reste était coupé hors écran par
+                // le défilement horizontal de la 1ʳᵉ version de ce bandeau.
+                let line = "#\(item.id) resolved=\(item.thumbnailURL?.absoluteString ?? "NIL") | object=\(item.object ?? "nil") cdn_content_url=\(item.cdn_content_url ?? "nil")"
                 print("THUMBNAIL DEBUG: " + line)
                 thumbLines.append(line)
             }

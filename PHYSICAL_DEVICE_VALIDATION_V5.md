@@ -191,6 +191,36 @@ nouvelle capture d'écran nécessaire pour le lire (il suffit de rouvrir l'ongle
 bandeau rouge en haut de l'Accueil, pour confirmer si l'app reçoit bien les mêmes valeurs que le
 JSON vérifié manuellement, ou si le build testé est simplement en retard sur `main`.
 
+**Capture reçue (2026-08-27) — DONNÉES CONFIRMÉES CORRECTES CÔTÉ APP** : le bandeau rouge affiche
+bien des `cdn_content_url=https://cdn.tiinver.com/...` valides pour chaque post (ex. `#13296
+ChristNtsoumou object=photos cdn_content_url=https://cdn.tiinver.com/...`) — l'app reçoit
+exactement les mêmes données que le JSON vérifié manuellement. Élimine définitivement l'hypothèse
+"build en retard sur `main`" ET l'hypothèse "données absentes côté serveur pour cet endpoint" (la
+2ᵉ hypothèse envisagée juste au-dessus). Le défilement horizontal du bandeau coupait cependant la
+partie `resolved=` (URL finalement résolue) hors de l'écran — pas visible sur cette capture.
+
+**Vérification externe complémentaire (`curl` sur le CDN, en dehors de l'app)** : les octets
+réels du fichier téléchargé (même URL/même `Referer`) sont un JPEG standard valide (signature
+`FF D8 FF E0 ... JFIF`), malgré l'extension `.webp` et le `Content-Type: image/webp` déclarés par
+le serveur — mismatch inhabituel mais ImageIO détecte le format par le contenu réel (pas
+l'extension/Content-Type), ne devrait normalement pas faire échouer le décodage.
+
+**Diagnostic renforcé une 3ᵉ fois** : bandeau passé en RETOUR À LA LIGNE (au lieu du défilement
+horizontal) avec `resolved=` déplacé EN PREMIER, pour ne plus rien couper. `FeedGridCell` affiche
+en plus, directement sur chaque vignette cassée, le message d'erreur RÉEL de
+`AsyncImagePhase.failure` si le chargement échoue réellement sur l'appareil (fond rouge, texte
+d'erreur) — seule donnée qui reste à observer : le comportement RÉEL de `CDNAsyncImage.load()`
+sur l'appareil physique, qu'aucun test `curl` externe ne peut reproduire.
+
+**Fichier(s) modifié(s) (ce tour)** : `Sources/TiinverSwift/Feed/FeedViewModel.swift`
+(format du diagnostic), `Sources/TiinverSwift/Feed/FeedView.swift` (bandeau en retour à la ligne
++ diagnostic d'échec par vignette dans `FeedGridCell`).
+
+**Commit** : `479b6d9`
+**CI run** : [33072094428](https://github.com/SalimMedir/TiinverSwift/actions/runs/33072094428) — SUCCESS (2026-08-27)
+**Statut** : `BLOQUÉ_EN_INVESTIGATION` — en attente d'une nouvelle capture montrant le bandeau
+complet (avec `resolved=`) ET, si une vignette affiche un texte d'erreur rouge, ce texte exact.
+
 ---
 
 ## BUG 2 — Plein écran : boutons d'action absents

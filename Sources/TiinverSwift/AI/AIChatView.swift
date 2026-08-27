@@ -71,13 +71,93 @@ struct AIChatView: View {
     }
 
     private var welcomeState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "sparkles").font(.system(size: 40)).foregroundStyle(.secondary)
-            Text("Demande-moi n'importe quoi, ou génère une image.")
-                .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        VStack(spacing: 24) {
+            VStack(spacing: 8) {
+                Image(systemName: "sparkles").font(.system(size: 40)).foregroundStyle(.secondary)
+                Text("Demande-moi n'importe quoi, ou génère une image.")
+                    .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 40)
+
+            // Port de `TiinverGeminiAIChat.setupChips` (`ai/TiinverGeminiAIChat.java:268-313`, lu
+            // en entier) — **ajouté le 2026-08-27 (validation physique, BUG 5)**. Absent jusqu'ici :
+            // seul l'état vide (`R.string.demande_moi...`) avait été porté, jamais les 2 groupes de
+            // puces de suggestion Android (5 questions fréquentes + 3 prompts d'image + "améliorer
+            // mon image"). Textes EXACTS de `values-fr/strings.xml` (`chip_gain_coins`/
+            // `chip_create_animeme`/`chip_monetize`/`chip_paid_group`/`chip_withdraw`/
+            // `chip_african_landscape`/`chip_artistic_portrait`/`chip_profile_illustration`/
+            // `chip_improve_image`), pas devinés. Chaque puce réutilise la logique EXISTANTE plutôt
+            // que d'en dupliquer une seconde : `setChipText`/`onChipTextClick` (question) →
+            // `viewModel.inputText` + `sendText()` ; `setChipImage`/`onChipImageClick` (prompt
+            // d'image) → `viewModel.inputText` + `generateImage()` ; `chip_improve_image` →
+            // `galleryLauncher.launch("image/*")` côté Android, simple ouverture du même
+            // `PhotosPicker` déjà câblé sur `$pickerItem` dans `inputBar` (aucun prompt auto-attaché
+            // par Android non plus, vérifié : le handler Android n'ajoute aucun message).
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Questions fréquentes").font(.subheadline.bold())
+                ForEach(Self.questionChips, id: \.text) { chip in
+                    chipButton(icon: chip.icon, tint: chip.tint, text: chip.text) {
+                        Task { await ask(chip.text) }
+                    }
+                }
+
+                Text("🎨 Générer une image").font(.subheadline.bold()).padding(.top, 8)
+                ForEach(Self.imageChips, id: \.self) { prompt in
+                    chipButton(icon: "photo.fill", tint: .orange, text: prompt, background: Color.yellow.opacity(0.12)) {
+                        Task { await generateImage(prompt: prompt) }
+                    }
+                }
+                PhotosPicker(selection: $pickerItem, matching: .images) {
+                    chipLabel(icon: "plus.circle.fill", tint: .orange, text: "Améliorer mon image 📷", background: Color.yellow.opacity(0.12))
+                }
+            }
+            .padding(.horizontal)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 40)
+    }
+
+    /// Port de `values-fr/strings.xml`'s `chip_gain_coins`/`chip_create_animeme`/`chip_monetize`/
+    /// `chip_paid_group`/`chip_withdraw` — ordre EXACT de `setupChips()`.
+    private static let questionChips: [(icon: String, tint: Color, text: String)] = [
+        ("dollarsign.circle.fill", .yellow, "Comment gagner des pièces sur Tiinver ?"),
+        ("play.circle.fill", .black, "Comment créer un Animeme ?"),
+        ("dollarsign.circle.fill", .green, "Comment monétiser mon compte Tiinver ?"),
+        ("person.2.fill", .blue, "Comment créer un groupe payant ?"),
+        ("wallet.pass.fill", .purple, "Comment retirer mes gains ?"),
+    ]
+
+    /// Port de `chip_african_landscape`/`chip_artistic_portrait`/`chip_profile_illustration`.
+    private static let imageChips: [String] = [
+        "Crée un paysage africain au coucher du soleil",
+        "Génère un portrait artistique en style africain",
+        "Crée une illustration pour mon profil Tiinver",
+    ]
+
+    private func chipButton(icon: String, tint: Color, text: String, background: Color = Color(.secondarySystemBackground), action: @escaping () -> Void) -> some View {
+        Button(action: action) { chipLabel(icon: icon, tint: tint, text: text, background: background) }
+            .buttonStyle(.plain)
+    }
+
+    private func chipLabel(icon: String, tint: Color, text: String, background: Color) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon).foregroundStyle(tint)
+            Text(text).font(.subheadline).foregroundStyle(.primary).multilineTextAlignment(.leading)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(background, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// Port de `onChipTextClick` — même chemin que le champ de saisie + bouton d'envoi normal.
+    private func ask(_ question: String) async {
+        viewModel.inputText = question
+        await viewModel.sendText()
+    }
+
+    /// Port de `onChipImageClick` — même chemin que le champ de saisie + bouton "générer" normal.
+    private func generateImage(prompt: String) async {
+        viewModel.inputText = prompt
+        await viewModel.generateImage()
     }
 
     @ViewBuilder

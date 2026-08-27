@@ -107,7 +107,16 @@ struct FeedActivity: Codable, Identifiable, Equatable {
             let hasContentId = cdn_content_id != nil && cdn_content_id != "NULL" && !(cdn_content_id?.isEmpty ?? true)
             candidate = hasContentId ? cdn_thumbnail_url : object_url
         } else {
-            candidate = effectiveObjectURLString
+            // **Corrigé le 2026-08-27 (validation physique, BUG 1 grille Home)** — la branche
+            // photo réutilisait `effectiveObjectURLString` (port de `getObject_url()`, conçue pour
+            // la PRIORITÉ de lecture vidéo, pas pour la vignette), qui gate le choix de
+            // `cdn_content_url` sur la présence de `cdn_content_id`. JSON réel confirmé (fourni par
+            // l'utilisateur) : pour une activité `object == "photos"`, `cdn_content_url` contient
+            // TOUJOURS l'image réelle QUE `cdn_content_id` soit renseigné ou non sur cette activité,
+            // alors que `cdn_thumbnail_url` peut valoir un simple hôte nu `"https://cdn.tiinver.com/"`
+            // (jamais une vraie vignette) — ne doit donc JAMAIS être lu pour une photo. `object_url`
+            // reste le seul repli, uniquement si `cdn_content_url` est absent/vide.
+            candidate = (cdn_content_url?.isEmpty == false) ? cdn_content_url : object_url
         }
         guard let candidate, !candidate.isEmpty else { return nil }
         return URL(string: candidate)

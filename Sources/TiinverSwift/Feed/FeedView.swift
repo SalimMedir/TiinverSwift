@@ -520,10 +520,34 @@ struct FeedGridCell: View {
                 // columns`, `spacing: 1`, les deux écrans qui réutilisent cette cellule), largeur
                 // ≈ moitié de l'écran.
                 CDNAsyncImage(url: thumb, targetSize: CGSize(width: UIScreen.main.bounds.width / 2, height: UIScreen.main.bounds.width / 2)) { phase in
-                    if case .success(let image) = phase {
+                    switch phase {
+                    case .success(let image):
                         image.resizable().aspectRatio(contentMode: .fill)
+                    case .failure(let error):
+                        // Diagnostic TEMPORAIRE (2026-08-27, validation physique post-V5) — vignettes
+                        // de la grille Home invisibles (cellules texte/compteurs correctes, image
+                        // absente) alors que le même mécanisme `CDNAsyncImage`/même modèle
+                        // `FeedActivity` fonctionne côté grille Profil (`ProfileView.postCell`) : aucune
+                        // divergence de code trouvée après comparaison exhaustive (endpoint, décodage,
+                        // aspect ratio, en-tête Referer CDN) — cause racine réelle non identifiable par
+                        // seule lecture de code, affichée ici plutôt que supposée (même principe que
+                        // `FeedViewModel.diagnostics`, déjà utilisé pour un mystère Home similaire).
+                        Text(error.localizedDescription)
+                            .font(.system(size: 8)).foregroundStyle(.white)
+                            .padding(3).background(Color.red.opacity(0.8)).multilineTextAlignment(.center)
+                    case .empty:
+                        EmptyView()
+                    @unknown default:
+                        EmptyView()
                     }
                 }
+            } else {
+                // Même diagnostic temporaire — distingue "URL absente" (branche `else` ici) de "URL
+                // présente mais chargement en échec" (`.failure` ci-dessus), pour trancher entre les
+                // deux hypothèses de cause racine restantes sans deviner laquelle est la bonne.
+                Text("NO URL obj=\(post.object ?? "nil") video=\(post.isVideo) cid=\(post.cdn_content_id ?? "nil") ourl=\(post.object_url ?? "nil")")
+                    .font(.system(size: 8)).foregroundStyle(.white)
+                    .padding(3).background(Color.orange.opacity(0.8)).multilineTextAlignment(.center)
             }
             if post.isVideo {
                 Image(systemName: "play.fill")

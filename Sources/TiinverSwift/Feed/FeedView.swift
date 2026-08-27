@@ -149,6 +149,25 @@ struct FeedView: View {
         .padding(.top, 8)
     }
 
+    /// Diagnostic TEMPORAIRE (2026-08-27, BUG 1 grille Home) — AFFICHÉ À L'ÉCRAN plutôt que
+    /// seulement dans la console (l'utilisateur n'a pas confirmé avoir accès à la console Xcode
+    /// pendant le test), pour vérifier directement sur l'appareil quelles valeurs de champs média
+    /// (`cdn_content_url`/`object_url`) et quelle URL résolue (`thumbnailURL`) l'app reçoit
+    /// réellement pour les premiers posts du fil Home, en comparaison avec le JSON attendu.
+    /// Retiré une fois la cause confirmée — voir `PHYSICAL_DEVICE_VALIDATION_V5.md`.
+    @ViewBuilder
+    private var thumbnailDiagnosticsBanner: some View {
+        if !viewModel.thumbnailDiagnostics.isEmpty {
+            ScrollView(.horizontal, showsIndicators: true) {
+                Text(viewModel.thumbnailDiagnostics)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .padding(6)
+            }
+            .background(Color.red.opacity(0.85))
+        }
+    }
+
     var body: some View {
         Group {
             if viewModel.posts.isEmpty {
@@ -160,6 +179,7 @@ struct FeedView: View {
             } else {
                 ScrollView {
                     homeHeader
+                    thumbnailDiagnosticsBanner
                     // **Ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-008, Phase B P2)**
                     // — voir doc de `feedGridSegments` : plusieurs `LazyVGrid` consécutifs
                     // (un par tronçon de posts) séparés par `FeedGridAdCell()` aux positions

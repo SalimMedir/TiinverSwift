@@ -154,6 +154,20 @@ final class FeedViewModel: ObservableObject {
             let responseLine = "FEED RESPONSE: server sent \(result.receivedCount) activities, \(page.count) decoded successfully" + (result.receivedCount != page.count ? " — \(result.receivedCount - page.count) DROPPED BY DECODE FAILURE" : "")
             print(responseLine)
             diagnostics += "\n" + responseLine
+            // Diagnostic TEMPORAIRE (2026-08-27, BUG 1 grille Home persistant après 2 correctifs de
+            // logique de sélection d'URL — voir PHYSICAL_DEVICE_VALIDATION_V5.md) : les 2 correctifs
+            // précédents portaient sur QUELLE URL choisir (cdn_content_url vs cdn_thumbnail_url vs
+            // object_url), sans jamais avoir pu observer les valeurs RÉELLEMENT reçues pour cet
+            // endpoint précis (aucun simulateur/débogueur disponible). Si le problème persiste malgré
+            // une logique de sélection désormais correcte, l'hypothèse restante est que ces champs
+            // sont eux-mêmes absents/vides dans la réponse JSON de CET endpoint (`feedtimeline/
+            // {userId}/{limit}/{offset}`, générique) — à trancher ici plutôt que deviner un 3ᵉ
+            // correctif à l'aveugle. Consultable dans la console Xcode (build Debug lancé depuis
+            // Xcode) sans nécessiter de nouvelle capture d'écran.
+            for item in page.prefix(6) {
+                let line = "THUMBNAIL DEBUG: id=\(item.id) object=\(item.object ?? "nil") isVideo=\(item.isVideo) cdn_content_id=\(item.cdn_content_id ?? "nil") cdn_content_url=\(item.cdn_content_url ?? "nil") cdn_thumbnail_url=\(item.cdn_thumbnail_url ?? "nil") object_url=\(item.object_url ?? "nil") resolvedThumbnailURL=\(item.thumbnailURL?.absoluteString ?? "nil")"
+                print(line)
+            }
             try? await repository.cache(page)
             let hidden = hiddenPostIDs
             let visible = page.filter { !hidden.contains($0.id) }

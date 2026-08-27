@@ -686,22 +686,26 @@ struct FeedDetailPagerView: View {
                                 )
                             }
                         }
-                            // BUG 2/3 (validation physique, 2026-08-27) — même cause racine :
-                            // ce bloc reprenait à tort le frame ÉCHANGÉ (largeur/hauteur inversées) du
-                            // conteneur `TabView` externe (ligne suivante, où l'échange EST correct
-                            // avant sa propre rotation +90°). Le pattern standard de "TabView vertical
-                            // via rotation" pose chaque PAGE dans ses dimensions RÉELLES (`geo.size`,
-                            // non échangées) avant sa rotation -90° — seul le conteneur `TabView` lui-
-                            // même doit recevoir le frame échangé. Avec l'échange en trop ici, chaque
-                            // page se disposait dans une boîte paysage (hauteur/largeur de l'écran
-                            // inversées) au lieu du vrai portrait, d'où le petit rectangle centré avec
-                            // de grandes marges (BUG 3) — et le rail d'actions/l'avatar/le bouton
-                            // "S'abonner" de `FeedDetailCell` (déjà câblés, `actionRail`/lignes
-                            // 901-989 plus bas), positionnés par `Spacer()`/`.padding()` relatifs à
-                            // cette même boîte erronée, se retrouvaient hors de la zone effectivement
-                            // rendue (BUG 2). Aucune fonctionnalité n'était réellement absente.
+                            // BUG 2/3 (validation physique, 2026-08-27, corrigé une 2ᵉ fois le même
+                            // jour après un retour de test réel confirmant un débordement bas d'écran)
+                            // — `.rotationEffect` ne change JAMAIS la taille de layout qu'une vue
+                            // remonte à son parent, seulement son RENDU visuel : un 1ᵉʳ correctif
+                            // n'appliquait qu'un SEUL frame, AVANT la rotation, aux dimensions RÉELLES
+                            // de l'écran (`geo.size`, non échangées) — nécessaire pour que le contenu
+                            // (image/vidéo) se dispose avec les bonnes proportions, mais ce frame,
+                            // n'étant pas affecté par la rotation qui suit, remontait TOUJOURS au
+                            // `TabView` un encombrement de layout NON échangé (portrait), alors que le
+                            // `TabView` lui-même réserve un encombrement ÉCHANGÉ (paysage, ligne
+                            // suivante) — décalage qui faisait déborder le contenu (et le rail
+                            // d'actions/l'avatar/le bouton "S'abonner" de `FeedDetailCell`, déjà
+                            // câblés, lignes 901-989 plus bas) hors de l'écran réel. Pattern complet du
+                            // contournement "TabView vertical par rotation" : DEUX frames par page —
+                            // celui AVANT rotation (dimensions réelles, proportions du contenu) ET un
+                            // second APRÈS rotation (dimensions échangées, ce que le `TabView` réserve
+                            // réellement pour cette page) — seul ce 2ᵉ frame était manquant.
                             .frame(width: geo.size.width, height: geo.size.height)
                             .rotationEffect(.degrees(-90))
+                            .frame(width: geo.size.height, height: geo.size.width)
                             .tag(index)
                             .onAppear {
                                 if index == posts.count - 2 { Task { await viewModel.loadNextPage() } }

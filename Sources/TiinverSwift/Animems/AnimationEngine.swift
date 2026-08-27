@@ -200,10 +200,24 @@ final class AnimationEngine {
     /// tick) reconstitué ici depuis les horodatages `CADisplayLink` successifs (`CFTimeInterval`,
     /// secondes).
     private func tick(composer: AnimationComposer, layer: Int, timestamp: CFTimeInterval) {
-        guard layer >= 0, layer < composer.layers.count else { return }
-        let transforms = composer.layers[layer].transforms
-        guard !transforms.isEmpty else { return }
-
+        // Corrigé (validation physique, 2026-08-27, BUG 8) — port fidèle initial de
+        // `AnimationEngine.java:200-207` (`startAnimatorTime`) : gate `if (tfm.isEmpty()) return;`
+        // sur les seuls `transforms` du calque `layer`, portée telle quelle. Tracé jusqu'à l'appelant
+        // réel (`MemesView2.java:1948-1951`, `mView.play()` → `animationEngine.play(composer,
+        // layer)`) : `layer` n'est PAS un index de calque "principal" choisi délibérément — c'est un
+        // simple CHAMP MUTÉ COMME EFFET DE BORD de la dernière boucle de dessin (`seekDraw`/
+        // `playPreview`, `layer = i` à chaque calque bitmap/forme dessiné, `MemesView2.java:794/832`)
+        // ; sa valeur au moment du tap sur Play dépend donc de l'ORDRE et du TYPE des calques dessinés
+        // juste avant, pas d'un choix intentionnel. Bloquer l'avancement GLOBAL de `totalFrame` (qui
+        // pilote déjà TOUS les calques via `transformationArray`, calculé calque par calque dans
+        // `prepareFrame`) sur les seuls `transforms` d'UN calque arbitraire empêchait Play de faire
+        // quoi que ce soit dès que CE calque précis n'avait pas encore de keyframe enregistrée —
+        // même si un AUTRE calque en avait réellement (`Capture automatique` désactivée par défaut,
+        // `autoCaptureEnabled`, un simple glissement au doigt ne peuple `transforms` d'AUCUN calque
+        // sans elle). Contraire à l'intention fonctionnelle réelle (faire avancer le temps et animer
+        // les calques qui ont des données), pas un comportement Android à reproduire — voir
+        // `play(composer:layer:)` ci-dessus, qui garde déjà la seule garde réellement significative
+        // (`!composer.layers.isEmpty`).
         let deltaMs: Double
         if let last = lastTimestamp {
             deltaMs = (timestamp - last) * 1000

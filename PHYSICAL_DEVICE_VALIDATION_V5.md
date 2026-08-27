@@ -359,6 +359,39 @@ nouveau paramètre `bottomSafeArea`, `.zIndex(1)` sur le bloc de contrôles).
 **CI run** : [33076129132](https://github.com/SalimMedir/TiinverSwift/actions/runs/33076129132) — SUCCESS (2026-08-27)
 **Résultat** : `BUILD_VALIDATED`. NON confirmé visuellement.
 
+**RETEST RÉEL (2026-08-27) — « beaucoup d'amélioration », 3 points affinés** : captures reçues
+(`feed-fullscreen-video.png`, `feed-fullscren-photo.png`) + vidéo de référence Android
+(`android-fullscreen-feed.mp4`, extraite en image fixe pour comparaison) —
+1. **Vidéo : grande bande noire en haut + léger décalage horizontal (espace blanc à droite)** —
+   cause racine réelle : `VideoPlayer` (AVKit natif SwiftUI) utilise TOUJOURS `.resizeAspect`
+   (letterboxé), AUCUN réglage exposé pour changer ce comportement. Vérifié contre Android :
+   `ActivityfeedViewPager.java:105` — `videoSurfaceView.setResizeMode(AspectRatioFrameLayout.
+   RESIZE_MODE_ZOOM)`, remplissage/recadrage systématique, jamais de letterboxing pour CET écran
+   précis. Remplacé par `FillVideoPlayerView` (nouveau, `UIViewRepresentable` minimal autour
+   d'`AVPlayerLayer`, `videoGravity = .resizeAspectFill`) — seul moyen d'obtenir ce réglage, non
+   exposé par `VideoPlayer`. Explique très probablement la « grande bande noire » à elle seule,
+   pas un problème de rembourrage.
+2. **Marge basse trop petite** — référence vidéo Android confirme que la barre de navigation du
+   bas RESTE VISIBLE même sur cet écran (hauteur comparable à une barre d'onglets). `bottomSafeArea`
+   seul (~34pt) → `bottomSafeArea + 49pt` (hauteur de contenu d'une barre d'onglets standard).
+3. **Photo : rail d'actions/légende coupés à GAUCHE ET À DROITE** — régression auto-introduite au
+   tour précédent : le `GeometryReader` externe ajouté pour lire la zone sûre, N'AYANT PAS
+   `.ignoresSafeArea()` sur LUI-MÊME, occupe le rectangle RÉDUIT (zone sûre exclue) et PROPOSE
+   cette taille réduite à ses enfants — y compris le `GeometryReader` interne du pager (qui
+   ignore pourtant la zone sûre lui-même) : imbrication de `GeometryReader` non standard/fragile,
+   `geo.size` (calcul de rotation) pouvant recevoir une largeur/hauteur légèrement fausse selon
+   l'appareil. Corrigé en lisant `UIWindowScene.keyWindow.safeAreaInsets` DIRECTEMENT (méthode
+   UIKit fiable), zéro `GeometryReader` supplémentaire dans l'arbre du pager.
+
+**Fichier(s) modifié(s) (ce tour)** : `Sources/TiinverSwift/Feed/FeedView.swift`
+(`FillVideoPlayerView` nouveau ; `FeedDetailPagerView.deviceSafeAreaInsets` remplace le
+`GeometryReader` externe ; `bottomSafeArea + 49` ; `FeedDetailCell` : branche vidéo utilise
+`FillVideoPlayerView`).
+
+**Commit** : `1baec39`
+**CI run** : [33081360367](https://github.com/SalimMedir/TiinverSwift/actions/runs/33081360367) — SUCCESS (2026-08-27)
+**Résultat** : `BUILD_VALIDATED`. NON confirmé visuellement.
+
 ## BUG 4 — Accueil : carrousel de comptes suggérés absent
 
 **Statut : DÉJÀ_CORRECT — aucun défaut de code trouvé, pas de modification**

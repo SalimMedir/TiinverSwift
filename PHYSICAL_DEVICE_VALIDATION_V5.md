@@ -128,6 +128,37 @@ nécessite une nouvelle capture d'écran réelle de la grille Home pour confirme
 les vignettes s'affichent désormais (aucun accès simulateur/débogueur sur cette machine pour le
 vérifier autrement).
 
+**RETEST RÉEL (2026-08-27, après-midi) — PROBLÈME TOUJOURS PRÉSENT** : nouvelle capture
+(`home-grid-feed-minuature-affiche-pas-les-media.png`) confirme que la grille Home affiche
+toujours 4 posts (`Tiinver`/`RodrigueZibi`/`Bale`/`Bale`, AUCUN sans icône "play" visible → posts
+PHOTO) avec vignette toujours vide, malgré le correctif ci-dessus déjà vert en CI. Capture de
+référence fournie en parallèle (`feed-profile-working-good.png`, profil `@IssaMahamat`) montre un
+grille Profil fonctionnelle — mais avec des posts qui ont TOUS une icône "play" (donc des VIDÉOS,
+pas des photos) : ne prouve PAS que les photos fonctionnent côté Profil non plus, seulement que
+les vidéos fonctionnent des deux côtés. La logique de sélection d'URL (`thumbnailURL`) a été
+revérifiée ligne par ligne et respecte maintenant exactement la règle demandée — un 2ᵉ correctif
+de LOGIQUE n'aurait rien à corriger de plus à ce niveau. Nouvelle hypothèse, non encore
+confirmée : les champs `cdn_content_url`/`object_url`/`cdn_content_id` pourraient être ABSENTS ou
+VIDES dans la réponse JSON RÉELLE de CET endpoint précis (`feedtimeline/{userId}/{limit}/
+{offset}`, générique) — indifférent à la logique de sélection côté client, quelle qu'elle soit.
+
+**Diagnostic ajouté (PAS un correctif)** : `FeedViewModel.fetchPage()` imprime désormais, pour
+chaque page reçue (6 premiers items), une ligne `THUMBNAIL DEBUG: id=... object=... isVideo=...
+cdn_content_id=... cdn_content_url=... cdn_thumbnail_url=... object_url=...
+resolvedThumbnailURL=...` — consultable directement dans la console Xcode (build Debug lancé
+depuis Xcode) SANS nécessiter de nouvelle capture d'écran. Permettra de confirmer/infirmer
+l'hypothèse ci-dessus au prochain lancement de l'app.
+
+**Fichier(s) modifié(s) (ce tour)** : `Sources/TiinverSwift/Feed/FeedViewModel.swift`
+(`fetchPage()`, diagnostic console uniquement, aucune logique changée).
+
+**Commit** : `f00c857`
+**CI run** : [33064960546](https://github.com/SalimMedir/TiinverSwift/actions/runs/33064960546) — SUCCESS (2026-08-27)
+**Statut** : `BLOQUÉ_EN_INVESTIGATION` — cause exacte non confirmable sans lire la console Xcode
+réelle de l'utilisateur (ou une nouvelle capture s'il n'a pas accès à la console). PAS un
+correctif à ce tour, juste l'instrumentation pour trancher entre logique-encore-fausse (peu
+probable, revérifiée) et données-absentes-côté-serveur-pour-cet-endpoint (hypothèse actuelle).
+
 ---
 
 ## BUG 2 — Plein écran : boutons d'action absents
@@ -178,6 +209,30 @@ séparément.
 **Résultat** : `BUILD_VALIDATED` (compile réellement, run CI vert confirmé). NON confirmé
 visuellement (aucun accès simulateur/appareil sur cette machine) — nécessite encore une
 validation physique finale groupée.
+
+**RETEST RÉEL (2026-08-27, après-midi) — SURCORRECTION DÉTECTÉE** : nouvelles captures
+(`fullscreen-is-outscreen.png`, `fullscreen-button-outscreen.png`) montrent le contenu qui remplit
+maintenant correctement l'écran (fini le petit rectangle centré), MAIS le rail d'actions
+(cœur/commentaire/partage/"..." — "15"/"1"/"2" visibles, coupés à droite) ET le bouton
+"S'abonner" (visible tronqué "...onner" en bas) débordent maintenant SOUS le bord réel de
+l'écran. Cause du 2ᵉ défaut : `.rotationEffect` ne modifie JAMAIS la taille de layout qu'une vue
+remonte à son parent (seulement son rendu visuel) — le 1ᵉʳ correctif n'ajoutait qu'UN SEUL
+`.frame()`, AVANT la rotation, aux dimensions réelles (nécessaire pour les bonnes proportions du
+contenu), mais celui-ci, non affecté par la rotation qui suit, continuait de remonter au
+`TabView` un encombrement de layout NON échangé (portrait) alors que le conteneur réserve un
+encombrement ÉCHANGÉ (paysage) — d'où le débordement. Pattern complet de ce contournement : DEUX
+`.frame()` par page (un avant rotation aux dimensions réelles, un second APRÈS rotation aux
+dimensions échangées) — seul ce 2ᵉ frame manquait. Ajouté (`.frame(width: geo.size.height,
+height: geo.size.width)` juste après `.rotationEffect(.degrees(-90))`).
+
+**Fichier(s) modifié(s) (ce tour)** : `Sources/TiinverSwift/Feed/FeedView.swift`
+(`FeedDetailPagerView.body`, ajout du frame post-rotation).
+
+**Commit** : `f00c857`
+**CI run** : [33064960546](https://github.com/SalimMedir/TiinverSwift/actions/runs/33064960546) — SUCCESS (2026-08-27)
+**Résultat** : `BUILD_VALIDATED`. NON confirmé visuellement — nécessite un nouveau test physique
+pour confirmer que le contenu ET le rail d'actions/bouton "S'abonner" sont maintenant
+intégralement visibles à l'écran, sans petit rectangle NI débordement.
 
 ## BUG 4 — Accueil : carrousel de comptes suggérés absent
 

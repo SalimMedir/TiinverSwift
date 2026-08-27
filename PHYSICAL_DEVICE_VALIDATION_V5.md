@@ -114,12 +114,52 @@ vérifier autrement).
 ---
 
 ## BUG 2 — Plein écran : boutons d'action absents
-
-**Statut : NON DÉMARRÉ**
-
 ## BUG 3 — Plein écran : mise à l'échelle incorrecte
 
-**Statut : NON DÉMARRÉ**
+**Statut : CODE_COMPLETE — MÊME CAUSE RACINE, fusionnés (voir règle de fusion)**
+
+**Découverte clé** : `FeedDetailCell` (`FeedView.swift:850-989`, la cellule du pager plein écran
+partagée par Home/Profil/Recherche/Hashtag/Notifications/liens profonds — un seul composant,
+`FeedDetailPagerView`) possédait DÉJÀ tout ce que Bug 2 décrivait comme absent : rail
+like/commentaire/partage/"..." (`actionRail`, lignes 980-989), avatar+pseudo+date+bouton
+"S'abonner" (lignes 901-966), légende cliquable. Rien n'était réellement manquant côté
+fonctionnalité métier — donc PAS une implémentation à construire, mais un bug d'AFFICHAGE qui
+cache une UI déjà câblée.
+
+**Cause racine réelle** (`FeedView.swift:668-699`, `FeedDetailPagerView.body`) : le pager
+vertical est simulé via le contournement standard SwiftUI "`TabView` horizontal tourné à 90°"
+(`TabView` n'a pas de style de pagination vertical natif). Le pattern correct : le CONTENEUR
+`TabView` reçoit un frame ÉCHANGÉ (largeur/hauteur inversées) avant sa propre rotation +90°, MAIS
+chaque PAGE À L'INTÉRIEUR doit recevoir ses dimensions RÉELLES (`geo.size`, non échangées) avant
+sa rotation -90° individuelle. Le code reprenait par erreur le MÊME frame échangé pour les pages
+individuelles ET pour le conteneur (`.frame(width: geo.size.height, height: geo.size.width)` aux
+deux endroits) — chaque page se disposait donc dans une boîte paysage (dimensions de l'écran
+inversées) au lieu du vrai portrait. Conséquences directement observables : (BUG 3) l'image/vidéo
+se limitait à cette boîte mal dimensionnée, rendue en petit rectangle centré avec de grandes
+marges ; (BUG 2) le rail d'actions et le bloc avatar/nom, positionnés par `Spacer()`/`.padding()`
+relatifs à cette même boîte erronée, se retrouvaient hors de la zone effectivement rendue à
+l'écran.
+
+**Comportement Android** (`android-feed-fullscreen.png`) : plein écran vertical réel
+(`ViewPager2` natif, pas de contournement de rotation nécessaire), cœur/commentaire/partage/"..."
++ avatar/nom/date/"S'abonner" tous visibles — confirme qu'iOS DEVAIT afficher exactement ce que
+`FeedDetailCell` construit déjà, une fois le frame corrigé.
+
+**Correctif appliqué** : un seul frame corrigé, ligne 689 — `.frame(width: geo.size.height,
+height: geo.size.width)` → `.frame(width: geo.size.width, height: geo.size.height)` (dimensions
+réelles, non échangées) sur CHAQUE page avant sa rotation -90°. Le conteneur `TabView` externe
+(ligne 697, échangé + rotation +90° + offset) reste inchangé — vérifié correct par comparaison
+avec le pattern de référence de ce contournement. Recherche exhaustive (`grep rotationEffect`) :
+un seul site dans tout le projet utilise ce contournement — aucun autre pager vertical à corriger
+séparément.
+
+**Fichier(s) modifié(s)** : `Sources/TiinverSwift/Feed/FeedView.swift`
+(`FeedDetailPagerView.body`, une seule ligne de frame).
+
+**Commit** : (à renseigner, build CI unique en fin de lot)
+**CI run** : en attente (build complet groupé en fin des 8 bugs, sur demande explicite)
+**Résultat** : NON confirmé visuellement (aucun accès simulateur/appareil sur cette machine) —
+`CODE_COMPLETE`, nécessitera une validation physique finale groupée avec les autres bugs.
 
 ## BUG 4 — Accueil : carrousel de comptes suggérés absent
 

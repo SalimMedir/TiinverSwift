@@ -686,7 +686,21 @@ struct FeedDetailPagerView: View {
                                 )
                             }
                         }
-                            .frame(width: geo.size.height, height: geo.size.width)
+                            // BUG 2/3 (validation physique, 2026-08-27) — même cause racine :
+                            // ce bloc reprenait à tort le frame ÉCHANGÉ (largeur/hauteur inversées) du
+                            // conteneur `TabView` externe (ligne suivante, où l'échange EST correct
+                            // avant sa propre rotation +90°). Le pattern standard de "TabView vertical
+                            // via rotation" pose chaque PAGE dans ses dimensions RÉELLES (`geo.size`,
+                            // non échangées) avant sa rotation -90° — seul le conteneur `TabView` lui-
+                            // même doit recevoir le frame échangé. Avec l'échange en trop ici, chaque
+                            // page se disposait dans une boîte paysage (hauteur/largeur de l'écran
+                            // inversées) au lieu du vrai portrait, d'où le petit rectangle centré avec
+                            // de grandes marges (BUG 3) — et le rail d'actions/l'avatar/le bouton
+                            // "S'abonner" de `FeedDetailCell` (déjà câblés, `actionRail`/lignes
+                            // 901-989 plus bas), positionnés par `Spacer()`/`.padding()` relatifs à
+                            // cette même boîte erronée, se retrouvaient hors de la zone effectivement
+                            // rendue (BUG 2). Aucune fonctionnalité n'était réellement absente.
+                            .frame(width: geo.size.width, height: geo.size.height)
                             .rotationEffect(.degrees(-90))
                             .tag(index)
                             .onAppear {

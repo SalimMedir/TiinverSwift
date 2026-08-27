@@ -677,17 +677,25 @@ struct FeedDetailPagerView: View {
 
     private var posts: [FeedActivity] { viewModel.posts }
 
+    /// Demande explicite (2026-08-27) : marges de zone sûre pour les seuls éléments de CONTRÔLE
+    /// (bouton retour, rail d'actions/légende/"S'abonner") — le média reste plein écran bord à
+    /// bord (`.ignoresSafeArea()` sur le pager, inchangé). **Corrigé (2ᵉ tour)** : la 1ʳᵉ version
+    /// lisait ces marges via un `GeometryReader` EXTERNE enveloppant tout le `body` — un
+    /// `GeometryReader` sans `.ignoresSafeArea()` occupe lui-même le rectangle RÉDUIT (zone sûre
+    /// exclue), et PROPOSE cette taille réduite à ses enfants, y compris le `GeometryReader`
+    /// interne du pager (qui ignore pourtant lui-même la zone sûre — imbrication de
+    /// `GeometryReader` non standard et fragile) : `geo.size` (utilisé par le calcul de rotation)
+    /// pouvait donc recevoir une largeur/hauteur légèrement DIFFÉRENTES de l'écran réel selon
+    /// l'appareil, expliquant le débordement horizontal observé (rail d'actions/légende coupés à
+    /// gauche ET à droite). Lues ici directement depuis la fenêtre (`UIWindowScene`), sans aucun
+    /// `GeometryReader` supplémentaire dans l'arbre de vues du pager.
+    private static var deviceSafeAreaInsets: UIEdgeInsets {
+        UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow }
+            .first?.safeAreaInsets ?? .zero
+    }
+
     var body: some View {
-        // Demande explicite (2026-08-27) : le média (photo/vidéo) doit rester plein écran
-        // (bord à bord, y compris sous l'encoche/l'indicateur d'accueil — expérience "viewer"
-        // standard, comme Android), MAIS les CONTRÔLES (bouton retour en haut, rail d'actions/
-        // légende/"S'abonner" en bas) doivent rester dans la zone sûre, pas collés aux bords —
-        // sinon le rail d'actions/le bouton "S'abonner" se retrouvent sous la zone de geste de
-        // l'indicateur d'accueil, et le bouton retour trop proche de l'encoche/la barre de statut.
-        // `GeometryReader` EXTERNE (avant tout `.ignoresSafeArea()`, appliqué seulement au pager
-        // interne juste en dessous) pour lire les VRAIES marges de zone sûre de l'appareil et les
-        // injecter comme rembourrage supplémentaire sur les seuls éléments de contrôle.
-        GeometryReader { outerGeo in
         ZStack(alignment: .topLeading) {
             GeometryReader { geo in
                 TabView(selection: $currentIndex) {
@@ -697,7 +705,7 @@ struct FeedDetailPagerView: View {
                                 FeedAdCell()
                             } else {
                                 FeedDetailCell(
-                                    bottomSafeArea: outerGeo.safeAreaInsets.bottom,
+                                    bottomSafeArea: Self.deviceSafeAreaInsets.bottom,
                                     post: post, isActive: index == currentIndex,
                                     onLike: { viewModel.toggleLike(post) },
                                     onComment: { commentsPost = post; viewModel.notifyCommentOpened(post) },
@@ -753,7 +761,7 @@ struct FeedDetailPagerView: View {
                     .padding(12)
                     .background(Circle().fill(.black.opacity(0.35)))
             }
-            .padding(.top, outerGeo.safeAreaInsets.top + 8)
+            .padding(.top, Self.deviceSafeAreaInsets.top + 8)
             .padding(.leading, 12)
         }
         .fullScreenCover(isPresented: Binding(get: { openProfileUserId != nil }, set: { if !$0 { openProfileUserId = nil } })) {
@@ -872,7 +880,6 @@ struct FeedDetailPagerView: View {
         } message: {
             Text(viewModel.blockError ?? "")
         }
-        } // fin du `GeometryReader` externe (zone sûre)
     }
 
     /// Port de `ExoPlayerManager.smartPreload`/`PreloadScheduler` (fenêtre `currentIndex ± 2`) —
@@ -886,6 +893,33 @@ struct FeedDetailPagerView: View {
             guard post.isVideo, let url = post.playbackURL else { continue }
             VideoPlayerManager.shared.preload(url)
         }
+    }
+}
+
+/// Port de `RESIZE_MODE_ZOOM` (`AspectRatioFrameLayout`, `ActivityfeedViewPager.java:105`, la
+/// vue vidéo du pager plein écran Android) — enveloppe minimale autour d'`AVPlayerLayer` plutôt
+/// que le `VideoPlayer` SwiftUI/AVKit natif : ce dernier n'expose AUCUN moyen de remplacer son
+/// `.resizeAspect` (letterboxé) fixe par un mode "remplir" (`.resizeAspectFill`), contrairement à
+/// `AVPlayerLayer.videoGravity`, qui l'expose directement. Aucun contrôle de lecture natif
+/// nécessaire ici (le tap joue/pause est déjà géré ailleurs, `VideoPlayer` était déjà `.disabled
+/// (true)` pour la même raison) — une simple couche suffit, pas besoin d'`AVPlayerViewController`.
+private struct FillVideoPlayerView: UIViewRepresentable {
+    let player: AVPlayer
+
+    func makeUIView(context: Context) -> PlayerLayerView {
+        let view = PlayerLayerView()
+        view.playerLayer.player = player
+        view.playerLayer.videoGravity = .resizeAspectFill
+        return view
+    }
+
+    func updateUIView(_ uiView: PlayerLayerView, context: Context) {
+        uiView.playerLayer.player = player
+    }
+
+    final class PlayerLayerView: UIView {
+        override static var layerClass: AnyClass { AVPlayerLayer.self }
+        var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
     }
 }
 
@@ -926,8 +960,16 @@ private struct FeedDetailCell: View {
             // seulement le déclenchement de la lecture — la cellule inactive retombe sur la
             // vignette juste en dessous.
             if post.isVideo, let url = post.playbackURL, isActive {
-                VideoPlayer(player: VideoPlayerManager.shared.player)
-                    .disabled(true) // les contrôles natifs sont désactivés — l'appui joue/pause comme le tap Android d'origine
+                // Corrigé (2026-08-27, validation physique) — `VideoPlayer` (AVKit) natif SwiftUI
+                // utilise TOUJOURS `.resizeAspect` (letterboxé, marges noires haut/bas + léger
+                // décalage horizontal selon le ratio), sans AUCUN réglage exposé pour changer ce
+                // comportement. Vérifié contre Android : `ActivityfeedViewPager.java:105`
+                // (`videoSurfaceView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM)`) — le
+                // plein écran Android recadre TOUJOURS la vidéo pour remplir l'écran, jamais de
+                // letterboxing. `FillVideoPlayerView` (ci-dessous) reproduit ce comportement via
+                // `AVPlayerLayer.videoGravity = .resizeAspectFill`, seul moyen d'obtenir ce réglage
+                // (non exposé par le `VideoPlayer` SwiftUI).
+                FillVideoPlayerView(player: VideoPlayerManager.shared.player)
                     .onAppear {
                         // Port de `VideoPlaybackCoordinator.tryPlayAt` — `fallbackURL` était
                         // jamais transmis avant le correctif V4 précédent malgré le mécanisme de
@@ -1026,7 +1068,12 @@ private struct FeedDetailCell: View {
                     actionRail
                 }
                 .padding()
-                .padding(.bottom, bottomSafeArea)
+                // Demande explicite (2026-08-27, 2ᵉ tour) : le premier réglage (juste
+                // `bottomSafeArea`, ~34pt sur un appareil à encoche) restait visuellement trop
+                // petit — Android garde sa propre barre de navigation du bas visible même sur cet
+                // écran plein écran (référence vidéo fournie), une hauteur comparable à une barre
+                // d'onglets standard (~49pt de contenu), pas seulement l'indicateur d'accueil.
+                .padding(.bottom, bottomSafeArea + 49)
             }
             .zIndex(1)
         }

@@ -221,6 +221,41 @@ sur l'appareil physique, qu'aucun test `curl` externe ne peut reproduire.
 **Statut** : `BLOQUÉ_EN_INVESTIGATION` — en attente d'une nouvelle capture montrant le bandeau
 complet (avec `resolved=`) ET, si une vignette affiche un texte d'erreur rouge, ce texte exact.
 
+**Capture reçue (2026-08-27) — bandeau complet, `resolved=` valide pour tous les items listés**,
+mais 2 cases blanches visibles à l'écran (`légionrègne`/`CripsUSA`) qui ne figuraient PAS dans la
+liste du bandeau (celui-ci ne reflète que la dernière page réseau chargée, pas nécessairement les
+posts actuellement visibles après pagination/défilement) — aucune preuve directe obtenue sur ces
+2 cases précises malgré 4 tours de diagnostic successifs. L'utilisateur a alors demandé
+explicitement d'arrêter le cycle "corriger → redemander un test" (contrainte de crédit de test
+limité, déjà annoncée plusieurs fois) et de produire un correctif définitif par audit de code.
+
+**Correctif final (2026-08-27) — convergence structurelle vers le pattern Profil éprouvé** :
+plutôt que de continuer à chercher la cause exacte de la divergence SwiftUI (données, CDN,
+`Referer` et absence d'erreur `AsyncImagePhase.failure` tous confirmés corrects via 4 tours de
+diagnostic + vérification `curl` externe indépendante), `FeedGridCell` a été réaligné pour
+reproduire EXACTEMENT la structure de `ProfileView.postCell` (grille Profil, confirmée
+fonctionnelle) :
+- `.aspectRatio(0.8, contentMode: .fill)` déplacé du `ZStack` ENTIER (comme avant) vers CHAQUE
+  branche individuellement (image chargée / placeholder / pas d'URL) — seule différence
+  structurelle concrète jamais identifiée entre les deux grilles, jamais formellement écartée.
+- `CDNAsyncImage` — passage de la variante `(AsyncImagePhase) -> Content` (utilisée nulle part
+  ailleurs avec succès confirmé) à la variante `content:`/`placeholder:` (image/placeholder),
+  identique à celle de `ProfileView.postCell`.
+- Toute la scaffolding de diagnostic des 4 tours précédents retirée (bandeau, étiquettes par
+  case, prints) — a rempli son rôle (éliminer données/réseau/décodage comme causes), retirée pour
+  ne pas laisser de code de diagnostic dans une correction "définitive".
+
+**Fichier(s) modifié(s)** : `Sources/TiinverSwift/Feed/FeedView.swift` (`FeedGridCell.body`,
+retrait de `thumbnailDiagnosticsBanner`), `Sources/TiinverSwift/Feed/FeedViewModel.swift`
+(retrait de `thumbnailDiagnostics` et de sa boucle de diagnostic).
+
+**Commit** : `c70ad92`
+**CI run** : [33074728868](https://github.com/SalimMedir/TiinverSwift/actions/runs/33074728868) — SUCCESS (2026-08-27)
+**Statut** : `BUILD_VALIDATED` — NON confirmé visuellement (aucun simulateur/appareil disponible
+ici). C'est le correctif le plus abouti produit pour ce bug ; en l'absence de certitude absolue
+sur le mécanisme exact de la divergence initiale, la convergence vers un pattern confirmé
+fonctionnel est la meilleure garantie possible sans nouveau cycle de diagnostic.
+
 ---
 
 ## BUG 2 — Plein écran : boutons d'action absents

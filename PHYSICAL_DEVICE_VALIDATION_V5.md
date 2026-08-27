@@ -331,6 +331,34 @@ height: geo.size.width)` juste après `.rotationEffect(.degrees(-90))`).
 pour confirmer que le contenu ET le rail d'actions/bouton "S'abonner" sont maintenant
 intégralement visibles à l'écran, sans petit rectangle NI débordement.
 
+**Demande complémentaire (2026-08-27, avant le test suivant)** : deux points UX supplémentaires
+demandés par l'utilisateur avant de retester —
+1. **Zones sûres** : le média (photo/vidéo) doit rester plein écran bord à bord (comme Android),
+   mais les CONTRÔLES (bouton retour en haut, rail d'actions/légende/"S'abonner" en bas) ne
+   doivent pas être collés aux bords réels de l'appareil (barre de statut/encoche en haut, zone de
+   geste de l'indicateur d'accueil en bas). Ajout d'un `GeometryReader` externe (en dehors du
+   `.ignoresSafeArea()` du pager) dans `FeedDetailPagerView.body` pour lire les vraies marges de
+   zone sûre et les injecter en rembourrage supplémentaire SEULEMENT sur le bouton retour
+   (`outerGeo.safeAreaInsets.top`) et le bloc bas de `FeedDetailCell`, transmis via un nouveau
+   paramètre `bottomSafeArea` (`outerGeo.safeAreaInsets.bottom`).
+2. **Photo vs vidéo, rail d'actions non identique** : relecture intégrale de `FeedDetailCell` —
+   le rail d'actions/bloc légende est un bloc FRÈRE (pas enfant) de la branche média, rendu SANS
+   AUCUNE condition liée à `isVideo` — aucune différence de code trouvée entre les deux cas.
+   Ajout défensif de `.zIndex(1)` sur ce bloc : `VideoPlayer` (AVKit) est un
+   `UIViewControllerRepresentable` avec sa propre hiérarchie UIKit, qui peut composer différemment
+   de l'ordre normal SwiftUI (`ZStack` empile par ordre de déclaration) qu'une simple `Image` —
+   force explicitement la superposition au-dessus de N'IMPORTE QUEL type de média plutôt que de
+   compter implicitement sur l'ordre de déclaration, sans pouvoir confirmer le mécanisme exact
+   sans test réel.
+
+**Fichier(s) modifié(s) (ce tour)** : `Sources/TiinverSwift/Feed/FeedView.swift`
+(`FeedDetailPagerView.body` : `GeometryReader` externe + padding zone sûre ; `FeedDetailCell` :
+nouveau paramètre `bottomSafeArea`, `.zIndex(1)` sur le bloc de contrôles).
+
+**Commit** : `76c6acb`
+**CI run** : [33076129132](https://github.com/SalimMedir/TiinverSwift/actions/runs/33076129132) — SUCCESS (2026-08-27)
+**Résultat** : `BUILD_VALIDATED`. NON confirmé visuellement.
+
 ## BUG 4 — Accueil : carrousel de comptes suggérés absent
 
 **Statut : DÉJÀ_CORRECT — aucun défaut de code trouvé, pas de modification**

@@ -159,6 +159,38 @@ réelle de l'utilisateur (ou une nouvelle capture s'il n'a pas accès à la cons
 correctif à ce tour, juste l'instrumentation pour trancher entre logique-encore-fausse (peu
 probable, revérifiée) et données-absentes-côté-serveur-pour-cet-endpoint (hypothèse actuelle).
 
+**Vérification externe réelle (2026-08-27, `curl` direct sur le CDN, en dehors de l'app)** —
+l'utilisateur a fourni le JSON réel des 2 endpoints (Home ET Profil, via Postman). Le JSON Home
+contient bel et bien un `cdn_content_url` complet et valide pour chaque photo (ex. `Bale`,
+id=13199 : `https://cdn.tiinver.com/tiinver/photos/NDg0NjUxNzIx.webp`). Testé directement :
+```
+curl (sans Referer)                              → HTTP 403 Forbidden
+curl -H "Referer: https://tiinver.com" (identique à CDNAsyncImage) → HTTP 200, image/webp, 44809 octets
+```
+Même résultat sur un avatar de profil (même domaine `cdn.tiinver.com`). En-têtes `Cache-Control`
+vérifiés en plus : le 403 est explicitement `no-cache, no-store, max-age=0` (ne peut PAS rester
+bloqué en cache local), le 200 est `public, max-age=2592000` (mis en cache légitimement après
+succès). **Conclusion** : serveur CDN, en-tête `Referer`, et logique de sélection d'URL
+(`thumbnailURL`) sont TOUS LES TROIS vérifiés corrects, en dehors de toute exécution de l'app —
+le code sur `main` devrait charger cette image sans problème. Aucune preuve que l'app exécutée
+par l'utilisateur reflète bien ce code (build non à jour non exclu).
+
+**Diagnostic renforcé (toujours PAS un correctif)** : le print console seul supposait un accès à
+Xcode non confirmé par l'utilisateur. Remplacé/complété par un bandeau AFFICHÉ DIRECTEMENT À
+L'ÉCRAN (`FeedView.thumbnailDiagnosticsBanner`, fond rouge, au-dessus de la grille Home), listant
+pour chaque post : `object`/`cdn_content_url`/`object_url`/URL résolue — visible sans Xcode, sans
+nouvelle capture d'écran nécessaire pour le lire (il suffit de rouvrir l'onglet Accueil).
+
+**Fichier(s) modifié(s) (ce tour)** : `Sources/TiinverSwift/Feed/FeedViewModel.swift`
+(`thumbnailDiagnostics` publié), `Sources/TiinverSwift/Feed/FeedView.swift`
+(`thumbnailDiagnosticsBanner`).
+
+**Commit** : `2718c89`
+**CI run** : [33069822759](https://github.com/SalimMedir/TiinverSwift/actions/runs/33069822759) — SUCCESS (2026-08-27)
+**Statut** : `BLOQUÉ_EN_INVESTIGATION` — en attente que l'utilisateur rouvre l'app et lise le
+bandeau rouge en haut de l'Accueil, pour confirmer si l'app reçoit bien les mêmes valeurs que le
+JSON vérifié manuellement, ou si le build testé est simplement en retard sur `main`.
+
 ---
 
 ## BUG 2 — Plein écran : boutons d'action absents

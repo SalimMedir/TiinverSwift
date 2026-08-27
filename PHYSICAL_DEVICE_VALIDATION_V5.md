@@ -32,7 +32,8 @@ Dossier : `C:\Users\helen\OneDrive\Pictures\photo\Product hunt\ios-example\`
 
 ## BUG 1 — Grille Home : vignettes invisibles
 
-**Statut : DIAGNOSTIC_EN_COURS (diagnostic temporaire déployé, CI_PENDING)**
+**Statut : CODE_COMPLETE, CI_VALIDATED — en attente de confirmation visuelle sur appareil
+physique (PAS encore `COMPLETE_PARITY_VALIDATED`)**
 
 **Problème observé** (`home-feed-grid.png`) : la grille 2 colonnes de l'accueil affiche
 correctement le nom d'utilisateur et les compteurs like/commentaire/partage de chaque post, mais
@@ -70,32 +71,45 @@ chargée via `CDNAsyncImage(url: post.thumbnailURL, ...)`, jamais rendue.
   même `CDNAsyncImage`, même modèle, aucune différence structurelle trouvée qui expliquerait un
   échec systématique côté Home uniquement.
 
-**Cause racine** : NON IDENTIFIÉE avec certitude par lecture de code seule (pas d'environnement
-macOS/simulateur/débogueur disponible sur cette machine pour observer `AsyncImagePhase` en
-temps réel). Deux hypothèses restent ouvertes, non tranchées :
-1. `post.thumbnailURL` retourne `nil` pour ces posts précis (branche `else` jamais visible
-   auparavant faute d'instrumentation).
-2. `CDNAsyncImage.load()` échoue silencieusement (réseau ou décodage) — `phase == .failure`
-   jamais affiché auparavant (la fermeture `content` originale ignorait ce cas, `EmptyView()`
-   implicite).
+**Diagnostic temporaire (commit `9c3194d`, CI [33054200758](https://github.com/SalimMedir/TiinverSwift/actions/runs/33054200758) SUCCESS)** — retiré au commit suivant, remplacé par la
+cause racine réelle ci-dessous, fournie par l'utilisateur à partir du JSON réel de l'API (pas du
+diagnostic sur écran, qui n'a pas eu besoin d'être observé).
 
-**Correctif appliqué (diagnostic, PAS le correctif final)** : `FeedGridCell` affiche désormais
-visiblement soit le message d'erreur réel de `AsyncImagePhase.failure` (fond rouge), soit les
-valeurs brutes `object`/`isVideo`/`cdn_content_id`/`object_url` quand `thumbnailURL` est `nil`
-(fond orange) — permet de trancher entre les 2 hypothèses ci-dessus sur la PROCHAINE capture
-d'écran réelle, plutôt que de deviner un correctif.
+**Cause racine confirmée (2026-08-27)** : `FeedActivity.thumbnailURL` (`Feed/FeedActivity.swift:
+104-118`) — propriété **partagée à 100 % entre Home et Profil** (même modèle, même code, aucune
+divergence Home-vs-Profil au niveau du code lui-même). Pour une activité PHOTO
+(`!isVideo`), l'ancienne branche déléguait à `effectiveObjectURLString` (port de
+`getObject_url()`, conçue pour la PRIORITÉ de lecture vidéo, réutilisée à tort ici) :
+```swift
+hasContentId ? (cdn_content_url ?? object_url) : object_url
+```
+— qui IGNORE `cdn_content_url` (la vraie image) dès que `cdn_content_id` est absent/`"NULL"`/vide
+sur l'activité, retombant alors sur `object_url` brut. JSON réel confirmé par l'utilisateur :
+pour `object == "photos"`, `cdn_content_url` contient TOUJOURS l'image réelle (que
+`cdn_content_id` soit renseigné ou non), alors que `cdn_thumbnail_url` peut valoir un simple hôte
+nu `"https://cdn.tiinver.com/"` (jamais une vraie vignette) — et n'était déjà, vérification
+faite, JAMAIS lu pour une photo (contrairement à l'hypothèse initiale). Le vrai défaut est le
+GATE sur `cdn_content_id`, pas une confusion `cdn_thumbnail_url`/`cdn_content_url`. Cette logique
+étant partagée, l'asymétrie Home-cassé/Profil-fonctionnel s'explique par une différence de
+FORME DE DONNÉES entre les 2 endpoints backend réels (`feedtimeline/{userId}/{limit}/{offset}`
+générique pour Home vs `feedtimeline/{actor}/{viewerId}/{limit}/{offset}` personnalisé pour
+Profil), pas par un chemin de code différent.
 
-**Fichier(s) modifié(s)** : `Sources/TiinverSwift/Feed/FeedView.swift` (`FeedGridCell.body`).
+**Correctif appliqué** : la branche photo utilise désormais `cdn_content_url` directement, sans
+condition sur `cdn_content_id`, avec repli sur `object_url` uniquement si `cdn_content_url` est
+absent/vide. Branche vidéo (`cdn_thumbnail_url` prioritaire), `effectiveObjectURLString`/
+`playbackURL` (lecture plein écran) et téléchargement (`FeedMediaDownloader`) intacts, non
+modifiés.
 
-**Commit** : `9c3194d`
-**CI run** : [33054200758](https://github.com/SalimMedir/TiinverSwift/actions/runs/33054200758) — SUCCESS (2026-08-27)
-**Résultat** : build vert confirmé, diagnostic temporaire livré et prêt à être observé sur
-appareil physique.
-**Prochaine étape** : demander à l'utilisateur de rouvrir l'onglet Accueil sur l'appareil
-physique et de fournir une nouvelle capture — le texte de diagnostic affiché sur chaque vignette
-cassée (fond rouge = `AsyncImagePhase.failure` + message d'erreur réel, fond orange =
-`thumbnailURL` nil + valeurs brutes `object`/`isVideo`/`cdn_content_id`/`object_url`) donnera la
-cause racine exacte, permettant alors le vrai correctif ciblé.
+**Fichier(s) modifié(s)** : `Sources/TiinverSwift/Feed/FeedActivity.swift` (`thumbnailURL`,
+branche photo). `FeedView.swift` restauré à l'identique d'avant le diagnostic temporaire.
+
+**Commit** : `eaecb9c`
+**CI run** : [33055972824](https://github.com/SalimMedir/TiinverSwift/actions/runs/33055972824) — SUCCESS (2026-08-27)
+**Résultat** : build vert confirmé. `CODE_COMPLETE`, PAS encore `COMPLETE_PARITY_VALIDATED` —
+nécessite une nouvelle capture d'écran réelle de la grille Home pour confirmer visuellement que
+les vignettes s'affichent désormais (aucun accès simulateur/débogueur sur cette machine pour le
+vérifier autrement).
 
 ---
 

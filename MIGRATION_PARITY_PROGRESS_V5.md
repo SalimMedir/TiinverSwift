@@ -3016,6 +3016,67 @@ déclenchée localement (pas d'accès `gh` CLI/jeton API sur cette session Windo
 étape : l'utilisateur doit déclencher la CI par lots et communiquer les résultats** pour faire
 passer les findings `CODE_COMPLETE, CI_PENDING` restants à `BUILD_VALIDATED`.
 
+## 2026-08-27 — Phase C V5 — Lot de validation CI : `gh` CLI restauré, 45 findings `CI_PENDING` → `BUILD_VALIDATED`
+
+**Contexte** : `gh` CLI installé et authentifié (`SalimMedir`, scope `workflow`) sur cette session
+Windows — la contrainte d'outillage qui bloquait toute validation CI depuis le début du cycle V5
+est levée. Reprise explicite demandée par l'utilisateur pour transformer les `CODE_COMPLETE,
+CI_PENDING` restants en `BUILD_VALIDATED` réels, PAS un nouvel audit.
+
+**Inventaire vérifié en tête de session** (99 blocs `STATUT :` dans `MIGRATION_PARITY_AUDIT_V5.md`,
+tous comptés directement, aucune supposition) : 39 `BUILD_VALIDATED`, **45 `CODE_COMPLETE,
+CI_PENDING`**, 4 `DUPLICATE`, 3 `DIFFÉRÉ`, 7 `IOS_INTENTIONAL_DIFFERENCE`, 1 `DOCUMENTÉ`, 0
+`BLOQUÉ`. `main` local = `origin/main` = `8b67efd`, working tree clean.
+
+**Run #1 — `33027551088`** (`main`@`8b67efd`, déclenché manuellement via `gh workflow run`) :
+**FAILURE** après 6m57s, échec sur l'étape "Build simulateur" (résolution des dépendances SPM déjà
+réussie). Erreur réelle de compilation (log récupéré via `gh run view --log-failed`) :
+```
+Sources/TiinverSwift/Profile/ProfileView.swift:354:13: error: 'buildExpression' is unavailable: this expression does not conform to 'View'
+Sources/TiinverSwift/Profile/ProfileView.swift:356:13: error: 'buildExpression' is unavailable: this expression does not conform to 'View'
+```
+
+**Cause racine** : `ProfileView.avatar(_:)` (ajoutée sous V5-F-074) déclarait `let image: AnyView`
+puis l'assignait dans une branche `if/else`, à l'intérieur d'un corps `@ViewBuilder`. Un corps
+`@ViewBuilder` applique sa transformation de result builder à CHAQUE instruction — l'affectation
+`image = AnyView(...)` était donc interprétée comme une "expression de vue" par `buildExpression`,
+qui échoue puisqu'une affectation ne produit aucune `View`. Bug strictement invisible par relecture
+seule (aucun compilateur Swift disponible dans cette session Windows) — exactement le type d'erreur
+qu'une vraie CI est censée détecter. `GroupDetailView.groupAvatar` (même correctif V5-F-074, motif
+identique) présentait le MÊME bug — corrigé dans la même passe plutôt que d'attendre un second
+échec CI pour le découvrir séparément.
+
+**Correctif appliqué** (commit `fe2ca4c`, poussé sur `main`) : logique conditionnelle extraite dans
+des fonctions ordinaires non-`@ViewBuilder` (`avatarImage(_:)`/`groupAvatarImage()`), le corps
+`@ViewBuilder` ne contenant plus qu'une liaison `let framed = <helper>()...` inconditionnelle
+(pleinement supportée par les result builders). Aucun changement de comportement — restructuration
+pure pour compiler.
+
+**Run #2 — `33028087753`** (`main`@`fe2ca4c`) : **SUCCESS** — build complet (dépendances SPM +
+compilation simulateur) réussi. `conclusion: success`.
+
+**Conséquence** : ce run construit l'intégralité du code actuellement sur `main`, qui inclut le
+code des 45 findings listés ci-dessus (tous déjà committés/poussés avant cette session) — un seul
+run vert vaut donc validation de compilation pour les 45 d'un coup, pas la peine de démarrer 45
+runs identiques sur le même HEAD. Chaque bloc `STATUT` des 45 findings concernés dans
+`MIGRATION_PARITY_AUDIT_V5.md` a été mis à jour individuellement : `CODE_COMPLETE, CI_PENDING` →
+`BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit
+<date/lot d'origine préservée>)`.
+
+**Liste des 45 findings passés à `BUILD_VALIDATED`** : V5-F-002, 004, 008, 011, 012, 014, 017, 024,
+025, 027, 028, 030, 035, 038, 039, 040, 041, 048, 049, 051, 052, 054, 055, 056, 059, 061, 065, 066,
+069, 071, 074, 079, 080, 083, 084, 086, 087, 089, 090, 093, 095, 096, 097, 098, 099.
+
+**Statut honnête** : `BUILD_VALIDATED` (CI verte confirmée, run `33028087753`) pour les 45 findings
+ci-dessus — **PAS `COMPLETE_PARITY_VALIDATED`**, qui nécessite un test réel sur appareil iPhone/iPad
+physique, prévu après V5 comme convenu avec l'utilisateur. Le workflow `ios-build.yml` est un build
+simulateur (compilation seule, `CODE_SIGNING_ALLOWED=NO`) — suffisant pour la garantie de
+compilation, pas pour la parité comportementale réelle.
+
+**Nouvel inventaire après ce lot** : 84 `BUILD_VALIDATED`, 0 `CODE_COMPLETE, CI_PENDING`, 4
+`DUPLICATE`, 3 `DIFFÉRÉ`, 7 `IOS_INTENTIONAL_DIFFERENCE`, 1 `DOCUMENTÉ`, 0 `BLOQUÉ` — total 99,
+vérifié par recomptage direct des blocs `STATUT :`. **Aucun finding ne reste bloqué sur la CI.**
+
 Ce fichier sera alimenté lot par lot, dans le même format que `MIGRATION_PARITY_PROGRESS_V4.md`.
 
 Pour chaque lot futur, le format attendu est :

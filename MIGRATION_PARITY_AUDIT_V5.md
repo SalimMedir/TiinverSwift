@@ -356,7 +356,7 @@ IMPACT : Un utilisateur qui reste sur l'onglet Accueil ou Créateurs pendant qu'
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter dans `HomeShellView` un `.onReceive(ChatRepository.shared.chatEvents)` (filtré sur le cas `.message`) qui relance `refreshChatUnreadCount()`, à l'image de `Roster.addMessage → HomeActivity.refreshChatBadge()`.
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-1 — premier P2 traité) —
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-1 — premier P2 traité) —
 Correctif appliqué EXACTEMENT comme recommandé : `.onReceive(ChatRepository.shared.chatEvents)`
 ajouté à `HomeShellView`, filtré sur `case .message`, relance `refreshChatUnreadCount()` dans un
 `Task`. Vérifié directement que la persistance Core Data (`messages.addMessage`/
@@ -410,7 +410,7 @@ IMPACT : Sur un appareil partagé (device de test/famille) : après déconnexion
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Étendre `UserSession.clear()` (ou `LocalDataPurger.purgeAll()`) pour réinitialiser aussi coinsAmount/gemsAmount/pendingCoinsAmount/pendingGemsAmount à 0 et supprimer la clé `fcmId` de UserDefaults, pour refléter fidèlement le `.edit().clear()` global d'Android sur le même fichier de préférences.
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-2) — Vérifié directement :
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-2) — Vérifié directement :
 `SessionManager.java:59-66` (`clear()` — `.edit().clear().apply()`, vide LA TOTALITÉ du fichier
 "tiinver_1995") ; `infoContract.java:106-109` (COINS_AMOUNT/GEMS_AMOUNT/PENDING_COINS_AMOUNT/
 PENDING_GEMS_AMOUNT) ; `MyFirebaseInstanceIdService.java:28,41` +
@@ -552,7 +552,7 @@ IMPACT : Perte d'inventaire publicitaire sur l'écran le plus consulté de l'app
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter une cellule publicitaire pleine largeur tous les 7 éléments dans le `LazyVGrid` de `FeedView.swift`, réutilisant `FeedAdCell`/`NativeAdLoader` déjà existants pour le plein écran.
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-3) — Vérifié directement :
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-3) — Vérifié directement :
 `ActivityAdapter.java:158-161` (`isAdPosition`) ; `:179-181` (`getItemCount() = mediaObjects.
 size() + 2` — confirme que l'annonce REMPLACE un post plutôt que d'agrandir la liste, comme le
 pager) ; `:205,217-231` (`AdsViewHolder.setPlaceholder` — commentaire Android explicite confirmant
@@ -674,7 +674,7 @@ CAUSE : Port incomplet de parseAndDisplay() : seule la garde `isFull` (posts) a 
 IMPACT : Si le backend ne respecte pas strictement `types=` (renvoie malgré tout une catégorie non demandée) ou si une réponse réseau en vol arrive après un changement d'onglet, Android supprime la catégorie hors-scope de l'onglet demandé au moment de la requête tandis qu'iOS l'affiche quand même — un onglet "Publications" pourrait ponctuellement afficher une section "Comptes"/"Hashtags" côté iOS sans équivalent Android. Impact dépendant du respect effectif de `types=` par le backend, non vérifiable depuis le code client seul — sévérité tenue basse en conséquence.
 SUGGESTED_STATUS : CODE_PRESENT_UNVERIFIED
 RECOMMANDATION : Ajouter dans decodeResults()/SearchView un filtrage explicite par `tab` (n'afficher "users" que si tab∈{all,users}, "hashtags" que si tab∈{all,hashtags}, "posts" que si isFull && tab∈{all,posts}), fidèle à parseAndDisplay().
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-2). RECOMMANDATION appliquée telle quelle :
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P3-2). RECOMMANDATION appliquée telle quelle :
 `decodeResults` reçoit désormais `tab`, vide `users`/`hashtags`/`posts` hors du périmètre de
 l'onglet actif, fidèle aux 3 gardes `showUsers`/`showHashtags`/`showPosts` de `parseAndDisplay`.
 `suggest()` passe `tab: .all` en dur, fidèle à `searchSuggest` qui appelle toujours
@@ -697,7 +697,7 @@ CAUSE : `runSearch(full:)` appelé directement depuis `.onChange(of: tab)` sans 
 IMPACT : Pas d'affichage erroné observé (les deux appels utilisent les mêmes paramètres à jour), mais requête réseau dupliquée à chaque changement d'onglet effectué pendant qu'un debounce de frappe est encore en vol (fenêtre de ~300 ms après la dernière frappe) — gaspillage réseau reproductible, sévérité mineure.
 SUGGESTED_STATUS : CODE_PRESENT_UNVERIFIED
 RECOMMANDATION : Appeler `searchTask?.cancel()` au début du handler `.onChange(of: tab)`, avant `runSearch(full: true)`, pour reproduire fidèlement `cancelDebounce()`.
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-3). RECOMMANDATION appliquée telle quelle :
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P3-3). RECOMMANDATION appliquée telle quelle :
 `searchTask?.cancel()` ajouté en tête de `.onChange(of: tab)`. Fichier modifié :
 `Discover/SearchView.swift`. Commit `923d48a`, poussé sur `main`. CI non déclenchée par cette
 session.
@@ -751,7 +751,7 @@ IMPACT : Un utilisateur suivi via iOS ne reçoit jamais la notification push "qu
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Après le succès de `repository.follow(...)` dans `ProfileViewModel.follow()` et dans `FollowListView.toggleFollow()`, appeler `try? await FeedRepository.shared.notifyPostAuthor(userId: <id de l'utilisateur suivi>)`, fidèle au fire-and-forget sans callback d'Android (`data.Post(map,"push",null)`).
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-4 — **portée élargie au-delà
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-4 — **portée élargie au-delà
 des 2 sites cités par l'audit**) — En vérifiant TOUS les appelants réels de
 `ProfileRepository.follow`/`profileRepository.follow` (pas seulement les 2 cités), 3 sites
 supplémentaires avec le MÊME gap confirmé ont été trouvés, chacun vérifié directement contre son
@@ -859,7 +859,7 @@ CAUSE : Lors du portage de SettingGroupMessageFragmant.java (documenté comme lu
 IMPACT : Un utilisateur consultant les informations d'un groupe payant sur iOS (via l'écran dédié, pas seulement au moment de devoir payer) n'a aucun moyen d'y voir le prix de l'abonnement ou la mention "contenu restreint" — perte d'information mineure mais réelle par rapport à Android, potentiellement gênante pour un membre qui veut vérifier le tarif avant renouvellement sans revenir au fil de discussion.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter `price`/`lucrative` aux paramètres de `GroupDetailView.init`, les transmettre depuis `ChatView.swift:107-111` (`viewModel.target.price`/`.lucrative`), et rendre un panneau équivalent (cadenas + "Ce groupe est accessible uniquement aux abonnés." + prix) en tête de liste, visible à tout membre quand `lucrative==1`, à l'identique d'Android.
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-5). RECOMMANDATION appliquée telle quelle :
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P3-5). RECOMMANDATION appliquée telle quelle :
 `GroupDetailView` gagne `lucrative`/`price` (défaut 0), nouvelle `Section` avec le texte EXACT
 Android (`Restricted_content`/`only_subscribers`/`subscription`+prix+`coins_per_month`) affichée à
 TOUT membre dès `lucrative==1`, juste après l'en-tête. Seul appelant (`ChatView.swift`) mis à jour
@@ -1131,7 +1131,7 @@ IMPACT : Chaque notification de cadeau reçu en commentaire affiche un texte inc
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Réutiliser `LocalNotificationBuilder`'s logique de résolution gift (ou `GiftCatalog` directement) dans `NotificationRow.bodyText` quand `noti.verb == "comment" && noti.payloadType == "gift"`.
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-5) — Correctif appliqué
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-5) — Correctif appliqué
 exactement comme recommandé : branche `if noti.payloadType == "gift"` ajoutée dans le cas
 `"comment"` de `NotificationRow.bodyText`, réutilisant `GiftCatalog.emoji(for:)`/`.resolve(_:)?
 .name` (mêmes helpers, même texte que `LocalNotificationBuilder.activityNotificationContent`).
@@ -1163,7 +1163,7 @@ IMPACT : L'utilisateur ne voit jamais combien de coins lui ont été transféré
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Utiliser `noti.commentText` (le montant) dans le texte affiché pour `verb=="transfert"`, à l'identique d'Android (TransferVH).
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-6) — Vérifié directement :
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-6) — Vérifié directement :
 `AdapterNoti.TransferVH.bind:530-539` (`"%s %s %s << %s >>"`) ; `NotiEntity.java:26`
 (`commentText; // texte | "gift_diamond_name" | montant` — commentaire de champ Android confirmant
 explicitement la réutilisation polymorphe de cette propriété selon `verb`). Correctif appliqué
@@ -1232,7 +1232,7 @@ CAUSE : Le champ `type` est décodé et persisté (Core Data) mais son utilisati
 IMPACT : Perte d'une nuance d'information (réponse à un commentaire vs commentaire direct vs réponse à la publication) visible côté Android, sans conséquence fonctionnelle bloquante.
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Ajouter la même distinction par `noti.type` dans `bodyText` (case "comment") qu'Android (CommentVH.bind).
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-6). RECOMMANDATION appliquée telle quelle :
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P3-6). RECOMMANDATION appliquée telle quelle :
 `switch noti.type` imbriqué dans le `case "comment"`, 3 branches `reply`/`reply_on_my_post`/défaut
 avec le texte EXACT Android. Fichier modifié : `Notifications/NotificationsListView.swift`.
 Commit `4d9a325`, poussé sur `main`. CI non déclenchée par cette session.
@@ -1252,7 +1252,7 @@ CAUSE : Absence de portage de la présentation visuelle des actions de notificat
 IMPACT : Différence purement visuelle dans le tiroir de notifications système ; impact fonctionnel nul puisque les deux actions Android sont déjà des no-op fonctionnels (même PendingIntent que le tap).
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Impact faible — à ne traiter qu'après les gaps fonctionnels ci-dessus ; si traité, enregistrer une `UNNotificationCategory` avec deux `UNNotificationAction` factices reproduisant le même no-op.
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-7). RECOMMANDATION appliquée telle quelle :
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P3-7). RECOMMANDATION appliquée telle quelle :
 `LocalNotificationBuilder.registerNotificationCategories()` enregistre la catégorie "activity" avec
 2 `UNNotificationAction` `.foreground` ("Quitter"/"Répondre", libellés Android exacts), appelée une
 fois au lancement (`AppDelegate`). Aucun changement requis au handler `didReceive` (déjà routé par
@@ -1314,7 +1314,7 @@ IMPACT : Si le serveur émet un jour ROOM.CALL (indépendamment du message "voic
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Faire diverger les deux branches de ChatRepository.handleIncomingCall(_:) comme sur Android : quand !Self.isOnCall, décoder le profil et appeler CallCoordinator.shared.handleIncomingCall(profile:chatType:) (comme le fait déjà handleNewMessage pour "voicecall") au lieu de toujours publier .onCall ; conserver .onCall uniquement pour la branche isOnCall==true (détection d'occupation).
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-8) — Vérifié directement :
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-8) — Vérifié directement :
 `ChatRepository.java:436-469` (`lunchcall`/`onCall` listener, `ROOM.CALL="call"` ligne 110,
 enregistré ligne 247) confirme la divergence réelle. Correctif appliqué exactement comme
 recommandé : branche `!Self.isOnCall` décode le payload JSON `Profile` brut via
@@ -1541,7 +1541,7 @@ IMPACT : Perte fonctionnelle réelle (pas de recadrage possible avant ajout) et 
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter une étape de recadrage/aperçu (SwiftUI crop interactif, ou a minima un aperçu avec boutons Valider/Annuler) entre onImagePicked et state.addImage, pour retrouver la possibilité d'ajuster ou d'annuler avant que l'image ne devienne un calque permanent.
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-9) — Correctif appliqué
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-9) — Correctif appliqué
 AU-DELÀ du "a minima" de la RECOMMANDATION : vrai recadrage interactif, pas seulement un
 aperçu Valider/Annuler. Vérifié directement `AnimemesCompound.add(MediaDataDetail):2441-2469`
 (`CroperView`/`onBitmapCropedResult`/`onClose`). Réutilise `PhotoCropView` (déjà porté,
@@ -1667,7 +1667,7 @@ IMPACT : Pour toute vidéo où le sujet n'est pas déjà centré (cas fréquent 
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter une DragGesture sur l'aperçu vidéo pendant que le menu de ratio est actif, pour permettre de repositionner un cadre de recadrage réellement affiché à l'écran, clampé dans les limites du renderSize (équivalent de moveCropRect), et reproduire la marge par défaut de 90% avant tout glissement de l'utilisateur.
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-10) — Vérifié directement :
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-10) — Vérifié directement :
 `CropOverlayView.java:243-266` (`resetCropRect`, marge 90%) et `:341-389`
 (`onTouchEvent`/`moveCropRect`, glisser clampé dans `videoRect`) ; `VideoTrimmerView.
 java:122-137` (`setBtnCropRatioVisibility`) et `:265-299` (`applyRatio` : overlay `VISIBLE` dès
@@ -1716,7 +1716,7 @@ IMPACT : Pour toute vidéo source de plus de 100 secondes (0.001 × durée > 0.1
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Remplacer les seuils fractionnaires (0.001) par un seuil absolu en secondes équivalent aux 100 ms d'Android, calculé sur (startFraction * duration) et ((1 - endFraction) * duration) plutôt que sur les fractions brutes indépendamment de la durée totale.
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-11) — Correctif appliqué
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-11) — Correctif appliqué
 exactement comme recommandé : seuil `0.1` seconde (100ms) comparé à `startFraction * duration`/
 `(1 - endFraction) * duration` au lieu des fractions brutes `0.001`/`0.999`. Vérifié directement
 `VideoTrimmerView.java:238`.
@@ -1743,7 +1743,7 @@ IMPACT : Perte d'un raccourci de suppression rapide et intuitif (pattern courant
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter dans `dragGesture`/`AnimemesEditorState` (mode normal, hors édition de masque) : afficher une icône de corbeille dans `AnimemesEditorView` pendant que `state.selectedId != nil` et qu'un glissement est en cours, tester à `dragEnded()` si `value.location` (dernière position connue) tombe dans cette zone de dépôt, et appeler `state.deleteSelected()` (ou une variante "soft delete" fidèle à `deleteObjectDrawed` si la distinction visible=false/endFrame vs suppression complète du tableau est jugée importante à préserver).
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-12) — Vérifié directement :
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-12) — Vérifié directement :
 `MemesView2.java:1355-1361` (`drawDeleterIcon`/`mDeleteBound`, carré 70×70 démarrant au centre
 horizontal, `top=10`) ; `:1749-1763` (`executeTouchEvent` — `touchUp` PUIS `executeDeleterObjeect`
 sur `ACTION_UP`, gardé par `!isOnAutoMode`) ; `:1765-1769` (`executeDeleterObjeect`, zone de
@@ -1792,7 +1792,7 @@ CAUSE : Lors du portage de `maskApplyDrag`/du clamp de `maskEditScale` dans les 
 IMPACT : Pour une même amplitude de glissement/pincement du doigt, un masque peut être positionné/mis à l'échelle bien plus loin sur iOS qu'Android ne le permettrait avant de saturer — résultat visuel final différent pour un geste identique dans les zones proches ou au-delà des bornes Android, notamment perceptible en fin de course du geste (impression de "plus de marge" côté iOS).
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Aligner les bornes de `AnimationObjectData.maskOffsetX`/`maskOffsetY` sur [-1, 1] et `maskScale` sur [0.1, 3.0] pour reproduire fidèlement `maskApplyDrag`/le clamp de `maskEditScale` de `MemesView2.java`.
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-8). RECOMMANDATION appliquée telle quelle —
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P3-8). RECOMMANDATION appliquée telle quelle —
 `maskOffsetX`/`maskOffsetY` : `[-2,2]`→`[-1,1]` ; `maskScale` : `[0.1,5]`→`[0.1,3.0]`. Fichier
 modifié : `Animems/AnimationObjectData.swift`. Commit `d9cda78`, poussé sur `main`. CI non
 déclenchée par cette session.
@@ -2027,7 +2027,7 @@ IMPACT : Asymétrie fonctionnelle complète sur une fonctionnalité économique 
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Porter le panneau de sélection de cadeau et l'appel comment/add (débit + commentaire), en réutilisant GiftCatalog déjà disponible côté iOS pour le catalogue statique (emoji/prix/nom).
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-13 — **FINDING FINANCIER,
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-13 — **FINDING FINANCIER,
 vérification renforcée effectuée**) — Vérifié directement `MyBottomSheetDialogFragment.
 java:450-503` (`onPost`, branche `object=="gift"`) et `CommentRepository.java:240-281`
 (`debitCoins`, `POST comment/add`, réponse `{"error": bool}`). **Point critique confirmé par
@@ -2076,7 +2076,7 @@ IMPACT : Un hashtag publié depuis iOS avec une ponctuation immédiatement aprè
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Réutiliser la même regex #([\wÀ-ɏ]+) déjà portée dans HashtagMentionText.swift:38 pour extraire les hashtags au moment de la publication, au lieu du split par espace.
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-14) — Correctif appliqué
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-14) — Correctif appliqué
 exactement comme recommandé : nouveau `HashtagMentionText.extractHashtags(from:)` (public,
 réutilise `hashtagRegex` déjà porté), appelé depuis `PublishComposeView.publish()` à la place du
 split-par-espace. Un seul point de vérité pour la regex hashtag (affichage ET extraction).
@@ -2140,7 +2140,7 @@ IMPACT : Fonctionnalité utilisateur manquante : impossible de vérifier/ouvrir 
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter une entrée « Mise à jour » dans `SettingsView.swift` qui réutilise `UpdateAppView` (ou directement `UIApplication.shared.open` vers la fiche App Store une fois `appStoreId` renseigné — actuellement `nil` dans `DeepLinkRouter.swift:77`, autre gap déjà documenté par le portage lui-même).
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-15) — Vérifié directement
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-15) — Vérifié directement
 `item_headers_of_settings.xml` (`header_updateapp` = DERNIER élément, après `header_about`).
 Correctif appliqué exactement comme recommandé : `NavigationLink("Mise à jour") { UpdateAppView()
 }` ajouté en fin de liste, réutilisant `UpdateAppView` déjà porté tel quel (son URL App Store
@@ -2167,7 +2167,7 @@ CAUSE : Portage incomplet de `ReferralActivity.java` — le commentaire de tête
 IMPACT : Perte d'un raccourci UX réel : sur Android, un utilisateur qui n'a pas encore autorisé les publicités personnalisées peut le faire en un tap depuis l'écran Parrainage ; sur iOS il doit naviguer manuellement jusqu'à Réglages > Publicité.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter un bouton « Activer la visualisation des publicités maintenant » dans `ReferralView.swift` qui navigue vers `SettingAdvertisementView` (ou présente `SettingsView(startAtAccount: false)` positionné sur cet écran, à l'image du mécanisme déjà utilisé pour `.settingsAccount`).
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-10). RECOMMANDATION appliquée (variante la
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P3-10). RECOMMANDATION appliquée (variante la
 plus simple : `SettingAdvertisementView` n'a aucun paramètre, navigation directe sans passer par
 `SettingsView`). Fichier modifié : `Wallet/ReferralView.swift`. Commit `b6ca82d`, poussé sur
 `main`. CI non déclenchée par cette session.
@@ -2217,7 +2217,7 @@ IMPACT : Sur l'écran d'accueil (le plus consulté de l'app), un utilisateur qui
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter à FeedView.swift un footer de pagination (readable via une nouvelle propriété booléenne type `postsLoadError`, sur le même modèle que ProfileViewModel.postsLoadError/ProfileView.postsGridFooter) affichant une icône d'erreur, un texte, et un bouton Réessayer quand `loadNextPage()` échoue alors que `posts` n'est pas vide.
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-16) — Correctif appliqué selon
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-16) — Correctif appliqué selon
 l'esprit de la RECOMMANDATION, avec une simplification assumée : réutilise `viewModel.
 errorMessage` (existant, déjà correctement peuplé/remis à `nil` par `fetchPage()`) plutôt qu'un
 nouveau flag booléen dupliqué `postsLoadError` — même cycle de vie observé (reset avant chaque
@@ -2247,7 +2247,7 @@ IMPACT : Pour chaque vidéo du feed approchant de la position de lecture courant
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Limiter precache() à un préfixe de taille comparable (ex. 2 Mo) via un en-tête `Range: bytes=0-1999999` sur la requête, et paralléliser la queue de précache (ex. DispatchQueue concurrente avec une limite de 2 opérations simultanées) pour se rapprocher du comportement/volume de données observable d'Android.
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-17 — **correctif PARTIEL,
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-17 — **correctif PARTIEL,
 écart architectural documenté**) — Sur les 2 volets de la RECOMMANDATION :
 - **Parallélisation (2 threads)** : appliquée exactement comme recommandé — `queue` passée en
   `.concurrent`, nouveau `DispatchSemaphore(value: 2)` plafonnant à 2 précaches simultanés, fidèle
@@ -2285,7 +2285,7 @@ CAUSE : Le portage utilise un `URLSession.download(from:)` lié au cycle de vie 
 IMPACT : Un utilisateur qui ouvre une conversation contenant une photo/vidéo non encore téléchargée alors que le réseau est instable peut voir le téléchargement échouer silencieusement et rester bloqué indéfiniment tant qu'il ne quitte pas puis ne revient pas sur ce message précis (scroll, navigation) — contrairement à Android où le téléchargement, une fois lancé, se termine de façon fiable indépendamment de l'état de l'app ou de la vue, y compris après un kill complet de l'app.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Envisager une URLSession de configuration `background` pour les téléchargements de pièces jointes de chat (comme pour tout téléchargement iOS destiné à survivre à la mise en arrière-plan/au kill de l'app), et/ou déclencher un nouvel essai automatique sur le retour de NetworkMonitor.shared à `.satisfied` pour les messages dont isFileDownloaded reste à 0, sans attendre un ré-appairage visuel de la bulle.
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-12). 2ᵉ volet de la RECOMMANDATION appliqué
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P3-12). 2ᵉ volet de la RECOMMANDATION appliqué
 (reconnexion socket comme déclencheur, symétrique exact de `resumePendingUploads`/V5-F-078) — 1er
 volet (vraie `URLSession` `background`) écarté, même arbitrage risque/ampleur que le choix déjà
 fait côté upload en V5-F-098. Nouveau `ChatMediaDownloadService` (mirroir de
@@ -2393,7 +2393,7 @@ IMPACT : Pour une vidéo source à haute résolution, MediaTrimView.generateThum
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Définir generator.maximumSize à une taille cible réduite (ex. CGSize(width: 320, height: 180)) avant chaque appel image(at:)/copyCGImage(at:actualTime:) dans MediaTrimView.generateThumbnails et ChatViewModel.generateThumbnail, pour que ImageIO sous-échantillonne dès la génération de la frame plutôt que de décoder puis jeter le plein format.
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P2-18) — Correctif appliqué
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P2-18) — Correctif appliqué
 exactement comme recommandé : `generator.maximumSize = CGSize(width: 320, height: 180)` ajouté
 aux deux sites (`MediaTrimView.generateThumbnails`, `ChatViewModel.generateThumbnail`).
 
@@ -2455,7 +2455,7 @@ CAUSE : Le point d'accroche choisi pour porter la demande de permission est le p
 IMPACT : Pour un tout nouvel utilisateur, la toute première chose que l'app affiche est potentiellement une boîte de dialogue système opaque demandant l'autorisation de notifications, sans aucun contexte (pas de splash, pas d'onboarding, pas d'explication) — Android ne montre jamais ce dialogue avant qu'au moins un écran de l'app soit visible. Cela réduit le taux d'acceptation (bonne pratique Apple documentée : contextualiser la demande) et diffère du comportement Android réel.
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Déplacer l'appel à `requestAuthorization` hors de `didFinishLaunchingWithOptions`, vers un point après le premier rendu d'écran (ex. `.onAppear` de l'écran d'onboarding ou de Home, à l'image d'Android), pour ne plus interrompre le lancement du process avant tout affichage.
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-19). Déplacé vers `RootRouterView.onAppear`
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P2-19). Déplacé vers `RootRouterView.onAppear`
 (garde `SMOKE_TEST_MODE` préservée), point commun aux 2 chemins Android (`HomeShellView`/
 `AuthCoordinatorView`). Fichiers modifiés : `App/AppDelegate.swift`, `Navigation/RootRouterView.swift`.
 Commit `3df2b47`, poussé sur `main`. CI non déclenchée par cette session.
@@ -2606,7 +2606,7 @@ CAUSE : `try?` sur l'appel réseau de blocage sans branche d'erreur exposée à 
 IMPACT : Un utilisateur qui tente de bloquer/débloquer quelqu'un avec une coupure réseau momentanée ne voit RIEN se passer (pas de Toast, pas d'alerte, pas de changement d'état) — contrairement à Android qui informe explicitement de l'échec, laissant l'utilisateur sans indication s'il doit réessayer ou si l'action a simplement été ignorée.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter une propriété d'erreur publiée (ex. `blockError: String?`) sur les deux ViewModels, alimentée dans la branche `catch`, et une alerte dans `FeedView`/`FeedDetailPagerView`/`ProfileView` reprenant le texte `errorLoad` (« pas de connexion internet, réessayer plus tard »), même motif que `deleteError` déjà câblé pour la suppression de post.
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-20). `blockError: String?` ajouté aux 2
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P2-20). `blockError: String?` ajouté aux 2
 ViewModels, `block()`/`toggleBlock()` passés en `do/catch` (le `try?` avalait aussi l'échec réseau,
 distinct du cas légitime "déblocage" déjà géré) ; alerte "Échec du blocage" ajoutée dans `FeedView`
 (grille + `FeedDetailPagerView`) et `ProfileView`, même motif que `deleteError`. Fichiers modifiés :
@@ -2628,7 +2628,7 @@ CAUSE : Absence totale d'ajout optimiste côté iOS (contrairement à Android) c
 IMPACT : Sur une coupure réseau momentanée, l'utilisateur tape un commentaire, appuie sur Envoyer, voit le champ se vider — et le commentaire ne réapparaît JAMAIS, sans aucun message d'erreur ni possibilité de retenter avec le texte déjà saisi (à retaper entièrement). C'est une perte de données silencieuse plus sévère que le comportement Android correspondant (qui, bien qu'imparfait — pas de Toast d'erreur pour un commentaire texte non-cadeau —, laisse au moins le commentaire visible à l'écran).
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Ajouter le commentaire de façon optimiste à `comments` AVANT l'appel réseau (comme Android), remplacer `try?` par `do/catch`, et sur échec soit retirer l'entrée optimiste avec un message d'erreur explicite, soit la laisser visible avec un indicateur d'échec — dans tous les cas, ne plus vider silencieusement `inputText` sans confirmation de succès.
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-21). `Comment(optimisticText:)` ajouté,
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P2-21). `Comment(optimisticText:)` ajouté,
 entrée locale insérée AVANT le réseau (commentaires racine uniquement, `parentId == nil` —
 `expandedReplies` hors périmètre). Écart assumé sur l'échec : Android ne fait RIEN sur
 `Result.ERROR` (bloqué en `status=0` pour toujours, sans erreur ni reprise, confirmé par lecture de
@@ -2733,7 +2733,7 @@ CAUSE : Absence, côté iOS, de l'équivalent du `uniqueUploadSet`/`uniqueDowloa
 IMPACT : Upload/téléchargement CDN dupliqué (bande passante et stockage gaspillés), écritures Core Data concurrentes non ordonnées sur le même enregistrement, et risque de double émission socket du même message vers le pair (mitigé côté réception par la dé-duplication par `messageId`, mais pas côté émetteur/CDN).
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter un `Set<String>` (ou dictionnaire d'état) de messageId actuellement en upload/téléchargement dans `ChatViewModel`, consulté et alimenté par `requestUpload`/`requestDownload` avant de lancer un nouveau `Task`, reproduisant la garde `uniqueUploadSet`/`uniqueDowloadSet` d'Android.
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-22). Côté upload, déjà corrigé par
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P2-22). Côté upload, déjà corrigé par
 V5-F-078/Lot P1-33 (`ChatMediaUploadService.reserveUpload`/`releaseUpload`, effet de bord non
 identifié à l'époque comme couvrant ce finding). Côté téléchargement, toujours ouvert : nouveau
 `ChatViewModel.downloadingMessageIds: Set<String>`, gardé en tête de `requestDownload`, relâché via
@@ -2861,7 +2861,7 @@ IMPACT : Risque d'un leaveRoom parasite émis juste après une reconnexion (chaq
 SUGGESTED_STATUS : CODE_PRESENT_UNVERIFIED
 RECOMMANDATION : Appeler socket?.off() (et socket?.off(clientEvent:) pour chaque événement enregistré, ou l'équivalent disponible dans la version de Socket.IO-Client-Swift utilisée) sur l'ancien socket AVANT disconnect() dans TiinverSocket.reset(), à l'identique d'App.resetSocket() côté Android, pour éliminer ce risque plutôt que de compter sur la seule désallocation ARC.
 CONTRE-AUDIT : trouvé par l'agent "Socket.IO / temps réel" (Phase A.2, 2026-08-24)
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-23). `removeAllHandlers()` confirmé
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P2-23). `removeAllHandlers()` confirmé
 disponible (même famille d'API que `.off(_:)`/`.off(clientEvent:)` déjà utilisés dans
 `ChatRepository.registerAllListeners`) — ajouté avant `disconnect()` dans `reset(apiKey:)` ET
 `disconnect()` [même pattern Android, `App.disconnectSocket()`]. Aucun listener Manager/`.io()`
@@ -2928,7 +2928,7 @@ IMPACT : Sur un réseau lent ou une image volumineuse, l'utilisateur qui vient d
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Convertir la `Data` sélectionnée en `UIImage` et l'assigner à un état local (`@State private var pendingAvatarImage: UIImage?`) affiché en overlay/remplacement PENDANT `isUploadingPhoto`, avant même l'appel réseau — reproduit l'aperçu optimiste immédiat d'Android sans dépendre du changement d'URL CDN.
 CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Avatar" (Phase A.2, 2026-08-24)
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-25). RECOMMANDATION appliquée telle quelle,
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P2-25). RECOMMANDATION appliquée telle quelle,
 étendue au groupe (même gap confirmé sur `GroupDetailView.groupAvatar`, pas seulement `ProfileView`
 citée par l'audit) : `pendingAvatarImage`/`pendingGroupAvatarImage` peuplés dans
 `.onChange(of: avatarPickerItem)`/`.onChange(of: photoPickerItem)` AVANT l'appel d'upload,
@@ -3029,7 +3029,7 @@ IMPACT : Sous pression de stockage (fréquent sur les appareils avec peu d'espac
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Stocker les pièces jointes chat téléchargées hors de Caches (ex. Application Support/ChatMedia), ou à défaut vérifier FileManager.fileExists avant utilisation et retomber sur isFileDownloaded=0 (donc re-déclenchement automatique via handleAppear) si le fichier local est absent.
 CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Chat (image/vidéo/fichier/vocal)" (Phase A.2, 2026-08-24)
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-26). Option 1 de la RECOMMANDATION
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P2-26). Option 1 de la RECOMMANDATION
 appliquée (`.applicationSupportDirectory` au lieu de `.cachesDirectory`) — Option 2 délibérément
 ÉCARTÉE après vérification du modèle de données réel : `DownloadReceiver.java:149` confirme
 qu'Android écrase LUI AUSSI `object_url` par le chemin local au téléchargement (même comportement
@@ -3056,7 +3056,7 @@ IMPACT : Impact UX mineur : un échec persistant (ex. Referer manquant du findin
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter un indicateur d'erreur (icône ou toast) sur la bulle média après un échec de téléchargement, au moins pour différencier "en cours" de "échoué".
 CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Chat (image/vidéo/fichier/vocal)" (Phase A.2, 2026-08-24)
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-13). RECOMMANDATION appliquée (icône
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P3-13). RECOMMANDATION appliquée (icône
 générique, pas de message par cause précise comme Android — hors périmètre) : nouveau
 `ChatViewModel.failedDownloadMessageIds`, publié dans le `catch` de `requestDownload`, retiré au
 début d'un nouvel essai ; threadé via `ChatBubbleRow`→`MediaImageBubbleBody`/`VideoBubbleBody`
@@ -3154,7 +3154,7 @@ IMPACT : Un contenu produit par l'éditeur Animems et publié depuis iOS arrive 
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Étendre PublishMedia (ou une variante) pour transporter style="animemes"/content_type="animation"/template_id depuis AnimemesEditorState jusqu'à FeedRepository.publish, et ajouter ces 3 paramètres optionnels à publish() en les injectant dans MediaMetaData/params exactement comme le fait PublishFragment.java.
 CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Animems (import/export)" (Phase A.2, 2026-08-24)
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-27). RECOMMANDATION appliquée via un nouveau
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P2-27). RECOMMANDATION appliquée via un nouveau
 `AnimemsPublishMetadata` (au lieu d'étendre `PublishMedia` directement, moins invasif — tous les
 autres appelants de `PublishComposeView` restent inchangés). `MotionTemplate.isFromCommunity`
 ajouté (exclu de `Codable` — champ runtime jamais persisté côté Android non plus, voir
@@ -3186,7 +3186,7 @@ IMPACT : Qualité audio perceptiblement inférieure (surtout sur des sons/musiqu
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Aligner AVEncoderBitRateKey sur 128000 dans AnimemesExporter.swift pour reproduire fidèlement le débit audio Android.
 CONTRE-AUDIT : trouvé par l'agent "Pipeline média — Animems (import/export)" (Phase A.2, 2026-08-24)
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-14). RECOMMANDATION appliquée telle quelle :
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P3-14). RECOMMANDATION appliquée telle quelle :
 `AVEncoderBitRateKey` 64000→128000. Fichier modifié : `Animems/AnimemesExporter.swift`. Commit
 `da9d371`, poussé sur `main`. CI non déclenchée par cette session.
 ```
@@ -3224,7 +3224,7 @@ IMPACT : Perte fonctionnelle mineure à modérée : les utilisateurs Android peu
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Évaluer la fréquence d'usage réelle de ce bouton avant de porter (feature secondaire) ; si jugé utile, ajouter un bouton 'recadrer' qui aplatit `strokes`/`texts` sur `displayedImage` (réutilisant la logique de `flatten()`), rouvre `PhotoCropView` sur ce résultat, et remplace `displayedImage` en vidant `strokes`/`texts` à la validation.
 CONTRE-AUDIT : trouvé par l'agent "Photo Editor" (Phase A.2, 2026-08-24)
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-28). RECOMMANDATION appliquée telle quelle :
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P2-28). RECOMMANDATION appliquée telle quelle :
 nouveau bouton toolbar "crop.rotate" ouvre `PhotoCropView` sur `flatten()` (déjà existant, réutilisé
 sans changement) ; `onCropped` remplace `displayedImage` par le résultat et vide `strokes`/`texts`
 [port de `clearBoard()`+`onNewAddBitmap`] ; vérifié `onRepeateImage` (`ImageEditorCompound.java:
@@ -3249,7 +3249,7 @@ IMPACT : Perte d'une option de lisibilité mineure : sur une photo à fond clair
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter un bouton bascule dans l'alerte ou la barre d'outils qui applique un `.background(Capsule().fill(.white))`/couleur pleine derrière le `Text`, avec un `PlacedText.containerColor: Color?` optionnel reporté dans `flatten()`.
 CONTRE-AUDIT : trouvé par l'agent "Photo Editor" (Phase A.2, 2026-08-24)
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-15). RECOMMANDATION appliquée (bouton
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P3-15). RECOMMANDATION appliquée (bouton
 toolbar plutôt que dans l'alerte, `.alert` ne pouvant pas héberger de `Toggle`) : nouveau
 `PlacedText.hasContainer`, bascule toolbar persistante `textHasContainer` [comme `v.isSelected()`
 Android], `addText()` FORCE noir-sur-blanc quand actif [ignore la palette libre, fidèle à Android],
@@ -3297,7 +3297,7 @@ SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Construire une vue SwiftUI (sheet/fullScreenCover) qui consomme le modèle `ProTextEditorState` déjà porté — sélecteur de police (7 `ProTextFont`), palette de couleurs, toggle fond + coin arrondi, alignement — et appeler `addText` avec ces valeurs au lieu du `TextField` d'alerte actuel.
 CONTRE-AUDIT : trouvé par l'agent "Animems Canvas" (Phase A.2, 2026-08-24)
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P1-35) — Vérifié directement
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P1-35) — Vérifié directement
 côté Android : `ProTextEditorView.java` lu en entier (923 lignes) ; `AnimemesCompound.java:
 470-480` confirme que `onTextConfirmed(Bitmap, String)` ajoute le résultat via
 `onNewAddBitmap(textBitmap, "text", true, false)` → `AnimationObjectData.Type.BITMAP`
@@ -3362,7 +3362,7 @@ IMPACT : Résultat visuel des dessins libres notablement différent (traits plus
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter un slider d'épaisseur (ex. 2-40pt) et étendre la palette à un jeu de couleurs comparable à `PaintList` (21 teintes) ; appliquer un lissage de courbe (ex. un filtre Catmull-Rom/Chaikin simple sur `stroke.points`) avant le tracé final dans `flatten()`.
 CONTRE-AUDIT : trouvé par l'agent "Animems Canvas" (Phase A.2, 2026-08-24)
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-29). RECOMMANDATION appliquée, alignée sur
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P2-29). RECOMMANDATION appliquée, alignée sur
 les valeurs RÉELLES d'Android plutôt que les fourchettes suggérées : `Slider` 1...100 fidèle au
 `SeekBar` réel (`PaintSizeListAdapter.java`, défaut `paintSize=10`) ; palette étendue aux 21 hex
 réels de `PaintList.getPaintList()` (lus dans `colors.xml`, transparent inclus) ; lissage de Chaikin
@@ -3436,7 +3436,7 @@ IMPACT : Sur des canevas de tailles/ratios très différents du 360×640 par dé
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Remplacer la constante fixe `maxDimension: 220` par un calcul proportionnel à `canvasSize` (ex. `min(canvasSize.width, canvasSize.height) / 2`), fidèle à `mView.getWidth()/CELLS` d'Android.
 CONTRE-AUDIT : trouvé par l'agent "Animems Canvas" (Phase A.2, 2026-08-24)
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P3-17 — **DERNIER P3, BACKLOG P3 ENTIÈREMENT
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P3-17 — **DERNIER P3, BACKLOG P3 ENTIÈREMENT
 CLOS 21/21**). RECOMMANDATION appliquée telle quelle : `maxDimension` calculé comme
 `min(canvasSize.width, canvasSize.height) / 2`, réutilise `downscale(maxDimension:)` existant
 (borne unique par plus grand côté). Fichier modifié : `Animems/AnimemesEditorState.swift`. Commit
@@ -3530,7 +3530,7 @@ SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter un `AVAudioPlayer` (ou `AVPlayer`) piloté par les mêmes callbacks `AnimationEnginePlaybackDelegate` : le démarrer/le seeker à 0 dans `animationEngine(_:didPlayFrame:)` quand `frame == 0` et `audioURL != nil` (port de `onPlay` → `mAudio.seekTo(0)`/`forceResetAndPlay()`), le mettre en pause dans `animationEngineDidPause`/`animationEngineDidEnd` (port de `pause()`/`stop()`).
 CONTRE-AUDIT : trouvé par l'agent "Animems — playback/audio/performance" (Phase A.2, 2026-08-24)
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P1-36) — Vérifié directement :
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P1-36) — Vérifié directement :
 `MyAudioManager.java` lu en entier (372 lignes) pour confirmer le comportement RÉEL de
 `forceResetAndPlay()`/`seekTo(int)` (tous deux NO-OP quand `isPlaying == true`, donc l'effet net
 d'`onPlay(frame)` appelé à CHAQUE frame est : repositionner+démarrer une seule fois au début d'un
@@ -3588,7 +3588,7 @@ IMPACT : Double téléchargement réseau (bande passante gaspillée, double sond
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter un état de déduplication (ex. `Set<Int>` des `post.id` déjà téléchargés/en cours, conservé au niveau de la vue ou d'un singleton) et ignorer silencieusement (comme Android) un nouvel appel à `FeedMediaDownloader.download` pour un post déjà présent dans ce set, ou a minima désactiver/masquer l'item "Télécharger" tant que le téléchargement du même post est en cours.
 CONTRE-AUDIT : trouvé par l'agent "Double action / idempotence" (Phase A.2, 2026-08-24)
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-30). RECOMMANDATION appliquée telle quelle
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P2-30). RECOMMANDATION appliquée telle quelle
 (première option) : nouveau `FeedDetailPagerView.queuedDownloadPostIds: Set<Int>`, gardé par
 `queuedDownloadPostIds.insert(post.id).inserted` — même sémantique que `Set.add()` Android,
 JAMAIS retiré (pas de retrait au succès/échec, fidèle à Android qui ne vide le `Set` qu'en
@@ -3613,7 +3613,7 @@ SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Positionner `isSubmitting = true` de façon SYNCHRONE dans le handler de bouton (avant la création du `Task`), avec un `guard !isSubmitting else { return }` en tout premier, sur les trois écrans (TransferCoinsView, WithdrawView, ConversionView) ; envisager de restaurer une étape de confirmation explicite sur WithdrawView avant l'envoi réseau, par fidélité et par sécurité pour une opération d'argent réel.
 CONTRE-AUDIT : trouvé par l'agent "Mémoire / concurrence" (Phase A.2, 2026-08-24)
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P1-37, FINDING FINANCIER —
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P1-37, FINDING FINANCIER —
 vérification renforcée effectuée) — Correctif appliqué EXACTEMENT comme recommandé, sur les 3
 écrans :
 - `TransferCoinsView.transfer()`/`ConversionView.convert()` : `guard !isSubmitting else { return
@@ -3666,7 +3666,7 @@ SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Basculer `ChatMediaUploadService`/`requestUpload` sur une `URLSessionConfiguration.background` (ou au minimum envelopper l'upload dans `UIApplication.beginBackgroundTask` avec un vrai retry programmé au retour en premier plan, pas seulement au re-`.onAppear` de la bulle), pour rapprocher la résilience du modèle WorkManager d'Android.
 CONTRE-AUDIT : trouvé par l'agent "Lifecycle" (Phase A.2, 2026-08-24)
 
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Phase B V5, Lot P1-38 — dernier P1 du backlog) —
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Phase B V5, Lot P1-38 — dernier P1 du backlog) —
 portée réduite documentée, même politique que V5-F-076 (Feed publish, Lot P1-31) : option "à
 défaut" de la RECOMMANDATION appliquée plutôt que l'infrastructure complète
 `URLSessionConfiguration.background`/file d'attente persistée. `ChatViewModel.requestUpload`
@@ -3706,7 +3706,7 @@ IMPACT : Si l'utilisateur enregistre une vidéo dans `CameraView` et que l'app p
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter un `.onChange(of: scenePhase)` qui arrête/finalise l'enregistrement (`recorder.stopRecording()`) dès que `scenePhase` quitte `.active` pendant `isRecording == true`, symétrique à `onPause()`→`releaseCamera()` côté Android — ou a minima observer `AVCaptureSession.wasInterruptedNotification` dans `CameraCaptureController` pour finaliser proprement le fichier en cours.
 CONTRE-AUDIT : trouvé par l'agent "Lifecycle" (Phase A.2, 2026-08-24)
-STATUT : CODE_COMPLETE, CI_PENDING (2026-08-26, Lot P2-31 — **DERNIER P2, BACKLOG P2 ENTIÈREMENT
+STATUT : BUILD_VALIDATED (CI verte confirmée le 2026-08-27, run GitHub Actions 33028087753 — code écrit 2026-08-26, Lot P2-31 — **DERNIER P2, BACKLOG P2 ENTIÈREMENT
 CLOS 31/31**). RECOMMANDATION appliquée telle quelle : le `.onChange(of: scenePhase)` existant
 (déjà câblé pour V3-F-134) appelle désormais `stopRecording()` (déjà existant, réutilisé tel quel)
 dès que `phase != .active` pendant `isRecording == true` — couvre `.inactive` ET `.background`,

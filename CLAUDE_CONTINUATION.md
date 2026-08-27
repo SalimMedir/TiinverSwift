@@ -9,6 +9,41 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
+# CURRENT HANDOFF (2026-08-27 — Phase C V5 : validation CI réelle, `gh` CLI restauré)
+
+**`gh` CLI installé et authentifié** sur cette session Windows (`SalimMedir`, scope `workflow`) —
+la contrainte d'outillage qui bloquait toute CI depuis le début du cycle V5 (voir tous les
+"CI PAS déclenchée" ci-dessous) est **levée**. Session dédiée à transformer les
+`CODE_COMPLETE, CI_PENDING` en `BUILD_VALIDATED` réels — PAS un audit, PAS de nouveau finding.
+
+**Inventaire vérifié en tête de session** (recompté directement dans les 99 blocs `STATUT :` de
+`MIGRATION_PARITY_AUDIT_V5.md`, ne JAMAIS se fier au seul résumé de conversation) : 39
+`BUILD_VALIDATED`, 45 `CODE_COMPLETE, CI_PENDING`, 4 `DUPLICATE`, 3 `DIFFÉRÉ`, 7
+`IOS_INTENTIONAL_DIFFERENCE`, 1 `DOCUMENTÉ`, 0 `BLOQUÉ`.
+
+**Run CI #1 (`33027551088`, `main`@`8b67efd`)** : **FAILURE** — 2 vraies erreurs de compilation
+Swift (`ProfileView.swift:354`/`:356`, `'buildExpression' is unavailable`), cause : `avatar(_:)`
+(V5-F-074) affectait une variable `AnyView` dans une branche `if/else` À L'INTÉRIEUR d'un corps
+`@ViewBuilder` — un résult builder transforme CHAQUE instruction du corps, et interprète
+l'affectation elle-même comme une "expression de vue", ce qui échoue. `GroupDetailView.
+groupAvatar` avait le MÊME bug (même correctif V5-F-074), corrigé dans la même passe. **Corrigé**
+(commit `fe2ca4c`) : logique conditionnelle extraite dans des fonctions ordinaires
+non-`@ViewBuilder`, aucun changement de comportement.
+
+**Run CI #2 (`33028087753`, `main`@`fe2ca4c`)** : **SUCCESS**. Ce run construit l'intégralité du
+code actuellement sur `main` — couvre donc d'un coup les 45 findings `CODE_COMPLETE, CI_PENDING`
+(tous déjà committés avant cette session). **Les 45 sont passés à `BUILD_VALIDATED`** (STATUT
+individuel mis à jour dans `MIGRATION_PARITY_AUDIT_V5.md` pour chacun, détail complet dans
+`MIGRATION_PARITY_PROGRESS_V5.md`, entrée "2026-08-27 — Phase C V5 — Lot de validation CI").
+
+**Nouvel inventaire** : 84 `BUILD_VALIDATED`, **0 `CODE_COMPLETE, CI_PENDING`**, 4 `DUPLICATE`, 3
+`DIFFÉRÉ`, 7 `IOS_INTENTIONAL_DIFFERENCE`, 1 `DOCUMENTÉ`, 0 `BLOQUÉ` — total 99. **Plus aucun
+finding bloqué sur la CI.** Rappel : `BUILD_VALIDATED` = build simulateur/compilation réussie
+UNIQUEMENT — `COMPLETE_PARITY_VALIDATED` reste à faire, nécessite un test réel sur appareil
+iPhone/iPad physique, prévu après V5 comme convenu avec l'utilisateur.
+
+---
+
 # CURRENT HANDOFF (2026-08-26 — cycle V3 clos, **cycle V4 ENTIÈREMENT CLOS (75/75 findings)**,
 **cycle V5 PHASE B INTÉGRALEMENT CLOSE (99/99 findings, P0+P1+P2+P3)** : Phase A [69 findings] +
 Phase A.2 contre-audit ciblé [30 findings supplémentaires, V5-F-070 à V5-F-099] TERMINÉES, **99

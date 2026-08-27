@@ -127,6 +127,17 @@ final class AnimemesEditorState: ObservableObject {
         textRect = TextRect(font: Self.textFont, textColor: Self.textColor)
         engine.delegate = self
         timeline.layers = composer.layers
+        // Corrigé (validation physique, 2026-08-27, BUG 6/7) — `timeline.trackCount` restait au
+        // défaut de classe `TimelineViewModel.trackCount = 5` (port fidèle du défaut interne
+        // Android, `TimelineView.java:73`, JAMAIS destiné à survivre sans appel explicite) tant
+        // qu'aucun calque n'avait encore été ajouté : `syncTimeline()` ne s'exécutait qu'APRÈS
+        // chaque ajout/suppression, jamais à l'ouverture de l'éditeur. `TimelineView` (affichée
+        // dès l'ouverture, `showTimeline` par défaut `true`) réservait donc la hauteur de 5 pistes
+        // vides dès l'écran vide (`calques=0`), réduisant d'autant l'espace restant pour le
+        // canevas ET pour `bottomToolbar` (dernier élément du `VStack` non scrollable de
+        // `AnimemesEditorView.body`). `syncTimeline()` appelée ici avec la valeur RÉELLE
+        // (`composer.layers` vide au départ → `trackCount = max(1, 0) = 1`, voir sa doc).
+        syncTimeline()
     }
 
     var layers: [AnimationObjectData] { composer.layers }
@@ -198,7 +209,16 @@ final class AnimemesEditorState: ObservableObject {
     /// que devinée en silence.
     func syncTimeline() {
         timeline.layers = composer.layers
-        timeline.trackCount = max(5, composer.layers.count)
+        // Corrigé (validation physique, 2026-08-27, BUG 7) — `max(5, ...)` réservait TOUJOURS un
+        // minimum de 5 pistes, même avec 1-2 calques réels : `TimelineView.frame(height:)`
+        // (`TimelineView.swift:60,78`) calcule déjà sa hauteur comme
+        // `trackCount * (trackHeight + trackGap)`, donc restait figée à la hauteur de 5 pistes
+        // tant que le nombre de calques restait ≤ 5, masquant toute croissance visible. Vérifié
+        // contre Android : `AnimemesCompound.java:1744/1781/3606` appellent TOUS
+        // `timelineView.setTrackCount(mView.getComposer().getLayers().size())` — le nombre EXACT
+        // de calques, `TimelineView.setTrackCount` (`android/views/TimelineView.java:307`) ne
+        // clampant qu'à un PLANCHER de 1 (`Math.max(1, count)`), jamais 5.
+        timeline.trackCount = max(1, composer.layers.count)
         timeline.items = composer.layers.enumerated().map { index, obj in
             var item = TimelineItem(id: obj.id)
             item.label = obj.objectType?.rawValue.capitalized ?? "Layer"

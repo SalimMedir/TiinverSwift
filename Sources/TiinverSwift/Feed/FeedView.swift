@@ -678,6 +678,16 @@ struct FeedDetailPagerView: View {
     private var posts: [FeedActivity] { viewModel.posts }
 
     var body: some View {
+        // Demande explicite (2026-08-27) : le média (photo/vidéo) doit rester plein écran
+        // (bord à bord, y compris sous l'encoche/l'indicateur d'accueil — expérience "viewer"
+        // standard, comme Android), MAIS les CONTRÔLES (bouton retour en haut, rail d'actions/
+        // légende/"S'abonner" en bas) doivent rester dans la zone sûre, pas collés aux bords —
+        // sinon le rail d'actions/le bouton "S'abonner" se retrouvent sous la zone de geste de
+        // l'indicateur d'accueil, et le bouton retour trop proche de l'encoche/la barre de statut.
+        // `GeometryReader` EXTERNE (avant tout `.ignoresSafeArea()`, appliqué seulement au pager
+        // interne juste en dessous) pour lire les VRAIES marges de zone sûre de l'appareil et les
+        // injecter comme rembourrage supplémentaire sur les seuls éléments de contrôle.
+        GeometryReader { outerGeo in
         ZStack(alignment: .topLeading) {
             GeometryReader { geo in
                 TabView(selection: $currentIndex) {
@@ -687,6 +697,7 @@ struct FeedDetailPagerView: View {
                                 FeedAdCell()
                             } else {
                                 FeedDetailCell(
+                                    bottomSafeArea: outerGeo.safeAreaInsets.bottom,
                                     post: post, isActive: index == currentIndex,
                                     onLike: { viewModel.toggleLike(post) },
                                     onComment: { commentsPost = post; viewModel.notifyCommentOpened(post) },
@@ -742,7 +753,7 @@ struct FeedDetailPagerView: View {
                     .padding(12)
                     .background(Circle().fill(.black.opacity(0.35)))
             }
-            .padding(.top, 8)
+            .padding(.top, outerGeo.safeAreaInsets.top + 8)
             .padding(.leading, 12)
         }
         .fullScreenCover(isPresented: Binding(get: { openProfileUserId != nil }, set: { if !$0 { openProfileUserId = nil } })) {
@@ -861,6 +872,7 @@ struct FeedDetailPagerView: View {
         } message: {
             Text(viewModel.blockError ?? "")
         }
+        } // fin du `GeometryReader` externe (zone sûre)
     }
 
     /// Port de `ExoPlayerManager.smartPreload`/`PreloadScheduler` (fenêtre `currentIndex ± 2`) —
@@ -878,6 +890,11 @@ struct FeedDetailPagerView: View {
 }
 
 private struct FeedDetailCell: View {
+    /// Demande explicite (2026-08-27) : le rail d'actions/bloc légende ne doit pas être collé au
+    /// bord bas réel de l'appareil (sous la zone de geste de l'indicateur d'accueil) — transmis
+    /// depuis `FeedDetailPagerView` (seul endroit qui a accès à la vraie zone sûre, en dehors de
+    /// l'`.ignoresSafeArea()` du pager lui-même).
+    var bottomSafeArea: CGFloat = 0
     let post: FeedActivity
     let isActive: Bool
     var onLike: () -> Void = {}
@@ -928,6 +945,14 @@ private struct FeedDetailCell: View {
                 Color.black
             }
 
+            // `.zIndex(1)` — demande explicite (2026-08-27) : le rail d'actions/le bloc légende
+            // n'apparaissaient pas de façon identique sur une photo vs une vidéo, malgré un code
+            // strictement identique (bloc FRÈRE, pas enfant, de la branche média — voir ci-dessus).
+            // `VideoPlayer` (AVKit) est un `UIViewControllerRepresentable` avec sa propre hiérarchie
+            // UIKit, qui peut composer différemment de l'ordre normal SwiftUI (`ZStack` empile par
+            // ordre de déclaration) qu'une simple `Image` — force ici explicitement cette superposition
+            // au-dessus de N'IMPORTE QUEL type de média, plutôt que de compter implicitement sur
+            // l'ordre de déclaration.
             VStack {
                 Spacer()
                 HStack(alignment: .bottom) {
@@ -1001,7 +1026,9 @@ private struct FeedDetailCell: View {
                     actionRail
                 }
                 .padding()
+                .padding(.bottom, bottomSafeArea)
             }
+            .zIndex(1)
         }
         .background(Color.black)
         .clipped()

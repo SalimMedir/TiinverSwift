@@ -87,12 +87,15 @@ d'écran réelle, plutôt que de deviner un correctif.
 
 **Fichier(s) modifié(s)** : `Sources/TiinverSwift/Feed/FeedView.swift` (`FeedGridCell.body`).
 
-**Commit** : (à renseigner après commit)
-**CI run** : (à renseigner après déclenchement)
-**Résultat** : en attente
-**Prochaine étape** : une fois la CI verte, demander à l'utilisateur de rouvrir l'onglet Accueil
-sur l'appareil physique et de fournir une nouvelle capture — le texte de diagnostic affiché sur
-chaque vignette cassée donnera la cause racine exacte, permettant alors le vrai correctif ciblé.
+**Commit** : `9c3194d`
+**CI run** : [33054200758](https://github.com/SalimMedir/TiinverSwift/actions/runs/33054200758) — SUCCESS (2026-08-27)
+**Résultat** : build vert confirmé, diagnostic temporaire livré et prêt à être observé sur
+appareil physique.
+**Prochaine étape** : demander à l'utilisateur de rouvrir l'onglet Accueil sur l'appareil
+physique et de fournir une nouvelle capture — le texte de diagnostic affiché sur chaque vignette
+cassée (fond rouge = `AsyncImagePhase.failure` + message d'erreur réel, fond orange =
+`thumbnailURL` nil + valeurs brutes `object`/`isVideo`/`cdn_content_id`/`object_url`) donnera la
+cause racine exacte, permettant alors le vrai correctif ciblé.
 
 ---
 

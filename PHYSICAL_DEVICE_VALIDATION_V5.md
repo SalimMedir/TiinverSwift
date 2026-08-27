@@ -156,20 +156,67 @@ séparément.
 **Fichier(s) modifié(s)** : `Sources/TiinverSwift/Feed/FeedView.swift`
 (`FeedDetailPagerView.body`, une seule ligne de frame).
 
-**Commit** : (à renseigner, build CI unique en fin de lot)
-**CI run** : en attente (build complet groupé en fin des 8 bugs, sur demande explicite)
+**Commit** : `0225267`
+**CI run** : en attente (build complet groupé en fin des 8 bugs, sur demande explicite de
+l'utilisateur — plus de test/CI intermédiaire par bug)
 **Résultat** : NON confirmé visuellement (aucun accès simulateur/appareil sur cette machine) —
 `CODE_COMPLETE`, nécessitera une validation physique finale groupée avec les autres bugs.
 
 ## BUG 4 — Accueil : carrousel de comptes suggérés absent
 
-**Statut : NON DÉMARRÉ** — note : `Sources/TiinverSwift/Feed/SuggestionsCarouselView.swift` et
-`SuggestionsRepository.swift` existent déjà dans le projet ; à vérifier s'ils sont simplement
-non câblés dans `FeedView.homeHeader` avant de construire quoi que ce soit de nouveau.
+**Statut : DÉJÀ_CORRECT — aucun défaut de code trouvé, pas de modification**
+
+`Sources/TiinverSwift/Feed/SuggestionsCarouselView.swift` + `SuggestionsRepository.swift`
+existent déjà et sont ENTIÈREMENT câblés : `FeedView.homeHeader` (ligne 141) instancie
+`SuggestionsCarouselView()` en tout premier élément, AVANT la bannière AdMob. Vérifié point par
+point contre les 7 exigences : (1) endpoint Android `TransportData.getSuggestionsUsers` = `GET
+suggestions/{userId}` (2) modèle `User` réutilisé (3-4) API/composant DÉJÀ existants ET câblés
+(5) réutilise `ProfileRepository.follow`/`FeedRepository.notifyPostAuthor`, pas de logique
+dupliquée (6) carrousel intégré dans `homeHeader`, au bon endroit, avant la grille (7) Follow réel
+avec écho optimiste + rollback (V3-F-107) + notification (V5-F-014). Aucune donnée fictive.
+Dernier commit sur ces 2 fichiers : `2026-08-26 14:28`, ANTÉRIEUR à la capture d'écran
+(2026-08-27 matin) — le code testé par l'utilisateur incluait donc déjà cette fonctionnalité.
+
+`SuggestionsCarouselView.body` (ligne 22-34) se rétracte ENTIÈREMENT (`Group` vide) si
+`users.isEmpty` — comportement DÉLIBÉRÉMENT fidèle à Android (`AdapterSuggestContact`, le
+conteneur XML reste visible mais la RecyclerView interne n'a simplement aucune cellule), pas un
+bug. L'explication la plus probable du carrousel absent sur la capture (`home-feed-grid.png` :
+la bannière AdMob apparaît en tout premier, sans aucun espace au-dessus) est que
+`SuggestionsRepository.fetchSuggestions` a retourné un tableau vide pour CE compte précis au
+moment du test — pas un défaut de code. Documenté ici plutôt que corrigé sans preuve
+(pas de correction spéculative, conformément à la consigne).
 
 ## BUG 5 — Assistant IA : puces de suggestion absentes
 
-**Statut : NON DÉMARRÉ**
+**Statut : CODE_COMPLETE**
+
+**Problème observé** (`ai screen.png`) : `AIChatView.welcomeState` (état vide, aucun message
+envoyé) n'affichait QUE l'icône sparkles + le texte d'accroche — aucune puce de suggestion.
+
+**Comportement Android** (`android-Ai-page.png`, `ai/TiinverGeminiAIChat.java:268-313`,
+`setupChips()`, lu en entier) : section "Questions fréquentes" (5 puces : gain de pièces, créer
+un Animeme, monétiser le compte, groupe payant, retirer les gains) + section "Générer une image"
+(3 puces de prompt + "Améliorer mon image"). Textes exacts tirés de
+`res/values-fr/strings.xml:871-879` (`chip_gain_coins` etc.), pas devinés.
+
+**Cause racine** : fonctionnalité jamais portée (`welcomeState` ne contenait que l'état vide de
+base) — confirmé absence totale de toute notion de "chip" dans `AIChatView.swift` avant ce
+correctif.
+
+**Correctif appliqué** : 8 puces ajoutées à `welcomeState`, texte français exact d'Android. Aucune
+NOUVELLE logique métier : les puces "question" réutilisent `viewModel.sendText()` (même chemin
+que taper la question et appuyer sur envoyer), les puces "image" réutilisent
+`viewModel.generateImage()`, la puce "Améliorer mon image" est un second `PhotosPicker` lié au
+MÊME `$pickerItem` déjà câblé dans `inputBar` (fidèle à Android : `chip_improve_image` se contente
+d'ouvrir la galerie, aucun prompt n'est pré-rempli automatiquement côté Android non plus, vérifié
+dans le handler réel).
+
+**Fichier(s) modifié(s)** : `Sources/TiinverSwift/AI/AIChatView.swift` (`welcomeState` + 5
+nouvelles fonctions/propriétés privées, aucun fichier de modèle/viewmodel touché).
+
+**Commit** : `f42453b`
+**CI run** : en attente (build groupé de fin de lot)
+**Résultat** : NON confirmé visuellement — `CODE_COMPLETE`.
 
 ## BUG 6 — Animems : barre d'outils du bas absente
 

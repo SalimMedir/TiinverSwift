@@ -312,8 +312,14 @@ final class AnimemesExporter {
                     currentNs: currentNs, viewSize: viewSize
                 )
             case .text:
+                // **Corrigé (2026-08-28, V7-F-004)** — garde de bornes temporelles manquante,
+                // seule différence avec le cas bitmap/shape ci-dessus (qui l'applique déjà via
+                // `startAt`/`endAt`, lignes 298/308) : un calque texte recadré sur la timeline
+                // restait visible sur toute la durée de l'export MP4, contredisant l'éditeur.
+                guard i < startAt.count, i < endAt.count, renderFrame >= startAt[i], renderFrame <= endAt[i] else { continue }
                 LayerRenderer.drawText(obj, in: context, textRect: textRect, viewSize: viewSize, currentNs: currentNs)
             case .sticker:
+                guard i < startAt.count, i < endAt.count, renderFrame >= startAt[i], renderFrame <= endAt[i] else { continue }
                 LayerRenderer.drawSticker(obj, in: context, currentNs: currentNs)
             case .path, .line, .clip, .erase, .background, .none:
                 continue

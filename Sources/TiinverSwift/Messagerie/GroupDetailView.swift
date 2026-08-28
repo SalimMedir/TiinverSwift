@@ -442,10 +442,18 @@ struct GroupDetailView: View {
         }
     }
 
+    /// **Corrigé (2026-08-28, V7-F-007)** — `insertSystemMessage` manquait, seule exception parmi
+    /// les mutations de ce fichier (`remove`/`submitDescription`/`submitName` l'appellent toutes
+    /// après succès réseau, juste au-dessus). Port de `GroupDetailActivity.exit()` :
+    /// `verb="leftGroup"`, texte `myUsername + "/" + groupName` (`GroupDetailActivity.java:293,
+    /// 313-314`). Sans cet écho, `MessageRepository.insertTextMessage` — qui déclenche AUSSI
+    /// `roster.updateRoster(...)` — n'était jamais appelé : le départ n'était jamais reflété dans
+    /// l'aperçu du dernier message de la liste des conversations.
     private func leaveGroup() async {
         guard let myId = UserSession.shared.myId, let apiKey = UserSession.shared.apiKey else { return }
         do {
             try await GroupRepository.shared.leaveGroup(groupId: groupId, userId: myId, apiKey: apiKey)
+            await insertSystemMessage(verb: "leftGroup", text: "\(UserSession.shared.username ?? "")/\(groupName)")
             dismiss()
         } catch {
             errorMessage = "Échec de la sortie du groupe."

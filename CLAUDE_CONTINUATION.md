@@ -9,6 +9,54 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
+# CURRENT HANDOFF (2026-08-28 — Phase E : Audit V6 terminé, AUCUNE correction encore appliquée)
+
+Nouveau cycle d'audit, distinct de V5 et de `PHYSICAL_DEVICE_VALIDATION_V5.md` : ciblé sur 5
+domaines prioritaires (**Animems editor/export/publish**, **ChatGroup**, **Search**,
+**Promotion**, **Video Statistics**) + un balayage transversal. Documenté intégralement dans
+`MIGRATION_PARITY_AUDIT_V6.md` (26 findings, V6-F-001 à V6-F-026, jamais de réutilisation des IDs
+V5) et `MIGRATION_PARITY_PROGRESS_V6.md`. **Consigne explicite de l'utilisateur pour ce cycle :
+audit d'abord, AUCUNE correction avant validation du rapport par l'utilisateur** — donc,
+contrairement à V5/PHYSICAL_DEVICE_VALIDATION_V5, aucun des 26 findings V6 n'est encore
+`CODE_COMPLETE` ni `BUILD_VALIDATED` : ils sont tous au statut `NON CORRIGÉ (audit uniquement)`.
+
+**Répartition** : 0 P0, 5 P1, 13 P2, 8 P3. Par domaine : Animems editor/playback 6, Animems
+Export 3, ChatGroup 2, Search 3, Promotion 4, Video Statistics 5, Transversal 3.
+
+**Les 5 P1 (à traiter en priorité lors de la prochaine phase de correction)** :
+- **V6-F-001** — Défilement vertical de la timeline Animems totalement mort (aucun geste ne
+  modifie jamais `scrollTracksPx`) — bloque l'accès aux pistes hors écran dès qu'une composition
+  a plus de calques que la hauteur visible (cas courant depuis le correctif V5 du nombre de
+  pistes).
+- **V6-F-006** — Les keyframes de transformation sur un calque TEXTE ou STICKER sont
+  enregistrables mais jamais rendues (ni aperçu, ni export) — `drawText`/`drawSticker` n'ont
+  jamais été mis à jour pour lire les keyframes matricielles comme `drawObjectFrame` le fait déjà.
+- **V6-F-010** — Bouton d'envoi de cadeau ("Gift") affiché et câblé dans les conversations de
+  GROUPE côté iOS alors qu'Android le masque explicitement dans ce contexte (découvert par
+  archéologie git du commit Android le plus récent touchant le code groupe/chat) — ET aucun
+  débit de pièces n'est jamais appelé côté iOS, contrairement à Android.
+- **V6-F-019** — Pipeline client de suivi du temps de visionnage entièrement absent côté iOS
+  (déjà connu comme "module 18" différé, mais son impact précis sur les métriques Statistiques
+  n'avait jamais été tracé) — toute activité de visionnage iOS n'est jamais remontée au serveur,
+  faussant silencieusement les statistiques des créateurs.
+- **V6-F-024** — Bouton "Publier" (partagé galerie standard + export Animems) : la garde
+  anti-double-soumission est posée APRÈS un appel réseau au lieu d'avant — fenêtre de double-tap
+  réelle pouvant produire deux publications serveur pour un seul tap.
+
+**Findings notables hors P1** : V5-F-082 (habillage promotionnel outro/watermark export Animems)
+confirmé toujours `DIFFÉRÉ`, non corrigé — re-vérifié par l'agent Export/Publish, pas une
+régression, juste une confirmation de l'état déjà documenté en V5. Domaines Promotion et Video
+Statistics avaient 0 finding V5 (jamais audités avant ce cycle) — voir `MIGRATION_PARITY_AUDIT_V6
+.md` section 4 pour le verdict explicite "Promotion est réellement câblée de bout en bout, pas
+une coquille UI" et les 13 `IOS_INTENTIONAL_DIFFERENCE` documentées (bugs Android non reproduits,
+à ne pas "corriger" pour forcer une fausse parité).
+
+**Prochaine étape pour une future session/l'utilisateur** : décision de l'utilisateur sur la
+phase de correction à suivre — quels findings traiter, dans quel ordre, avant de commencer tout
+correctif de code sur ce cycle.
+
+---
+
 # CURRENT HANDOFF (2026-08-27 — Phase D : 8 bugs de test physique corrigés, voir `PHYSICAL_DEVICE_VALIDATION_V5.md`)
 
 Nouvelle phase distincte de V5 : 12 captures d'écran réelles fournies par l'utilisateur

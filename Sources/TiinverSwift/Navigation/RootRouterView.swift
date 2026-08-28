@@ -95,6 +95,14 @@ struct RootRouterView: View {
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 startNetworkMonitor()
+                // Port de `ViewTracker.startPeriodicSync` (V6-F-019) — Android obtient une
+                // couverture "vider les vues laissées par une session tuée" via son job
+                // `WorkManager` périodique (15 min, hors périmètre ici — voir
+                // `ViewEventSyncService.swift`) ; ce déclencheur ponctuel au retour au premier
+                // plan est la meilleure approximation atteignable sans construire tout le
+                // chantier `BGTaskScheduler`. Best-effort, silencieux (comme `ViewSyncWorker`
+                // avale déjà ses propres échecs réseau côté Android).
+                Task { await ViewEventSyncService.sync() }
             } else if phase == .background {
                 NetworkMonitor.shared.stop()
             }

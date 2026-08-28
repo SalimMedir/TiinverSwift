@@ -1,9 +1,13 @@
 import CoreData
 
 /// Port de `db/ViewEventDao.java` + de la logique cumulative de `Utils/ViewTracker.java` (partie
-/// "écriture locale" seulement — la synchronisation périodique/immédiate vers le serveur, portée
-/// sur Android via `WorkManager`/`ViewSyncWorker.java`, est un sujet à part entière (équivalent
-/// `BackgroundTasks`/`BGTaskScheduler`) qui sera porté avec le module 18 (Divers/stats), pas ici).
+/// "écriture locale").
+///
+/// **Mise à jour (2026-08-28, V6-F-019)** — la synchronisation réseau (immédiate au seuil +
+/// tentative au retour au premier plan) est désormais câblée, voir `ViewEventSyncService.swift`
+/// (port de `ViewSyncWorker.java`) et son appel dans `FeedView.swift`/`RootRouterView.swift`. Seul
+/// le job PÉRIODIQUE d'arrière-plan (`WorkManager`/`BGTaskScheduler`, 15 min) reste hors périmètre
+/// (déjà déféré par V5-F-060, chantier d'infrastructure à part entière).
 final class ViewEventRepository {
     private let repo: CoreDataRepository<ViewEventEntity>
     static let syncThreshold = 5 // ViewTracker.SYNC_THRESHOLD
@@ -57,6 +61,18 @@ final class ViewEventRepository {
                 row.replayCount = replayCount
                 row.exitPoint = exitPoint
                 row.createdAt = Int64(Date().timeIntervalSince1970 * 1000)
+                // **Corrigé (2026-08-28, V6-F-019)** — `localId` (équivalent du "_id" auto-incrémenté
+                // SQLite côté Android, voir le commentaire de tête de `TiinverModel.xcdatamodeld`)
+                // n'était JAMAIS assigné ici, restant à sa valeur par défaut (0) pour CHAQUE ligne :
+                // sans conséquence tant que rien n'appelait `delete(localId:)`, mais
+                // `ViewEventSyncService.sync()` (nouveau, port de `ViewSyncWorker.java`) en dépend
+                // pour supprimer UNE SEULE ligne confirmée envoyée au serveur — avec `localId`
+                // toujours à 0, ce prédicat aurait supprimé TOUTES les lignes en attente dès le
+                // premier succès réseau, y compris celles pas encore envoyées. Tirage aléatoire
+                // 64 bits (collision pratiquement impossible sur le volume de lignes en attente
+                // avant purge à 7 jours) plutôt qu'un compteur — pas de source d'auto-incrément
+                // fiable disponible ici (plusieurs contextes d'arrière-plan concurrents).
+                row.localId = Int64.random(in: 1...Int64.max)
             }
         }
 

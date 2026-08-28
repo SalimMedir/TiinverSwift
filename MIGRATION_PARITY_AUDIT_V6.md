@@ -204,7 +204,7 @@ IMPACT : Impossible de réutiliser la bande sonore d'une vidéo comme musique de
 REPRODUCTIBILITÉ : Certaine par lecture de code.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Porter la chaîne sélection vidéo → extraction audio (AVAssetExportSession) → définition comme piste audio de fond.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Nouveau bouton "extraire" (barre du bas) → sélecteur vidéo dédié (`GalleryPickerView`, nouveau filtre `.videos` optionnel) → `AnimemesEditorState.extractAudioAsBackgroundMusic(from:)` (`AVAssetExportSession`, préréglage `AppleM4A`, même pattern `withCheckedContinuation` que `MediaTrimView`) → `audioURL` défini sur succès (même point d'entrée que "Ajouter un son"). Portée réduite documentée : le dialogue de découpe temporelle Android (`ExtracAudioFromVideo`) n'est pas porté — la piste audio COMPLÈTE est extraite, aucune UI de recadrage temporel Animems n'existant côté iOS pour l'instant (même limitation déjà assumée pour l'import vidéo en calque, V5-F-034) ; couvre le cas d'usage principal sans le raffinement de découpe.
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. Nouveau bouton "extraire" (barre du bas) → sélecteur vidéo dédié (`GalleryPickerView`, nouveau filtre `.videos` optionnel) → `AnimemesEditorState.extractAudioAsBackgroundMusic(from:)` (`AVAssetExportSession`, préréglage `AppleM4A`, même pattern `withCheckedContinuation` que `MediaTrimView`) → `audioURL` défini sur succès (même point d'entrée que "Ajouter un son"). Portée réduite documentée : le dialogue de découpe temporelle Android (`ExtracAudioFromVideo`) n'est pas porté — la piste audio COMPLÈTE est extraite, aucune UI de recadrage temporel Animems n'existant côté iOS pour l'instant (même limitation déjà assumée pour l'import vidéo en calque, V5-F-034) ; couvre le cas d'usage principal sans le raffinement de découpe.
 ```
 
 ```
@@ -221,7 +221,7 @@ IMPACT : Un utilisateur s'attendant au comportement Android ("retour au point de
 REPRODUCTIBILITÉ : Certaine par lecture de code, sans ambiguïté des deux côtés.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Faire pointer `resetSelected()` vers une transformation identité (position/échelle/rotation d'origine du calque), pas la dernière pose, et réduire `durationFrames`/`endFrame` en cohérence avec Android.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. `resetSelected()` remplace désormais `transforms` par un `Transform()` identité neuf (miroir exact de `new Transform()` + `Matrix()` identité côté Android), réduit `endFrame` à `startFrame` (stub d'une frame — PAS le littéral `1` d'Android, une valeur ABSOLUE invalide pour un calque dont `startFrame > 1` ; `obj.startFrame` produit le même effet de stub sans ce risque), et appelle `clearMaskTransforms()` en plus de `clearAllKeyframes()` (manquant jusqu'ici, port de `objectData.clearMaskTransforms()`).
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. `resetSelected()` remplace désormais `transforms` par un `Transform()` identité neuf (miroir exact de `new Transform()` + `Matrix()` identité côté Android), réduit `endFrame` à `startFrame` (stub d'une frame — PAS le littéral `1` d'Android, une valeur ABSOLUE invalide pour un calque dont `startFrame > 1` ; `obj.startFrame` produit le même effet de stub sans ce risque), et appelle `clearMaskTransforms()` en plus de `clearAllKeyframes()` (manquant jusqu'ici, port de `objectData.clearMaskTransforms()`).
 ```
 
 ```
@@ -255,7 +255,7 @@ IMPACT : Un utilisateur animant une légende texte ou un sticker (flux plausible
 REPRODUCTIBILITÉ : Certaine par lecture de code pour la moitié "iOS ne rend jamais" ; probable (non prouvée par exécution) pour la moitié "Android rend bien à l'export" — NEEDS_PHYSICAL_VALIDATION sur un vrai build Android pour confirmer visuellement le mouvement dans le MP4 exporté.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Faire consulter à `drawText`/`drawSticker` les keyframes matricielles comme `drawObjectFrame` le fait déjà (lecture directe en direct, cohérent avec le reste du moteur — pas besoin de câbler le bake mort `applyInterpolation` pour ces deux types).
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28 (commit 96527fe). `drawText`/`drawSticker` acceptent désormais un `currentNs: Int64?` optionnel et reproduisent exactement le repli `hasTransformKeyframes`/`interpolatedMatrixValues` de `drawObjectFrame`. Câblé dans la boucle de rendu canevas EN DIRECT (`AnimemesEditorView.canvasArea`, `currentNs: ns` = playhead courant) ET dans la boucle d'export MP4 (`AnimemesExporter.render(frame:into:)`, `currentNs` = timestamp de la frame réellement encodée) — donc corrigé en aperçu ET à l'export, comme demandé. Les deux sites d'aplatissement statique (`exportStaticImage`, `repeatBackgroundImage`) omettent délibérément `currentNs` (défaut `nil`) pour conserver leur comportement "dernière transform" existant, cohérent avec leurs appels `drawLastTransform(..., isSliderPreview: true)` voisins.
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28 (commit 96527fe). `drawText`/`drawSticker` acceptent désormais un `currentNs: Int64?` optionnel et reproduisent exactement le repli `hasTransformKeyframes`/`interpolatedMatrixValues` de `drawObjectFrame`. Câblé dans la boucle de rendu canevas EN DIRECT (`AnimemesEditorView.canvasArea`, `currentNs: ns` = playhead courant) ET dans la boucle d'export MP4 (`AnimemesExporter.render(frame:into:)`, `currentNs` = timestamp de la frame réellement encodée) — donc corrigé en aperçu ET à l'export, comme demandé. Les deux sites d'aplatissement statique (`exportStaticImage`, `repeatBackgroundImage`) omettent délibérément `currentNs` (défaut `nil`) pour conserver leur comportement "dernière transform" existant, cohérent avec leurs appels `drawLastTransform(..., isSliderPreview: true)` voisins.
 ```
 
 ```
@@ -272,7 +272,7 @@ IMPACT : Fenêtre de double-tap réelle bien que probablement étroite ; travail
 REPRODUCTIBILITÉ : Certaine par lecture de code que la garde manque ; NEEDS_PHYSICAL_VALIDATION pour confirmer la fenêtre réellement déclenchable via double-tap rapide sur l'appareil.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter `guard !isExporting else { return }` en tête de `export(canvasSize:completion:)`, miroir exact de la garde `isStartedCodec` d'Android.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. `guard !isExporting else { return }` ajouté en toute première ligne de `export(canvasSize:completion:)`, avant même le guard `composer.layers.isEmpty` existant — miroir exact de la garde `isStartedCodec` d'Android. `isExporting` était déjà remis à `false` de façon fiable en cas de succès ET d'échec (`self.isExporting = false` dans le callback de `exporter.export`), donc un nouvel essai après un échec fonctionne normalement sans modification supplémentaire.
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. `guard !isExporting else { return }` ajouté en toute première ligne de `export(canvasSize:completion:)`, avant même le guard `composer.layers.isEmpty` existant — miroir exact de la garde `isStartedCodec` d'Android. `isExporting` était déjà remis à `false` de façon fiable en cas de succès ET d'échec (`self.isExporting = false` dans le callback de `exporter.export`), donc un nouvel essai après un échec fonctionne normalement sans modification supplémentaire.
 ```
 
 ```
@@ -288,7 +288,7 @@ IMPACT : Risque de vidéo exportée avec des frames manquantes sans qu'aucune er
 REPRODUCTIBILITÉ : Certaine par lecture de code que la vérification manque ; fréquence réelle en pratique non mesurable statiquement.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Vérifier la valeur de retour de `append` et faire échouer explicitement l'export (avec message clair) en cas de frame refusée.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Valeur de retour de `append` désormais vérifiée ; sur `false`, l'export s'arrête proprement (`videoInput.markAsFinished()`, `writer.cancelWriting()`) et échoue explicitement via `completion(.failure(.writingFailed(writer.error)))` au lieu de continuer silencieusement avec une frame manquante.
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. Valeur de retour de `append` désormais vérifiée ; sur `false`, l'export s'arrête proprement (`videoInput.markAsFinished()`, `writer.cancelWriting()`) et échoue explicitement via `completion(.failure(.writingFailed(writer.error)))` au lieu de continuer silencieusement avec une frame manquante.
 ```
 
 ```
@@ -321,7 +321,7 @@ IMPACT : Des membres de groupe peuvent envoyer des messages "cadeau" qu'Android 
 REPRODUCTIBILITÉ : Certaine par lecture de code (les deux lacunes — filtre UI manquant et appel de débit manquant — lues directement, pas déduites).
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : (1) Masquer le bouton cadeau dans `ChatView` quand `target` est un groupe, miroir du `setVisibility(GONE)` Android. (2) Câbler le débit de pièces réel (`POST message/gift` ou équivalent) dans `sendGift` avant l'envoi du message, quel que soit le contexte.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. (1) Bouton cadeau masqué dans `ChatView.inputBar` quand `viewModel.target.isGroup`, miroir de `setVisibility(GONE)`. (2) `WalletRepository.sendGift(sender:receiver:price:messageId:)` ajouté (`POST message/gift`, mêmes champs qu'Android) et réellement appelé depuis `ChatViewModel.sendGift(giftId:)` ; solde local décrémenté SEULEMENT après confirmation serveur (jamais optimiste, financier). DEUXIÈME barrière ajoutée dans `sendGift` lui-même (`guard !target.isGroup`, pas seulement le bouton masqué) pour couvrir un futur appelant qui contournerait l'UI — répond explicitement à l'exigence de l'audit "vérifier qu'il est impossible de déclencher Gift indirectement en groupe". Vérification de solde AVANT envoi ajoutée aussi (`price <= coinsAmount`), miroir de `btnSendGift.setEnabled(canAfford)` bien que le panneau `GiftPickerPlaceholder` reste un placeholder minimal par ailleurs (catalogue réel, mise en page complète non portée — gap pré-existant, hors scope V6-F-010).
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. (1) Bouton cadeau masqué dans `ChatView.inputBar` quand `viewModel.target.isGroup`, miroir de `setVisibility(GONE)`. (2) `WalletRepository.sendGift(sender:receiver:price:messageId:)` ajouté (`POST message/gift`, mêmes champs qu'Android) et réellement appelé depuis `ChatViewModel.sendGift(giftId:)` ; solde local décrémenté SEULEMENT après confirmation serveur (jamais optimiste, financier). DEUXIÈME barrière ajoutée dans `sendGift` lui-même (`guard !target.isGroup`, pas seulement le bouton masqué) pour couvrir un futur appelant qui contournerait l'UI — répond explicitement à l'exigence de l'audit "vérifier qu'il est impossible de déclencher Gift indirectement en groupe". Vérification de solde AVANT envoi ajoutée aussi (`price <= coinsAmount`), miroir de `btnSendGift.setEnabled(canAfford)` bien que le panneau `GiftPickerPlaceholder` reste un placeholder minimal par ailleurs (catalogue réel, mise en page complète non portée — gap pré-existant, hors scope V6-F-010).
 ```
 
 ```
@@ -338,7 +338,7 @@ IMPACT : Absence d'un indice UX/retour sonore mineur mais réel, sur les deux co
 REPRODUCTIBILITÉ : Certaine par lecture de code (absence confirmée).
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Implémenter la lecture (tonalités synthétisées via `AVAudioPlayer` ou équivalent) à l'envoi/réception, gatée par `allowChatSendReceiveSound`.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Nouveau `ChatSoundPlayer.swift` : port fidèle de `AppSounds.playSend`/`playReceive` (mêmes fréquences/durées/enveloppes exponentielles, synthèse PCM Float via `AVAudioEngine`/`AVAudioPlayerNode` au lieu du PCM16/`AudioTrack` Android — formule d'amplitude identique, seule la représentation bas niveau diffère, sans perte perceptible). Gatée en interne par `allowChatSendReceiveSound`. Câblée dans `ChatViewModel.appendOptimistic` (son d'envoi, tout message sortant local — texte/média/cadeau/rejoindre-groupe, miroir de `addMessage`'s `isBelongsToCurrentUser()`) et `ChatViewModel.onIncoming` (son de réception, gaté `!belongsToCurrentUser`, miroir exact de `onNewMessage`'s garde). `AppSounds.playTyping()` non porté — confirmé sans aucun appelant dans `ChatFragmentTest.java`, code mort côté Android lui-même.
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. Nouveau `ChatSoundPlayer.swift` : port fidèle de `AppSounds.playSend`/`playReceive` (mêmes fréquences/durées/enveloppes exponentielles, synthèse PCM Float via `AVAudioEngine`/`AVAudioPlayerNode` au lieu du PCM16/`AudioTrack` Android — formule d'amplitude identique, seule la représentation bas niveau diffère, sans perte perceptible). Gatée en interne par `allowChatSendReceiveSound`. Câblée dans `ChatViewModel.appendOptimistic` (son d'envoi, tout message sortant local — texte/média/cadeau/rejoindre-groupe, miroir de `addMessage`'s `isBelongsToCurrentUser()`) et `ChatViewModel.onIncoming` (son de réception, gaté `!belongsToCurrentUser`, miroir exact de `onNewMessage`'s garde). `AppSounds.playTyping()` non porté — confirmé sans aucun appelant dans `ChatFragmentTest.java`, code mort côté Android lui-même.
 ```
 
 ```
@@ -355,7 +355,7 @@ IMPACT : Affichage transitoirement incohérent avec ce que l'utilisateur a réel
 REPRODUCTIBILITÉ : Certaine par lecture de code qu'aucune garde n'existe ; l'observation réelle du scintillement nécessite un test avec latence réseau artificielle (NEEDS_PHYSICAL_VALIDATION).
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter un jeton de génération (incrémenté à chaque nouvelle recherche, comparé à la réception de la réponse avant application) côté iOS — corrige le défaut partagé sans attendre qu'Android soit lui-même corrigé.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Décision explicitement demandée par la mission (défaut partagé, ne pas corriger automatiquement) : jugé nécessaire ET sûr — le correctif (jeton `searchGeneration`) ne fait QUE supprimer une course, ne change AUCUN comportement observable quand le réseau se comporte normalement, et ne dépend d'aucun changement côté Android. `searchGeneration` ajouté à `SearchView`, incrémenté dans `runSearch`/`suggest`, comparé avant toute application de résultat/erreur ET avant la remise à `false` de `isLoading` (pour éviter qu'une réponse obsolète n'efface l'indicateur de chargement d'une requête plus récente encore en vol).
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. Décision explicitement demandée par la mission (défaut partagé, ne pas corriger automatiquement) : jugé nécessaire ET sûr — le correctif (jeton `searchGeneration`) ne fait QUE supprimer une course, ne change AUCUN comportement observable quand le réseau se comporte normalement, et ne dépend d'aucun changement côté Android. `searchGeneration` ajouté à `SearchView`, incrémenté dans `runSearch`/`suggest`, comparé avant toute application de résultat/erreur ET avant la remise à `false` de `isLoading` (pour éviter qu'une réponse obsolète n'efface l'indicateur de chargement d'une requête plus récente encore en vol).
 ```
 
 ```
@@ -372,7 +372,7 @@ IMPACT : ~300ms de latence perçue supplémentaire lors d'une validation explici
 REPRODUCTIBILITÉ : Certaine par lecture de code.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter `.onSubmit(of: .search) { Task { await runSearch(full: true) } }` (ou équivalent), en annulant d'abord le debounce en attente.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. `.onSubmit(of: .search) { searchTask?.cancel(); runSearch(full: true) }` ajouté, exactement la recommandation.
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. `.onSubmit(of: .search) { searchTask?.cancel(); runSearch(full: true) }` ajouté, exactement la recommandation.
 ```
 
 ```
@@ -389,7 +389,7 @@ IMPACT : Perte d'un cas d'usage secondaire réel (parcourir ses conversations de
 REPRODUCTIBILITÉ : Certaine par lecture de code.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Faire retourner à `localMatches` toutes les lignes du `RosterListViewModel` déjà chargé quand `q.isEmpty`, au lieu de `[]`.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. `localMatches` retourne désormais `rosterViewModel.rows` (déjà chargé, aucun appel réseau supplémentaire) quand la requête est vide, exactement la recommandation.
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. `localMatches` retourne désormais `rosterViewModel.rows` (déjà chargé, aucun appel réseau supplémentaire) quand la requête est vide, exactement la recommandation.
 ```
 
 ```
@@ -406,7 +406,7 @@ IMPACT : Pour les boosts VIDÉO spécifiquement, la vignette du tableau de bord 
 REPRODUCTIBILITÉ : Certaine par lecture de code que la logique diverge ; le symptôme visuel exact dépend du comportement de `CDNAsyncImage` face à une URL non-image — NEEDS_PHYSICAL_VALIDATION pour confirmer le rendu réel.
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Dans `boostRow`, répliquer la logique Android : pour un boost vidéo, préférer `cdn_thumbnail_url` (repli sur `object_url` si `cdn_content_id` invalide) plutôt que `resolvedObjectUrl`.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Nouvelle propriété `AdsData.resolvedThumbnailUrl` (miroir exact de `MyBoostAdapter.onBindView`, distincte de `resolvedObjectUrl` qui reste utilisée là où elle l'était déjà pour la LECTURE vidéo). `boostRow` utilise désormais `resolvedThumbnailUrl`.
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. Nouvelle propriété `AdsData.resolvedThumbnailUrl` (miroir exact de `MyBoostAdapter.onBindView`, distincte de `resolvedObjectUrl` qui reste utilisée là où elle l'était déjà pour la LECTURE vidéo). `boostRow` utilise désormais `resolvedThumbnailUrl`.
 ```
 
 ```
@@ -423,7 +423,7 @@ IMPACT : Affichage temporairement faux du solde de pièces (fantôme) après un 
 REPRODUCTIBILITÉ : Certaine par lecture de code, des deux côtés.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Conditionner l'écriture locale à `usingCoins`/`useGems`, ou re-synchroniser le vrai solde serveur après un achat réussi — correctif applicable indépendamment côté iOS sans attendre Android.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Décision explicite demandée par la mission pour les opérations financières (sécurité/idempotence prioritaires sur la simple parité visuelle) : écriture locale désormais conditionnée à `useGems` (`gemsAmount` si payé en gemmes, `coinsAmount` sinon), au lieu d'écrire inconditionnellement dans `coinsAmount`. Correctif autonome, ne dépend d'aucun changement Android.
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. Décision explicite demandée par la mission pour les opérations financières (sécurité/idempotence prioritaires sur la simple parité visuelle) : écriture locale désormais conditionnée à `useGems` (`gemsAmount` si payé en gemmes, `coinsAmount` sinon), au lieu d'écrire inconditionnellement dans `coinsAmount`. Correctif autonome, ne dépend d'aucun changement Android.
 ```
 
 ```
@@ -457,7 +457,7 @@ IMPACT : Résilience UX moindre, pas un défaut de données (pull-to-refresh res
 REPRODUCTIBILITÉ : Certaine par lecture de code (absence confirmée).
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter une nouvelle tentative automatique après un court délai en cas d'échec, miroir du comportement Android.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Port de `attemptReconnect`/`attemptReconnectOverview` (délai 5s, tentative UNIQUE), mais avec DEUX flags indépendants (`didRetryOverview`/`didRetryBoosts`) plutôt que le booléen `attemptReconnect` PARTAGÉ côté Android entre les deux mécanismes — un défaut d'implémentation manifeste chez Android (la première erreur, quelle que soit sa source, consomme la seule tentative disponible pour LES DEUX chargements) non reproduit ici, `IOS_INTENTIONAL_DIFFERENCE` : chaque chargement se rétablit indépendamment. Les deux flags sont réinitialisés par le tirer-pour-rafraîchir manuel (nouveau budget de tentative complet à chaque intention explicite de l'utilisateur).
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. Port de `attemptReconnect`/`attemptReconnectOverview` (délai 5s, tentative UNIQUE), mais avec DEUX flags indépendants (`didRetryOverview`/`didRetryBoosts`) plutôt que le booléen `attemptReconnect` PARTAGÉ côté Android entre les deux mécanismes — un défaut d'implémentation manifeste chez Android (la première erreur, quelle que soit sa source, consomme la seule tentative disponible pour LES DEUX chargements) non reproduit ici, `IOS_INTENTIONAL_DIFFERENCE` : chaque chargement se rétablit indépendamment. Les deux flags sont réinitialisés par le tirer-pour-rafraîchir manuel (nouveau budget de tentative complet à chaque intention explicite de l'utilisateur).
 ```
 
 ```
@@ -491,7 +491,7 @@ IMPACT : Les créateurs voient un bloc de métrique en moins que sur Android ; s
 REPRODUCTIBILITÉ : Certaine par lecture de code.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter la ligne manquante dans `StatisticsView.swift`, lisant `stats.view_rate_3sec` (pas `views`, contrairement au bug Android).
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Ligne "Taux de vue à 3s" ajoutée, lisant `stats.view_rate_3sec` — PAS le bug de binding Android (`views`).
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. Ligne "Taux de vue à 3s" ajoutée, lisant `stats.view_rate_3sec` — PAS le bug de binding Android (`views`).
 ```
 
 ```
@@ -508,7 +508,7 @@ IMPACT : Pire expérience qu'Android en cas d'échec réseau — écran vide san
 REPRODUCTIBILITÉ : Certaine par lecture de code.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Ajouter une nouvelle tentative automatique (miroir d'Android) et afficher un scaffold complet avec placeholders "--" en cas d'échec persistant, au lieu d'une liste vide.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. `load()` : une nouvelle tentative immédiate sur échec (port de la garde `attemps`, pas de délai comme Android), puis `stats = StatisticModel()` (scaffold complet, tous les replis `?? 0`/`?? ""` déjà en place) si l'échec persiste — au lieu d'un écran totalement vide.
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. `load()` : une nouvelle tentative immédiate sur échec (port de la garde `attemps`, pas de délai comme Android), puis `stats = StatisticModel()` (scaffold complet, tous les replis `?? 0`/`?? ""` déjà en place) si l'échec persiste — au lieu d'un écran totalement vide.
 ```
 
 ```
@@ -525,7 +525,7 @@ IMPACT : Données potentiellement obsolètes si l'utilisateur revient sur cet é
 REPRODUCTIBILITÉ : Certaine par lecture de code.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter un rechargement sur `.onAppear` (avec une garde anti-doublon si `.task` a déjà chargé), miroir du comportement `onResume` Android.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. `.onAppear { if hasLoadedOnce { Task { await load() } } }` ajouté, exactement la recommandation.
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. `.onAppear { if hasLoadedOnce { Task { await load() } } }` ajouté, exactement la recommandation.
 ```
 
 ```
@@ -542,7 +542,7 @@ IMPACT : Différence visuelle mineure, cas limite rare (post tout neuf sans donn
 REPRODUCTIBILITÉ : Certaine par lecture de code des deux comportements ; la fréquence réelle en pratique (le backend envoie-t-il vraiment `{}` ?) NEEDS_PHYSICAL_VALIDATION.
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Faible priorité — aligner sur "--" ou texte vide selon préférence produit, cohérence pas exactitude fonctionnelle en jeu.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Repli aligné sur le texte vide Android (`gender["M"] ?? ""` au lieu de `?? "--"`) UNIQUEMENT pour le cas "dictionnaire nul/vide" — le `"--"` par bucket non gagnant D'UN DICTIONNAIRE NON VIDE (bug de la boucle Android lui-même, distinct, toujours reproduit fidèlement) est inchangé.
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. Repli aligné sur le texte vide Android (`gender["M"] ?? ""` au lieu de `?? "--"`) UNIQUEMENT pour le cas "dictionnaire nul/vide" — le `"--"` par bucket non gagnant D'UN DICTIONNAIRE NON VIDE (bug de la boucle Android lui-même, distinct, toujours reproduit fidèlement) est inchangé.
 ```
 
 ```
@@ -568,7 +568,7 @@ IMPACT : Un double-tap normal (ou simplement la latence réseau) peut démarrer 
 REPRODUCTIBILITÉ : Certaine par lecture de code pour la course logique (attente avant pose du drapeau, aucune garde) ; le taux réel de publications dupliquées en pratique NEEDS_PHYSICAL_VALIDATION (latence réseau réaliste sur appareil).
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Ajouter `guard !isPublishing else { return }` en TOUTE PREMIÈRE ligne de `publish()`, avant même la résolution de catégorie ; envisager de pré-résoudre `resolvedCategory` à l'apparition de l'écran plutôt qu'au moment du tap.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. `guard !isPublishing else { return }` posé en toute première ligne de `publish()`, ET `isPublishing = true` (+ `defer { isPublishing = false }`) déplacé au même endroit — AVANT la résolution de catégorie async (`fetchProfile`), pas seulement le guard seul, sinon deux appels concurrents auraient tous deux pu passer le guard avant que l'un d'eux ne pose le drapeau. Protège atomiquement le flux post ET le flux export Animems (qui réutilise `PublishComposeView`), conforme au test mental demandé (tap → réseau lent → second tap → une seule publication). Pré-résolution de `resolvedCategory` à l'apparition de l'écran non implémentée (optimisation secondaire de la recommandation, pas nécessaire une fois la garde atomique en place).
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. `guard !isPublishing else { return }` posé en toute première ligne de `publish()`, ET `isPublishing = true` (+ `defer { isPublishing = false }`) déplacé au même endroit — AVANT la résolution de catégorie async (`fetchProfile`), pas seulement le guard seul, sinon deux appels concurrents auraient tous deux pu passer le guard avant que l'un d'eux ne pose le drapeau. Protège atomiquement le flux post ET le flux export Animems (qui réutilise `PublishComposeView`), conforme au test mental demandé (tap → réseau lent → second tap → une seule publication). Pré-résolution de `resolvedCategory` à l'apparition de l'écran non implémentée (optimisation secondaire de la recommandation, pas nécessaire une fois la garde atomique en place).
 ```
 
 ```
@@ -584,7 +584,7 @@ IMPACT : Un utilisateur avec des messages non lus mais zéro notification non lu
 REPRODUCTIBILITÉ : Certaine par lecture de code.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Combiner `chatUnreadCount` + `notificationsViewModel.unreadCount` (ou les deux séparément en cascade) dans le calcul passé à `setBadgeCount`, avec un `.onChange` couvrant les deux sources.
-STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Nouveau `updateSystemBadge()` combinant les deux sources, appelé par `.onChange(of: notificationsViewModel.unreadCount)` (existant, réutilisé) ET un nouveau `.onChange(of: chatUnreadCount)`.
+STATUT : BUILD_VALIDATED — CI run 33156167515 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33156167515). Corrigé 2026-08-28. Nouveau `updateSystemBadge()` combinant les deux sources, appelé par `.onChange(of: notificationsViewModel.unreadCount)` (existant, réutilisé) ET un nouveau `.onChange(of: chatUnreadCount)`.
 ```
 
 ```

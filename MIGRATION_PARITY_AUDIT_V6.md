@@ -584,7 +584,7 @@ IMPACT : Un utilisateur avec des messages non lus mais zéro notification non lu
 REPRODUCTIBILITÉ : Certaine par lecture de code.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Combiner `chatUnreadCount` + `notificationsViewModel.unreadCount` (ou les deux séparément en cascade) dans le calcul passé à `setBadgeCount`, avec un `.onChange` couvrant les deux sources.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Nouveau `updateSystemBadge()` combinant les deux sources, appelé par `.onChange(of: notificationsViewModel.unreadCount)` (existant, réutilisé) ET un nouveau `.onChange(of: chatUnreadCount)`.
 ```
 
 ```
@@ -601,7 +601,7 @@ IMPACT : Les vidéos sauvegardées depuis iOS puis repartagées ailleurs (WhatsA
 REPRODUCTIBILITÉ : Certaine par lecture de code (fonctionnalité totalement absente, pas seulement dégradée).
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Porter le pipeline de post-traitement watermark/outro pour les téléchargements de vidéo du fil, potentiellement en réutilisant l'infrastructure déjà scaffoldée pour V5-F-082 (`OutroConfig`/`AnimatedWatermarkComposer` déjà documentés côté iOS pour l'export Animems).
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : DIFFÉRÉ — confirmé 2026-08-28, aucun changement de code. Raison technique réelle : même famille de lacune que V5-F-082 (toujours `DIFFÉRÉ`), nécessite la MÊME infrastructure substantielle de post-traitement vidéo (composition watermark animé par keyframes + pipeline outro + ré-encodage MP4) qui n'a été construite sur AUCUN des deux chemins de code iOS pour l'instant. Construire ce pipeline seulement pour le téléchargement de vidéo du fil, dans cette session, sans validation physique de la vidéo résultante (encodage, lisibilité/timing du watermark, orientation) serait un risque disproportionné pour une fonctionnalité de marque/marketing — regroupé avec V5-F-082 comme un futur chantier dédié de post-traitement vidéo plutôt que traité isolément ici.
 ```
 
 ---

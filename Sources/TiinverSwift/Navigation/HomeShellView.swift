@@ -193,13 +193,13 @@ struct HomeShellView: View {
             guard case .message = event else { return }
             Task { await refreshChatUnreadCount() }
         }
-        .onChange(of: notificationsViewModel.unreadCount) { count in
-            // Équivalent du badge Android sur l'icône (pas de contrepartie directe dans
-            // `NavigationCompound.java`, qui ne badge que la barre de navigation IN-APP — ajout
-            // logique pour l'icône d'app, un badge standard iOS sans équivalent Android à imiter
-            // au-delà du chiffre lui-même).
-            UNUserNotificationCenter.current().setBadgeCount(count)
-        }
+        .onChange(of: notificationsViewModel.unreadCount) { _ in updateSystemBadge() }
+        // **Ajouté (2026-08-28, V6-F-025)** — le badge d'icône système ne suivait QUE
+        // `notificationsViewModel.unreadCount`, jamais `chatUnreadCount` : un utilisateur avec des
+        // messages non lus mais zéro notification non lue ne voyait aucun badge sur l'icône de
+        // l'app, alors que l'onglet Chat in-app (`.badge(chatUnreadCount)` ci-dessus) en affichait
+        // pourtant un. Les deux compteurs sont maintenant combinés.
+        .onChange(of: chatUnreadCount) { _ in updateSystemBadge() }
         .onChange(of: selectedTab) { newValue in
             // Port du comportement RÉEL de `NavigationCompound.click` : taper Notifications/Profil
             // ne "sélectionne" jamais ces items (pas de `setSelected(true)` dans le source Android),
@@ -286,6 +286,14 @@ struct HomeShellView: View {
         let roster = RosterRepository()
         let rows = (try? await roster.query(predicate: NSPredicate(format: "unreadCount > 0"))) ?? []
         chatUnreadCount = rows.reduce(0) { $0 + Int($1.unreadCount) }
+    }
+
+    /// **Ajouté (2026-08-28, V6-F-025)** — badge d'icône système, combine les DEUX sources
+    /// (chat + notifications), pas de contrepartie directe côté Android (`NavigationCompound.
+    /// java` ne badge que la barre de navigation IN-APP) — fonctionnalité ajoutée par iOS,
+    /// désormais complète plutôt que partielle.
+    private func updateSystemBadge() {
+        UNUserNotificationCenter.current().setBadgeCount(chatUnreadCount + notificationsViewModel.unreadCount)
     }
 
     /// Port de la table de dispatch `ShareActivity.processUrl` — extrait de l'ancien corps de

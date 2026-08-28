@@ -9,6 +9,61 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
+# CURRENT HANDOFF (2026-08-28 — Phase F : les 26 findings V6 corrigés en une session)
+
+Suite immédiate de la Phase E ci-dessous. Consigne explicite de l'utilisateur : corriger TOUS les
+26 findings V6, pas seulement un sous-ensemble, dans l'ordre de priorité donné, sans s'arrêter pour
+confirmation entre chaque correction, en conservant les builds/tests physiques (vérification
+statique d'abord — pas d'Xcode/simulateur local sur cette machine Windows). Détail complet dans
+`MIGRATION_PARITY_PROGRESS_V6.md` (nouvelle entrée "Phase B : correction complète"). Ne PAS relire
+ce fichier de zéro sans vérifier l'état RÉEL de `MIGRATION_PARITY_AUDIT_V6.md` (section STATUT par
+finding) et `git log` — ce résumé est un point de départ, pas la source de vérité.
+
+**Résultat** : les 26 findings V6-F-001 à V6-F-026 sont tous traités.
+- **19 corrigés en code**, chacun `CODE_COMPLETE, CI_PENDING` (PAS `BUILD_VALIDATED` — un run CI
+  vert confirme que le code COMPILE, pas qu'il est fonctionnellement validé sur appareil physique ;
+  `COMPLETE_PARITY_VALIDATED` nécessiterait un vrai test physique, non fait ce cycle) :
+  V6-F-001,002,003,004,006,007,008,010,011,012,013,014,015,016,018,019,020,021,022,023,024,025.
+- **3 `DIFFÉRÉS`** (raison technique réelle, pas un report arbitraire) : V6-F-009 (bake mort,
+  confirmé non nécessaire par l'approche retenue pour V6-F-006), V6-F-017 (dépend du chantier
+  `BGTaskScheduler` déjà différé pour V5-F-060), V6-F-026 (même infrastructure de post-traitement
+  vidéo substantielle que V5-F-082, toujours différé — construire un watermark/outro animé
+  seulement pour le téléchargement du fil, sans validation physique du résultat, serait
+  disproportionné pour une fonctionnalité de marque).
+- **1 `IOS_INTENTIONAL_DIFFERENCE`** décidé pendant la correction : V6-F-005 (panneau "Cadre",
+  système legacy Android déjà superseded côté iOS par `autoCaptureEnabled`).
+
+**11 commits sur `main`** (voir `git log`, ou la liste numérotée dans `MIGRATION_PARITY_PROGRESS_V6
+.md`) — le plus notable : **V6-F-019** (pipeline complet de suivi du temps de visionnage, la
+finding la plus substantielle du cycle) a été délégué à un agent en arrière-plan avec tout le
+contexte Android nécessaire pré-digéré (fichiers/lignes exacts lus à l'avance), pendant que la
+session principale traitait Statistiques/Transversal/Animems export en parallèle — vérifié après
+coup (équilibre des accolades sur les 5 fichiers touchés, lecture du commit). Nouveaux fichiers :
+`WatchTimeTracker.swift` (état resume/pause), `ViewEventSyncService.swift` (sync `addview`,
+port de `ViewSyncWorker`). Câblé dans `FeedDetailPagerView` (PAS `FeedView`, qui est une grille
+statique sans lecture — voir la note de tête de fichier de `FeedView.swift` elle-même).
+
+**4 runs CI déclenchés pendant cette phase, tous `completed`/`success`** avant de poursuivre au
+lot suivant (jamais empilé de correctifs non compilés sur une erreur bloquante).
+
+**Décisions de principe notables pour une future session** :
+- Un défaut PARTAGÉ Android/iOS (ex. V6-F-012, course de réponses de recherche obsolètes) n'est
+  PAS automatiquement corrigé — évalué au cas par cas si le correctif est sûr/autonome ; corrigé
+  ici car sans risque et sans dépendance à un changement Android.
+- Pour toute opération financière (ex. V6-F-016, achat Boost en gemmes), sécurité/idempotence
+  passe TOUJOURS avant la simple parité visuelle avec Android.
+- Ne jamais reproduire un défaut Android manifestement accidentel (ex. le booléen `attemptReconnect`
+  PARTAGÉ entre 2 mécanismes de retry indépendants côté `BoostDashboardFragment`, V6-F-018) —
+  documenté comme `IOS_INTENTIONAL_DIFFERENCE` plutôt que copié.
+
+**Prochaine étape possible pour une future session** : validation par test physique réel (device
+Appetize/TestFlight) des correctifs les plus comportementaux — en particulier V6-F-019 (pipeline
+watch-time, impossible à vérifier statiquement au-delà de la compilation), V6-F-001/002/006
+(Animems, gestes tactiles), V6-F-010/011 (Gift verrouillé + sons chat) — avant de marquer un
+quelconque `BUILD_VALIDATED`/`COMPLETE_PARITY_VALIDATED`. Sinon, cycle V7 sur un nouveau domaine.
+
+---
+
 # CURRENT HANDOFF (2026-08-28 — Phase E : Audit V6 terminé, AUCUNE correction encore appliquée)
 
 Nouveau cycle d'audit, distinct de V5 et de `PHYSICAL_DEVICE_VALIDATION_V5.md` : ciblé sur 5

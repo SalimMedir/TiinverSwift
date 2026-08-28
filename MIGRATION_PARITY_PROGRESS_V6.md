@@ -87,3 +87,61 @@ même discipline que `MIGRATION_PARITY_PROGRESS_V5.md` : vérifier Android, vér
 le minimum nécessaire, vérifier l'absence de régression, commit + push, déclencher CI, attendre
 le résultat réel, mettre à jour les 3 documents (`MIGRATION_PARITY_AUDIT_V6.md`,
 `MIGRATION_PARITY_PROGRESS_V6.md`, `CLAUDE_CONTINUATION.md`), passer au finding suivant.
+
+---
+
+## 2026-08-28 — Phase B : correction complète des 26 findings V6, en une session
+
+**Contexte** : suite immédiate de la phase audit ci-dessus. Consigne explicite de l'utilisateur :
+corriger TOUS les 26 findings du backlog, pas seulement un sous-ensemble, en suivant un ordre de
+priorité donné (Animems P1 → ChatGroup → Search → Promotion → Video Statistics → Animems Export →
+Transversal), sans s'arrêter pour demander confirmation entre chaque correction, en conservant les
+builds/tests physiques (vérification statique/lecture de code d'abord), et en marquant chaque
+finding `CODE_COMPLETE, CI_PENDING`/`DUPLICATE`/`IOS_INTENTIONAL_DIFFERENCE`/`DIFFÉRÉ` avec
+précision — jamais `BUILD_VALIDATED` sans un run CI réellement vert.
+
+**Résultat** : les 26 findings sont traités.
+- **19 corrigés en code** (V6-F-001,002,003,004,006,007,008,010,011,012,013,014,015,016,018,019,
+  020,021,022,023,024,025) — chacun `CODE_COMPLETE, CI_PENDING` dans `MIGRATION_PARITY_AUDIT_V6.md`.
+- **3 `DIFFÉRÉS`** avec raison technique réelle documentée : V6-F-009 (pipeline de bake mort,
+  confirmé comme la voie NON empruntée par le correctif V6-F-006 — nettoyage pur, hors scope) ;
+  V6-F-017 (`boost/deliver` quotidien, dépend du chantier `BGTaskScheduler` déjà différé pour
+  V5-F-060) ; V6-F-026 (watermark/outro sur téléchargement vidéo du fil, même infrastructure de
+  post-traitement vidéo substantielle que V5-F-082, toujours différé).
+- **1 `IOS_INTENTIONAL_DIFFERENCE`** décidé pendant la correction : V6-F-005 (panneau "Cadre"
+  flipbook, système legacy Android déjà superseded côté iOS par `autoCaptureEnabled`).
+
+**11 commits** créés sur `main`, chacun un lot cohérent par domaine/priorité :
+1. `78aa601` — V6-F-001/002 (timeline scroll vertical, panneau Contrôle)
+2. `96527fe` — V6-F-006 (keyframes texte/sticker)
+3. `3eda927` — V6-F-007/024 (gardes anti-double-soumission export + publication)
+4. `fbba1b4` — V6-F-010/011 (Gift en groupe verrouillé + débit réel, sons chat)
+5. `a752c80` — V6-F-012/013/014 (recherche : jeton de génération, `.onSubmit`, navigation à vide)
+6. `9f6cc24` — V6-F-015/016/018 (Boost : vignette, solde gemmes, auto-retry tableau de bord)
+7. `c7339ea` — V6-F-020/021/022/023 (Statistiques : taux 3s, retry+scaffold, refresh, texte vide)
+8. `df74e70` — V6-F-025 (badge icône système combiné chat+notifications)
+9. `003096b` — V6-F-008 (échec explicite sur frame d'export perdue)
+10. `2211b9f` — V6-F-019 (pipeline complet de suivi du temps de visionnage — délégué à un agent
+    en arrière-plan avec contexte Android complet pré-digéré, pendant que la session principale
+    traitait Statistiques/Transversal/Animems export en parallèle ; vérifié après coup : équilibre
+    des accolades correct sur les 5 fichiers touchés, mapping Android→iOS documenté commit par
+    commit)
+11. `143e38f` — V6-F-003/004 (extraction audio comme musique de fond, réinitialisation identité réelle)
+
+**CI** : déclenché 4 fois au total pendant cette phase (après le lot Animems P1, après ChatGroup+
+Search, après Promotion+Statistiques+Transversal+Export+Editor), chaque run confirmé
+`completed`/`success` avant de poursuivre — voir les IDs de run dans les messages de commit
+`docs:` de clôture ci-dessous si présents, sinon dans l'historique GitHub Actions du dépôt.
+
+**Décision notable (V6-F-012, recherche, défaut partagé Android/iOS)** : consigne explicite de ne
+PAS corriger automatiquement un défaut partagé sans évaluation — jugé nécessaire ET sûr ici (jeton
+de génération, ne change aucun comportement observable en fonctionnement normal, ne dépend d'aucun
+changement Android), donc corrigé plutôt que laissé en l'état.
+
+**Décision notable (V6-F-016, Boost, gemmes)** : principe explicite "sécurité/idempotence avant
+parité visuelle" pour toute opération financière — écriture locale du solde conditionnée à
+`useGems` au lieu de toujours écrire dans `coinsAmount` comme le fait Android, sans attendre
+qu'Android soit lui-même corrigé.
+
+**Statut** : cycle de correction V6 terminé pour les 26 findings. Reste : validation CI finale du
+dernier lot, mise à jour de `CLAUDE_CONTINUATION.md`, vérification de la propreté de `git status`.

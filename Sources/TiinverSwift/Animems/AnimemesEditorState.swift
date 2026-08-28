@@ -518,11 +518,28 @@ final class AnimemesEditorState: ObservableObject {
         renderVersion += 1
     }
 
+    /// Port de `onStop` du listener du panneau (`controllerMovementUp()` + `touchUp(0)`,
+    /// `AnimemesCompound.java:499-517`/`:3214-3221`). **Corrigé (2026-08-28, V7-F-001)** —
+    /// `touchUp()` est le point de sortie PARTAGÉ Android pour "fin de manipulation d'un calque",
+    /// que ce soit via glisser direct sur le canevas (déjà porté, `dragEnded()` ci-dessus) OU via
+    /// ce panneau — dans les deux cas, une keyframe est capturée si `autoCaptureEnabled` est actif.
+    /// Ce câblage manquait entièrement pour le panneau, ajouté le même jour que lui (V6-F-002) :
+    /// un utilisateur animant un calque via ce panneau plutôt qu'un glisser direct n'obtenait
+    /// jamais aucune keyframe, même avec la capture automatique activée.
+    func movementControllerEndTracking() {
+        if autoCaptureEnabled {
+            recordKeyframe()
+        }
+    }
+
     /// Port de la fermeture du panneau (`controlle_movement` re-tapé, `AnimemesCompound.java:1868-
     /// 1873`) — réinitialise le point d'ancrage éventuellement positionné, fidèle à l'intention
     /// (rouvrir le panneau plus tard ne doit pas réappliquer un point d'ancrage invisible et
-    /// oublié depuis longtemps).
+    /// oublié depuis longtemps). Capture aussi une dernière keyframe (V7-F-001) si le panneau se
+    /// referme pendant qu'un curseur est encore en cours de glissement (`onDisappear`, avant que
+    /// `onEditingChanged(false)` n'ait eu la chance de se déclencher normalement).
     func closeMovementController() {
+        movementControllerEndTracking()
         movementControllerTransformer.reset()
     }
 
@@ -1164,6 +1181,17 @@ final class AnimemesEditorState: ObservableObject {
         }
         isExporting = true
         exportError = nil
+        // **Corrigé (2026-08-28, V7-F-005)** — même pattern que `PublishComposeView.publish()`
+        // (déjà dans ce dépôt) pour l'étape SUIVANTE du même flux (upload) : sans cette protection,
+        // basculer vers une autre app pendant l'encodage MP4 pouvait geler/perdre l'export
+        // silencieusement si l'app était tuée en arrière-plan (Android, lui, encode sur un thread
+        // qui continue de tourner tant que le process vit, non suspendu par un simple passage en
+        // arrière-plan — `AnimemesCompound.createVideosFromBitmap`).
+        var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
+        backgroundTaskId = UIApplication.shared.beginBackgroundTask(withName: "AnimemesExport") {
+            UIApplication.shared.endBackgroundTask(backgroundTaskId)
+            backgroundTaskId = .invalid
+        }
         // Port de la note tête de fichier F-23 : passer explicitement la police/couleur réelles de
         // l'éditeur (`Self.textFont`/`Self.textColor`), au lieu de laisser l'exporteur retomber sur
         // ses propres valeurs par défaut divergentes — voir la note complète au-dessus de `init()`.
@@ -1176,6 +1204,10 @@ final class AnimemesEditorState: ObservableObject {
             .appendingPathComponent(UUID().uuidString).appendingPathExtension("mp4")
         exporter.export(to: url) { [weak self] result in
             DispatchQueue.main.async {
+                if backgroundTaskId != .invalid {
+                    UIApplication.shared.endBackgroundTask(backgroundTaskId)
+                    backgroundTaskId = .invalid
+                }
                 guard let self else { return }
                 self.isExporting = false
                 self.activeExporter = nil

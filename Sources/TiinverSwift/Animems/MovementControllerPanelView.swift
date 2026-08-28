@@ -12,6 +12,11 @@ struct MovementControllerPanelView: View {
     /// de 0 (repère "neutre" = 90 après décalage) ; conservé identique ici pour que les formules
     /// de `MovementControllerTransformer` (delta entre progrès successifs) restent un port fidèle
     /// sans reformulation.
+    /// **Corrigé (2026-08-28, V7-F-003)** — plage `90...190`, fidèle à `MovementControllerHandlerView.
+    /// java:85-92` (`SeekBar android:max="100"` + décalage `finalProgress = progress + 90`) : la
+    /// plage réelle du SeekBar Android ne descend jamais sous 90. La précédente plage `0...180`
+    /// (symétrique par simplicité) permettait un delta négatif de -90 impossible côté Android, et
+    /// plafonnait 10 unités plus tôt (180 au lieu de 190) à la hausse.
     @State private var sliderValue: Double = 90
 
     private let toggles: [(field: WritableKeyPath<MovementControllerState, Bool>, icon: String, label: String)] = [
@@ -49,10 +54,14 @@ struct MovementControllerPanelView: View {
             // Port du slider d'angle — voir `MovementControllerHandlerView.java:83-107`
             // (`onProgressChanged`/`onStartTrackingTouch`/`onStopTrackingTouch`).
             Slider(
-                value: $sliderValue, in: 0...180,
+                value: $sliderValue, in: 90...190,
                 onEditingChanged: { editing in
                     if editing {
                         state.movementControllerBeginTracking(atProgress: Int(sliderValue))
+                    } else {
+                        // V7-F-001 : miroir de `onStopTrackingTouch`/`touchUp(0)` — capture une
+                        // keyframe si la capture automatique est active, comme un glisser direct.
+                        state.movementControllerEndTracking()
                     }
                 }
             )

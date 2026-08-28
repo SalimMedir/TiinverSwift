@@ -388,6 +388,15 @@ struct AnimemesEditorView: View {
         } message: {
             Text(publishConversionError ?? "")
         }
+        // **Corrigé (2026-08-28, V7-F-006)** — `state.exportError` était calculé (échec MP4,
+        // notamment celui que corrige V6-F-008) mais jamais lu par aucune vue : l'utilisateur ne
+        // voyait rien de plus qu'un bouton d'export redevenu cliquable, sans indice. Même pattern
+        // que `publishConversionError` juste au-dessus.
+        .alert("Export impossible", isPresented: Binding(get: { state.exportError != nil }, set: { if !$0 { state.exportError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(state.exportError ?? "")
+        }
         .confirmationDialog("Enregistrer", isPresented: $showSaveOptions, titleVisibility: .visible) {
             Button("Exporter la vidéo") { state.export(canvasSize: canvasSize) { url in exportedURL = url } }
             Button("Enregistrer comme modèle") {
@@ -1142,7 +1151,19 @@ struct AnimemesEditorView: View {
                 // ici par `.disabled(state.selectedId == nil)`. La sortie du mode (bouton "Aucun"
                 // dans `maskPanel(for:)`, qui appelle déjà `state.setMaskType(nil)` +
                 // `state.isMaskEditMode = false`) existait déjà et n'a pas besoin d'être ajoutée.
-                bottomButton(icon: "circle.dashed", label: "masque") { state.isMaskEditMode = true }
+                // **Corrigé (2026-08-28, V7-F-002)** — ouvrir ce panneau ne réinitialisait aucun
+                // des 3 autres (bezier/Contrôle/chronologie), tous des `@State` `Bool` indépendants
+                // combinés par une simple chaîne if/else-if à priorité fixe : un panneau resté
+                // silencieusement `true` en arrière-plan pouvait réapparaître de façon inattendue en
+                // refermant celui affiché par-dessus. Chaque bouton d'ouverture ferme désormais
+                // explicitement les 3 autres avant de s'activer.
+                bottomButton(icon: "circle.dashed", label: "masque") {
+                    showBezierEditor = false
+                    if showMovementController { state.closeMovementController() }
+                    showMovementController = false
+                    showTimeline = false
+                    state.isMaskEditMode = true
+                }
                     .disabled(state.selectedId == nil)
                 // Port de `controlle_movement` (`AnimemesCompound.java:1857-1874`) — **ajouté
                 // (2026-08-28, V6-F-002)**. Simple bascule côté Android, sans garde de sélection
@@ -1150,7 +1171,13 @@ struct AnimemesEditorView: View {
                 // silencieusement sans sélection — voir `MovementControllerTransformer`).
                 bottomButton(icon: "dial.min", label: "Contrôle") {
                     showMovementController.toggle()
-                    if !showMovementController { state.closeMovementController() }
+                    if showMovementController {
+                        state.isMaskEditMode = false
+                        showBezierEditor = false
+                        showTimeline = false
+                    } else {
+                        state.closeMovementController()
+                    }
                 }
                 // Port de `showPanelEditor`/`LayerEditorPanel` (**ajouté le 2026-08-19,
                 // ANIMEMS_PARITY_AUDIT_V1.md F-28, Phase B Lot 3**) — voir la doc complète sur
@@ -1172,6 +1199,13 @@ struct AnimemesEditorView: View {
                 // toggle réel côté Android, SANS effet sur l'animation des deux côtés.
                 bottomButton(icon: "point.topleft.down.curvedto.point.bottomright.up", label: "bezier") {
                     showBezierEditor.toggle()
+                    if showBezierEditor {
+                        // V7-F-002 : voir la note complète sur le bouton "masque" plus haut.
+                        state.isMaskEditMode = false
+                        if showMovementController { state.closeMovementController() }
+                        showMovementController = false
+                        showTimeline = false
+                    }
                 }
                 // Port de `btn_removebg` (**ajouté le 2026-08-19, ANIMEMS_PARITY_AUDIT_V1.md F-29,
                 // Phase B Lot 11**) — voir `AnimemesEditorState.removeBackgroundFromSelected()`.

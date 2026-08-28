@@ -216,11 +216,15 @@ final class AnimemesExporter {
                 // n'avait jamais d'effet au-delà de la 1ʳᵉ frame).
                 let ptsNs = Int64(f) * Self.frameDurationNs
                 let pts = CMTime(value: ptsNs, timescale: 1_000_000_000)
-                // `append` retourne `false` en cas d'échec d'écriture — pas vérifié dans ce
-                // premier passage (voir note de tête de fichier sur les limites connues de cette
-                // première version), une frame silencieusement perdue n'interromprait pas
-                // l'export plutôt que de le faire échouer proprement.
-                pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: pts)
+                // **Corrigé (2026-08-28, V6-F-008)** — `append` retourne `false` en cas d'échec
+                // d'écriture ; jusqu'ici ignoré, une frame silencieusement perdue n'interrompait
+                // pas l'export au lieu de le faire échouer proprement avec un message clair.
+                guard pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: pts) else {
+                    videoInput.markAsFinished()
+                    writer.cancelWriting()
+                    completion(.failure(ExportError.writingFailed(writer.error)))
+                    return
+                }
 
                 f += 1
             }

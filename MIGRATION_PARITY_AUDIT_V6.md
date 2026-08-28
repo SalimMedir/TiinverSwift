@@ -288,7 +288,7 @@ IMPACT : Risque de vidéo exportée avec des frames manquantes sans qu'aucune er
 REPRODUCTIBILITÉ : Certaine par lecture de code que la vérification manque ; fréquence réelle en pratique non mesurable statiquement.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Vérifier la valeur de retour de `append` et faire échouer explicitement l'export (avec message clair) en cas de frame refusée.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Valeur de retour de `append` désormais vérifiée ; sur `false`, l'export s'arrête proprement (`videoInput.markAsFinished()`, `writer.cancelWriting()`) et échoue explicitement via `completion(.failure(.writingFailed(writer.error)))` au lieu de continuer silencieusement avec une frame manquante.
 ```
 
 ```

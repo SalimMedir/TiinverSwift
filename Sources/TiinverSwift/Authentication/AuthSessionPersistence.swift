@@ -30,7 +30,13 @@ enum AuthSessionPersistence {
         let accounts = CoreDataRepository<AccountEntity>()
         try? await accounts.insert { account in
             account.id = Int64(user.id ?? 0)
-            account.apiKey = user.apiKey
+            // V7-F-022 (2026-08-28) : `apiKey` n'est PLUS écrit ici — c'était une seconde copie
+            // en clair de l'identifiant d'authentification, dans un store Core Data non chiffré,
+            // jamais relue nulle part (grep exhaustif : zéro lecture de `AccountEntity.apiKey`
+            // dans tout le projet). La seule copie qui doit exister est celle de `UserSession.
+            // apiKey`, déjà routée vers `KeychainStore`. Le champ `apiKey` du modèle Core Data
+            // reste déclaré (`optional`) pour ne pas exiger de migration de schéma — simplement
+            // jamais plus renseigné.
             account.email = user.email
             account.phone = user.phone
             account.username = user.username

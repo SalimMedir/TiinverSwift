@@ -21,13 +21,20 @@ import Security
 /// `saveAPIKey`/`loadAPIKey` n'ont JAMAIS vérifié leurs codes de retour `OSStatus` avant ce
 /// correctif — l'échec passait totalement inaperçu.
 ///
-/// **Corrigé avec un repli UserDefaults** — PAS une régression de sécurité par rapport à
-/// l'original : Android lui-même stocke déjà cette même valeur dans `SharedPreferences`
-/// ordinaire (PAS l'Android Keystore, vérifié dans `back_sync/infoContract.java`), donc
-/// UserDefaults est au moins aussi sûr que la référence Android — Keychain reste le choix
-/// PRIMAIRE (chiffré, protégé par le trousseau) quand il fonctionne, ce repli garantit
-/// uniquement que l'app reste FONCTIONNELLE si Keychain échoue pour une raison
-/// d'environnement (signature de code absente, notamment dans ce contexte de test CI/Appetize).
+/// **Corrigé avec un repli UserDefaults, restreint à un échec Keychain réellement constaté**
+/// (2026-08-17, puis durci le 2026-08-28 — V7-F-022) : la toute première version de ce repli
+/// écrivait `UserDefaults` de façon INCONDITIONNELLE, avant même de tenter le Keychain — donc
+/// en PRODUCTION, pas seulement dans le scénario CI/Appetize non signé qui l'a motivé, l'apiKey
+/// (identifiant d'authentification permanent envoyé brut à chaque requête) restait en clair sur
+/// disque pendant toute session active, annulant le bénéfice de sécurité que ce fichier vise
+/// explicitement ("faire mieux qu'Android", TIINVER_IOS_PORT_ANALYSIS.md §6.2 — Android lui-même
+/// stocke cette valeur dans `SharedPreferences` ordinaire, PAS l'Android Keystore). Le repli est
+/// désormais posé APRÈS la tentative Keychain et UNIQUEMENT si `SecItemAdd` a réellement échoué
+/// (`status != errSecSuccess`) — Keychain reste le choix PRIMAIRE et, dans l'écrasante majorité
+/// des cas (tout appareil/build signé normalement), la seule copie qui existe jamais.
+/// `loadAPIKey()` migre en plus silencieusement toute valeur de repli déjà écrite par une
+/// installation antérieure à ce correctif vers le Keychain dès la prochaine lecture, pour ne pas
+/// laisser une copie en clair orpheline sur les appareils déjà en session.
 enum KeychainStore {
     private static let service = "com.tiinver.app"
     private static let apiKeyAccount = "apiKey"
@@ -39,10 +46,6 @@ enum KeychainStore {
     private(set) static var lastSaveStatusDescription: String?
 
     static func saveAPIKey(_ apiKey: String) {
-        // Repli TOUJOURS écrit, indépendamment du succès Keychain — lu par `loadAPIKey()` si le
-        // Keychain est vide, voir le commentaire de tête pour la justification.
-        UserDefaults.standard.set(apiKey, forKey: fallbackDefaultsKey)
-
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -54,9 +57,17 @@ enum KeychainStore {
         attributes[kSecValueData as String] = Data(apiKey.utf8)
         attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         let status = SecItemAdd(attributes as CFDictionary, nil)
-        lastSaveStatusDescription = status == errSecSuccess
-            ? "OK"
-            : "ÉCHEC (OSStatus=\(status), \((SecCopyErrorMessageString(status, nil) as String?) ?? "?")) — repli UserDefaults utilisé"
+        if status == errSecSuccess {
+            lastSaveStatusDescription = "OK"
+            // Keychain fait désormais autorité — ne pas laisser traîner une copie en clair d'un
+            // éventuel repli antérieur (échec passé, ou installation pré-V7-F-022).
+            UserDefaults.standard.removeObject(forKey: fallbackDefaultsKey)
+        } else {
+            lastSaveStatusDescription =
+                "ÉCHEC (OSStatus=\(status), \((SecCopyErrorMessageString(status, nil) as String?) ?? "?")) — repli UserDefaults utilisé"
+            // Repli UNIQUEMENT sur échec Keychain réellement constaté (voir commentaire de tête).
+            UserDefaults.standard.set(apiKey, forKey: fallbackDefaultsKey)
+        }
     }
 
     static func loadAPIKey() -> String? {
@@ -72,10 +83,13 @@ enum KeychainStore {
         if status == errSecSuccess, let data = result as? Data, let value = String(data: data, encoding: .utf8) {
             return value
         }
-        // Repli (voir commentaire de tête) — Keychain vide/en échec, UserDefaults sert de source
-        // de vérité de secours plutôt que de renvoyer `nil` alors qu'une valeur a bien été
-        // persistée par `saveAPIKey`.
-        return UserDefaults.standard.string(forKey: fallbackDefaultsKey)
+        // Repli (voir commentaire de tête) — Keychain vide/en échec. Si une valeur a été laissée
+        // par une session antérieure au durcissement V7-F-022 (ou par un échec Keychain réel),
+        // on la migre maintenant vers le Keychain (retente `saveAPIKey`, qui nettoie la copie en
+        // clair en cas de succès) au lieu de la laisser indéfiniment en UserDefaults.
+        guard let fallback = UserDefaults.standard.string(forKey: fallbackDefaultsKey) else { return nil }
+        saveAPIKey(fallback)
+        return fallback
     }
 
     static func deleteAPIKey() {

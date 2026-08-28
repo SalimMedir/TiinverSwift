@@ -551,9 +551,9 @@ struct AnimemesEditorView: View {
                                     currentNs: ns, viewSize: size
                                 )
                             case .text:
-                                LayerRenderer.drawText(obj, in: cgContext, textRect: state.textRect, viewSize: size)
+                                LayerRenderer.drawText(obj, in: cgContext, textRect: state.textRect, viewSize: size, currentNs: ns)
                             case .sticker:
-                                LayerRenderer.drawSticker(obj, in: cgContext)
+                                LayerRenderer.drawSticker(obj, in: cgContext, currentNs: ns)
                             default:
                                 break
                             }

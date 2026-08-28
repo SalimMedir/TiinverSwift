@@ -308,9 +308,9 @@ final class AnimemesExporter {
                     currentNs: currentNs, viewSize: viewSize
                 )
             case .text:
-                LayerRenderer.drawText(obj, in: context, textRect: textRect, viewSize: viewSize)
+                LayerRenderer.drawText(obj, in: context, textRect: textRect, viewSize: viewSize, currentNs: currentNs)
             case .sticker:
-                LayerRenderer.drawSticker(obj, in: context)
+                LayerRenderer.drawSticker(obj, in: context, currentNs: currentNs)
             case .path, .line, .clip, .erase, .background, .none:
                 continue
             }

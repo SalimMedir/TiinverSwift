@@ -216,8 +216,21 @@ enum LayerRenderer {
     /// `TextRect`), mais par d'autres consommateurs qui attendent un bitmap classique pour ce
     /// calque (export `MP4Encoder`, `recomposeObjects` — pas encore portés, mais le mécanisme de
     /// "baking" est reproduit dès maintenant pour rester cohérent avec eux le moment venu).
-    static func drawText(_ obj: AnimationObjectData, in context: CGContext, textRect: TextRect, viewSize: CGSize) {
+    /// **Corrigé (2026-08-28, V6-F-006)** — `currentNs` ajouté (optionnel, `nil` par défaut =
+    /// comportement statique inchangé pour les appelants "aplatissement"/`isSliderPreview`, voir
+    /// `exportStaticImage`/`repeatBackgroundImage`). Quand fourni, reproduit EXACTEMENT le
+    /// repli `hasTransformKeyframes`/`interpolatedMatrixValues` déjà utilisé par
+    /// `drawObjectFrame` (lignes 135-144 ci-dessus) — jusqu'ici `drawText` ignorait
+    /// systématiquement les keyframes matrice, contrairement aux calques bitmap/forme.
+    static func drawText(_ obj: AnimationObjectData, in context: CGContext, textRect: TextRect, viewSize: CGSize, currentNs: Int64? = nil) {
         guard let tfm = obj.transforms.last, let text = obj.text else { return }
+
+        let matrixToUse: CGAffineTransform
+        if let currentNs, obj.hasTransformKeyframes, let interpolated = obj.interpolatedMatrixValues(at: currentNs) {
+            matrixToUse = Transform(matrixValues: interpolated).cgAffineTransform
+        } else {
+            matrixToUse = tfm.cgAffineTransform
+        }
 
         context.saveGState()
         context.setFillColor(cgColor(argb: obj.backgroundColor))
@@ -227,7 +240,7 @@ enum LayerRenderer {
         let bubbleHeight = (viewSize.height - outerPaddingBoth) / cells
         let x = CGFloat(obj.offsetX), y = CGFloat(obj.offsetY)
 
-        context.concatenate(tfm.cgAffineTransform)
+        context.concatenate(matrixToUse)
 
         // Port de `mTextWidth = fontPaint.measureText(element.getText())` — largeur du texte SUR
         // UNE SEULE LIGNE (pas encore wrappé), calculée AVANT `prepare()`, comme l'original.
@@ -285,10 +298,19 @@ enum LayerRenderer {
     /// `canvas.setMatrix(m)` (Android, REMPLACE tout le CTM) plutôt que `concat` — équivalent à
     /// `concatenate` ici puisqu'appelé juste après `saveGState()` sur un CTM de base supposé
     /// identité/vue, même hypothèse déjà posée pour `drawBitmapLastTransform`/`drawObjectFrame`.
-    static func drawSticker(_ obj: AnimationObjectData, in context: CGContext) {
+    /// **Corrigé (2026-08-28, V6-F-006)** — même principe que `drawText` ci-dessus : `currentNs`
+    /// optionnel, `nil` = comportement statique inchangé, sinon repli keyframes fidèle à
+    /// `drawObjectFrame`.
+    static func drawSticker(_ obj: AnimationObjectData, in context: CGContext, currentNs: Int64? = nil) {
         guard let tfm = obj.transforms.last, let bmp = obj.currentBitmap else { return }
+        let matrixToUse: CGAffineTransform
+        if let currentNs, obj.hasTransformKeyframes, let interpolated = obj.interpolatedMatrixValues(at: currentNs) {
+            matrixToUse = Transform(matrixValues: interpolated).cgAffineTransform
+        } else {
+            matrixToUse = tfm.cgAffineTransform
+        }
         context.saveGState()
-        context.concatenate(tfm.cgAffineTransform)
+        context.concatenate(matrixToUse)
         let offsetX = CGFloat(obj.offsetX), offsetY = CGFloat(obj.offsetY)
         obj.bound = CGRect(x: offsetX, y: offsetY, width: CGFloat(bmp.width), height: CGFloat(bmp.height))
         context.draw(bmp, in: CGRect(x: offsetX, y: offsetY, width: CGFloat(bmp.width), height: CGFloat(bmp.height)))

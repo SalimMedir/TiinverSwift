@@ -10,7 +10,12 @@ import SwiftUI
 struct AddGroupMemberView: View {
     let groupId: String
     let existingMemberIds: Set<Int>
-    var onAdded: () -> Void
+    /// **Élargi (2026-08-28, V7-F-008)** — transmet désormais les membres réellement ajoutés
+    /// (auparavant `() -> Void`) : cette vue n'a délibérément aucune connaissance du nom/jeton/
+    /// profil du groupe (voir la doc de tête de fichier, "portée dédiée"), donc l'écho système
+    /// local ("X a ajouté Y", `insertSystemMessage`, qui a besoin de ce contexte) est construit
+    /// par l'appelant (`GroupDetailView`), pas ici.
+    var onAdded: ([GroupMemberCandidate]) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var candidates: [GroupMemberCandidate] = []
@@ -83,7 +88,7 @@ struct AddGroupMemberView: View {
         defer { isSubmitting = false }
         let members = candidates.filter { selected.contains($0.id) }
         await GroupRepository.shared.addMembers(members, toGroupId: groupId, inviterId: myId)
-        onAdded()
+        onAdded(members)
         dismiss()
     }
 }

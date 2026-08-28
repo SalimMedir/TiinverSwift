@@ -167,6 +167,29 @@ struct GroupCreationView: View {
             systemMessage.stamp = String(Int64(Date().timeIntervalSince1970 * 1000))
             try? await MessageRepository().insertTextMessage(systemMessage)
 
+            // **Corrigé (2026-08-28, V7-F-008)** — port de `Group.java:420-441`, un message
+            // système `verb="addMember"` par membre invité à la création (texte
+            // `inviterUsername/memberUsername`), manquant jusqu'ici : le fil ne montrait aucune
+            // trace des membres ajoutés au moment de la création du groupe.
+            for member in members {
+                var addMemberMessage = MessageLib()
+                addMemberMessage.messageId = myId + String(Int64(Date().timeIntervalSince1970 * 1000)) + member.userId
+                addMemberMessage.conversationId = conversationId
+                addMemberMessage.type = ChatType.group.wireValue
+                addMemberMessage.token = group.token
+                addMemberMessage.groupId = group.groupId
+                addMemberMessage.groupName = group.name
+                addMemberMessage.userId = myId
+                addMemberMessage.username = UserSession.shared.username
+                addMemberMessage.from = UserSession.shared.username
+                addMemberMessage.object = "information"
+                addMemberMessage.verb = "addMember"
+                addMemberMessage.message = "\(UserSession.shared.username ?? "")/\(member.username ?? "")"
+                addMemberMessage.profile = group.profile
+                addMemberMessage.stamp = String(Int64(Date().timeIntervalSince1970 * 1000))
+                try? await MessageRepository().insertTextMessage(addMemberMessage)
+            }
+
             var target = RosterModel()
             target.conversationId = conversationId
             target.type = ChatType.group.wireValue

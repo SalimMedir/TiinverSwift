@@ -185,8 +185,17 @@ struct GroupDetailView: View {
             ReportView(targetId: groupId, username: groupName, reportType: "group")
         }
         .sheet(isPresented: $showAddMember) {
-            AddGroupMemberView(groupId: groupId, existingMemberIds: Set(members.map(\.userId))) {
-                Task { await loadMembers() }
+            AddGroupMemberView(groupId: groupId, existingMemberIds: Set(members.map(\.userId))) { addedMembers in
+                // **Corrigé (2026-08-28, V7-F-008)** — port de `AddGroupMemberActivity.java:197-
+                // 225` : un message système `verb="addMember"` par membre ajouté APRÈS la création
+                // du groupe (texte `inviterUsername/memberUsername`, même motif que `remove()`
+                // ci-dessus), manquant jusqu'ici.
+                Task {
+                    for member in addedMembers {
+                        await insertSystemMessage(verb: "addMember", text: "\(UserSession.shared.username ?? "")/\(member.username ?? "")")
+                    }
+                    await loadMembers()
+                }
             }
         }
         .sheet(isPresented: $isEditingName) {

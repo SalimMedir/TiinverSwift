@@ -1109,60 +1109,86 @@ private struct FeedDetailCell: View {
     var onOpenSearch: (_ query: String, _ tab: SearchTab) -> Void = { _, _ in }
 
     var body: some View {
-        ZStack {
-            // **Ajouté (V4-F-034, 2026-08-24)** — port de `ExoPlayerManager.java:198-330`, qui
-            // détache explicitement le player de la vue précédente avant de l'attacher à la
-            // nouvelle : `VideoPlayer(player:)` liait TOUJOURS le même `AVPlayer` PARTAGÉ, y
-            // compris pour les cellules voisines que `TabView` garde potentiellement instanciées
-            // pendant un swipe — un `AVPlayer` unique attaché à 2 `VideoPlayer` simultanés rend
-            // ses images sur LES DEUX à la fois (comportement AVFoundation documenté, pas une
-            // supposition). Le binding lui-même est maintenant gated sur `isActive`, pas
-            // seulement le déclenchement de la lecture — la cellule inactive retombe sur la
-            // vignette juste en dessous.
-            if post.isVideo, let url = post.playbackURL, isActive {
-                // Corrigé (2026-08-27, validation physique) — `VideoPlayer` (AVKit) natif SwiftUI
-                // utilise TOUJOURS `.resizeAspect` (letterboxé, marges noires haut/bas + léger
-                // décalage horizontal selon le ratio), sans AUCUN réglage exposé pour changer ce
-                // comportement. Vérifié contre Android : `ActivityfeedViewPager.java:105`
-                // (`videoSurfaceView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM)`) — le
-                // plein écran Android recadre TOUJOURS la vidéo pour remplir l'écran, jamais de
-                // letterboxing. `FillVideoPlayerView` (ci-dessous) reproduit ce comportement via
-                // `AVPlayerLayer.videoGravity = .resizeAspectFill`, seul moyen d'obtenir ce réglage
-                // (non exposé par le `VideoPlayer` SwiftUI).
-                FillVideoPlayerView(player: VideoPlayerManager.shared.player)
-                    .onAppear {
-                        // Port de `VideoPlaybackCoordinator.tryPlayAt` — `fallbackURL` était
-                        // jamais transmis avant le correctif V4 précédent malgré le mécanisme de
-                        // repli déjà présent dans `VideoPlayerManager` (`handlePlaybackFailure`).
-                        //
-                        // Le suivi du temps de visionnage (resume/pause) n'est PLUS piloté depuis
-                        // ce point (V7-F-016) — voir `FeedDetailPagerView.handlePageChanged`, le
-                        // point d'entrée unique et déterministe qui a remplacé les anciens
-                        // `onAppear`/`.onDisappear` de deux cellules distinctes dont SwiftUI ne
-                        // garantissait pas l'ordre relatif.
-                        VideoPlayerManager.shared.playVideo(url: url, fallbackURL: post.fallbackPlaybackURL)
-                    }
-            } else if let thumb = post.thumbnailURL {
-                // V4-F-073 — arrière-plan plein écran (viewer fullscreen) : décodage borné à la
-                // taille d'écran réelle plutôt qu'à la résolution CDN d'origine, toujours un gain
-                // mémoire pour une photo source généralement bien plus grande que l'écran.
-                CDNAsyncImage(url: thumb, targetSize: UIScreen.main.bounds.size) { image in
-                    image.resizable().aspectRatio(contentMode: .fill)
-                } placeholder: { Color.black }
-            } else {
-                Color.black
-            }
+        // **Corrigé (2026-08-28, V8 — Bug 1/2 design "feed plein écran")** — cause racine réelle
+        // des deux bugs signalés (avatar/rail d'actions quasi hors écran sur les posts PHOTO,
+        // vidéo légèrement décentrée) : ce `body` n'avait AUCUNE `GeometryReader`/`.frame()` PROPRE
+        // à `FeedDetailCell` — sa taille dépendait entièrement de ce que son contenu voulait bien
+        // rapporter comme taille "idéale" à son parent. `Image(...).resizable().aspectRatio
+        // (contentMode: .fill)` SANS `.frame()` explicite qui l'encadre a un comportement SwiftUI
+        // documenté : en mode `.fill`, la vue demande à occuper PLUS que l'espace proposé sur un
+        // axe (pour "couvrir" en conservant le ratio) — cette taille idéale, plus grande, remonte
+        // au `ZStack` englobant (donc à `FeedDetailCell` lui-même), qui se retrouve DISPOSÉ à cette
+        // taille surdimensionnée AVANT même que le `.frame(width: geo.size...)` du parent
+        // (`FeedDetailPagerView`, posé sur le rotation-hack TabView-vertical) n'entre en jeu — le
+        // `.clipped()` déjà présent plus bas coupe alors au mauvais moment, sur cette taille déjà
+        // fausse, pas sur la taille réelle de l'écran. `FillVideoPlayerView` (vidéo) n'a pas ce
+        // problème par nature (vue UIKit sans taille intrinsèque, elle accepte simplement la taille
+        // proposée) — d'où l'écart visuel entre les deux cas malgré un rail d'actions/avatar
+        // STRICTEMENT identique dans le code (déjà noté par le correctif `.zIndex(1)` du
+        // 2026-08-27, qui traitait un symptôme d'EMPILEMENT sans jamais identifier cette cause de
+        // TAILLE). Fixé en encadrant `FeedDetailCell` dans sa PROPRE `GeometryReader` (qui, utilisée
+        // ainsi, rapporte toujours exactement la taille proposée par son parent, jamais plus) et en
+        // pinçant chaque branche média à `geo.size` + `.clipped()` — l'idiome SwiftUI standard
+        // "remplir puis rogner", qui manquait spécifiquement ici.
+        GeometryReader { geo in
+            ZStack {
+                // **Ajouté (V4-F-034, 2026-08-24)** — port de `ExoPlayerManager.java:198-330`, qui
+                // détache explicitement le player de la vue précédente avant de l'attacher à la
+                // nouvelle : `VideoPlayer(player:)` liait TOUJOURS le même `AVPlayer` PARTAGÉ, y
+                // compris pour les cellules voisines que `TabView` garde potentiellement instanciées
+                // pendant un swipe — un `AVPlayer` unique attaché à 2 `VideoPlayer` simultanés rend
+                // ses images sur LES DEUX à la fois (comportement AVFoundation documenté, pas une
+                // supposition). Le binding lui-même est maintenant gated sur `isActive`, pas
+                // seulement le déclenchement de la lecture — la cellule inactive retombe sur la
+                // vignette juste en dessous.
+                if post.isVideo, let url = post.playbackURL, isActive {
+                    // Corrigé (2026-08-27, validation physique) — `VideoPlayer` (AVKit) natif SwiftUI
+                    // utilise TOUJOURS `.resizeAspect` (letterboxé, marges noires haut/bas + léger
+                    // décalage horizontal selon le ratio), sans AUCUN réglage exposé pour changer ce
+                    // comportement. Vérifié contre Android : `ActivityfeedViewPager.java:105`
+                    // (`videoSurfaceView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM)`) — le
+                    // plein écran Android recadre TOUJOURS la vidéo pour remplir l'écran, jamais de
+                    // letterboxing. `FillVideoPlayerView` (ci-dessous) reproduit ce comportement via
+                    // `AVPlayerLayer.videoGravity = .resizeAspectFill`, seul moyen d'obtenir ce réglage
+                    // (non exposé par le `VideoPlayer` SwiftUI).
+                    FillVideoPlayerView(player: VideoPlayerManager.shared.player)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                        .onAppear {
+                            // Port de `VideoPlaybackCoordinator.tryPlayAt` — `fallbackURL` était
+                            // jamais transmis avant le correctif V4 précédent malgré le mécanisme de
+                            // repli déjà présent dans `VideoPlayerManager` (`handlePlaybackFailure`).
+                            //
+                            // Le suivi du temps de visionnage (resume/pause) n'est PLUS piloté depuis
+                            // ce point (V7-F-016) — voir `FeedDetailPagerView.handlePageChanged`, le
+                            // point d'entrée unique et déterministe qui a remplacé les anciens
+                            // `onAppear`/`.onDisappear` de deux cellules distinctes dont SwiftUI ne
+                            // garantissait pas l'ordre relatif.
+                            VideoPlayerManager.shared.playVideo(url: url, fallbackURL: post.fallbackPlaybackURL)
+                        }
+                } else if let thumb = post.thumbnailURL {
+                    // V4-F-073 — arrière-plan plein écran (viewer fullscreen) : décodage borné à la
+                    // taille d'écran réelle plutôt qu'à la résolution CDN d'origine, toujours un gain
+                    // mémoire pour une photo source généralement bien plus grande que l'écran.
+                    CDNAsyncImage(url: thumb, targetSize: UIScreen.main.bounds.size) { image in
+                        image.resizable().aspectRatio(contentMode: .fill)
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .clipped()
+                    } placeholder: { Color.black }
+                } else {
+                    Color.black
+                }
 
-            // `.zIndex(1)` — demande explicite (2026-08-27) : le rail d'actions/le bloc légende
-            // n'apparaissaient pas de façon identique sur une photo vs une vidéo, malgré un code
-            // strictement identique (bloc FRÈRE, pas enfant, de la branche média — voir ci-dessus).
-            // `VideoPlayer` (AVKit) est un `UIViewControllerRepresentable` avec sa propre hiérarchie
-            // UIKit, qui peut composer différemment de l'ordre normal SwiftUI (`ZStack` empile par
-            // ordre de déclaration) qu'une simple `Image` — force ici explicitement cette superposition
-            // au-dessus de N'IMPORTE QUEL type de média, plutôt que de compter implicitement sur
-            // l'ordre de déclaration.
-            VStack {
-                Spacer()
+                // `.zIndex(1)` — demande explicite (2026-08-27) : le rail d'actions/le bloc légende
+                // n'apparaissaient pas de façon identique sur une photo vs une vidéo, malgré un code
+                // strictement identique (bloc FRÈRE, pas enfant, de la branche média — voir ci-dessus).
+                // `VideoPlayer` (AVKit) est un `UIViewControllerRepresentable` avec sa propre hiérarchie
+                // UIKit, qui peut composer différemment de l'ordre normal SwiftUI (`ZStack` empile par
+                // ordre de déclaration) qu'une simple `Image` — force ici explicitement cette superposition
+                // au-dessus de N'IMPORTE QUEL type de média, plutôt que de compter implicitement sur
+                // l'ordre de déclaration.
+                VStack {
+                    Spacer()
                 HStack(alignment: .bottom) {
                     // Ordre EXACT de `reaction_pub_but.xml` (lu en entier, layout du vrai fullscreen
                     // Android) — auparavant inversé côté iOS (avatar/nom en premier, légende en
@@ -1242,9 +1268,10 @@ private struct FeedDetailCell: View {
                 .padding(.bottom, bottomSafeArea + 49)
             }
             .zIndex(1)
+            }
+            .background(Color.black)
+            .clipped()
         }
-        .background(Color.black)
-        .clipped()
     }
 
     private var actionRail: some View {

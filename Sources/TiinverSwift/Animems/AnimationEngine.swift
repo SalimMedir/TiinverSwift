@@ -103,6 +103,28 @@ final class AnimationEngine {
         for i in 0..<n {
             let s = objStart[i], l = objLen[i]
             provisionalMaxEnd = max(provisionalMaxEnd, l > 0 ? s + l - 1 : s)
+            // **Corrigé (2026-08-28, V8 — Bug 3 "animation cassée, même en preview")** — cause
+            // racine réelle : `totalFramesMinus1` (ci-dessous) pilote À LA FOIS la longueur de la
+            // timeline (`preparePlayback` → `timeline.setTotalFrames`) ET la condition d'arrêt de
+            // la boucle de lecture (`tick()`, `while totalFrame < totalFramesMinus1`) — mais
+            // jusqu'ici, il n'était calculé QUE depuis `obj.transforms.count`/`startFrame`/
+            // `endFrame`, JAMAIS depuis la piste de keyframes matricielles. Or la capture
+            // automatique par glisser (`AnimemesEditorState.recordKeyframe`, `autoCaptureEnabled`)
+            // écrit EXCLUSIVEMENT dans cette piste (`obj.addMatrixKeyframe`), sans jamais toucher
+            // `transforms`/`endFrame` — un calque animé PUREMENT par capture automatique (sans
+            // recadrage manuel du clip sur la timeline) gardait donc un `totalFramesMinus1` minimal
+            // (souvent 0), et la lecture s'arrêtait dès la toute première frame : "Play" ne
+            // produisait visuellement rien, exactement le symptôme signalé. `LayerRenderer.
+            // drawObjectFrame` lit pourtant déjà cette piste EN DIRECT (`hasTransformKeyframes`/
+            // `interpolatedMatrixValues`, depuis V6-F-006) — seul le calcul de LA DURÉE totale de
+            // l'animation ignorait cette même piste. `computeTotalFramesNeeded` (plus bas dans ce
+            // fichier) porte déjà exactement ce calcul mais n'était utilisé que par le pipeline de
+            // "bake" mort (V6-F-009, jamais appelé) — réutilisé ici pour la vraie source de vérité
+            // de la durée de lecture.
+            let keyframeFrameCount = computeTotalFramesNeeded(objects[i])
+            if keyframeFrameCount > 0 {
+                provisionalMaxEnd = max(provisionalMaxEnd, keyframeFrameCount - 1)
+            }
         }
 
         var explicitMaxEnd = 0

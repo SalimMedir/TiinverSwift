@@ -80,11 +80,16 @@ private struct NotificationRow: View {
     var onOpenPost: (FeedActivity) -> Void = { _ in }
     @State private var justFollowedBack = false
 
-    private var thumbnailURL: URL? {
-        let raw = noti.cdnThumbnailUrl ?? noti.cdnContentUrl ?? noti.objectUrl
-        guard let raw, !raw.isEmpty else { return nil }
-        return URL(string: raw)
-    }
+    /// **Corrigé (2026-08-28, V7-F-019)** — cette ligne réimplémentait une 3ᵉ priorité de champ
+    /// CDN indépendante (`cdnThumbnailUrl ?? cdnContentUrl ?? objectUrl`, fixe, jamais de branche
+    /// sur `noti.object`), ni fidèle à `AdapterNoti.bindThumb` (Android : PHOTO → `object_url`
+    /// inconditionnellement, VIDÉO → `cdn_thumbnail_url` sinon `object_url`) ni à la logique
+    /// centrale déjà correcte et physiquement validée (`FeedActivity.thumbnailURL`, BUG 1 du
+    /// 2026-08-27 — `cdn_thumbnail_url` peut valoir un simple hôte nu pour une photo, confirmé sur
+    /// un JSON réel, donc jamais fiable comme priorité pour ce cas). `reconstructedPost` porte déjà
+    /// exactement les champs nécessaires (`object`/`object_url`/`cdn_content_id`/`cdn_content_url`/
+    /// `cdn_thumbnail_url`) — réutilise cette logique déjà auditée plutôt que d'en dupliquer une 3ᵉ.
+    private var thumbnailURL: URL? { reconstructedPost?.thumbnailURL }
 
     /// Port de `activityId`/`object`/`object_url`/`cdn_*` déjà décodés (`NotificationCenterViewModel`)
     /// — reconstruit un `FeedActivity` minimal pour réutiliser `FeedDetailPagerView` tel quel plutôt

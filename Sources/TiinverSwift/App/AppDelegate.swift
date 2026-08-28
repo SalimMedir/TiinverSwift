@@ -127,14 +127,27 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         }
     }
 
-    /// Port de l'affichage systématique des notifications même app au premier plan — Android
-    /// n'a pas de distinction premier plan/arrière-plan équivalente à `willPresent` (une
-    /// notification FCM "notification" s'affiche toujours dans la barre système).
+    /// **Corrigé (2026-08-28, V7-F-020)** — le commentaire précédent affirmait qu'Android n'a
+    /// aucune distinction premier plan/arrière-plan, ce qui est FAUX précisément pour un push FCM
+    /// "notification" pur (sans payload `data`, typiquement marketing/promotionnel) :
+    /// `MyFirebaseMessagingService.onMessageReceived` (branche `remoteMessage.getNotification()
+    /// != null`) est un NO-OP ENTIÈREMENT COMMENTÉ côté Android — un tel push reçu app au premier
+    /// plan ne produit AUCUN affichage. Seule la branche `data` (traitée ci-dessus, `didReceive
+    /// RemoteNotification`) est bien identique premier plan/arrière-plan, ce qui reste vrai.
+    /// Toute notification LOCALE construite par ce projet porte l'un des 3 `categoryIdentifier`
+    /// reconnus (voir `LocalNotificationBuilder`) — un push distant sans catégorie reconnue est
+    /// donc, par élimination, un candidat "notification-only" pur : supprimé au premier plan,
+    /// fidèle au no-op Android, plutôt que systématiquement affiché en bannière+son.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        let knownCategories: Set<String> = ["activity", "missed_call", "chat_message"]
+        guard knownCategories.contains(notification.request.content.categoryIdentifier) else {
+            completionHandler([])
+            return
+        }
         completionHandler([.banner, .sound, .badge])
     }
 

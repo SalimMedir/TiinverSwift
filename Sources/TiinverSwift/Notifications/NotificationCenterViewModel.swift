@@ -112,11 +112,20 @@ final class NotificationCenterViewModel: ObservableObject {
 
     /// Port de `NotificationRepository.triggerSystemNotifications` — notification système
     /// UNIQUEMENT pour les entrées non lues avec un `verb` renseigné, à l'identique de l'original.
+    ///
+    /// **Corrigé (2026-08-28, V7-F-021)** — Android re-déclenche une notification système pour
+    /// CHAQUE entrée non lue à CHAQUE fetch (aucun dédoublonnage côté source, bug réel confirmé
+    /// par lecture directe), fidèlement reproduit ici jusqu'à ce correctif : un utilisateur avec
+    /// des notifications non lues en attente recevait une rafale de notifications dupliquées à
+    /// chaque retour au premier plan/rafraîchissement. Contrairement à V5-F-026 (où la même règle
+    /// "ne pas copier un bug Android" avait déjà été appliquée et documentée), ce cas n'avait
+    /// jamais reçu cette décision — corrigé maintenant via `systemNotificationShown`, un flag
+    /// local sans équivalent serveur.
     private func triggerSystemNotifications(for array: [JSONValue]) async {
         for item in array {
             guard let verb = item.optionalString("verb"), !verb.isEmpty else { continue }
             let id = Int32((try? item.int("id")) ?? 0)
-            guard let row = try? await repository.getById(id), row.isRead == 0 else { continue }
+            guard let row = try? await repository.getById(id), row.isRead == 0, !row.systemNotificationShown else { continue }
 
             let firstname = row.firstname ?? ""
             let lastname = (row.lastname == "null" ? nil : row.lastname) ?? ""
@@ -131,6 +140,7 @@ final class NotificationCenterViewModel: ObservableObject {
                 myNikname: UserSession.shared.nikname
             )
             LocalNotificationBuilder.present(LocalNotificationBuilder.activityNotificationContent(payload))
+            try? await repository.markSystemNotificationShown(id)
         }
     }
 

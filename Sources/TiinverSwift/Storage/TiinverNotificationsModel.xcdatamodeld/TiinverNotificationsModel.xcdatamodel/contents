@@ -48,6 +48,14 @@
         <attribute name="active" optional="YES" attributeType="String"/>
         <attribute name="reaction" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="message" optional="YES" attributeType="String"/>
+        <!-- V7-F-021 (2026-08-28) : champ LOCAL, sans équivalent Room — Android
+             (`NotificationRepository.triggerSystemNotifications`) re-déclenche une notification
+             système pour CHAQUE entrée non lue à CHAQUE fetch, sans dédoublonnage, un bug réel
+             fidèlement reproduit jusqu'ici côté iOS. Marque qu'une notification système locale a
+             déjà été présentée pour cette ligne, pour ne plus la re-présenter aux fetchs suivants
+             tant qu'elle reste non lue — divergence délibérée d'un bug Android confirmé, pas une
+             tentative de fausse parité. -->
+        <attribute name="systemNotificationShown" optional="YES" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
     </entity>
     <elements>
         <element name="NotiEntity" positionX="-63" positionY="-18" width="128" height="30"/>

@@ -52,6 +52,17 @@ final class NotiRepository {
         try await repo.count(predicate: NSPredicate(format: "isRead == 0"))
     }
 
+    /// **Ajouté (2026-08-28, V7-F-021)** — divergence délibérée d'un bug Android confirmé
+    /// (`NotificationRepository.triggerSystemNotifications` re-déclenche une notification système
+    /// pour CHAQUE entrée non lue à CHAQUE fetch, sans dédoublonnage). Marque qu'une notification
+    /// système locale a déjà été présentée pour cet `id`, pour ne plus la re-présenter tant
+    /// qu'elle reste non lue.
+    func markSystemNotificationShown(_ id: Int32) async throws {
+        try await repo.update(predicate: NSPredicate(format: "id == %d", id)) { row in
+            row.systemNotificationShown = true
+        }
+    }
+
     /// Port de `NotiDao.markAllRead()`.
     func markAllRead() async throws {
         let context = stack.newBackgroundContext()

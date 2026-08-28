@@ -11,11 +11,8 @@ final class NotiCoreDataStack {
 
     private init() {
         container = NSPersistentContainer(name: "TiinverNotificationsModel")
-        container.loadPersistentStores { _, error in
-            if let error {
-                fatalError("Impossible de charger le store Core Data TiinverNotificationsModel : \(error)")
-            }
-        }
+        // V7-F-024 : repli destructif sur échec, voir `CoreDataStackLoading`.
+        CoreDataStackLoading.load(container, storeName: "TiinverNotificationsModel")
         container.viewContext.automaticallyMergesChangesFromParent = true
     }
 

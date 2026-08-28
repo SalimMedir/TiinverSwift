@@ -14,13 +14,9 @@ final class CoreDataStack {
 
     private init() {
         container = NSPersistentContainer(name: "TiinverModel")
-        container.loadPersistentStores { _, error in
-            if let error {
-                // Équivalent Android : SQLiteOpenHelper échouerait aussi de façon fatale si la base
-                // ne peut pas être ouverte/créée — pas de dégradation silencieuse possible ici non plus.
-                fatalError("Impossible de charger le store Core Data TiinverModel : \(error)")
-            }
-        }
+        // V7-F-024 : repli destructif sur échec (ex. futur changement de schéma), voir
+        // `CoreDataStackLoading` — remplace un `fatalError` inconditionnel.
+        CoreDataStackLoading.load(container, storeName: "TiinverModel")
         container.viewContext.automaticallyMergesChangesFromParent = true
     }
 

@@ -126,6 +126,13 @@ final class ViewEventRepository {
         try await repo.delete(predicate: NSPredicate(format: "createdAt < %lld", cutoffMillis))
     }
 
+    /// **Ajouté (2026-08-28, V7-F-023)** — purge ciblée pour `LocalDataPurger` (déconnexion/
+    /// suppression de compte) : aucune méthode ne permettait jusqu'ici d'effacer les événements de
+    /// visionnage en attente d'un utilisateur spécifique.
+    func deleteAll(userId: String) async throws {
+        try await repo.delete(predicate: NSPredicate(format: "userId == %@", userId))
+    }
+
     /// Port de `ViewEventDao.count()`.
     func count() async throws -> Int {
         try await repo.count()

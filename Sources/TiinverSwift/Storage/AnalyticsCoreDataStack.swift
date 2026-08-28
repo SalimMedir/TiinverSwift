@@ -12,11 +12,8 @@ final class AnalyticsCoreDataStack {
 
     private init() {
         container = NSPersistentContainer(name: "TiinverAnalyticsModel")
-        container.loadPersistentStores { _, error in
-            if let error {
-                fatalError("Impossible de charger le store Core Data TiinverAnalyticsModel : \(error)")
-            }
-        }
+        // V7-F-024 : repli destructif sur échec, voir `CoreDataStackLoading`.
+        CoreDataStackLoading.load(container, storeName: "TiinverAnalyticsModel")
         container.viewContext.automaticallyMergesChangesFromParent = true
     }
 

@@ -9,6 +9,57 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
+# CURRENT HANDOFF (2026-08-28 — Phase I : V8, 3 bugs de design "feed plein écran" corrigés)
+
+Cycle distinct de V5/V6/V7 — pas un audit multi-domaines, une investigation ciblée sur 3 régressions
+concrètes signalées par l'utilisateur AVEC captures d'écran réelles (`feed-fullscren-photo.png`,
+`feed-fullscreen-video.png`, `android-fullscreen-feed.mp4` — tous dans `C:\Users\helen\OneDrive\
+Pictures\photo\Product hunt\ios-example\`). Comparées directement aux captures fournies avant tout
+diagnostic (pas de supposition sur l'apparence du bug).
+
+**Bug 1+2 (`FeedDetailCell.body`, `Sources/TiinverSwift/Feed/FeedView.swift`)** — avatar/rail de
+réactions quasi hors écran sur les posts PHOTO (texte de légende ET rail d'actions coupés aux DEUX
+bords, avatar totalement absent) ; vidéo légèrement décentrée. **Cause racine commune** : ce `body`
+n'avait aucune `GeometryReader`/`.frame()` propre — sa taille dépendait de ce que son contenu média
+voulait bien rapporter comme taille "idéale". `Image(...).resizable().aspectRatio(contentMode:
+.fill)` SANS `.frame()` explicite demande légitimement PLUS que l'espace proposé sur un axe (c'est
+la définition du mode "fill") — cette taille surdimensionnée remontait au `ZStack` englobant (donc à
+`FeedDetailCell` lui-même), qui se retrouvait disposé à cette taille fausse AVANT que le
+`.clipped()` déjà présent n'entre en jeu — celui-ci rognait alors la mauvaise boîte, pas les vrais
+bords de l'écran. Porté à travers le contournement "TabView vertical par rotation" du pager
+(`FeedDetailPagerView`), ça ressortait en clipping asymétrique sur les deux bords. `FillVideoPlayerView`
+(vidéo, `UIViewRepresentable` sans taille intrinsèque) n'a jamais eu ce problème par nature — d'où
+l'écart visuel entre les deux cas malgré un rail d'actions/avatar STRICTEMENT identique dans le code
+(déjà à moitié repéré par un correctif antérieur du 2026-08-27, `.zIndex(1)`, qui traitait un
+symptôme d'EMPILEMENT sans jamais trouver cette cause de TAILLE). **Corrigé** en encadrant
+`FeedDetailCell` dans sa PROPRE `GeometryReader` (qui, utilisée ainsi, rapporte toujours exactement
+la taille proposée par son parent, jamais plus) et en pinçant chaque branche média à `geo.size` +
+`.clipped()` — l'idiome SwiftUI standard "remplir puis rogner", appliqué symétriquement à la vidéo
+aussi par robustesse.
+
+**Bug 3 (`AnimationEngine.prepareFrame`, `Sources/TiinverSwift/Animems/AnimationEngine.swift`)** —
+l'animation ne joue pas du tout, même en aperçu ("Play"). **Cause racine** : `totalFramesMinus1`
+pilote À LA FOIS la longueur de la timeline ET la condition d'arrêt de la boucle de lecture
+(`tick()`, `while totalFrame < totalFramesMinus1`), mais n'était calculé QUE depuis
+`obj.transforms.count`/`startFrame`/`endFrame` — JAMAIS depuis la piste de keyframes matricielles.
+La capture automatique par glisser (`AnimemesEditorState.recordKeyframe`, `autoCaptureEnabled`)
+écrit EXCLUSIVEMENT dans cette piste (`obj.addMatrixKeyframe`), sans jamais toucher
+`transforms`/`endFrame` — un calque animé PUREMENT par capture automatique gardait donc un
+`totalFramesMinus1` proche de 0, et la lecture s'arrêtait dès la première frame. Le rendu lui-même
+était déjà correct (`LayerRenderer.drawObjectFrame`/`drawText`/`drawSticker` lisent la piste EN
+DIRECT depuis V6-F-006) — seul le calcul de la DURÉE totale l'ignorait. **Corrigé** en réutilisant
+`computeTotalFramesNeeded` (helper déjà correct, mais jusqu'ici câblé UNIQUEMENT au pipeline de bake
+mort, V6-F-009) dans le calcul de `provisionalMaxEnd`.
+
+**1 commit** (`39a4294`), CI déclenchée. Aucun test physique — captures/vidéo fournies analysées
+directement (via `ffmpeg` pour extraire des frames de référence de la vidéo Android), diagnostic par
+lecture de code uniquement, cohérent avec l'absence de device/simulateur sur cette machine. **Test
+physique recommandé avant de considérer ces 3 bugs définitivement clos** : les 3 corrections sont
+des changements de layout/logique à fort impact visuel/comportemental, jamais vues tourner sur un
+écran réel.
+
+---
+
 # CURRENT HANDOFF (2026-08-28 — Phase H : les 27 findings V7 traités en une session)
 
 Suite immédiate de la Phase G ci-dessous, dans la MÊME session. Consigne explicite de l'utilisateur :

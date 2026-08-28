@@ -255,7 +255,7 @@ IMPACT : Un utilisateur animant une légende texte ou un sticker (flux plausible
 REPRODUCTIBILITÉ : Certaine par lecture de code pour la moitié "iOS ne rend jamais" ; probable (non prouvée par exécution) pour la moitié "Android rend bien à l'export" — NEEDS_PHYSICAL_VALIDATION sur un vrai build Android pour confirmer visuellement le mouvement dans le MP4 exporté.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Faire consulter à `drawText`/`drawSticker` les keyframes matricielles comme `drawObjectFrame` le fait déjà (lecture directe en direct, cohérent avec le reste du moteur — pas besoin de câbler le bake mort `applyInterpolation` pour ces deux types).
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28 (commit 96527fe). `drawText`/`drawSticker` acceptent désormais un `currentNs: Int64?` optionnel et reproduisent exactement le repli `hasTransformKeyframes`/`interpolatedMatrixValues` de `drawObjectFrame`. Câblé dans la boucle de rendu canevas EN DIRECT (`AnimemesEditorView.canvasArea`, `currentNs: ns` = playhead courant) ET dans la boucle d'export MP4 (`AnimemesExporter.render(frame:into:)`, `currentNs` = timestamp de la frame réellement encodée) — donc corrigé en aperçu ET à l'export, comme demandé. Les deux sites d'aplatissement statique (`exportStaticImage`, `repeatBackgroundImage`) omettent délibérément `currentNs` (défaut `nil`) pour conserver leur comportement "dernière transform" existant, cohérent avec leurs appels `drawLastTransform(..., isSliderPreview: true)` voisins.
 ```
 
 ```
@@ -272,7 +272,7 @@ IMPACT : Fenêtre de double-tap réelle bien que probablement étroite ; travail
 REPRODUCTIBILITÉ : Certaine par lecture de code que la garde manque ; NEEDS_PHYSICAL_VALIDATION pour confirmer la fenêtre réellement déclenchable via double-tap rapide sur l'appareil.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter `guard !isExporting else { return }` en tête de `export(canvasSize:completion:)`, miroir exact de la garde `isStartedCodec` d'Android.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. `guard !isExporting else { return }` ajouté en toute première ligne de `export(canvasSize:completion:)`, avant même le guard `composer.layers.isEmpty` existant — miroir exact de la garde `isStartedCodec` d'Android. `isExporting` était déjà remis à `false` de façon fiable en cas de succès ET d'échec (`self.isExporting = false` dans le callback de `exporter.export`), donc un nouvel essai après un échec fonctionne normalement sans modification supplémentaire.
 ```
 
 ```
@@ -304,7 +304,7 @@ IMPACT : Piège latent pour une future modification qui supposerait ce code acti
 REPRODUCTIBILITÉ : Certaine par lecture de code.
 SUGGESTED_STATUS : CODE_PRESENT_UNVERIFIED
 RECOMMANDATION : Soit câbler `applyInterpolation` pour texte/sticker (résout aussi V6-F-006), soit retirer le code mort si le rendu direct est retenu comme approche définitive pour tous les types.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : DIFFÉRÉ — 2026-08-28. V6-F-006 corrigé via la voie "lecture directe" (option B de la recommandation), pas via le bake — confirmant `applyInterpolation`/`bakeKeyframesToTransforms` comme définitivement inutilisés pour TOUS les types de calque (bitmap/forme ET texte/sticker désormais). Le code reste mort mais n'est plus un piège actif pour une future modification puisque le rendu direct est maintenant l'approche uniforme documentée. Retrait des ~50 lignes laissé hors scope de ce cycle V6 (nettoyage pur, aucun risque fonctionnel, pas de raison technique bloquante — reporté à une passe de nettoyage dédiée).
 ```
 
 ```
@@ -568,7 +568,7 @@ IMPACT : Un double-tap normal (ou simplement la latence réseau) peut démarrer 
 REPRODUCTIBILITÉ : Certaine par lecture de code pour la course logique (attente avant pose du drapeau, aucune garde) ; le taux réel de publications dupliquées en pratique NEEDS_PHYSICAL_VALIDATION (latence réseau réaliste sur appareil).
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Ajouter `guard !isPublishing else { return }` en TOUTE PREMIÈRE ligne de `publish()`, avant même la résolution de catégorie ; envisager de pré-résoudre `resolvedCategory` à l'apparition de l'écran plutôt qu'au moment du tap.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. `guard !isPublishing else { return }` posé en toute première ligne de `publish()`, ET `isPublishing = true` (+ `defer { isPublishing = false }`) déplacé au même endroit — AVANT la résolution de catégorie async (`fetchProfile`), pas seulement le guard seul, sinon deux appels concurrents auraient tous deux pu passer le guard avant que l'un d'eux ne pose le drapeau. Protège atomiquement le flux post ET le flux export Animems (qui réutilise `PublishComposeView`), conforme au test mental demandé (tap → réseau lent → second tap → une seule publication). Pré-résolution de `resolvedCategory` à l'apparition de l'écran non implémentée (optimisation secondaire de la recommandation, pas nécessaire une fois la garde atomique en place).
 ```
 
 ```

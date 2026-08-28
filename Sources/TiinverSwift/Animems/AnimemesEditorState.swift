@@ -1111,6 +1111,11 @@ final class AnimemesEditorState: ObservableObject {
     /// sauvegarde) n'expose que vidéo/template, jamais GIF. Construire cet export ici inventerait
     /// une fonctionnalité qu'Android n'expose jamais à l'utilisateur.
     func export(canvasSize: CGSize, completion: @escaping (URL?) -> Void) {
+        // **Corrigé (2026-08-28, V6-F-007)** — miroir de la garde `isStartedCodec` d'Android
+        // (`AnimemesCompound.java:2583`), posée AVANT toute création d'exporteur : sans elle, un
+        // second appel concurrent (double-tap rapide) écrasait silencieusement `activeExporter`,
+        // abandonnant le premier export (fermeture jamais appelée, fichier temporaire orphelin).
+        guard !isExporting else { return }
         guard !composer.layers.isEmpty else { return }
         guard hasAnimation else {
             completion(exportStaticImage(canvasSize: canvasSize))

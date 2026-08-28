@@ -312,6 +312,16 @@ struct PublishComposeView: View {
     /// périmètre du cas le plus fréquent (bascule brève vers une autre app / verrouillage d'écran
     /// pendant l'upload), qui est celui réellement corrigé ici.
     private func publish() async {
+        // **Corrigé (2026-08-28, V6-F-024)** — garde de ré-entrance posée AVANT tout travail
+        // async, `isPublishing` passé à `true` IMMÉDIATEMENT (pas seulement le `guard` en tête) :
+        // la résolution de catégorie ci-dessous attend un appel réseau AVANT l'ancien
+        // positionnement de `isPublishing = true` — pendant cette fenêtre, le bouton "Publier"
+        // restait visible et un second appel passait le `guard` seul, puisque `isPublishing`
+        // n'était pas encore vrai. Poser les deux ensemble ici rend la garde atomique, fidèle au
+        // test mental demandé : tap → réseau lent → second tap → une seule publication.
+        guard !isPublishing else { return }
+        isPublishing = true
+        defer { isPublishing = false }
         var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
         backgroundTaskId = UIApplication.shared.beginBackgroundTask(withName: "PublishUpload") {
             UIApplication.shared.endBackgroundTask(backgroundTaskId)
@@ -344,10 +354,8 @@ struct PublishComposeView: View {
             }
         }
 
-        isPublishing = true
         videoUploadProgress = nil
         errorText = nil
-        defer { isPublishing = false }
 
         // **Corrigé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-049, Phase B P2)** — port de
         // `PublishFragment.extractHashtags` (`Pattern.compile("#(\\w+)")`) via

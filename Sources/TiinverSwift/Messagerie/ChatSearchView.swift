@@ -28,7 +28,13 @@ struct ChatSearchView: View {
 
     private var localMatches: [RosterListViewModel.Row] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return [] }
+        // Port de `RetrieveContacts(null)` (`RechercheTiinver.java:130-197,584-685`) — **Corrigé
+        // (2026-08-28, V6-F-014)** : quand `str == null || str.equals("")`, Android ajoute
+        // INCONDITIONNELLEMENT chaque conversation locale (mode navigation, pas un état vide) —
+        // même comportement à l'ouverture de l'écran ET en effaçant le champ. `RosterListViewModel`
+        // est déjà peuplé à ce stade (partagé avec l'écran liste des conversations), donc aucun
+        // appel réseau supplémentaire n'est nécessaire pour ce cas.
+        guard !q.isEmpty else { return rosterViewModel.rows }
         // Port de `title.toLowerCase().contains(str) || message.toLowerCase().contains(str) ||
         // subTitle.toLowerCase().contains(str)` — filtre local sur les données DÉJÀ chargées par
         // `RosterListViewModel` (équivalent du `Cursor` local Android, mêmes lignes `wk_roster`).

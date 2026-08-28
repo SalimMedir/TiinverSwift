@@ -355,7 +355,7 @@ IMPACT : Affichage transitoirement incohérent avec ce que l'utilisateur a réel
 REPRODUCTIBILITÉ : Certaine par lecture de code qu'aucune garde n'existe ; l'observation réelle du scintillement nécessite un test avec latence réseau artificielle (NEEDS_PHYSICAL_VALIDATION).
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter un jeton de génération (incrémenté à chaque nouvelle recherche, comparé à la réception de la réponse avant application) côté iOS — corrige le défaut partagé sans attendre qu'Android soit lui-même corrigé.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Décision explicitement demandée par la mission (défaut partagé, ne pas corriger automatiquement) : jugé nécessaire ET sûr — le correctif (jeton `searchGeneration`) ne fait QUE supprimer une course, ne change AUCUN comportement observable quand le réseau se comporte normalement, et ne dépend d'aucun changement côté Android. `searchGeneration` ajouté à `SearchView`, incrémenté dans `runSearch`/`suggest`, comparé avant toute application de résultat/erreur ET avant la remise à `false` de `isLoading` (pour éviter qu'une réponse obsolète n'efface l'indicateur de chargement d'une requête plus récente encore en vol).
 ```
 
 ```
@@ -372,7 +372,7 @@ IMPACT : ~300ms de latence perçue supplémentaire lors d'une validation explici
 REPRODUCTIBILITÉ : Certaine par lecture de code.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter `.onSubmit(of: .search) { Task { await runSearch(full: true) } }` (ou équivalent), en annulant d'abord le debounce en attente.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. `.onSubmit(of: .search) { searchTask?.cancel(); runSearch(full: true) }` ajouté, exactement la recommandation.
 ```
 
 ```
@@ -389,7 +389,7 @@ IMPACT : Perte d'un cas d'usage secondaire réel (parcourir ses conversations de
 REPRODUCTIBILITÉ : Certaine par lecture de code.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Faire retourner à `localMatches` toutes les lignes du `RosterListViewModel` déjà chargé quand `q.isEmpty`, au lieu de `[]`.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. `localMatches` retourne désormais `rosterViewModel.rows` (déjà chargé, aucun appel réseau supplémentaire) quand la requête est vide, exactement la recommandation.
 ```
 
 ```

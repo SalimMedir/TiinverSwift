@@ -11,6 +11,15 @@ struct SearchView: View {
     @State private var isLoading = false
     @State private var errorText: String?
     @State private var searchTask: Task<Void, Never>?
+    /// **Ajouté (2026-08-28, V6-F-012)** — jeton de génération : incrémenté à chaque nouvel appel
+    /// `runSearch`/`suggest`, capturé localement à l'entrée, comparé avant d'appliquer une
+    /// réponse. `searchTask?.cancel()` (déjà présent) n'annule que le `Task` de DEBOUNCE (le
+    /// sommeil de 300ms) — pas la requête réseau qu'il finit par déclencher, elle-même un `Task`
+    /// SÉPARÉ non annulé. Sans ce jeton, une frappe "abc" puis "abcde" pouvait laisser une réponse
+    /// "abc" plus lente écraser un résultat "abcde" déjà affiché et plus récent (défaut identique
+    /// côté Android, `RechercheTiinver.java`, non corrigé là-bas — corrigé ici indépendamment,
+    /// fix autonome et sans risque, pas une reproduction d'un défaut Android).
+    @State private var searchGeneration = 0
     @State private var detailPost: FeedActivity?
     /// Port de `autoQuery`/`autoTab` (`RechercheTiinver.java:156-181`) — `true` uniquement au
     /// premier lancement avec une query pré-remplie (tap #hashtag/@mention, `V3-F-099`) ; lance la
@@ -137,6 +146,13 @@ struct SearchView: View {
             .listStyle(.plain)
         }
         .searchable(text: $query, prompt: "Rechercher")
+        // Port de `onQueryTextSubmit` (`RechercheTiinver.java:203-216`) — **Ajouté (2026-08-28,
+        // V6-F-013)** : validation clavier/bouton "Rechercher" court-circuite le debounce de
+        // 300ms, comme Android (`searchFull` immédiat, sans attendre `DEBOUNCE_DELAY_MS`).
+        .onSubmit(of: .search) {
+            searchTask?.cancel()
+            runSearch(full: true)
+        }
         .onChange(of: query) { newValue in
             searchTask?.cancel()
             searchTask = Task {
@@ -302,10 +318,15 @@ struct SearchView: View {
     }
 
     private func suggest(_ text: String) async {
+        searchGeneration += 1
+        let generation = searchGeneration
         do {
-            results = try await SearchRepository.shared.suggest(query: text)
+            let fetched = try await SearchRepository.shared.suggest(query: text)
+            guard generation == searchGeneration else { return } // V6-F-012 : réponse obsolète, ignorée
+            results = fetched
             errorText = nil
         } catch {
+            guard generation == searchGeneration else { return }
             // **Corrigé (V4-F-036, 2026-08-24)** — `searchSuggest.onError` (`RechercheTiinver.
             // java:412-421`) affiche `showEmpty("Aucun résultat")`, un texte NEUTRE, jamais le
             // message d'erreur rouge réservé à `searchFull`. `errorText` reste `nil` : la branche
@@ -355,11 +376,15 @@ struct SearchView: View {
 
     private func runSearch(full: Bool) {
         guard query.count >= 2 else { return }
+        searchGeneration += 1
+        let generation = searchGeneration
         Task {
             isLoading = true
-            defer { isLoading = false }
+            defer { if generation == searchGeneration { isLoading = false } }
             do {
-                results = try await SearchRepository.shared.search(query: query, tab: tab)
+                let fetched = try await SearchRepository.shared.search(query: query, tab: tab)
+                guard generation == searchGeneration else { return } // V6-F-012 : réponse obsolète, ignorée
+                results = fetched
                 errorText = nil
                 // Corrigé (V3-F-104, SEARCH — complémentaire) : `save()` était appelé APRÈS le
                 // do/catch, donc inconditionnellement même en cas d'échec réseau — Android ne
@@ -378,6 +403,7 @@ struct SearchView: View {
                 RecentSearchStore.save(displayEntry(query: query, tab: tab))
                 recent = RecentSearchStore.all()
             } catch {
+                guard generation == searchGeneration else { return }
                 results = SearchResults()
                 errorText = "Erreur de chargement."
             }

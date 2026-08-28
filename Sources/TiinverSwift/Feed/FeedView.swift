@@ -631,6 +631,14 @@ struct FeedDetailPagerView: View {
     /// `@State` pour la même raison). `nil` = aucun suivi démarré pour l'instant (ouverture du
     /// pager, avant le premier `.onAppear`).
     @State private var lastTrackedIndex: Int?
+    /// Port de `FeedFragment.onPause()`/`onResume()` pour la transition arrière-plan/premier-plan
+    /// DE L'APP ENTIÈRE (bouton Accueil, App Switcher, notification) — **ajouté (2026-08-28,
+    /// V7-F-016)**. Distinct de `.onDisappear` (ligne ~918, navigation interne quittant cet
+    /// écran) : sans ce second signal, un utilisateur qui backgroundait l'app SANS quitter cet
+    /// écran voyait `watchTracker` continuer d'accumuler du temps indéfiniment (horloge monotone,
+    /// insensible au fait que l'app ne soit plus réellement au premier plan tant que l'appareil
+    /// reste éveillé) — surcomptage direct des statistiques de visionnage.
+    @Environment(\.scenePhase) private var scenePhase
     /// Port de la navigation `nameContainer` → `UserProfile.class` (P0-C, 2026-08-17) — présenté
     /// depuis CE pager plutôt que remonté à l'appelant : Android ouvre `UserProfile` comme un
     /// nouvel écran empilé par-dessus le fullscreen, jamais en le fermant d'abord.
@@ -729,10 +737,7 @@ struct FeedDetailPagerView: View {
                                     onMore: { moreActionsPost = post },
                                     onOpenProfile: { if let actor = post.actor { openProfileUserId = actor } },
                                     onFollow: { Task { await viewModel.followFromDetail(post) } },
-                                    onOpenSearch: { query, tab in searchToken = (query, tab) },
-                                    onVideoPlaybackActiveChanged: { isPlayingNow in
-                                        handleVideoPlaybackActiveChanged(isPlayingNow)
-                                    }
+                                    onOpenSearch: { query, tab in searchToken = (query, tab) }
                                 )
                             }
                         }
@@ -771,9 +776,7 @@ struct FeedDetailPagerView: View {
             .onChange(of: currentIndex) { newIndex in
                 // Port de `OnPageChangeCallback.onPageSelected` (`FeedFragment.java:652-690`,
                 // V6-F-019) — flush + enregistrement de l'item précédent, démarrage du suivi du
-                // nouveau (immédiat si photo ; pour une vidéo, via
-                // `FeedDetailCell.onVideoPlaybackActiveChanged(true)` plus bas, port de
-                // `onIsPlayingChanged(true)`).
+                // nouveau (photo ET vidéo, voir V7-F-016 dans la doc de `handlePageChanged`).
                 handlePageChanged(from: lastTrackedIndex, to: newIndex)
                 lastTrackedIndex = newIndex
                 preloadAround(newIndex)
@@ -783,6 +786,19 @@ struct FeedDetailPagerView: View {
                 if lastTrackedIndex == nil {
                     handlePageChanged(from: nil, to: currentIndex)
                     lastTrackedIndex = currentIndex
+                }
+            }
+            // Port de `FeedFragment.onPause()`/`onResume()` (V7-F-015) — voir la doc de
+            // `scenePhase` ci-dessus. `phase != .active` couvre `.background` ET `.inactive`
+            // (transitions système transitoires — centre de contrôle, alerte, permission — traitées
+            // comme "pas réellement regardé", fidèle à la symétrie onPause/onResume d'Android).
+            .onChange(of: scenePhase) { phase in
+                guard let index = lastTrackedIndex, posts.indices.contains(index), !isAdPosition(index, count: posts.count) else { return }
+                if phase == .active {
+                    watchTracker.resumeTracking()
+                } else {
+                    captureExitPointAndDurationIfVideo(at: index)
+                    flushAndRecord(index: index)
                 }
             }
 
@@ -915,7 +931,11 @@ struct FeedDetailPagerView: View {
         // Port de `FeedFragment.onPause()` (`Activity/ui/FeedFragment.java:1575-1595`, V6-F-019) —
         // flush + enregistrement de l'item COURAMMENT suivi à la fermeture de cet écran (retour
         // arrière, ou toute autre disparition de la vue), même logique qu'un changement de page.
+        // Capture de la position AVANT le flush si c'est une vidéo (V7-F-016) — même invariant que
+        // `handlePageChanged`, pour ne pas perdre `exitPoint`/`videoDuration` si l'écran se ferme
+        // pendant une lecture vidéo (scénario distinct d'un simple changement de page).
         .onDisappear {
+            captureExitPointAndDurationIfVideo(at: lastTrackedIndex)
             if let index = lastTrackedIndex {
                 flushAndRecord(index: index)
             }
@@ -927,7 +947,26 @@ struct FeedDetailPagerView: View {
     /// Port de la partie `onPageSelected` qui touche `watchTracker` (`FeedFragment.java:659-678`).
     /// `previousIndex == nil` reproduit la garde Android `if (previousPosition != -1)` — rien à
     /// flusher à l'ouverture initiale du pager, seulement démarrer le suivi du premier item.
+    ///
+    /// **Corrigé (2026-08-28, V7-F-016)** — resume/pause vidéo étaient auparavant pilotés par
+    /// `FillVideoPlayerView.onAppear`/`.onDisappear` de DEUX cellules distinctes (l'entrante et la
+    /// sortante), dont SwiftUI ne garantit PAS l'ordre relatif lors d'un changement de page.
+    /// Si `onAppear` de la vidéo entrante s'exécutait avant `onDisappear` de la sortante : (1) la
+    /// capture de position de la sortante lisait déjà la position de l'entrante (le lecteur
+    /// `AVPlayer` étant PARTAGÉ) ; (2) pire, la pause "en retard" de la sortante retombait sur la
+    /// session TOUT JUSTE démarrée de l'entrante (même `WatchTimeTracker` partagé), la remettant en
+    /// pause sans qu'aucun événement ne la relance avant le prochain changement de page — le temps
+    /// de visionnage vidéo-à-vidéo (le cas d'usage le plus fréquent) pouvait ne presque jamais être
+    /// comptabilisé. Ce point d'entrée UNIQUE et déterministe (un seul `.onChange`, jamais deux vues
+    /// indépendantes) élimine la course : capture de la position de sortie AVANT tout flush (donc
+    /// avant qu'un futur appel à `VideoPlayerManager.playVideo` ne remplace l'item du lecteur
+    /// partagé), puis reprise du suivi pour l'item entrant, photo ET vidéo confondues (Android lie
+    /// `resumeTracking()` au véritable état "isPlaying" d'ExoPlayer, pas à la sélection de page —
+    /// déjà une approximation assumée ici depuis V6-F-019, voir la note de `captureExitPointAndDuration`
+    /// juste en dessous ; ce correctif ne change pas cette approximation, seulement l'endroit d'où
+    /// elle est pilotée).
     private func handlePageChanged(from previousIndex: Int?, to newIndex: Int) {
+        captureExitPointAndDurationIfVideo(at: previousIndex)
         if let previousIndex {
             flushAndRecord(index: previousIndex)
         }
@@ -936,11 +975,7 @@ struct FeedDetailPagerView: View {
         // de position dans son ViewPager2, la grille+pager iOS l'introduit, voir
         // `isAdPosition`/`FeedGridSegments` en tête de ce fichier).
         guard posts.indices.contains(newIndex), !isAdPosition(newIndex, count: posts.count) else { return }
-        if !posts[newIndex].isVideo {
-            watchTracker.resumeTracking()
-        }
-        // Vidéo : le suivi démarre via `FeedDetailCell.onVideoPlaybackActiveChanged(true)`
-        // (`FillVideoPlayerView.onAppear`), port de `onIsPlayingChanged(true)` — pas ici.
+        watchTracker.resumeTracking()
     }
 
     /// Port de `flushSnapshotAndReset(...)` + `if (snap.watchTimeSec >= 1) saveViewData(...)`,
@@ -970,19 +1005,6 @@ struct FeedDetailPagerView: View {
         }
     }
 
-    /// Port de `OnViewListener.onIsPlayingChanged(boolean)` (`FeedFragment.java:731-743`) — la
-    /// cellule elle-même ne connaît pas l'état interne du tracker, seulement les 2 transitions
-    /// dont Android tire parti (lecture démarrée / lecture arrêtée), reportées ici par
-    /// `FeedDetailCell.onVideoPlaybackActiveChanged`.
-    private func handleVideoPlaybackActiveChanged(_ isPlayingNow: Bool) {
-        if isPlayingNow {
-            watchTracker.resumeTracking()
-        } else {
-            captureExitPointAndDuration()
-            watchTracker.pauseTracking()
-        }
-    }
-
     /// Port des 2 lignes `playbackCoordinator.getCurrentPosition()`/`getCurrentDuration()` +
     /// `watchTracker.setExitPoint`/`setVideoDuration`, répétées à 2 endroits côté Android
     /// (`onIsPlayingChanged(false)` ET `onPageScrollStateChanged(DRAGGING)`) — factorisées ici en un
@@ -993,11 +1015,13 @@ struct FeedDetailPagerView: View {
     /// début du geste de swipe, avant même que la page suivante ne soit sélectionnée — le
     /// `TabView(.page)` de SwiftUI n'expose aucun événement équivalent (ni état de defilement en
     /// cours, ni callback de début de geste), seulement `selection` une fois la page RETENUE. La
-    /// capture se fait donc ici seulement quand la vidéo cesse effectivement d'être active
-    /// (`FillVideoPlayerView.onDisappear`, juste avant que `onChange(of: currentIndex)` ne flush
-    /// l'item), qui survient de toute façon TOUJOURS avant le flush pour la même transition — la
     /// perte réelle par rapport à Android est minime (granularité "page retenue" au lieu de "geste
     /// démarré"), pas une lacune fonctionnelle.
+    ///
+    /// **Câblage corrigé (2026-08-28, V7-F-016)** — appelée désormais depuis `handlePageChanged`
+    /// (point d'entrée unique et déterministe, voir sa doc) plutôt que depuis
+    /// `FillVideoPlayerView.onDisappear`, pour garantir qu'elle lit TOUJOURS la position de l'item
+    /// SORTANT avant qu'un item ENTRANT ne remplace le lecteur `AVPlayer` partagé.
     private func captureExitPointAndDuration() {
         let player = VideoPlayerManager.shared.player
         let positionSeconds = player.currentTime().seconds
@@ -1007,6 +1031,15 @@ struct FeedDetailPagerView: View {
         if let durationSeconds = player.currentItem?.duration.seconds, durationSeconds.isFinite, durationSeconds > 0 {
             watchTracker.setVideoDuration(durationMs: Int64(durationSeconds * 1000))
         }
+    }
+
+    /// Garde d'indices + type partagée par `handlePageChanged` et l'`.onDisappear` du pager
+    /// (fermeture de l'écran pendant une lecture vidéo) — capture la position de sortie SEULEMENT
+    /// si l'index désigne bien une vidéo réellement suivie (pas une position publicitaire, pas une
+    /// photo, où `captureExitPointAndDuration` n'aurait aucun sens).
+    private func captureExitPointAndDurationIfVideo(at index: Int?) {
+        guard let index, posts.indices.contains(index), !isAdPosition(index, count: posts.count), posts[index].isVideo else { return }
+        captureExitPointAndDuration()
     }
 
     /// Port de `ExoPlayerManager.smartPreload`/`PreloadScheduler` (fenêtre `currentIndex ± 2`) —
@@ -1074,13 +1107,6 @@ private struct FeedDetailCell: View {
     /// Port de `TokenClickableSpan.onClick` — `query` = texte SANS préfixe, `tab` = `.hashtags`/
     /// `.users` (**ajouté le 2026-08-20, MIGRATION_PARITY_AUDIT_V3.md V3-F-099, Phase B P1**).
     var onOpenSearch: (_ query: String, _ tab: SearchTab) -> Void = { _, _ in }
-    /// Port de `OnViewListener.onIsPlayingChanged(boolean)` (`FeedFragment.java:731-743`,
-    /// V6-F-019) — `true` quand cette cellule devient la vidéo active (lecture démarrée via
-    /// `FillVideoPlayerView.onAppear`), `false` quand elle cesse de l'être (page suivante/
-    /// précédente, `isActive` retombe à `false`). `FeedDetailPagerView` (seul propriétaire du
-    /// `WatchTimeTracker` partagé) traduit ces 2 transitions en `resumeTracking()`/
-    /// `pauseTracking()`.
-    var onVideoPlaybackActiveChanged: (Bool) -> Void = { _ in }
 
     var body: some View {
         ZStack {
@@ -1108,16 +1134,13 @@ private struct FeedDetailCell: View {
                         // Port de `VideoPlaybackCoordinator.tryPlayAt` — `fallbackURL` était
                         // jamais transmis avant le correctif V4 précédent malgré le mécanisme de
                         // repli déjà présent dans `VideoPlayerManager` (`handlePlaybackFailure`).
+                        //
+                        // Le suivi du temps de visionnage (resume/pause) n'est PLUS piloté depuis
+                        // ce point (V7-F-016) — voir `FeedDetailPagerView.handlePageChanged`, le
+                        // point d'entrée unique et déterministe qui a remplacé les anciens
+                        // `onAppear`/`.onDisappear` de deux cellules distinctes dont SwiftUI ne
+                        // garantissait pas l'ordre relatif.
                         VideoPlayerManager.shared.playVideo(url: url, fallbackURL: post.fallbackPlaybackURL)
-                        // Port de `onIsPlayingChanged(true)` (V6-F-019) — voir doc de
-                        // `onVideoPlaybackActiveChanged` ci-dessus.
-                        onVideoPlaybackActiveChanged(true)
-                    }
-                    .onDisappear {
-                        // Port de `onIsPlayingChanged(false)` (V6-F-019) — cette cellule cesse
-                        // d'être la vidéo active (`isActive` retombe à `false`, condition du `if`
-                        // ci-dessus qui monte cette vue).
-                        onVideoPlaybackActiveChanged(false)
                     }
             } else if let thumb = post.thumbnailURL {
                 // V4-F-073 — arrière-plan plein écran (viewer fullscreen) : décodage borné à la

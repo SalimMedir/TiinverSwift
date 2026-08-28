@@ -8,6 +8,33 @@ import CoreData
 /// (port de `ViewSyncWorker.java`) et son appel dans `FeedView.swift`/`RootRouterView.swift`. Seul
 /// le job PÉRIODIQUE d'arrière-plan (`WorkManager`/`BGTaskScheduler`, 15 min) reste hors périmètre
 /// (déjà déféré par V5-F-060, chantier d'infrastructure à part entière).
+/// Sérialise les appels `record()` (2026-08-28, V7-F-017) — `findExisting` puis `update`/`insert`
+/// sont 2 opérations Core Data SÉPARÉES, chacune sur son propre contexte d'arrière-plan (voir
+/// `CoreDataRepository`) : sans cette file, deux `record()` concurrents pour le MÊME
+/// `(activityId, userId)` (deux flushs rapprochés, ex. swipes rapides) pouvaient chacun lire "pas
+/// de ligne existante"/une valeur périmée puis écrire indépendamment — incrément de watchtime
+/// perdu, ou lignes dupliquées jamais fusionnées (aucune contrainte d'unicité applicative
+/// n'existe). Port de l'exécuteur mono-thread dédié d'Android (`ViewTracker.dbExecutor =
+/// Executors.newSingleThreadExecutor()`), qui sérialise déjà TOUS les appels `record()` côté Java.
+/// Une simple isolation d'acteur NE suffirait PAS ici : Swift autorise la ré-entrance d'un acteur
+/// entre deux `await` internes à une même méthode, donc un enchaînement explicite de `Task`
+/// (chacune n'aboutissant qu'après la précédente ET son propre travail) est nécessaire pour une
+/// vraie exclusion mutuelle bout en bout.
+private actor RecordQueue {
+    static let shared = RecordQueue()
+    private var tail: Task<Int, Error> = Task { 0 }
+
+    func run(_ operation: @escaping () async throws -> Int) async throws -> Int {
+        let previousTail = tail
+        let newTail = Task<Int, Error> {
+            _ = try? await previousTail.value
+            return try await operation()
+        }
+        tail = newTail
+        return try await newTail.value
+    }
+}
+
 final class ViewEventRepository {
     private let repo: CoreDataRepository<ViewEventEntity>
     static let syncThreshold = 5 // ViewTracker.SYNC_THRESHOLD
@@ -39,44 +66,47 @@ final class ViewEventRepository {
     ) async throws -> Int {
         guard watchtime >= 1 else { return try await repo.count() }
 
-        if let existing = try await findExisting(activityId: activityId, userId: userId) {
-            try await repo.update(predicate: NSPredicate(
-                format: "activityId == %d AND userId == %@", activityId, userId
-            )) { row in
-                row.watchtime += watchtime
-                if scrollPosition > row.scrollPosition {
+        // V7-F-017 : find-then-write sérialisé bout en bout, voir la doc de `RecordQueue`.
+        return try await RecordQueue.shared.run { [repo] in
+            if try await self.findExisting(activityId: activityId, userId: userId) != nil {
+                try await repo.update(predicate: NSPredicate(
+                    format: "activityId == %d AND userId == %@", activityId, userId
+                )) { row in
+                    row.watchtime += watchtime
+                    if scrollPosition > row.scrollPosition {
+                        row.scrollPosition = scrollPosition
+                    }
+                    row.replayCount += replayCount
+                    if exitPoint >= 0 && (row.exitPoint < 0 || exitPoint > row.exitPoint) {
+                        row.exitPoint = exitPoint
+                    }
+                }
+            } else {
+                try await repo.insert { row in
+                    row.userId = userId
+                    row.activityId = activityId
+                    row.watchtime = watchtime
                     row.scrollPosition = scrollPosition
-                }
-                row.replayCount += replayCount
-                if exitPoint >= 0 && (row.exitPoint < 0 || exitPoint > row.exitPoint) {
+                    row.replayCount = replayCount
                     row.exitPoint = exitPoint
+                    row.createdAt = Int64(Date().timeIntervalSince1970 * 1000)
+                    // **Corrigé (2026-08-28, V6-F-019)** — `localId` (équivalent du "_id"
+                    // auto-incrémenté SQLite côté Android, voir le commentaire de tête de
+                    // `TiinverModel.xcdatamodeld`) n'était JAMAIS assigné ici, restant à sa valeur
+                    // par défaut (0) pour CHAQUE ligne : sans conséquence tant que rien n'appelait
+                    // `delete(localId:)`, mais `ViewEventSyncService.sync()` (port de
+                    // `ViewSyncWorker.java`) en dépend pour supprimer UNE SEULE ligne confirmée
+                    // envoyée au serveur — avec `localId` toujours à 0, ce prédicat aurait supprimé
+                    // TOUTES les lignes en attente dès le premier succès réseau, y compris celles
+                    // pas encore envoyées. Tirage aléatoire 64 bits (collision pratiquement
+                    // impossible sur le volume de lignes en attente avant purge à 7 jours) plutôt
+                    // qu'un compteur — pas de source d'auto-incrément fiable disponible ici
+                    // (plusieurs contextes d'arrière-plan concurrents).
+                    row.localId = Int64.random(in: 1...Int64.max)
                 }
             }
-        } else {
-            try await repo.insert { row in
-                row.userId = userId
-                row.activityId = activityId
-                row.watchtime = watchtime
-                row.scrollPosition = scrollPosition
-                row.replayCount = replayCount
-                row.exitPoint = exitPoint
-                row.createdAt = Int64(Date().timeIntervalSince1970 * 1000)
-                // **Corrigé (2026-08-28, V6-F-019)** — `localId` (équivalent du "_id" auto-incrémenté
-                // SQLite côté Android, voir le commentaire de tête de `TiinverModel.xcdatamodeld`)
-                // n'était JAMAIS assigné ici, restant à sa valeur par défaut (0) pour CHAQUE ligne :
-                // sans conséquence tant que rien n'appelait `delete(localId:)`, mais
-                // `ViewEventSyncService.sync()` (nouveau, port de `ViewSyncWorker.java`) en dépend
-                // pour supprimer UNE SEULE ligne confirmée envoyée au serveur — avec `localId`
-                // toujours à 0, ce prédicat aurait supprimé TOUTES les lignes en attente dès le
-                // premier succès réseau, y compris celles pas encore envoyées. Tirage aléatoire
-                // 64 bits (collision pratiquement impossible sur le volume de lignes en attente
-                // avant purge à 7 jours) plutôt qu'un compteur — pas de source d'auto-incrément
-                // fiable disponible ici (plusieurs contextes d'arrière-plan concurrents).
-                row.localId = Int64.random(in: 1...Int64.max)
-            }
+            return try await repo.count()
         }
-
-        return try await repo.count()
     }
 
     /// Port de `ViewEventDao.getPending()`.

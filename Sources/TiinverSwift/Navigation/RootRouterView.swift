@@ -110,7 +110,16 @@ struct RootRouterView: View {
         // `.onChange(of: scenePhase)` ne se déclenche PAS pour la valeur initiale (au lancement,
         // la scène est déjà `.active` avant le premier rendu) — port explicite du PREMIER
         // `onStart()` d'Android, qui enregistre le receiver dès le lancement de l'Activity.
-        .onAppear { startNetworkMonitor() }
+        .onAppear {
+            startNetworkMonitor()
+            // **Corrigé (2026-08-28, V7-F-018)** — pour la même raison que ci-dessus, le
+            // déclencheur `ViewEventSyncService.sync()` posé dans la branche `.active` de
+            // `.onChange(of: scenePhase)` ne couvrait JAMAIS le lancement à froid : une session
+            // courte (sous `syncThreshold`) suivie d'un kill complet de l'app restait en attente
+            // jusqu'à un futur cycle arrière-plan→premier-plan D'UNE SESSION ULTÉRIEURE. Même
+            // déclenchement ici, au premier rendu.
+            Task { await ViewEventSyncService.sync() }
+        }
         // **Déplacé le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-061, Phase B P2)** depuis
         // `AppDelegate.didFinishLaunchingWithOptions` — vérifié directement : `OnboardingFragment.
         // onViewCreated` (utilisateurs non connectés) ET `HomeActivity` (utilisateurs déjà

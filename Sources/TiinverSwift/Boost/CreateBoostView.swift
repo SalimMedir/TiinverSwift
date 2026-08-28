@@ -18,7 +18,15 @@ struct CreateBoostView: View {
 
     @State private var budget: Double = 100
     @State private var duration: Double = 1
-    @State private var objective = "likes" // Port du repli par défaut de `getSelectedObjectif()`.
+    /// **Corrigé (2026-08-28, V7-F-012)** — `"views"`, PAS `"likes"`. `getSelectedObjectif()`
+    /// (`CreateBoostFragment.java:338-343`) a bien un repli textuel `"likes"`, mais il n'est en
+    /// pratique JAMAIS atteint côté Android : `fragment_create_boost.xml:50-55` pré-coche
+    /// `radioView` (`android:checked="true"`), donc le vrai défaut observable — celui qu'un
+    /// utilisateur obtient en ne touchant pas le sélecteur — est "views". Cette confusion entre le
+    /// repli de code et le défaut RÉEL avait aussi faussé l'estimation initiale affichée
+    /// (`budget/3 likes` au lieu de `budget*4 vues`) et, en cas de soumission sans interaction, la
+    /// valeur `objectif`/`dailyLimit` réellement envoyée au serveur.
+    @State private var objective = "views"
     @State private var placement = "Feed"
     @State private var gender = "Tous"
     @State private var minAge: Double = 18
@@ -119,7 +127,11 @@ struct CreateBoostView: View {
                 }
                 VStack(alignment: .leading) {
                     Text("Âge : \(Int(minAge)) - \(maxAge >= 55 ? "55+" : "\(Int(maxAge))") ans")
-                    Slider(value: $minAge, in: 13...maxAge, step: 1) { Text("Âge min") }
+                    // **Corrigé (2026-08-28, V7-F-013)** — borne basse alignée sur le `RangeSlider`
+                    // Android (`fragment_create_boost.xml:174-191`, `valueFrom="18"`) : la valeur
+                    // `13` permettait de soumettre un ciblage publicitaire `age_min` structurellement
+                    // impossible à produire côté Android, risque de conformité (ciblage de mineurs).
+                    Slider(value: $minAge, in: 18...maxAge, step: 1) { Text("Âge min") }
                     Slider(value: $maxAge, in: minAge...55, step: 1) { Text("Âge max") }
                 }
                 countryPicker

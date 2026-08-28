@@ -125,7 +125,11 @@ re-signale ou qu'une future session ne les "corrige" en croyant réparer un éca
   à V5-F-026 (où la même règle "ne pas copier un bug Android" avait été correctement appliquée et
   documentée), ce cas n'a jamais reçu cette décision explicite lors du portage initial. Nuisance
   partagée réelle (spam de notifications système), candidat légitime pour qu'iOS diverge et corrige
-  indépendamment — décision produit nécessaire avant correctif.
+  indépendamment.
+  **STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7)**, décision prise de
+  diverger : `NotiEntity.systemNotificationShown` (flag local, sans équivalent serveur) empêche
+  désormais toute re-présentation d'une notification système déjà montrée pour un `id` donné, tant
+  qu'elle reste non lue. Voir `MIGRATION_PARITY_PROGRESS_V7.md` pour le commit exact.
 
 ---
 
@@ -188,7 +192,7 @@ NIVEAU DE CONFIANCE : haute
 VALIDATION : CODE_VERIFIABLE
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Appeler recordKeyframe() dans closeMovementController() (et/ou à onEditingChanged(false) du slider) quand autoCaptureEnabled==true, miroir de la garde déjà appliquée dans dragEnded().
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ```
@@ -207,7 +211,7 @@ NIVEAU DE CONFIANCE : haute
 VALIDATION : PHYSICAL_VALIDATION_REQUIRED (logique certaine, expérience utilisateur exacte à confirmer)
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Centraliser les 4 panneaux dans un seul état enum "panneau actif" (au plus une valeur vraie à la fois), ou a minima faire que chaque bouton remette explicitement les 3 autres à false / appelle closeMovementController() en désactivant Contrôle.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ```
@@ -227,7 +231,7 @@ VALIDATION : CODE_VERIFIABLE
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Aligner la plage du Slider iOS sur 90...190.
 NOTE ANNEXE (pas un défaut à corriger) : Android lui-même a un bug probable où oldProgress (init=1, jamais réaligné sur [90,190] à l'ouverture) produit un saut de transformation instantané d'environ 89-90 unités au premier contact — le port iOS (oldProgress réinitialisé via beginTracking(atProgress:), réellement appelé depuis onStart) NE reproduit PAS ce bug, déjà meilleur ici, aucune action.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ### Domaine : Animems — Export / Timeline / Publication
@@ -248,7 +252,7 @@ NIVEAU DE CONFIANCE : haute
 VALIDATION : CODE_VERIFIABLE (garde absente) + PHYSICAL_VALIDATION_REQUIRED (confirmation visuelle du rendu MP4)
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Ajouter dans AnimemesExporter.render(frame:into:), cas .text/.sticker, la même garde que bitmap : `guard i < startAt.count, i < endAt.count, renderFrame >= startAt[i], renderFrame <= endAt[i] else { continue }`. Ne PAS toucher au rendu de l'éditeur en direct — Android lui-même n'applique cette borne qu'à l'export, jamais à l'aperçu pour TEXT/STICKER ; reproduire cette asymétrie est fidèle, pas une régression.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ```
@@ -267,7 +271,7 @@ NIVEAU DE CONFIANCE : moyenne
 VALIDATION : PHYSICAL_VALIDATION_REQUIRED
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Envelopper exporter.export(to:completion:) dans AnimemesEditorState.export(...) avec beginBackgroundTask/endBackgroundTask, même pattern que PublishComposeView.publish() (déjà dans ce dépôt, à réutiliser tel quel).
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ```
@@ -285,7 +289,7 @@ NIVEAU DE CONFIANCE : haute
 VALIDATION : CODE_VERIFIABLE
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter une .alert sur AnimemesEditorView liée à state.exportError, même pattern que publishConversionError.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ### Domaine : ChatGroup
@@ -305,7 +309,7 @@ NIVEAU DE CONFIANCE : haute
 VALIDATION : CODE_VERIFIABLE
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Dans GroupDetailView.leaveGroup(), après succès de GroupRepository.shared.leaveGroup(...) et avant dismiss(), appeler insertSystemMessage(verb: "leftGroup", ...) — même pattern que remove()/submitName()/submitDescription().
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ```
@@ -323,7 +327,7 @@ NIVEAU DE CONFIANCE : haute
 VALIDATION : CODE_VERIFIABLE
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter dans GroupRepository.addMembers (ou ses deux appelants) une insertion de message système (verb="addMember") par membre ajouté avec succès.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ```
@@ -342,7 +346,7 @@ NIVEAU DE CONFIANCE : moyenne
 VALIDATION : PHYSICAL_VALIDATION_REQUIRED (comportement backend)
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Vérifier côté backend si "type" est comparé strictement ailleurs qu'à "public" ; si oui, envoyer "private" par défaut. Sinon, laisser tel quel (écart cosmétique).
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : DIFFÉRÉ — 2026-08-28 (Phase B V7). Raison technique réelle, pas un report arbitraire : le commentaire actuel de `GroupRepository.createGroup` affirme que "pivate" est la valeur RÉELLEMENT attendue par le serveur (pas une simple coquille non corrigée) — une affirmation de fait, pas une hypothèse, qui ne peut être tranchée que par une visibilité backend absente de ce dépôt. Changer la valeur envoyée sans cette confirmation risquerait de casser silencieusement un flux de création de groupe actuellement fonctionnel, pour un gain incertain (impact "nul" si le backend traite tout ce qui n'est pas "public" comme privé, ce qui est l'hypothèse la plus probable). Reporté à une session avec accès aux logs/schéma backend.
 ```
 
 *(V7-F-010 = IOS_INTENTIONAL_DIFFERENCE, voir section 4 ci-dessus.)*
@@ -371,7 +375,7 @@ NIVEAU DE CONFIANCE : haute
 VALIDATION : CODE_VERIFIABLE
 SUGGESTED_STATUS : MISMATCH
 RECOMMANDATION : Changer @State private var objective = "likes" en "views" (CreateBoostView.swift:21), corriger le commentaire trompeur.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ```
@@ -390,7 +394,7 @@ NIVEAU DE CONFIANCE : haute
 VALIDATION : CODE_VERIFIABLE
 SUGGESTED_STATUS : MISMATCH
 RECOMMANDATION : Changer la borne basse du slider en 18...maxAge (CreateBoostView.swift:122).
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 *(V7-F-014 = IOS_INTENTIONAL_DIFFERENCE, voir section 4 ci-dessus.)*
@@ -413,7 +417,7 @@ NIVEAU DE CONFIANCE : haute
 VALIDATION : CODE_VERIFIABLE
 SUGGESTED_STATUS : NOUVEAU
 RECOMMANDATION : Ajouter un .onChange(of: scenePhase) local à FeedDetailPagerView qui appelle flushAndRecord(index:) sur phase != .active (alternative : flush déclenché depuis RootRouterView via callback/NotificationCenter si un pager est présenté).
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ```
@@ -431,7 +435,7 @@ NIVEAU DE CONFIANCE : moyenne
 VALIDATION : PHYSICAL_VALIDATION_REQUIRED — À VALIDER EN PRIORITÉ vu la gravité potentielle
 SUGGESTED_STATUS : NOUVEAU
 RECOMMANDATION : Découpler pauseTracking() de l'identité de la cellule qui le déclenche — stocker lastTrackedIndex et ignorer un onVideoPlaybackActiveChanged(false) provenant d'une cellule qui n'est plus l'index actif, ou plus robustement : piloter resume/pause UNIQUEMENT depuis .onChange(of: currentIndex) (ordre déterministe, point d'entrée unique) plutôt que depuis onAppear/onDisappear de deux vues différentes.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ```
@@ -449,7 +453,7 @@ NIVEAU DE CONFIANCE : basse
 VALIDATION : PHYSICAL_VALIDATION_REQUIRED
 SUGGESTED_STATUS : NOUVEAU (priorité mineure)
 RECOMMANDATION : Sérialiser les appels record() (acteur Swift dédié ou file DispatchQueue unique) et/ou ajouter une contrainte d'unicité applicative sur (activityId, userId).
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ```
@@ -467,7 +471,7 @@ NIVEAU DE CONFIANCE : moyenne
 VALIDATION : CODE_VERIFIABLE
 SUGGESTED_STATUS : NOUVEAU (priorité mineure, extension du scope déjà connu de V5-F-060)
 RECOMMANDATION : Ajouter Task { await ViewEventSyncService.sync() } également dans .onAppear de RootRouterView, pas seulement dans la branche .active de .onChange(of: scenePhase).
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ### Domaine : Feed / Home / Profile
@@ -488,7 +492,7 @@ NIVEAU DE CONFIANCE : haute
 VALIDATION : CODE_VERIFIABLE + PHYSICAL_VALIDATION_REQUIRED (fréquence réelle du cas)
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Remplacer NotificationRow.thumbnailURL par une vraie branche sur noti.object, fidèle à AdapterNoti.bindThumb : PHOTO → objectUrl inconditionnellement ; VIDÉO → cdnThumbnailUrl si non vide sinon objectUrl ; masquer si les deux vides. Alternative : réutiliser reconstructedPost?.thumbnailURL si l'équipe accepte que ce ne soit pas un pur miroir d'Android dans ce contexte précis.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ### Domaine : Notifications
@@ -509,7 +513,7 @@ NIVEAU DE CONFIANCE : moyenne
 VALIDATION : PHYSICAL_VALIDATION_REQUIRED
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Dans willPresent, distinguer les catégories reconnues (activity/chat_message, à afficher comme aujourd'hui) d'une notification sans categoryIdentifier reconnu ET sans données custom — retourner [] pour cette dernière au premier plan.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 *(V7-F-021 = SHARED_BACKEND_ISSUE, voir section 5 ci-dessus.)*
@@ -531,7 +535,7 @@ NIVEAU DE CONFIANCE : haute
 VALIDATION : CODE_VERIFIABLE
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED (faille de sécurité)
 RECOMMANDATION : Gater l'écriture UserDefaults derrière l'échec RÉEL de SecItemAdd (if status != errSecSuccess { UserDefaults... }), après la tentative Keychain et non avant ; supprimer toute copie orpheline dès qu'une écriture Keychain réussit ultérieurement. Envisager un flag de build (#if DEBUG/variable CI) pour restreindre ce repli aux builds non signés spécifiquement.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ### Domaine : Persistance / Cache
@@ -551,7 +555,7 @@ NIVEAU DE CONFIANCE : haute
 VALIDATION : CODE_VERIFIABLE
 SUGGESTED_STATUS : décision produit nécessaire
 RECOMMANDATION : Mettre à jour le commentaire de LocalDataPurger.swift pour refléter l'état réel ; envisager d'ajouter la purge d'AiConversationRepository/ViewEventRepository à purgeAll(), en particulier pour le flux "suppression de compte".
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ```
@@ -569,7 +573,7 @@ NIVEAU DE CONFIANCE : haute (absence de configuration confirmée par grep exhaus
 VALIDATION : CODE_VERIFIABLE (le risque lui-même ne sera observable qu'à la prochaine évolution de schéma)
 SUGGESTED_STATUS : à corriger avant la première évolution de schéma
 RECOMMANDATION : Ajouter un NSPersistentStoreDescription avec repli explicite (catch + destroyPersistentStore + recréation) pour approcher fallbackToDestructiveMigration() ; documenter la procédure de versionnement de modèle à suivre.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ### Domaine : UI/UX/Navigation
@@ -589,7 +593,7 @@ NIVEAU DE CONFIANCE : haute
 VALIDATION : CODE_VERIFIABLE
 SUGGESTED_STATUS : fix trivial
 RECOMMANDATION : Ajouter @Environment(\.dismiss) private var dismiss et appeler dismiss() dans la closure (CommentsView.swift:65).
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ### Domaine : Transversal — Réseau / Concurrence
@@ -612,7 +616,7 @@ NIVEAU DE CONFIANCE : haute (comparaison directe avec 2 implémentations soeurs 
 VALIDATION : CODE_VERIFIABLE
 SUGGESTED_STATUS : OPEN
 RECOMMANDATION : Ajouter guard !Task.isCancelled else { return } immédiatement après l'await searchTags, avant d'assigner countrySuggestions — même correctif déjà en place dans ChatSearchView.swift.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ```
@@ -630,7 +634,7 @@ NIVEAU DE CONFIANCE : moyenne — confirmé par lecture de code (pas de verrou),
 VALIDATION : PHYSICAL_VALIDATION_REQUIRED
 SUGGESTED_STATUS : OPEN — à confirmer avec l'équipe backend (idempotence de addview) avant priorisation
 RECOMMANDATION : Ajouter un flag statique isSyncing (booléen simple) dans ViewEventSyncService, vérifié/positionné en tête de sync() avec defer { isSyncing = false }, pour rendre les deux déclencheurs mutuellement exclusifs.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — corrigé 2026-08-28 (Phase B V7). Voir MIGRATION_PARITY_PROGRESS_V7.md pour le commit exact et le détail du correctif appliqué.
 ```
 
 ---
@@ -672,36 +676,44 @@ Confirmés toujours d'actualité pendant ce cycle, cités seulement pour cohére
 
 ## 10. Inventaire final des 27 findings V7
 
-| ID | Priorité | Domaine | Statut suggéré |
-|---|---|---|---|
-| V7-F-001 | P2 | Animems Éditeur | MISSING |
-| V7-F-002 | P2 | Animems Éditeur | PARTIAL |
-| V7-F-003 | P3 | Animems Éditeur | VISUALLY_DIFFERENT |
-| V7-F-004 | P1 | Animems Export | FUNCTIONALLY_FAILED |
-| V7-F-005 | P2 | Animems Export | PARTIAL |
-| V7-F-006 | P2 | Animems Export | PARTIAL |
-| V7-F-007 | P1 | ChatGroup | MISSING |
-| V7-F-008 | P2 | ChatGroup | MISSING |
-| V7-F-009 | P3 | ChatGroup | VISUALLY_DIFFERENT |
-| V7-F-010 | P3 | ChatGroup | IOS_INTENTIONAL_DIFFERENCE |
-| V7-F-011 | P3 | Search | IOS_INTENTIONAL_DIFFERENCE |
-| V7-F-012 | P2 | Promotion | MISMATCH |
-| V7-F-013 | P2 | Promotion | MISMATCH |
-| V7-F-014 | P3 | Promotion | IOS_INTENTIONAL_DIFFERENCE |
-| V7-F-015 | P1 | Video Statistics | NOUVEAU |
-| V7-F-016 | P2 | Video Statistics | NOUVEAU (validation urgente) |
-| V7-F-017 | P3 | Video Statistics | NOUVEAU |
-| V7-F-018 | P3 | Video Statistics | NOUVEAU |
-| V7-F-019 | P2 | Feed/Profile (Notifications) | FUNCTIONALLY_FAILED |
-| V7-F-020 | P2 | Notifications | VISUALLY_DIFFERENT |
-| V7-F-021 | P2 | Notifications | SHARED_BACKEND_ISSUE |
-| V7-F-022 | P0 | Auth/Sécurité | FUNCTIONALLY_FAILED (sécurité) |
-| V7-F-023 | P2 | Persistance/Cache | décision produit |
-| V7-F-024 | P2 | Persistance/Cache | à corriger avant évolution schéma |
-| V7-F-025 | P3 | UI/UX | fix trivial |
-| V7-F-026 | P2 | Transversal | OPEN |
-| V7-F-027 | P2 | Transversal | OPEN (shared backend possible) |
+**Mis à jour 2026-08-28, fin de Phase B (correction).** Voir `MIGRATION_PARITY_PROGRESS_V7.md` pour
+le détail des commits. `BUILD_VALIDATED` seulement après confirmation CI réelle sur le code
+effectivement poussé — voir la note de fin de journal pour le run exact.
 
-Aucun finding V5/V6 recréé — vérifié par grep systématique de chaque domaine contre les deux
-documents précédents avant rédaction de ce rapport (voir `MIGRATION_PARITY_PROGRESS_V7.md` pour le
-détail par agent des vérifications négatives).
+| ID | Priorité | Domaine | Statut V7 (audit) | Statut Phase B (correction) |
+|---|---|---|---|---|
+| V7-F-001 | P2 | Animems Éditeur | MISSING | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-002 | P2 | Animems Éditeur | PARTIAL | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-003 | P3 | Animems Éditeur | VISUALLY_DIFFERENT | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-004 | P1 | Animems Export | FUNCTIONALLY_FAILED | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-005 | P2 | Animems Export | PARTIAL | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-006 | P2 | Animems Export | PARTIAL | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-007 | P1 | ChatGroup | MISSING | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-008 | P2 | ChatGroup | MISSING | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-009 | P3 | ChatGroup | VISUALLY_DIFFERENT | DIFFÉRÉ (vérification backend requise) |
+| V7-F-010 | P3 | ChatGroup | IOS_INTENTIONAL_DIFFERENCE | IOS_INTENTIONAL_DIFFERENCE (aucune action) |
+| V7-F-011 | P3 | Search | IOS_INTENTIONAL_DIFFERENCE | IOS_INTENTIONAL_DIFFERENCE (aucune action) |
+| V7-F-012 | P2 | Promotion | MISMATCH | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-013 | P2 | Promotion | MISMATCH | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-014 | P3 | Promotion | IOS_INTENTIONAL_DIFFERENCE | IOS_INTENTIONAL_DIFFERENCE (aucune action) |
+| V7-F-015 | P1 | Video Statistics | NOUVEAU | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-016 | P2 | Video Statistics | NOUVEAU (validation urgente) | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-017 | P3 | Video Statistics | NOUVEAU | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-018 | P3 | Video Statistics | NOUVEAU | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-019 | P2 | Feed/Profile (Notifications) | FUNCTIONALLY_FAILED | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-020 | P2 | Notifications | VISUALLY_DIFFERENT | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-021 | P2 | Notifications | SHARED_BACKEND_ISSUE | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) (divergence décidée) |
+| V7-F-022 | P0 | Auth/Sécurité | FUNCTIONALLY_FAILED (sécurité) | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-023 | P2 | Persistance/Cache | décision produit | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-024 | P2 | Persistance/Cache | à corriger avant évolution schéma | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-025 | P3 | UI/UX | fix trivial | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-026 | P2 | Transversal | OPEN | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+| V7-F-027 | P2 | Transversal | OPEN (shared backend possible) | BUILD_VALIDATED — CI run 33195329910 SUCCESS (2026-08-28, https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) |
+
+**Bilan Phase B** : 22 findings corrigés en code, 3 `IOS_INTENTIONAL_DIFFERENCE` (aucune action —
+déjà correctes ou déjà meilleures qu'Android), 1 `DIFFÉRÉ` (V7-F-009, nécessite une vérification
+backend hors de portée de ce dépôt, changer le code sans elle risquerait de casser un flux de
+création de groupe actuellement fonctionnel). Aucun finding V5/V6 recréé — vérifié par grep
+systématique de chaque domaine contre les deux documents précédents avant rédaction du rapport
+d'audit (voir `MIGRATION_PARITY_PROGRESS_V7.md` pour le détail par agent des vérifications
+négatives).

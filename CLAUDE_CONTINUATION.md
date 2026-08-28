@@ -9,6 +9,57 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
+# CURRENT HANDOFF (2026-08-28 — Phase H : les 27 findings V7 traités en une session)
+
+Suite immédiate de la Phase G ci-dessous, dans la MÊME session. Consigne explicite de l'utilisateur :
+corriger tout le backlog V7 en une seule campagne, P0/P1 d'abord puis tous les P2/P3, sans s'arrêter
+demander quel finding traiter, jusqu'à épuisement des findings corrigeables en code. Détail complet
+par lot dans `MIGRATION_PARITY_PROGRESS_V7.md` (section "Phase B").
+
+**Résultat** : 22 findings **corrigés en code et `BUILD_VALIDATED`** (CI run
+[33195329910](https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910), `success`,
+confirmée contre le code réellement poussé) : V7-F-001,002,003,004,005,006,007,008,012,013,015,016,
+017,018,019,020,021,022,023,024,025,026,027. **1 `DIFFÉRÉ`** : V7-F-009 (le commentaire existant
+affirme "pivate" comme la valeur RÉELLEMENT attendue par le serveur, un fait pas une hypothèse —
+invérifiable sans accès backend, changer sans confirmation risquerait de casser un flux de création
+de groupe fonctionnel). **3 `IOS_INTENTIONAL_DIFFERENCE`** inchangées depuis l'audit (aucune action) :
+V7-F-010/011/014.
+
+**9 commits sur `main`** (voir `git log` ou la liste numérotée de `MIGRATION_PARITY_PROGRESS_V7.md`).
+2 runs CI déclenchés (après le lot P0/P1, puis après la clôture complète du backlog P2/P3), tous les
+deux `success` contre le code réellement poussé.
+
+**Découverte notable pendant la correction, absente de l'audit initial** : en corrigeant V7-F-022
+(apiKey en clair dans UserDefaults), une SECONDE fuite indépendante a été trouvée par la simple
+consigne "cherche les autres écritures indirectes de cette même clé" — `AuthSessionPersistence.
+persist` écrivait aussi l'apiKey en clair dans `AccountEntity` (Core Data), un champ jamais relu
+nulle part. Corrigée dans le même commit.
+
+**Décisions de principe notables** :
+- V7-F-016 (course onAppear/onDisappear SwiftUI, gravité potentielle maximale du cycle) corrigé en
+  consolidant resume/pause vidéo dans le point d'entrée déterministe déjà utilisé pour les photos
+  (`.onChange(of: currentIndex)`), plutôt que de tenter un ordre garanti entre 2 vues indépendantes.
+- V7-F-019 (vignette de notification) corrigé en RÉUTILISANT la logique centrale déjà validée
+  physiquement (`FeedActivity.thumbnailURL`) plutôt qu'en reproduisant plus fidèlement `AdapterNoti.
+  bindThumb` d'Android — l'observation JSON réelle qui a produit cette logique centrale (BUG 1,
+  2026-08-27) est jugée plus fiable que le code source Android non vérifié en exécution.
+- V7-F-021 (spam de notifications, bug Android confirmé) : décision explicite de diverger plutôt que
+  de reproduire fidèlement, symétrique à V5-F-026.
+- V7-F-023 va délibérément au-delà de la stricte parité Android (même lacune non corrigée côté
+  Android) — dans le sens de l'intention affichée par l'utilisateur en se déconnectant/supprimant
+  son compte, pas une extension arbitraire du périmètre.
+
+**Prochaine étape possible pour une future session** : validation par test physique réel des
+correctifs les plus comportementaux, en particulier V7-F-016 (priorité absolue — pourrait annuler
+une grande partie du bénéfice de V6-F-019 si non confirmé), V7-F-015, V7-F-001/002/003 (gestes du
+panneau Contrôle), V7-F-004/005 (export Animems). V7-F-009 reste ouvert tant qu'une vérification
+backend n'est pas possible depuis une session future. Sinon, cycle V8 sur un nouveau domaine
+(candidat déjà identifié : Calls/WebRTC, jamais couvert par un agent dédié en V5/V6/V7 malgré 3
+commits Android récents repérés par archéologie git, voir section 8 de `MIGRATION_PARITY_AUDIT_V7
+.md`).
+
+---
+
 # CURRENT HANDOFF (2026-08-28 — Phase G : Audit V7 terminé, AUCUNE correction encore appliquée)
 
 Nouveau cycle d'audit, lancé directement après la clôture complète du cycle V6 (Phase F ci-dessous).

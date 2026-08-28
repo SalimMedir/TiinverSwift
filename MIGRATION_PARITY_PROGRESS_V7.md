@@ -102,9 +102,141 @@ sur appareil réel.
 5. V7-F-016 (P2, impact potentiel maximal) — ordre onAppear/onDisappear SwiftUI non garanti, pourrait
    zéroer le watch-time du cas d'usage le plus fréquent (swipe vidéo→vidéo) — à valider en priorité.
 
-### Prochaine étape
+### Prochaine étape (obsolète, voir Phase B ci-dessous)
 
-Décision de l'utilisateur sur la phase de correction B — quels findings traiter, dans quel ordre.
-Aucun code n'a été modifié pendant ce cycle A ; `git status` reste propre hors les 4 nouveaux/modifiés
-fichiers de documentation (`MIGRATION_PARITY_AUDIT_V7.md`, `MIGRATION_PARITY_PROGRESS_V7.md`,
-`v7_transversal.md`, `CLAUDE_CONTINUATION.md`).
+~~Décision de l'utilisateur sur la phase de correction B — quels findings traiter, dans quel ordre.~~
+L'utilisateur a fourni l'ordre de priorité complet immédiatement après ce rapport — voir Phase B.
+
+---
+
+## 2026-08-28 — Phase B : correction complète des 27 findings V7
+
+Consigne explicite de l'utilisateur : traiter tout le backlog V7 en une seule campagne, sans
+s'arrêter demander quel finding traiter, jusqu'à ce qu'il ne reste plus aucun finding corrigeable en
+code. Ordre imposé : P0/P1 d'abord (V7-F-022, 015, 004, 007), puis tous les P2/P3 listés
+explicitement (V7-F-002/003/005/006/008/009/012/013/016/017/018/019/020/021/023/024/025/026/027).
+V7-F-001 n'était pas dans la liste explicite de l'utilisateur (probable oubli, le finding P2 existe
+bel et bien dans l'audit et est clairement corrigible par code) — traité quand même dans le lot
+Animems, conformément à l'objectif final explicite ("traiter les 27 findings V7, sauf ceux qui
+nécessitent réellement une infrastructure ou un chantier explicitement différé").
+
+### Lot 1 — P0/P1 (commits `dc8c21e`, `bf7f233`, `62c4f16`)
+
+- **V7-F-022** (P0, sécurité) — `KeychainStore.saveAPIKey` écrivait `UserDefaults` de façon
+  inconditionnelle, avant même la tentative Keychain. Corrigé : repli posé APRÈS échec RÉEL de
+  `SecItemAdd` uniquement, `loadAPIKey()` migre silencieusement toute valeur de repli pré-existante.
+  **Découverte supplémentaire pendant la correction** (pas dans l'audit initial) : une SECONDE copie
+  en clair de l'apiKey était écrite dans `AccountEntity` (Core Data) par `AuthSessionPersistence.
+  persist` — jamais relue nulle part (grep exhaustif), écriture supprimée.
+- **V7-F-015** (P1) — watch-time jamais mis en pause en arrière-plan. `FeedDetailPagerView` observe
+  désormais `scenePhase` : flush+record sur toute transition hors `.active`, reprise au retour.
+- **V7-F-016** (P2, traité dans le même lot car même domaine/mêmes fichiers) — ordre `onAppear`/
+  `onDisappear` SwiftUI non garanti entre 2 cellules vidéo distinctes. Consolidé dans le point
+  d'entrée déterministe unique déjà utilisé pour les photos (`.onChange(of: currentIndex)` →
+  `handlePageChanged`) : capture de la position de sortie AVANT tout flush, reprise uniforme
+  photo/vidéo. Fermeture de l'ancien câblage `onVideoPlaybackActiveChanged` (devenu mort).
+- **V7-F-017**/**V7-F-018** (P3, même lot) — `RecordQueue` (acteur, chaînage de `Task`) sérialise
+  `ViewEventRepository.record()` bout en bout ; `ViewEventSyncService.sync()` désormais aussi
+  déclenchée depuis `RootRouterView.onAppear` (lancement à froid, pas seulement `.onChange(of:
+  scenePhase)` qui ne se déclenche jamais pour l'état initial).
+- **V7-F-004** (P1) — garde `startAt`/`endAt` manquante pour les calques texte/sticker dans
+  `AnimemesExporter.render(frame:into:)`, ajoutée en miroir exact du cas bitmap/shape.
+- **V7-F-007** (P1) — `GroupDetailView.leaveGroup()` était la seule mutation de groupe du fichier
+  sans `insertSystemMessage` — ajouté (`verb="leftGroup"`, port fidèle de `GroupDetailActivity.
+  exit()`).
+
+**CI run [33193844334](https://github.com/SalimMedir/TiinverSwift/actions/runs/33193844334) —
+`completed`/`success`** (contre le code réellement poussé, commit `62c4f16`).
+
+### Lot 2 — Animems P2/P3 (commit `6b982d3`)
+
+- **V7-F-001** — `MovementControllerTransformer`/panneau "Contrôle" : capture automatique de
+  keyframe absente au relâchement du curseur (contrairement au drag direct). Ajouté
+  `movementControllerEndTracking()`, appelé depuis `onEditingChanged(false)` et
+  `closeMovementController()`.
+- **V7-F-002** — les 4 panneaux de zone timeline (masque/bezier/Contrôle/chronologie) ne se
+  réinitialisaient jamais mutuellement. Chaque bouton d'ouverture ferme désormais explicitement les
+  3 autres.
+- **V7-F-003** — plage du curseur d'angle alignée sur `90...190` (au lieu de `0...180`), fidèle au
+  `SeekBar` Android réel (`max=100`, décalage `+90`).
+- **V7-F-005** — export Animems enveloppé dans `beginBackgroundTask`/`endBackgroundTask`, même
+  pattern que `PublishComposeView.publish()` déjà dans ce dépôt.
+- **V7-F-006** — `state.exportError` câblé à une `.alert`, miroir de `publishConversionError` 4
+  lignes plus bas dans le même fichier.
+
+### Lot 3 — ChatGroup (commit `882dc44`)
+
+- **V7-F-008** — `GroupCreationView.create()` (membres initiaux) ET `AddGroupMemberView.submit()`
+  (ajout après coup) n'inséraient aucun message système "X a ajouté Y". `GroupCreationView` insère
+  désormais un message par membre (même motif inline que son propre message "createGroup").
+  `AddGroupMemberView` n'a délibérément aucune métadonnée de groupe (nom/jeton/profil) — son
+  callback `onAdded` transmet maintenant les membres ajoutés à `GroupDetailView`, qui possède déjà
+  `insertSystemMessage` et la métadonnée nécessaire.
+- **V7-F-009** — **DIFFÉRÉ**, pas corrigé. Le commentaire existant affirme que "pivate" est la
+  valeur RÉELLEMENT attendue par le serveur (fait, pas hypothèse) — invérifiable sans accès
+  backend ; changer sans confirmation risquerait de casser un flux de création de groupe
+  fonctionnel pour un gain incertain.
+
+### Lot 4 — Promotion/Boost (commit `9bff2fc`)
+
+- **V7-F-012** — objectif publicitaire par défaut corrigé de "likes" à "views" (le vrai défaut
+  Android, `radioView` pré-coché).
+- **V7-F-013** — borne basse du curseur d'âge minimum relevée de 13 à 18 ans, fidèle au
+  `RangeSlider` Android (`valueFrom="18"`).
+
+### Lot 5 — Notifications (commit `178770a`)
+
+- **V7-F-019** — vignette de notification : remplacement de la 3ᵉ logique de priorité CDN
+  indépendante par `reconstructedPost?.thumbnailURL` (logique centrale déjà correcte et validée
+  physiquement, BUG 1 du 2026-08-27).
+- **V7-F-020** — `willPresent` ne montre plus de bannière pour une notification sans
+  `categoryIdentifier` reconnu (candidate "notification-only" générique), fidèle au no-op réel
+  d'Android pour ce cas précis.
+- **V7-F-021** — nouveau champ Core Data `NotiEntity.systemNotificationShown` (schéma
+  `TiinverNotificationsModel.xcdatamodeld` modifié, attribut optionnel avec valeur par défaut —
+  migration légère automatique, pas de `NSPersistentStoreDescription` dédié nécessaire pour ce
+  changement précis) gate la re-présentation d'une notification système déjà montrée.
+
+### Lot 6 — UI/UX, Boost, Statistiques transversal (commit `9c2fdbb`)
+
+- **V7-F-025** — bouton "Fermer" de `CommentsView` câblé à `@Environment(\.dismiss)`.
+- **V7-F-026** — `CreateBoostView.scheduleCountrySearch` re-vérifie `Task.isCancelled` après
+  l'appel réseau, pas seulement avant, même correctif déjà appliqué ailleurs pour ce motif
+  (`ChatSearchView`/`NewMessageView`/`SearchView`).
+- **V7-F-027** — `ViewEventSyncService` passé `@MainActor` avec un flag `isSyncing`, même motif que
+  `NotificationCenterViewModel.isSyncing` déjà établi dans ce projet.
+
+### Lot 7 — Persistance (commit `37a8b69`)
+
+- **V7-F-023** — `LocalDataPurger.purgeAll()` purge désormais aussi `AiConversationRepository`
+  (conversations IA) et `ViewEventRepository` (événements de visionnage en attente), scopés par
+  `userId`, capturé avant tout appel purge (les deux appelants clarent la session APRÈS
+  `purgeAll()`). Va au-delà de la stricte parité Android (même lacune côté Android, non corrigée
+  là-bas) — dans le sens de l'intention affichée par l'utilisateur en se déconnectant/supprimant
+  son compte.
+- **V7-F-024** — nouveau `CoreDataStackLoading.swift`, filet de sécurité partagé par les 3 piles
+  Core Data : sur échec de `loadPersistentStores`, supprime le store fautif et retente une fois
+  avant d'abandonner (approxime `fallbackToDestructiveMigration()` d'Android), remplace un
+  `fatalError` inconditionnel.
+
+### Lot final — CI de clôture
+
+Poussé (commit `37a8b69`), CI relancée : run
+[33195329910](https://github.com/SalimMedir/TiinverSwift/actions/runs/33195329910) — **`completed`/
+`success`**, confirmé contre le code réellement poussé (tous les 9 commits Phase B inclus). Tous les
+findings `CODE_COMPLETE, CI_PENDING` promus `BUILD_VALIDATED` dans `MIGRATION_PARITY_AUDIT_V7.md`.
+
+### Bilan Phase B
+
+22 findings corrigés en code, tous `BUILD_VALIDATED` (CI run 33195329910, confirmée contre le code
+réellement poussé — pas seulement "le code semble correct"), 3 `IOS_INTENTIONAL_DIFFERENCE`
+(V7-F-010/011/014, déjà correctement traitées à l'audit, aucune action), 1 `DIFFÉRÉ` (V7-F-009).
+Aucun test physique/screenshot intermédiaire — uniquement compilation/lecture de code, conformément
+à la consigne explicite de conserver les ressources de build.
+
+**Ce qui restera à tester physiquement** (au-delà de la compilation) : tous les correctifs
+comportementaux ne peuvent être définitivement validés que sur device réel — en particulier
+V7-F-016 (ordre onAppear/onDisappear, gravité potentielle la plus élevée du lot), V7-F-015 (flush au
+passage en arrière-plan), V7-F-001/002/003 (gestes du panneau Contrôle), V7-F-004 (rendu du MP4
+exporté), V7-F-005 (survie de l'export en arrière-plan), V7-F-009 restera `DIFFÉRÉ` tant qu'une
+vérification backend n'est pas possible.

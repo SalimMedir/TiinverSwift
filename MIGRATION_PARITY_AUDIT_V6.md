@@ -491,7 +491,7 @@ IMPACT : Les créateurs voient un bloc de métrique en moins que sur Android ; s
 REPRODUCTIBILITÉ : Certaine par lecture de code.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Ajouter la ligne manquante dans `StatisticsView.swift`, lisant `stats.view_rate_3sec` (pas `views`, contrairement au bug Android).
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Ligne "Taux de vue à 3s" ajoutée, lisant `stats.view_rate_3sec` — PAS le bug de binding Android (`views`).
 ```
 
 ```
@@ -508,7 +508,7 @@ IMPACT : Pire expérience qu'Android en cas d'échec réseau — écran vide san
 REPRODUCTIBILITÉ : Certaine par lecture de code.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Ajouter une nouvelle tentative automatique (miroir d'Android) et afficher un scaffold complet avec placeholders "--" en cas d'échec persistant, au lieu d'une liste vide.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. `load()` : une nouvelle tentative immédiate sur échec (port de la garde `attemps`, pas de délai comme Android), puis `stats = StatisticModel()` (scaffold complet, tous les replis `?? 0`/`?? ""` déjà en place) si l'échec persiste — au lieu d'un écran totalement vide.
 ```
 
 ```
@@ -525,7 +525,7 @@ IMPACT : Données potentiellement obsolètes si l'utilisateur revient sur cet é
 REPRODUCTIBILITÉ : Certaine par lecture de code.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter un rechargement sur `.onAppear` (avec une garde anti-doublon si `.task` a déjà chargé), miroir du comportement `onResume` Android.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. `.onAppear { if hasLoadedOnce { Task { await load() } } }` ajouté, exactement la recommandation.
 ```
 
 ```
@@ -542,7 +542,7 @@ IMPACT : Différence visuelle mineure, cas limite rare (post tout neuf sans donn
 REPRODUCTIBILITÉ : Certaine par lecture de code des deux comportements ; la fréquence réelle en pratique (le backend envoie-t-il vraiment `{}` ?) NEEDS_PHYSICAL_VALIDATION.
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Faible priorité — aligner sur "--" ou texte vide selon préférence produit, cohérence pas exactitude fonctionnelle en jeu.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Repli aligné sur le texte vide Android (`gender["M"] ?? ""` au lieu de `?? "--"`) UNIQUEMENT pour le cas "dictionnaire nul/vide" — le `"--"` par bucket non gagnant D'UN DICTIONNAIRE NON VIDE (bug de la boucle Android lui-même, distinct, toujours reproduit fidèlement) est inchangé.
 ```
 
 ```

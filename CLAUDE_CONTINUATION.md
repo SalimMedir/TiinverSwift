@@ -51,7 +51,8 @@ DIRECT depuis V6-F-006) — seul le calcul de la DURÉE totale l'ignorait. **Cor
 `computeTotalFramesNeeded` (helper déjà correct, mais jusqu'ici câblé UNIQUEMENT au pipeline de bake
 mort, V6-F-009) dans le calcul de `provisionalMaxEnd`.
 
-**1 commit** (`39a4294`), CI déclenchée. Aucun test physique — captures/vidéo fournies analysées
+**1 commit** (`39a4294`), CI [33207341149](https://github.com/SalimMedir/TiinverSwift/actions/runs/33207341149) — `completed`/`success`, confirmée contre le code réellement poussé
+(`headSha` vérifié = `39a4294`). Aucun test physique — captures/vidéo fournies analysées
 directement (via `ffmpeg` pour extraire des frames de référence de la vidéo Android), diagnostic par
 lecture de code uniquement, cohérent avec l'absence de device/simulateur sur cette machine. **Test
 physique recommandé avant de considérer ces 3 bugs définitivement clos** : les 3 corrections sont

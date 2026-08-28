@@ -335,7 +335,14 @@ struct ChatView: View {
                 // commentaires `outgoingCallProfile`/`showShareboard`).
                 Button { showAttachmentPicker = true } label: { Image(systemName: "paperclip") }
                 Button { showGifPicker = true } label: { Image(systemName: "face.smiling") } // onDisplayGif
-                Button { showGiftPicker = true } label: { Image(systemName: "gift") } // onDisplayGift
+                // **Corrigé (2026-08-28, V6-F-010)** — port de `messageEventLayout.gift.
+                // setVisibility(GONE)` (`ChatFragmentTest.java:1436`, branche groupe) : Android
+                // masque explicitement ce bouton dans une conversation de GROUPE, contrairement à
+                // iOS jusqu'ici (affiché ET pleinement câblé sans condition). Deuxième barrière
+                // dans `ChatViewModel.sendGift` (`guard !target.isGroup`) au cas où.
+                if !viewModel.target.isGroup {
+                    Button { showGiftPicker = true } label: { Image(systemName: "gift") } // onDisplayGift
+                }
                 TextField("Message", text: $viewModel.inputText, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                     .focused($inputFocused)

@@ -321,7 +321,7 @@ IMPACT : Des membres de groupe peuvent envoyer des messages "cadeau" qu'Android 
 REPRODUCTIBILITÉ : Certaine par lecture de code (les deux lacunes — filtre UI manquant et appel de débit manquant — lues directement, pas déduites).
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : (1) Masquer le bouton cadeau dans `ChatView` quand `target` est un groupe, miroir du `setVisibility(GONE)` Android. (2) Câbler le débit de pièces réel (`POST message/gift` ou équivalent) dans `sendGift` avant l'envoi du message, quel que soit le contexte.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. (1) Bouton cadeau masqué dans `ChatView.inputBar` quand `viewModel.target.isGroup`, miroir de `setVisibility(GONE)`. (2) `WalletRepository.sendGift(sender:receiver:price:messageId:)` ajouté (`POST message/gift`, mêmes champs qu'Android) et réellement appelé depuis `ChatViewModel.sendGift(giftId:)` ; solde local décrémenté SEULEMENT après confirmation serveur (jamais optimiste, financier). DEUXIÈME barrière ajoutée dans `sendGift` lui-même (`guard !target.isGroup`, pas seulement le bouton masqué) pour couvrir un futur appelant qui contournerait l'UI — répond explicitement à l'exigence de l'audit "vérifier qu'il est impossible de déclencher Gift indirectement en groupe". Vérification de solde AVANT envoi ajoutée aussi (`price <= coinsAmount`), miroir de `btnSendGift.setEnabled(canAfford)` bien que le panneau `GiftPickerPlaceholder` reste un placeholder minimal par ailleurs (catalogue réel, mise en page complète non portée — gap pré-existant, hors scope V6-F-010).
 ```
 
 ```
@@ -338,7 +338,7 @@ IMPACT : Absence d'un indice UX/retour sonore mineur mais réel, sur les deux co
 REPRODUCTIBILITÉ : Certaine par lecture de code (absence confirmée).
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Implémenter la lecture (tonalités synthétisées via `AVAudioPlayer` ou équivalent) à l'envoi/réception, gatée par `allowChatSendReceiveSound`.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Nouveau `ChatSoundPlayer.swift` : port fidèle de `AppSounds.playSend`/`playReceive` (mêmes fréquences/durées/enveloppes exponentielles, synthèse PCM Float via `AVAudioEngine`/`AVAudioPlayerNode` au lieu du PCM16/`AudioTrack` Android — formule d'amplitude identique, seule la représentation bas niveau diffère, sans perte perceptible). Gatée en interne par `allowChatSendReceiveSound`. Câblée dans `ChatViewModel.appendOptimistic` (son d'envoi, tout message sortant local — texte/média/cadeau/rejoindre-groupe, miroir de `addMessage`'s `isBelongsToCurrentUser()`) et `ChatViewModel.onIncoming` (son de réception, gaté `!belongsToCurrentUser`, miroir exact de `onNewMessage`'s garde). `AppSounds.playTyping()` non porté — confirmé sans aucun appelant dans `ChatFragmentTest.java`, code mort côté Android lui-même.
 ```
 
 ```

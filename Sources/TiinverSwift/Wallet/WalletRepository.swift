@@ -160,6 +160,20 @@ final class WalletRepository {
         guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.backendErrorMessage ?? "transfert") }
     }
 
+    // MARK: - Cadeau en conversation (port de `ChatRepository.sendGift`, Android
+    // `messagerie/repository/ChatRepository.java:1087-1118`)
+
+    /// Port de `ChatRepository.sendGift(Map, Consumer<Result>)` — `POST message/gift` avec
+    /// `sender`/`receiver`/`price`/`messageId`, débit réel + confirmation serveur d'un cadeau
+    /// envoyé en conversation PRIVÉE. **Ajouté (2026-08-28, V6-F-010)** — jusqu'ici jamais appelé
+    /// côté iOS (gap explicitement documenté dans `ChatViewModel.sendGift`) : le message "cadeau"
+    /// partait réellement sur le socket sans qu'AUCUNE pièce ne soit débitée.
+    func sendGift(sender: String, receiver: String, price: Int, messageId: String) async throws {
+        let params: [String: String] = ["sender": sender, "receiver": receiver, "price": String(price), "messageId": messageId]
+        let value = try await APIClient.shared.post(params, endpoint: "message/gift")
+        guard value.isBackendSuccess else { throw JSONError.typeMismatch(value.backendErrorMessage ?? "message/gift") }
+    }
+
     /// Port de `notifyUser` — déclenche une notification push générique côté serveur pour le
     /// destinataire d'un transfert.
     func notifyTransferReceived(userId: String) async throws {

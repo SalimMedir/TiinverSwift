@@ -358,6 +358,9 @@ final class ChatViewModel: ObservableObject {
         }
         stored.belongsToCurrentUser = (meta.from == currentUsername)
         appendWithDateSeparator(stored, into: &items)
+        // Port de `if (!meta.isBelongsToCurrentUser()) playSoundReceive();`
+        // (`ChatFragmentTest.java:1953-1955`) — **câblé le 2026-08-28, V6-F-011**.
+        if !stored.belongsToCurrentUser { ChatSoundPlayer.playReceive() }
     }
 
     /// Port de `chatState(String messageId, int status)` — remplace l'entrée `.message` en place
@@ -414,14 +417,43 @@ final class ChatViewModel: ObservableObject {
         Task { try? await messages.insertTextMessage(mlib) }
     }
 
-    /// Port de `sendMessageGift` — construit le message "gift" et l'écho optimiste. **Le débit de
-    /// pièces + commentaire serveur (`ChatFragmentTest.sendGift`, endpoint non identifié dans cette
-    /// passe, dépend du module 15 Wallet) N'EST PAS appelé ici** — gap documenté, pas deviné.
+    /// Port de `sendMessageGift`/`ChatFragmentTest.sendGift` — construit le message "gift",
+    /// l'écho optimiste, ET débite réellement les pièces via `POST message/gift`
+    /// (`ChatRepository.sendGift`, Android `ChatRepository.java:1087-1118`).
+    ///
+    /// **Corrigé (2026-08-28, V6-F-010)** — deux lacunes réelles corrigées ensemble : (1) le
+    /// bouton cadeau était affiché ET pleinement câblé dans les conversations de GROUPE côté iOS,
+    /// alors qu'Android le masque explicitement dans ce contexte (`ChatView.inputBar`, corrigé en
+    /// parallèle) ; (2) AUCUN débit de pièces n'était jamais appelé, quel que soit le contexte —
+    /// le message "cadeau" partait réellement sur le socket gratuitement. Le `guard !target.
+    /// isGroup` ci-dessous est une DEUXIÈME barrière (logique métier, pas seulement UI) : même si
+    /// un futur appelant contournait le bouton masqué, `sendGift` refuse toujours d'agir pour un
+    /// groupe — fidèle à `receiver=userData.getUserId()`, un champ à destinataire UNIQUE côté
+    /// Android, jamais valide pour un groupe. Solde vérifié AVANT tout envoi (`price <= balance`,
+    /// miroir de `btnSendGift.setEnabled(canAfford)` côté `GiftGalleryView`, qui bloque
+    /// physiquement l'action côté Android plutôt que de laisser l'appel réseau échouer) ;
+    /// décrémenté localement SEULEMENT après confirmation serveur (même principe que
+    /// `resolveGroupSubscription`/`transferCoins` ci-dessus/dans `WalletRepository` — jamais de
+    /// débit local optimiste avant succès réel, financier).
     func sendGift(giftId: String) {
+        guard !target.isGroup, let receiverId = target.userId else { return }
+        let price = GiftCatalog.price(for: giftId)
+        guard UserSession.shared.coinsAmount >= Double(price) else { return }
         var mlib = buildOutgoingBase(object: "gift")
         mlib.giftId = giftId
+        guard let messageId = mlib.messageId else { return }
         appendOptimistic(mlib)
-        Task { try? await messages.insertTextMessage(mlib) }
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.messages.insertTextMessage(mlib)
+            do {
+                try await WalletRepository.shared.sendGift(sender: self.myId, receiver: receiverId, price: price, messageId: messageId)
+                UserSession.shared.coinsAmount -= Double(price)
+            } catch {
+                // Port de `Result.ERROR` — Android ne retire pas non plus le message optimiste sur
+                // échec, seul `isFileUploaded` reste à 0 (jamais confirmé par le serveur).
+            }
+        }
     }
 
     /// Port commun de `prepareFileMessage`/`prepareGifMessage` — construit un message média local
@@ -550,9 +582,14 @@ final class ChatViewModel: ObservableObject {
     }
 
     /// Port du bloc `messageHandler.post { … }` d'`addMessage` — insère avec séparateur de date +
-    /// scroll (délégué à la vue) ; le son d'envoi est laissé à `ChatView` (`AVFoundation`, pas ici).
+    /// scroll (délégué à la vue) + son d'envoi (port de `if (mlib.isBelongsToCurrentUser())
+    /// playSoundSend()`, `ChatFragmentTest.java:2716-2718` — **câblé le 2026-08-28, V6-F-011**,
+    /// `ChatSoundPlayer` gatée en interne par `allowChatSendReceiveSound`). Toujours vrai ici
+    /// (tous les appelants construisent via `buildOutgoingBase`, `belongsToCurrentUser = true`),
+    /// mais le test explicite reste fidèle à l'original plutôt que de le supposer silencieusement.
     private func appendOptimistic(_ mlib: MessageLib) {
         appendWithDateSeparator(mlib, into: &items)
+        if mlib.belongsToCurrentUser { ChatSoundPlayer.playSend() }
     }
 
     // MARK: - Cycle de vie d'une bulle visible (port du dispatch `onBindViewHolder` par

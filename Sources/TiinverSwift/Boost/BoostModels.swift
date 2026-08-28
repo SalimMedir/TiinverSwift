@@ -38,6 +38,18 @@ struct AdsData: Codable, Identifiable {
         let hasContentId = cdn_content_id != nil && cdn_content_id != "NULL" && !(cdn_content_id?.isEmpty ?? true)
         return hasContentId ? cdn_content_url : objectUrl
     }
+
+    /// Port de `MyBoostAdapter.onBindView` (`MyBoostAdapter.java:189-228`) — logique de VIGNETTE
+    /// du tableau de bord, DISTINCTE de `resolvedObjectUrl` ci-dessus (celle-ci résout vers
+    /// `cdn_content_url`, une URL/manifest de LECTURE vidéo, pas une image affichable en liste).
+    /// **Ajouté (2026-08-28, V6-F-015)** — `boostRow` utilisait à tort `resolvedObjectUrl` pour
+    /// la vignette, faisant tenter à `CDNAsyncImage` de charger une URL vidéo comme une image pour
+    /// tout boost VIDÉO avec `cdn_content_id` valide.
+    var resolvedThumbnailUrl: String? {
+        guard object == "videos" else { return objectUrl }
+        let hasContentId = cdn_content_id != nil && cdn_content_id != "NULL" && !(cdn_content_id?.isEmpty ?? true)
+        return hasContentId ? cdn_thumbnail_url : objectUrl
+    }
 }
 
 /// Port de `models/advertising/Audience.java` — ciblage envoyé en JSON RE-ENCODÉ dans le champ

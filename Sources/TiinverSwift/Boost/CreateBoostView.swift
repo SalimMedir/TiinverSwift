@@ -227,11 +227,20 @@ struct CreateBoostView: View {
         Task {
             do {
                 try await AdsRepository.shared.createBoost(request, useGems: useGems)
-                // Port de l'observer `Result.SUCCESS` — déduction LOCALE optimiste, TOUJOURS sur
-                // `coinsAmount` MÊME si `useGems` est vrai (fidèle à l'original :
-                // `Settings.setFloatPreference(..., COINS_AMOUNT, ...)` inconditionnel, jamais
-                // `GEMS_AMOUNT` — probable bug Android reproduit tel quel, pas "corrigé").
-                UserSession.shared.coinsAmount = currentBalance - Double(totalCost)
+                // **Corrigé (2026-08-28, V6-F-016)** — déduction LOCALE optimiste sur le BON solde
+                // selon `useGems`. Android écrit TOUJOURS dans `COINS_AMOUNT`, même payé en gemmes
+                // (`Settings.setFloatPreference(..., COINS_AMOUNT, ...)` inconditionnel côté
+                // `CreateBoostFragment.java:208-215`) — bug partagé confirmé par l'audit, mais le
+                // correctif est autonome (ne dépend d'aucun changement Android) et purement
+                // défensif financièrement : sans lui, un achat payé en gemmes décrémentait à tort
+                // le solde de PIÈCES mis en cache localement (`coinsAmount`), tout en laissant le
+                // vrai solde de gemmes localement inchangé jusqu'à la prochaine resynchronisation
+                // serveur — un affichage local durablement faux sur les DEUX soldes à la fois.
+                if useGems {
+                    UserSession.shared.gemsAmount = currentBalance - Double(totalCost)
+                } else {
+                    UserSession.shared.coinsAmount = currentBalance - Double(totalCost)
+                }
                 isSubmitting = false
                 submitSucceeded = true
                 submitMessage = "Envoyé avec succès"

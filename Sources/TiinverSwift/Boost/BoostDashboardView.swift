@@ -13,6 +13,16 @@ struct BoostDashboardView: View {
     @State private var reachedEnd = false
     @State private var offset = 0
     private let limit = 10
+    /// **Ajoutés (2026-08-28, V6-F-018)** — port de `attemptReconnect`/`attemptReconnectOverview`
+    /// (`BoostDashboardFragment.java:208-234`), nouvelle tentative UNIQUE après 5s sur échec.
+    /// DEUX flags distincts, PAS un seul partagé comme côté Android (`attemptReconnect`, un
+    /// booléen COMMUN aux deux mécanismes) — la première erreur, quelle que soit sa source,
+    /// "consomme" côté Android la seule tentative disponible pour LES DEUX chargements,
+    /// empêchant l'autre de jamais se rétablir automatiquement. Défaut d'implémentation manifeste
+    /// (pas un choix délibéré) — non reproduit, `IOS_INTENTIONAL_DIFFERENCE` : chaque chargement
+    /// se rétablit indépendamment ici.
+    @State private var didRetryOverview = false
+    @State private var didRetryBoosts = false
 
     var body: some View {
         List {
@@ -50,6 +60,8 @@ struct BoostDashboardView: View {
             offset = 0
             reachedEnd = false
             boosts = []
+            didRetryOverview = false
+            didRetryBoosts = false
             await loadOverview()
             await loadMore()
         }
@@ -74,7 +86,10 @@ struct BoostDashboardView: View {
 
     private func boostRow(_ boost: AdsData) -> some View {
         HStack(spacing: 12) {
-            CDNAsyncImage(url: boost.resolvedObjectUrl.flatMap(URL.init), targetSize: CGSize(width: 44, height: 44)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
+            // **Corrigé (2026-08-28, V6-F-015)** — `resolvedObjectUrl` résout vers une URL de
+            // LECTURE vidéo pour un boost vidéo (`cdn_content_url`), pas une vignette affichable ;
+            // `resolvedThumbnailUrl` reproduit la logique de `MyBoostAdapter.onBindView`.
+            CDNAsyncImage(url: boost.resolvedThumbnailUrl.flatMap(URL.init), targetSize: CGSize(width: 44, height: 44)) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: {
                 Color(.secondarySystemBackground)
             }
             .frame(width: 44, height: 44)
@@ -89,19 +104,42 @@ struct BoostDashboardView: View {
     }
 
     private func loadOverview() async {
-        overview = try? await AdsRepository.shared.fetchOverview(userId: userId)
+        do {
+            overview = try await AdsRepository.shared.fetchOverview(userId: userId)
+        } catch {
+            guard !didRetryOverview else { return }
+            didRetryOverview = true
+            try? await Task.sleep(nanoseconds: 5_000_000_000) // port du délai `postDelayed(..., 5000)`
+            guard !Task.isCancelled else { return }
+            await loadOverview()
+        }
     }
 
     private func loadMore() async {
         guard !isLoading, !reachedEnd else { return }
         isLoading = true
         defer { isLoading = false }
-        let page = (try? await AdsRepository.shared.fetchMyBoosts(userId: userId, limit: limit, offset: offset)) ?? []
-        if page.isEmpty {
-            reachedEnd = true
-        } else {
-            boosts.append(contentsOf: page)
-            offset += limit
+        await fetchMoreWithRetry()
+    }
+
+    /// Séparée de `loadMore()` : la nouvelle tentative récursive ne doit PAS repasser par le
+    /// `guard !isLoading` de `loadMore()` (encore vrai pendant toute l'attente de 5s), sinon elle
+    /// serait absorbée sans effet par sa propre garde de ré-entrance.
+    private func fetchMoreWithRetry() async {
+        do {
+            let page = try await AdsRepository.shared.fetchMyBoosts(userId: userId, limit: limit, offset: offset)
+            if page.isEmpty {
+                reachedEnd = true
+            } else {
+                boosts.append(contentsOf: page)
+                offset += limit
+            }
+        } catch {
+            guard !didRetryBoosts else { return }
+            didRetryBoosts = true
+            try? await Task.sleep(nanoseconds: 5_000_000_000) // port du délai `postDelayed(..., 5000)`
+            guard !Task.isCancelled else { return }
+            await fetchMoreWithRetry()
         }
     }
 }

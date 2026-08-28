@@ -406,7 +406,7 @@ IMPACT : Pour les boosts VIDÉO spécifiquement, la vignette du tableau de bord 
 REPRODUCTIBILITÉ : Certaine par lecture de code que la logique diverge ; le symptôme visuel exact dépend du comportement de `CDNAsyncImage` face à une URL non-image — NEEDS_PHYSICAL_VALIDATION pour confirmer le rendu réel.
 SUGGESTED_STATUS : VISUALLY_DIFFERENT
 RECOMMANDATION : Dans `boostRow`, répliquer la logique Android : pour un boost vidéo, préférer `cdn_thumbnail_url` (repli sur `object_url` si `cdn_content_id` invalide) plutôt que `resolvedObjectUrl`.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Nouvelle propriété `AdsData.resolvedThumbnailUrl` (miroir exact de `MyBoostAdapter.onBindView`, distincte de `resolvedObjectUrl` qui reste utilisée là où elle l'était déjà pour la LECTURE vidéo). `boostRow` utilise désormais `resolvedThumbnailUrl`.
 ```
 
 ```
@@ -423,7 +423,7 @@ IMPACT : Affichage temporairement faux du solde de pièces (fantôme) après un 
 REPRODUCTIBILITÉ : Certaine par lecture de code, des deux côtés.
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Conditionner l'écriture locale à `usingCoins`/`useGems`, ou re-synchroniser le vrai solde serveur après un achat réussi — correctif applicable indépendamment côté iOS sans attendre Android.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Décision explicite demandée par la mission pour les opérations financières (sécurité/idempotence prioritaires sur la simple parité visuelle) : écriture locale désormais conditionnée à `useGems` (`gemsAmount` si payé en gemmes, `coinsAmount` sinon), au lieu d'écrire inconditionnellement dans `coinsAmount`. Correctif autonome, ne dépend d'aucun changement Android.
 ```
 
 ```
@@ -440,7 +440,7 @@ IMPACT : Incertain mais plausible — si le serveur utilise l'ACTE MÊME de cet 
 REPRODUCTIBILITÉ : Certaine par lecture de code pour l'absence côté iOS et l'inertie du callback côté Android ; NEEDS_PHYSICAL_VALIDATION pour l'impact serveur réel.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : À traiter dans le cadre du même chantier BGTaskScheduler que V5-F-060 (report déjà décidé) — signaler la dépendance potentielle sur ce endpoint spécifique lors de ce chantier.
-STATUT : NON CORRIGÉ (audit uniquement, report déjà assumé)
+STATUT : DIFFÉRÉ — confirmé 2026-08-28, aucun changement de code. Raison technique réelle : dépend de l'infrastructure `BGTaskScheduler` (chantier V5-F-060 déjà décidé, hors périmètre d'un correctif ponctuel) ; regroupé avec ce chantier plutôt que traité isolément ici.
 ```
 
 ```
@@ -457,7 +457,7 @@ IMPACT : Résilience UX moindre, pas un défaut de données (pull-to-refresh res
 REPRODUCTIBILITÉ : Certaine par lecture de code (absence confirmée).
 SUGGESTED_STATUS : PARTIAL
 RECOMMANDATION : Ajouter une nouvelle tentative automatique après un court délai en cas d'échec, miroir du comportement Android.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Port de `attemptReconnect`/`attemptReconnectOverview` (délai 5s, tentative UNIQUE), mais avec DEUX flags indépendants (`didRetryOverview`/`didRetryBoosts`) plutôt que le booléen `attemptReconnect` PARTAGÉ côté Android entre les deux mécanismes — un défaut d'implémentation manifeste chez Android (la première erreur, quelle que soit sa source, consomme la seule tentative disponible pour LES DEUX chargements) non reproduit ici, `IOS_INTENTIONAL_DIFFERENCE` : chaque chargement se rétablit indépendamment. Les deux flags sont réinitialisés par le tirer-pour-rafraîchir manuel (nouveau budget de tentative complet à chaque intention explicite de l'utilisateur).
 ```
 
 ```

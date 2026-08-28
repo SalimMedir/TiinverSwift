@@ -24,6 +24,10 @@ final class AnimemesEditorState: ObservableObject {
     /// ajouté le 2026-08-16 (continuation post-Appetize) : translation/rotation/échelle réelles au
     /// lieu de la seule translation `offsetX`/`offsetY` de la version initiale.
     let gestureController = AnimemesGestureController()
+    /// **Ajouté (2026-08-28, V6-F-002)** — port de la logique du panneau "Contrôle"
+    /// (`MovementControllerHandlerView`/`applySeekBarTransform`), voir `MovementControllerTransformer`.
+    let movementControllerTransformer = MovementControllerTransformer()
+    @Published var movementController = MovementControllerState()
     /// Partagé entre le lissage de geste (`touchUp`) ET la lecture/timeline réelle (`play`/`pause`/
     /// `prepare`/`applyInterpolation`) — un seul moteur, comme côté Android (`MemesView2.mEngine`),
     /// pas deux instances qui divergeraient sur `totalFramesMinus1`/`transformationArray`.
@@ -497,6 +501,29 @@ final class AnimemesEditorState: ObservableObject {
         let values = layers[idx].transforms.last?.matrixValues ?? []
         let scaleX = values.count > 0 ? values[0] : -1
         gestureDiagnostics = "SCALE calque #\(idx) → facteur=\(String(format: "%.3f", clamped)) scaleX résultant=\(String(format: "%.3f", scaleX))"
+    }
+
+    // MARK: - Panneau "Contrôle" (port de `MovementControllerHandlerView`/`applySeekBarTransform`,
+    // voir `MovementControllerTransformer` — **ajouté 2026-08-28, V6-F-002**)
+
+    /// Port de `onStart` du listener du panneau (`touchDown(0)` + `initControllerMovement()`).
+    func movementControllerBeginTracking(atProgress progress: Int) {
+        movementControllerTransformer.beginTracking(atProgress: progress)
+    }
+
+    /// Port de `onProgress` du listener du panneau → `controllerMovement(progress)`.
+    func movementControllerProgressChanged(_ progress: Int) {
+        let selected = selectedId.flatMap { id in layers.first(where: { $0.id == id }) }
+        movementControllerTransformer.progressChanged(progress, state: movementController, selectedLayer: selected)
+        renderVersion += 1
+    }
+
+    /// Port de la fermeture du panneau (`controlle_movement` re-tapé, `AnimemesCompound.java:1868-
+    /// 1873`) — réinitialise le point d'ancrage éventuellement positionné, fidèle à l'intention
+    /// (rouvrir le panneau plus tard ne doit pas réappliquer un point d'ancrage invisible et
+    /// oublié depuis longtemps).
+    func closeMovementController() {
+        movementControllerTransformer.reset()
     }
 
     // MARK: - Masques (port de `MaskAddPanel`/`MaskPreviewEditorPanel`, `AnimemesCompound.java:

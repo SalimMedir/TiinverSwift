@@ -31,7 +31,7 @@ struct TimelineView: View {
 
     private enum DragMode {
         case scrub
-        case pan(scrollFramesAtDown: Int)
+        case pan(scrollFramesAtDown: Int, scrollTracksAtDown: CGFloat)
         case dragItem(id: String, startDown: Int, endDown: Int, track: Int, startX: CGFloat)
         case resizeLeft(id: String, startDown: Int, endDown: Int, startX: CGFloat)
         case resizeRight(id: String, anchorX: CGFloat)
@@ -260,20 +260,30 @@ struct TimelineView: View {
                 case .scrub:
                     model.scrub(toX: value.location.x)
                     state.scrub(toFrame: model.playheadFrame)
-                case .pan(let scrollFramesAtDown):
-                    model.pan(scrollFramesAtDown: scrollFramesAtDown, deltaPx: value.translation.width)
-                    // **Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-051, Phase B P2)**
-                    // — port de `onPlayheadMoved` (`AnimemesCompound.java:1417-1426`), appelé par
-                    // Android pour LE PAN ET le scrub (`TimelineView.java:938-954`, branche
-                    // horizontale du mode PAN) : `mView.seek(frame)` — le moteur de lecture n'est
-                    // PAS resynchronisé automatiquement par un simple déplacement du playhead visuel.
-                    // Avant ce correctif, seul `.scrub` appelait `state.scrub(toFrame:)` ; `.pan`
-                    // mettait à jour UNIQUEMENT `model.playheadFrame` (affichage), jamais
-                    // `engine.totalFrame` réel — `Play` pouvait reprendre depuis une frame périmée
-                    // après un pan. Même appel que `.scrub` ci-dessus, réutilisé tel quel (pas une
-                    // 2ᵉ implémentation) — `model.pan(...)` a déjà mis à jour `playheadFrame` juste
-                    // au-dessus, lu ici à jour.
-                    state.scrub(toFrame: model.playheadFrame)
+                case .pan(let scrollFramesAtDown, let scrollTracksAtDown):
+                    // **Corrigé (2026-08-28, V6-F-001)** — port de la branche dx-vs-dy de `onMove`'s
+                    // `Mode.PAN` (`TimelineView.java:938-951`) : un pan sur une zone vide défile
+                    // VERTICALEMENT (révèle les pistes hors du cadre visible) quand la composante
+                    // verticale du geste domine, horizontalement sinon — jamais porté jusqu'ici,
+                    // seule la branche horizontale existait, bloquant `scrollTracksPx` à 0 en
+                    // permanence (voir le commentaire de `TimelineViewModel.panTracks`).
+                    if abs(value.translation.height) > abs(value.translation.width) {
+                        model.panTracks(scrollTracksAtDown: scrollTracksAtDown, deltaPxY: value.translation.height)
+                    } else {
+                        model.pan(scrollFramesAtDown: scrollFramesAtDown, deltaPx: value.translation.width)
+                        // **Corrigé le 2026-08-24 (MIGRATION_PARITY_AUDIT_V4.md V4-F-051, Phase B P2)**
+                        // — port de `onPlayheadMoved` (`AnimemesCompound.java:1417-1426`), appelé par
+                        // Android pour LE PAN ET le scrub (`TimelineView.java:938-954`, branche
+                        // horizontale du mode PAN) : `mView.seek(frame)` — le moteur de lecture n'est
+                        // PAS resynchronisé automatiquement par un simple déplacement du playhead visuel.
+                        // Avant ce correctif, seul `.scrub` appelait `state.scrub(toFrame:)` ; `.pan`
+                        // mettait à jour UNIQUEMENT `model.playheadFrame` (affichage), jamais
+                        // `engine.totalFrame` réel — `Play` pouvait reprendre depuis une frame périmée
+                        // après un pan. Même appel que `.scrub` ci-dessus, réutilisé tel quel (pas une
+                        // 2ᵉ implémentation) — `model.pan(...)` a déjà mis à jour `playheadFrame` juste
+                        // au-dessus, lu ici à jour.
+                        state.scrub(toFrame: model.playheadFrame)
+                    }
                 case .dragItem(let id, let startDown, let endDown, let track, let startX):
                     let dxFrame = Int(((value.location.x - startX) / model.pxPerFrame).rounded())
                     let newTrack = model.trackAtY(value.location.y)
@@ -365,6 +375,6 @@ struct TimelineView: View {
             }
             return .dragItem(id: item.id, startDown: item.startFrame, endDown: item.endFrame, track: item.track, startX: point.x)
         }
-        return .pan(scrollFramesAtDown: model.scrollFrames)
+        return .pan(scrollFramesAtDown: model.scrollFrames, scrollTracksAtDown: model.scrollTracksPx)
     }
 }

@@ -126,6 +126,11 @@ struct AnimemesEditorView: View {
     /// Port de `compose_needs_two_layers`/`compose_failed` — voir `state.performRecompose()`.
     @State private var recomposeFailedAlert = false
     @State private var showTimeline = true
+    /// Port de `controlle_movement`/`movement_controller_view` — **ajouté (2026-08-28,
+    /// V6-F-002)**. Remplace la zone timeline pendant qu'il est ouvert, fidèle à
+    /// `AnimemesCompound.java:1857-1874` (`frameList`/`timelineView` masqués tant que le panneau
+    /// est visible).
+    @State private var showMovementController = false
     @State private var showRightTools = true
     @State private var selectedSpeedIndex = 0
     @State private var selectedRatioIndex = 0
@@ -162,6 +167,8 @@ struct AnimemesEditorView: View {
                 BezierEditorView(points: $bezierPoints)
                     .frame(height: 220)
                     .background(Color.black)
+            } else if showMovementController {
+                MovementControllerPanelView(state: state)
             } else if showTimeline {
                 TimelineView(state: state)
                 if showDurationSlider, let selectedId = state.selectedId, let obj = state.layers.first(where: { $0.id == selectedId }) {
@@ -1110,6 +1117,14 @@ struct AnimemesEditorView: View {
                 // `state.isMaskEditMode = false`) existait déjà et n'a pas besoin d'être ajoutée.
                 bottomButton(icon: "circle.dashed", label: "masque") { state.isMaskEditMode = true }
                     .disabled(state.selectedId == nil)
+                // Port de `controlle_movement` (`AnimemesCompound.java:1857-1874`) — **ajouté
+                // (2026-08-28, V6-F-002)**. Simple bascule côté Android, sans garde de sélection
+                // sur le bouton lui-même (la transformation du calque sélectionné, elle, no-op
+                // silencieusement sans sélection — voir `MovementControllerTransformer`).
+                bottomButton(icon: "dial.min", label: "Contrôle") {
+                    showMovementController.toggle()
+                    if !showMovementController { state.closeMovementController() }
+                }
                 // Port de `showPanelEditor`/`LayerEditorPanel` (**ajouté le 2026-08-19,
                 // ANIMEMS_PARITY_AUDIT_V1.md F-28, Phase B Lot 3**) — voir la doc complète sur
                 // `AnimemesEditorState.snapshotLayerEditor()` pour le raisonnement sur le

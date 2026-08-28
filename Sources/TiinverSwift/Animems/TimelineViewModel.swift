@@ -247,6 +247,22 @@ final class TimelineViewModel {
         playheadFrame = TimelineViewModel.clampI(scrollFrames + contentHalfFrames, 0, totalFrames - 1)
     }
 
+    /// **Corrigé (2026-08-28, V6-F-001)** — port de la branche VERTICALE de `onMove`'s
+    /// `Mode.PAN` (`TimelineView.java:938-951` : `if (Math.abs(dy) > Math.abs(dx)) { scrollTracksPx
+    /// = clamp(scrollTracksPx + (int)-(y - downY), 0, maxScrollTracksPx); ... }`), jamais porté —
+    /// `scrollTracksPx` était déclaré et consulté par tout le hit-testing/dessin (icônes, items,
+    /// marqueurs de keyframe) mais aucun geste ne le modifiait jamais, le bloquant en permanence à
+    /// 0. Devient un blocage réel dès qu'une composition a plus de calques que la hauteur visible
+    /// (courant depuis le correctif V5-F-042-adjacent qui a rendu `trackCount == layers.count`,
+    /// au lieu d'un plancher fixe de 5). `deltaPxY` = translation VERTICALE cumulée depuis le
+    /// début du geste (`value.translation.height`, signe SwiftUI standard : positif = doigt vers
+    /// le bas) — le contenu doit défiler dans le sens opposé au doigt pour "suivre" le doigt
+    /// (glisser vers le haut révèle les pistes du bas), d'où le signe négatif, cohérent avec
+    /// Android (`-(y - downY)`, `y` diminue quand le doigt monte, donc `-(y-downY)` est positif).
+    func panTracks(scrollTracksAtDown: CGFloat, deltaPxY: CGFloat) {
+        scrollTracksPx = TimelineViewModel.clamp(scrollTracksAtDown - deltaPxY, 0, maxScrollTracksPx)
+    }
+
     /// Port de `scrubToX` (mode `SCRUB`, drag sur la règle).
     func scrub(toX x: CGFloat) {
         setPlayheadFrame(frameAtX(x), external: false)

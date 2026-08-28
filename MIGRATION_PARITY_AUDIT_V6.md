@@ -204,7 +204,7 @@ IMPACT : Impossible de réutiliser la bande sonore d'une vidéo comme musique de
 REPRODUCTIBILITÉ : Certaine par lecture de code.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Porter la chaîne sélection vidéo → extraction audio (AVAssetExportSession) → définition comme piste audio de fond.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. Nouveau bouton "extraire" (barre du bas) → sélecteur vidéo dédié (`GalleryPickerView`, nouveau filtre `.videos` optionnel) → `AnimemesEditorState.extractAudioAsBackgroundMusic(from:)` (`AVAssetExportSession`, préréglage `AppleM4A`, même pattern `withCheckedContinuation` que `MediaTrimView`) → `audioURL` défini sur succès (même point d'entrée que "Ajouter un son"). Portée réduite documentée : le dialogue de découpe temporelle Android (`ExtracAudioFromVideo`) n'est pas porté — la piste audio COMPLÈTE est extraite, aucune UI de recadrage temporel Animems n'existant côté iOS pour l'instant (même limitation déjà assumée pour l'import vidéo en calque, V5-F-034) ; couvre le cas d'usage principal sans le raffinement de découpe.
 ```
 
 ```
@@ -221,7 +221,7 @@ IMPACT : Un utilisateur s'attendant au comportement Android ("retour au point de
 REPRODUCTIBILITÉ : Certaine par lecture de code, sans ambiguïté des deux côtés.
 SUGGESTED_STATUS : FUNCTIONALLY_FAILED
 RECOMMANDATION : Faire pointer `resetSelected()` vers une transformation identité (position/échelle/rotation d'origine du calque), pas la dernière pose, et réduire `durationFrames`/`endFrame` en cohérence avec Android.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : CODE_COMPLETE, CI_PENDING — corrigé 2026-08-28. `resetSelected()` remplace désormais `transforms` par un `Transform()` identité neuf (miroir exact de `new Transform()` + `Matrix()` identité côté Android), réduit `endFrame` à `startFrame` (stub d'une frame — PAS le littéral `1` d'Android, une valeur ABSOLUE invalide pour un calque dont `startFrame > 1` ; `obj.startFrame` produit le même effet de stub sans ce risque), et appelle `clearMaskTransforms()` en plus de `clearAllKeyframes()` (manquant jusqu'ici, port de `objectData.clearMaskTransforms()`).
 ```
 
 ```
@@ -238,7 +238,7 @@ IMPACT : Mineur — chemin "legacy" côté Android, potentiellement moins pertin
 REPRODUCTIBILITÉ : Certaine (absence) ; pertinence du portage à juger au cas par cas.
 SUGGESTED_STATUS : MISSING
 RECOMMANDATION : Décision produit à prendre avant correction — porter fidèlement, ou documenter comme `IOS_INTENTIONAL_DIFFERENCE` étant donné la divergence déjà assumée du modèle de capture.
-STATUT : NON CORRIGÉ (audit uniquement)
+STATUT : IOS_INTENTIONAL_DIFFERENCE — décidé 2026-08-28, aucun changement de code. Panneau "Cadre" un système "legacy" côté Android lui-même (chemin distinct du composer/keyframes principal) ; iOS a déjà une divergence délibérée et documentée (`autoCaptureEnabled`, keyframe automatique en fin de glisser) couvrant le même besoin (capture image-par-image façon flipbook) par un mécanisme différent et déjà choisi. Construire un second panneau dupliquant un chemin legacy déjà superseded côté Android n'apporterait rien — cohérent avec la règle explicite de ne jamais reproduire un mécanisme uniquement pour la parité quand iOS a déjà une solution équivalente ou meilleure.
 ```
 
 ```
@@ -624,6 +624,8 @@ améliorations iOS documentées sans équivalent Android à comparer :
 11. **Video Statistics** — Les cartes `Map<String,Integer>` d'Android peuvent être `null` si la clé JSON est absente, provoquant un risque de `NullPointerException` non gardé ; iOS utilise des `[String:Int]?` avec garde systématique, structurellement immunisé.
 12. **Animems** — La garde `AnimationEngine.tick()` sur les transforms d'un calque arbitraire (déjà retirée côté iOS lors du cycle V5) est confirmée être un effet de bord incident côté Android, pas un choix délibéré — retrait confirmé correct, pas à réintroduire.
 13. **Animems** — Le "Play" en direct d'Android masque entièrement texte/sticker/tracé/ligne/clip/gomme pendant la lecture (ils réapparaissent à l'arrêt) ; iOS les garde visibles (figés) pendant toute la lecture. Comportement Android sans commentaire explicatif, ressemble à un oubli plutôt qu'un choix délibéré — non signalé comme lacune iOS à corriger, documenté pour éviter une confusion future.
+14. **Animems** (décidé pendant la correction, 2026-08-28, V6-F-005) — le panneau "Cadre" (flipbook stop-motion legacy) n'est pas porté ; iOS couvre le même besoin via `autoCaptureEnabled` (déjà choisi, mécanisme différent). Construire un second chemin dupliquant un système legacy déjà superseded côté Android lui-même n'apporterait rien.
+15. **Promotion** (décidé pendant la correction, 2026-08-28, V6-F-018) — le nouvel auto-retry du tableau de bord Boost utilise DEUX flags indépendants (overview/liste), pas le booléen `attemptReconnect` PARTAGÉ côté Android entre les deux mécanismes de retry — un défaut d'implémentation manifeste chez Android (la première erreur consomme la seule tentative disponible pour LES DEUX chargements), non reproduit.
 
 ---
 

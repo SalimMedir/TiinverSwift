@@ -709,6 +709,36 @@ final class AnimemesEditorState: ObservableObject {
     /// au thread dédié + `runOnUi` d'Android plutôt qu'un blocage du thread principal.
     @Published var isRemovingBackground = false
 
+    /// **Ajouté (2026-08-28, V6-F-003)** — port de `onExtracSonFromVideo`/`audioToExtractUri`
+    /// (`AnimemesCompound.java:2165-2182`, `MemesFragment.java:376-378`) : extrait la piste audio
+    /// d'une vidéo choisie et la définit comme musique de fond de la composition, même point de
+    /// stockage qu'"Ajouter un son" (`audioURL`, déjà pris en charge par l'exporteur). Portée
+    /// réduite documentée : Android ouvre ensuite un dialogue de découpe (`ExtracAudioFromVideo`)
+    /// AVANT de définir la piste — non porté ici (aucune UI de recadrage temporel Animems
+    /// n'existe côté iOS pour l'instant, même limitation déjà documentée pour l'import vidéo en
+    /// calque, `AnimemesEditorView.swift` V5-F-034) ; la piste audio COMPLÈTE est extraite et
+    /// utilisée telle quelle, couvrant le cas d'usage principal ("réutiliser la bande sonore d'une
+    /// vidéo comme musique de fond") sans le raffinement de découpe.
+    @Published var isExtractingAudio = false
+    func extractAudioAsBackgroundMusic(from videoURL: URL) async -> Bool {
+        isExtractingAudio = true
+        defer { isExtractingAudio = false }
+        let asset = AVURLAsset(url: videoURL)
+        guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+            return false
+        }
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString).appendingPathExtension("m4a")
+        exportSession.outputURL = outputURL
+        exportSession.outputFileType = .m4a
+        await withCheckedContinuation { continuation in
+            exportSession.exportAsynchronously { continuation.resume() }
+        }
+        guard exportSession.status == .completed else { return false }
+        audioURL = outputURL
+        return true
+    }
+
     func removeBackgroundFromSelected() {
         guard let id = selectedId, let obj = layers.first(where: { $0.id == id }), !obj.bitmaps.isEmpty
         else { return }
@@ -805,10 +835,21 @@ final class AnimemesEditorState: ObservableObject {
     /// SÉLECTIONNÉ à une frame unique / efface ses keyframes, PAS une réinitialisation de tout le
     /// document) — collapse `transforms` à la dernière transform courante et vide toutes les pistes
     /// de keyframes (`AnimationObjectData.clearAllKeyframes()`, déjà porté).
+    /// **Corrigé (2026-08-28, V6-F-004)** — `resetItemById` (`MemesView2.java:516-533`) REMPLACE
+    /// `transforms` par UN SEUL `Transform()` neuf (matrice IDENTITÉ, opacité/teinte/arrondi par
+    /// défaut), pas la dernière pose courante : le calque saute visiblement à sa position/échelle/
+    /// rotation D'ORIGINE, pas seulement figé où il se trouvait. `Transform()` (constructeur par
+    /// défaut Swift) est déjà l'identité complète, voir `Transform.swift:58-62`. `endFrame` réduit
+    /// à un stub d'une frame (`obj.startFrame`, pas le littéral `1` d'Android — `item.endFrame = 1`
+    /// y est une valeur ABSOLUE qui suppose implicitement `startFrame == 0`, invalide pour un
+    /// calque ajouté plus tard dans la timeline ; `obj.startFrame` reste correct dans tous les cas
+    /// tout en produisant le même effet visuel de stub), miroir de `item.endFrame = 1` côté timeline.
     func resetSelected() {
         guard let id = selectedId, let obj = layers.first(where: { $0.id == id }) else { return }
-        if let last = obj.transforms.last { obj.transforms = [last] }
+        obj.transforms = [Transform()]
+        obj.endFrame = obj.startFrame
         obj.clearAllKeyframes()
+        obj.clearMaskTransforms() // Port de `objectData.clearMaskTransforms()`, absent jusqu'ici.
         syncTimeline()
         engine.prepare(composer: composer)
         version += 1

@@ -56,6 +56,11 @@ struct AnimemesEditorView: View {
     /// `rightToolbar` (Phase B Lot 7).
     @State private var showPaintCapture = false
     @State private var showAudioPicker = false
+    /// **Ajoutés (2026-08-28, V6-F-003)** — sélecteur vidéo dédié au bouton "Extraire" (piste
+    /// audio d'une vidéo → musique de fond), voir `AnimemesEditorState.
+    /// extractAudioAsBackgroundMusic(from:)`.
+    @State private var showExtractAudioPicker = false
+    @State private var showExtractAudioFailedAlert = false
     @State private var showShapePanel = false
     @State private var lastMagnification: CGFloat = 1.0
     @State private var isPinching = false
@@ -248,6 +253,28 @@ struct AnimemesEditorView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("L'ajout d'une vidéo comme calque animé n'est pas encore disponible sur iOS. Choisissez une image à la place.")
+        }
+        // **Ajouté (2026-08-28, V6-F-003)** — port de `onExtracSonFromVideo` : sélecteur vidéo
+        // système dédié (filtre `.videos`, pas le sélecteur mixte image+vidéo de "Ajouter un
+        // média"), extrait la piste audio et la définit comme musique de fond sur succès.
+        .sheet(isPresented: $showExtractAudioPicker) {
+            GalleryPickerView(
+                onImagePicked: { _ in showExtractAudioPicker = false },
+                onVideoPicked: { url in
+                    showExtractAudioPicker = false
+                    Task {
+                        let ok = await state.extractAudioAsBackgroundMusic(from: url)
+                        if !ok { showExtractAudioFailedAlert = true }
+                    }
+                },
+                onCancel: { showExtractAudioPicker = false },
+                filter: .videos
+            )
+        }
+        .alert("Extraction audio échouée", isPresented: $showExtractAudioFailedAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Impossible d'extraire la piste audio de cette vidéo — réessaie avec une autre vidéo.")
         }
         .fullScreenCover(isPresented: $showTextPrompt) {
             ProTextEditorView(
@@ -1172,6 +1199,17 @@ struct AnimemesEditorView: View {
                 // `paintLayers` vide d'Android (`ImageViewCanvas.java:318`) — voir `removeLast()`.
                 bottomButton(icon: "arrow.uturn.backward", label: "undo") { state.removeLast() }
                     .disabled(!state.layers.contains { $0.isFreehandStroke })
+                // Port de `extract_c`/`extract` (**Ajouté 2026-08-28, V6-F-003**) — voir
+                // `AnimemesEditorState.extractAudioAsBackgroundMusic(from:)`. Aucune dépendance à
+                // `selectedId`, fidèle à Android (action globale, pas liée au calque sélectionné).
+                Group {
+                    if state.isExtractingAudio {
+                        VStack(spacing: 4) { ProgressView().tint(.white); Text("extraire").font(.caption2) }
+                            .foregroundStyle(.white)
+                    } else {
+                        bottomButton(icon: "waveform.badge.plus", label: "extraire") { showExtractAudioPicker = true }
+                    }
+                }
             }
             .padding(.horizontal)
         }

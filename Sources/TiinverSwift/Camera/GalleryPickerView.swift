@@ -20,10 +20,14 @@ struct GalleryPickerView: UIViewControllerRepresentable {
     var onImagePicked: (URL) -> Void
     var onVideoPicked: (URL) -> Void
     var onCancel: () -> Void
+    /// **Ajouté (2026-08-28, V6-F-003)** — filtre optionnel, `.videos` réutilisé par le sélecteur
+    /// dédié "Extraire" d'Animems (système de sélection vidéo-seule, comme Android). Défaut
+    /// inchangé pour tous les appelants existants (images+vidéos).
+    var filter: PHPickerFilter = .any(of: [.images, .videos])
 
     func makeUIViewController(context: Context) -> PHPickerViewController {
         var configuration = PHPickerConfiguration()
-        configuration.filter = .any(of: [.images, .videos])
+        configuration.filter = filter
         configuration.selectionLimit = 1
         let picker = PHPickerViewController(configuration: configuration)
         picker.delegate = context.coordinator

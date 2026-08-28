@@ -9,6 +9,69 @@ successivement sur le même dépôt, ne jamais supposer être seul à l'avoir mo
 
 ---
 
+# CURRENT HANDOFF (2026-08-28 — Phase G : Audit V7 terminé, AUCUNE correction encore appliquée)
+
+Nouveau cycle d'audit, lancé directement après la clôture complète du cycle V6 (Phase F ci-dessous).
+Consigne explicite de l'utilisateur pour ce cycle : **audit uniquement, aucune modification de code**
+— seuls les documents `MIGRATION_PARITY_AUDIT_V7.md`, `MIGRATION_PARITY_PROGRESS_V7.md`,
+`v7_transversal.md` ont été créés, plus cette section. Aucun des 27 findings V7 n'est `CODE_COMPLETE`
+ni `BUILD_VALIDATED` : tous au statut `NON CORRIGÉ (audit uniquement)`.
+
+**10 agents de recherche en parallèle**, un par domaine (Animems Éditeur, Animems Timeline/Export/
+Publication en 2 lots vu la priorité maximale du domaine, ChatGroup, Search, Promotion/Boost, Video
+Statistics, Feed/Home/Profile, Notifications+Auth/Compte/Sécurité, Network/Socket.IO/Concurrence,
+Persistance/Cache+UI/UX/Navigation), chacun briefé sur ce que V5/V6 avaient déjà couvert dans son
+domaine pour éviter toute redite. Détail complet du déroulement (incidents d'agents, incident de
+reprise de session) dans `MIGRATION_PARITY_PROGRESS_V7.md`.
+
+**Répartition** : 27 findings (V7-F-001 à V7-F-027) — 1 P0 (sécurité), 3 P1, 15 P2, 8 P3. 3
+`IOS_INTENTIONAL_DIFFERENCE` confirmées (aucune action), 1 `SHARED_BACKEND_ISSUE` (décision produit
+nécessaire).
+
+**Constat principal du cycle** : contrairement à V5/V6 qui trouvaient surtout des fonctionnalités
+*totalement absentes*, le V7 trouve majoritairement des **lacunes de câblage fines** dans du code déjà
+largement porté et déjà audité 6 fois — garde de réentrance oubliée sur UN SEUL des N call-sites d'un
+pattern par ailleurs correct, asymétrie entre le chemin "aperçu" et le chemin "export", ordre de
+callbacks SwiftUI non garanti là où Android a un lecteur unique séquentiel. Plusieurs findings
+(notamment le pipeline watch-time, V7-F-015/016) ne pourront être définitivement tranchés que par
+validation physique sur appareil réel, pas par audit de code statique seul.
+
+**Le finding le plus critique (P0)** : **V7-F-022** — `KeychainStore.saveAPIKey` écrit
+INCONDITIONNELLEMENT l'apiKey en clair dans `UserDefaults` avant même de tenter l'écriture Keychain
+(pas seulement en cas d'échec constaté comme l'intention documentée du repli CI l'aurait voulu) — en
+production, annule le bénéfice de sécurité que le projet visait explicitement sur ce point précis.
+
+**Les 3 autres P1** :
+- **V7-F-015** — le suivi du temps de visionnage (pipeline V6-F-019 de la session précédente) n'est
+  JAMAIS mis en pause quand l'app passe en arrière-plan sans quitter l'écran vidéo — surcomptage
+  direct des statistiques de monétisation créateur. Décrit par son propre agent comme "le finding le
+  plus important de cette passe d'audit".
+- **V7-F-004** — un calque texte/sticker Animems recadré sur la timeline reste visible sur toute la
+  durée du MP4 exporté (garde `startAt`/`endAt` présente pour bitmap/forme dans
+  `AnimemesExporter.render`, absente pour texte/sticker — omission distincte du correctif V6-F-006).
+- **V7-F-007** — quitter un groupe n'insère aucun message système local ("a quitté le groupe"), donc
+  le roster (liste des conversations) ne reflète jamais le départ — seule exception non justifiée
+  parmi les 6 mutations de groupe du même fichier.
+
+**Finding à valider en priorité malgré sa sévérité P2** : **V7-F-016** — l'ordre `onAppear`/
+`onDisappear` non garanti par SwiftUI lors d'un changement de page vidéo pourrait, dans le pire cas,
+faire que le watch-time de CHAQUE vidéo suivante (le cas d'usage le plus fréquent du feed) ne soit
+quasiment jamais comptabilisé — nécessite une instrumentation sur device réel pour trancher, gravité
+potentielle maximale si confirmé.
+
+**Domaine transversal Réseau/Concurrence** : le sweep exhaustif des ~187 sites `Task {}` du projet,
+explicitement laissé ouvert par le cycle V6, a enfin été fait (voir `v7_transversal.md`) — 1 seul bug
+confirmé (V7-F-026, debounce recherche pays Boost), le reste jugé sain par catégorie. Le domaine
+Calls/WebRTC n'a PAS eu d'agent dédié ce cycle — 3 commits Android récents (migration Android 16,
+gestion bouton retour système sur écrans d'appel) repérés par archéologie git côté ChatGroup mais
+jamais vérifiés côté iOS, signalés comme piste pour un futur cycle.
+
+**Prochaine étape pour une future session/l'utilisateur** : décision de l'utilisateur sur la phase de
+correction B — quels findings traiter, dans quel ordre (le V7 n'a pas reçu d'ordre de priorité
+explicite de l'utilisateur comme V6 en avait un ; à demander ou proposer un ordre par sévérité).
+
+---
+
 # CURRENT HANDOFF (2026-08-28 — Phase F : les 26 findings V6 corrigés en une session)
 
 Suite immédiate de la Phase E ci-dessous. Consigne explicite de l'utilisateur : corriger TOUS les

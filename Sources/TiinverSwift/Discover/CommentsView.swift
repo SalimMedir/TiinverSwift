@@ -4,6 +4,10 @@ import SwiftUI
 /// pas lus en détail, UI reconstruite depuis `CommentRepository`/`CommentModel` déjà vérifiés) —
 /// feuille de commentaires d'une publication.
 struct CommentsView: View {
+    /// **Ajouté (2026-08-28, V7-F-025)** — le bouton "Fermer" de la barre d'outils avait une
+    /// closure vide, sans effet au tap (la feuille restait fermable par balayage, mais le contrôle
+    /// visiblement affiché comme fonctionnel ne l'était pas).
+    @Environment(\.dismiss) private var dismiss
     let activityId: Int
     /// Port de `this.data.getActor()` (`MyBottomSheetDialogFragment.onPost`, branche cadeau) —
     /// l'AUTEUR de la publication commentée, destinataire (`receiverId`) d'un cadeau envoyé en
@@ -62,7 +66,7 @@ struct CommentsView: View {
             }
             .navigationTitle("Commentaires")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .navigationBarLeading) { Button("Fermer") {} } }
+            .toolbar { ToolbarItem(placement: .navigationBarLeading) { Button("Fermer") { dismiss() } } }
             .task { await loadMore() }
             .sheet(isPresented: $showGiftPicker) { giftSheet }
             .alert(

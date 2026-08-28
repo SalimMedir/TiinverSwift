@@ -207,7 +207,14 @@ struct CreateBoostView: View {
         searchTask = Task {
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled else { return }
-            countrySuggestions = (try? await AdsRepository.shared.searchTags(key: "country", query: q)) ?? []
+            let results = (try? await AdsRepository.shared.searchTags(key: "country", query: q)) ?? []
+            // **Corrigé (2026-08-28, V7-F-026)** — `Task.isCancelled` n'était vérifié qu'AVANT
+            // l'appel réseau, pas après : une réponse lente pour une frappe ancienne pouvait
+            // arriver après une réponse plus récente et l'écraser. Même garde re-vérifiée après
+            // l'appel réseau déjà appliquée ailleurs dans ce projet pour ce même motif
+            // (`ChatSearchView.swift`, `NewMessageView.swift`, `SearchView.swift`/V6-F-012).
+            guard !Task.isCancelled else { return }
+            countrySuggestions = results
         }
     }
 

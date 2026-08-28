@@ -19,8 +19,19 @@ import Foundation
 ///     déclenchement du seuil (Android obtient cette couverture via son job périodique 15 min ;
 ///     ce déclencheur ponctuel est la meilleure approximation atteignable sans construire tout le
 ///     chantier `BGTaskScheduler`).
+@MainActor
 enum ViewEventSyncService {
     private static let sevenDaysMs: Int64 = 7 * 24 * 60 * 60 * 1000
+
+    /// **Ajouté (2026-08-28, V7-F-027)** — port de `ViewTracker`'s `enqueueUniqueWork(WORK_NAME,
+    /// KEEP, ...)`, qui garantit côté Android qu'un déclenchement périodique ne chevauche jamais un
+    /// autre. `sync()` est appelée depuis 2 sites indépendants (`FeedView.swift`, seuil de lignes en
+    /// attente ; `RootRouterView.swift`, retour au premier plan) pouvant se déclencher à quelques
+    /// instants d'intervalle — sans cette garde, les deux liraient le même lot `pending()` et
+    /// enverraient chacun un `POST addview` pour les mêmes lignes avant que la première suppression
+    /// locale n'ait pu s'exécuter. Verrou GLOBAL isolé par `@MainActor`, même motif déjà établi par
+    /// `NotificationCenterViewModel.isSyncing` dans ce même projet.
+    private static var isSyncing = false
 
     /// Port de `ViewSyncWorker.doWork()` : purge les vues de plus de 7 jours, puis envoie CHAQUE
     /// ligne en attente individuellement à `addview`, en s'arrêtant au TOUT PREMIER échec — les
@@ -28,6 +39,10 @@ enum ViewEventSyncService {
     /// Android (`for (ViewEvent event : pending) { ... if (!success) break; }`) : pas de tentative
     /// "au mieux" sur les lignes suivantes une fois le serveur suspecté injoignable.
     static func sync() async {
+        guard !isSyncing else { return }
+        isSyncing = true
+        defer { isSyncing = false }
+
         let repo = ViewEventRepository()
 
         let cutoff = Int64(Date().timeIntervalSince1970 * 1000) - sevenDaysMs

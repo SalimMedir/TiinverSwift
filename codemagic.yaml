@@ -757,13 +757,38 @@ workflows:
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME"
 
+      # **Corrigé (2026-08-28)** — 1ᵉʳ run réel de ce workflow échoué avec "No matching profiles
+      # found for bundle identifier "com.tiinver.ios" and distribution type "app_store"". Cause
+      # confirmée par la doc Codemagic (`docs.codemagic.io/yaml-code-signing/signing-ios/` ET
+      # `.../alternative-code-signing-methods/`, pas une supposition) : le bloc `ios_signing:`
+      # déclaratif seul (ci-dessus) suppose qu'un certificat de distribution/profil "App Store"
+      # correspondant EXISTE DÉJÀ (sur le compte Apple Developer, ou uploadé manuellement dans
+      # Codemagic, Team settings > Code Signing Identities) — il ne le crée jamais lui-même
+      # pendant le build. Pour le tout premier envoi App Store de cette app (aucun profil de
+      # distribution encore généré côté Apple), il faut explicitement passer par les outils CLI
+      # `codemagic-cli-tools` (déjà utilisés dans `browserstack-ipa-build`) avec le flag `--create`
+      # de `app-store-connect fetch-signing-files` — "fetch OR create" : réutilise un
+      # certificat/profil existant s'il y en a déjà un (builds suivants), sinon en crée un nouveau
+      # via l'API (ce build-ci). Les identifiants de l'intégration nommée "Codemagic CI"
+      # (`integrations.app_store_connect` ci-dessus) sont injectés automatiquement comme variables
+      # d'environnement pour ce workflow — aucune clé API à redéclarer ici.
+      - name: Récupérer (ou créer si absent) le certificat de distribution et le profil App Store
+        script: |
+          app-store-connect fetch-signing-files "com.tiinver.ios" \
+            --type IOS_APP_STORE \
+            --create
+
+      - name: Installer le certificat récupéré/créé dans le trousseau du runner
+        script: |
+          keychain initialize
+          keychain add-certificates
+
+      - name: Appliquer le profil récupéré/créé au projet Xcode généré
+        script: |
+          xcode-project use-profiles
+
       - name: Archiver et exporter le .ipa (signature automatique via l'intégration App Store Connect)
         script: |
-          # Pas d'étape `keychain`/`xcode-project use-profiles` manuelle ici (contrairement à
-          # `browserstack-ipa-build`) — c'est tout l'intérêt du bloc `ios_signing`/`integrations`
-          # ci-dessus : Codemagic récupère/génère lui-même le certificat de distribution "App Store"
-          # et le profil de provisionnement correspondant à `com.tiinver.ios`, et les applique au
-          # projet Xcode généré avant cette étape.
           xcode-project build-ipa \
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \

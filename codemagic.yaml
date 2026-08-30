@@ -821,6 +821,59 @@ workflows:
           echo "Taille du .ipa produit :"
           du -h "$CM_BUILD_DIR/build/ios/ipa"/*.ipa
 
+      # **Ajouté (2026-08-28)** — upload automatique vers BrowserStack App Live via leur API REST
+      # (`api-cloud.browserstack.com/app-live/upload`), plutôt qu'un téléversement manuel. Identifiants
+      # `BROWSERSTACK_USERNAME`/`BROWSERSTACK_ACCESS_KEY` ajoutés par l'utilisateur au groupe existant
+      # `firebase_ios_secrets` (déjà lié à ce workflow, voir `environment.groups` en tête — aucune
+      # référence de groupe supplémentaire nécessaire ici). PAS de `set -x` sur cette étape,
+      # volontairement — contrairement à l'étape d'archivage plus haut, `set -x` tracerait la commande
+      # `curl` telle quelle sur la sortie du build, y compris l'argument `-u "$BROWSERSTACK_USERNAME:
+      # $BROWSERSTACK_ACCESS_KEY"` en clair. Le chemin exact du `.ipa` est résolu dynamiquement
+      # (`find ... -print -quit`) plutôt que supposé — un seul `.ipa` est attendu à cet emplacement
+      # (confirmé par l'étape précédente), mais un glob shell direct sur `curl -F` échouerait
+      # silencieusement s'il matchait zéro OU plusieurs fichiers.
+      - name: Uploader le .ipa vers BrowserStack App Live
+        script: |
+          if [ -z "${BROWSERSTACK_USERNAME:-}" ] || [ -z "${BROWSERSTACK_ACCESS_KEY:-}" ]; then
+            echo "ERREUR : BROWSERSTACK_USERNAME/BROWSERSTACK_ACCESS_KEY non définis."
+            echo "À configurer dans Codemagic : Team settings > Environment variables > groupe 'firebase_ios_secrets'."
+            exit 1
+          fi
+
+          IPA_PATH=$(find "$CM_BUILD_DIR/build/ios/ipa" -maxdepth 1 -name "*.ipa" -print -quit)
+          if [ -z "$IPA_PATH" ]; then
+            echo "ERREUR : aucun .ipa trouvé sous $CM_BUILD_DIR/build/ios/ipa à uploader vers BrowserStack."
+            exit 1
+          fi
+          echo "Upload de $IPA_PATH vers BrowserStack App Live..."
+
+          RESPONSE_BODY_FILE="/tmp/browserstack_upload_response.json"
+          HTTP_STATUS=$(curl -s -o "$RESPONSE_BODY_FILE" -w "%{http_code}" \
+            -u "$BROWSERSTACK_USERNAME:$BROWSERSTACK_ACCESS_KEY" \
+            -X POST "https://api-cloud.browserstack.com/app-live/upload" \
+            -F "file=@${IPA_PATH}")
+
+          echo "Code HTTP BrowserStack : $HTTP_STATUS"
+          echo "Réponse brute BrowserStack :"
+          cat "$RESPONSE_BODY_FILE"
+          echo ""
+
+          case "$HTTP_STATUS" in
+            2[0-9][0-9])
+              APP_URL=$(jq -r '.app_url // empty' "$RESPONSE_BODY_FILE" 2>/dev/null)
+              if [ -z "$APP_URL" ]; then
+                echo "ERREUR : upload accepté (code HTTP $HTTP_STATUS) mais aucun 'app_url' dans la réponse — voir la réponse brute ci-dessus."
+                exit 1
+              fi
+              echo "Upload BrowserStack réussi : app_url = $APP_URL"
+              ;;
+            *)
+              ERROR_MSG=$(jq -r '.error // "(pas de champ error dans la réponse — voir la réponse brute ci-dessus)"' "$RESPONSE_BODY_FILE" 2>/dev/null)
+              echo "ERREUR : upload BrowserStack échoué (code HTTP $HTTP_STATUS) — $ERROR_MSG"
+              exit 1
+              ;;
+          esac
+
     artifacts:
       # Nom exact dépend du nom du scheme/projet — Xcode nomme le .ipa exporté d'après le produit
       # buildé (TiinverSwift.ipa attendu, confirmé par le step de vérification ci-dessus qui liste
@@ -828,8 +881,9 @@ workflows:
       - $CM_BUILD_DIR/build/ios/ipa/*.ipa
 
     # Volontairement AUCUNE section `publishing:` (pas de TestFlight/App Store Connect) — le .ipa
-    # produit est destiné à un téléversement MANUEL sur BrowserStack App Live
-    # (https://app-live.browserstack.com), pas à une distribution Apple automatisée.
+    # est envoyé à BrowserStack App Live directement par l'étape "Uploader le .ipa vers BrowserStack
+    # App Live" ci-dessus (API REST BrowserStack, pas le mécanisme `publishing:` de Codemagic, qui
+    # ne connaît que Google Play/App Store Connect).
 
   ios-testflight:
     name: iOS — Build & publication TestFlight (App Store Connect)

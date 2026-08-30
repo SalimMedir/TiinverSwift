@@ -557,10 +557,24 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
+      # **Corrigé (2026-08-28)** — `xcodebuild -resolvePackageDependencies` échouait avec
+      # `-project ''`/`-scheme ''` (valeurs VIDES). Cause confirmée (pas une hypothèse) : la fusion
+      # YAML `<<: *checkpoint_env` (qui apporte `vars: {XCODE_PROJECT, XCODE_SCHEME}` +
+      # `xcode: latest`, voir la définition `&checkpoint_env` en tête de fichier) NE FAIT PAS de
+      # fusion profonde — une clé locale entrant en collision avec une clé de l'ancre REMPLACE
+      # ENTIÈREMENT cette clé, elle ne fusionne pas leurs sous-dictionnaires. Ce workflow déclarait
+      # sa PROPRE clé `vars:` (juste `IPA_EXPORT_METHOD`) en sœur de `<<: *checkpoint_env`, ce qui
+      # écrasait silencieusement tout le `vars:` de l'ancre — `XCODE_PROJECT`/`XCODE_SCHEME`
+      # disparaissaient complètement. Les 3 autres workflows n'ont pas ce problème : aucun ne
+      # redéclare sa propre clé `vars:`. Fixé en fusionnant les 3 variables dans UN SEUL `vars:`
+      # local (duplique les 2 valeurs de l'ancre plutôt que de compter sur `<<` pour les fusionner
+      # — YAML ne le permet pas) ; `xcode: latest` continue de venir de l'ancre sans collision.
       <<: *checkpoint_env
       groups:
         - firebase_ios_secrets
       vars:
+        XCODE_PROJECT: "TiinverSwift.xcodeproj"
+        XCODE_SCHEME: "TiinverSwift"
         # `ad-hoc` par défaut (nécessite un compte Apple Developer payant pour générer le
         # certificat/profil, mais reste valide 1 an et sans limite de 3 apps/7 jours) — changer en
         # `development` si seul un compte Apple gratuit ("Personal Team") est disponible, les deux

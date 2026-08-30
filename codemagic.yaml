@@ -652,16 +652,47 @@ workflows:
             --project "$XCODE_PROJECT" \
             --archive-method "$IPA_EXPORT_METHOD"
 
+          # **Ajouté (2026-08-28)** — malgré `use-profiles` ci-dessus, l'archivage échouait avec
+          # "requires a provisioning profile. Select a provisioning profile in the Signing &
+          # Capabilities editor" : rien ne force `CODE_SIGN_STYLE=Manual` sur le projet généré par
+          # XcodeGen (confirmé absent de `project.yml`, par conception — ce fichier est PARTAGÉ par
+          # les 4 workflows, dont `ios-testflight` qui dépend de la signature AUTOMATIQUE via
+          # `ios_signing:`/l'intégration "Codemagic CI" ; y ajouter `CODE_SIGN_STYLE: Manual`
+          # casserait ce workflow-là). Extrait ici l'UUID et le Team ID RÉELS depuis le profil
+          # qu'on vient d'importer (PAS codés en dur — ce profil est généré/renommé par
+          # l'utilisateur, son nom exact n'est pas connu à l'avance), pour les passer en overrides
+          # `xcodebuild` UNIQUEMENT à ce workflow, via `--archive-xcargs`/`--export-xcargs` de
+          # `xcode-project build-ipa` (étape suivante) — pas de risque pour `ios-testflight`.
+          PROFILE_PLIST_PATH="/tmp/browserstack_profile.plist"
+          security cms -D -i "$PROFILES_HOME/browserstack.mobileprovision" > "$PROFILE_PLIST_PATH"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$PROFILE_PLIST_PATH")
+          PROFILE_TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" "$PROFILE_PLIST_PATH")
+          if [ -z "$PROFILE_UUID" ] || [ -z "$PROFILE_TEAM_ID" ]; then
+            echo "ERREUR : impossible d'extraire UUID/TeamIdentifier du profil importé — voir la sortie 'security cms' ci-dessus."
+            exit 1
+          fi
+          echo "Profil importé : UUID=$PROFILE_UUID, Team=$PROFILE_TEAM_ID"
+          echo "PROFILE_UUID=$PROFILE_UUID" >> $CM_ENV
+          echo "PROFILE_TEAM_ID=$PROFILE_TEAM_ID" >> $CM_ENV
+
       - name: Archiver et exporter le .ipa (device réel, pas simulateur)
         script: |
           # `xcode-project build-ipa` enchaîne `xcodebuild archive -destination 'generic/
           # platform=iOS'` PUIS `xcodebuild -exportArchive` avec l'ExportOptions.plist généré par
           # l'étape précédente — c'est ICI, et seulement ici dans tout ce dépôt, qu'un build DEVICE
-          # (pas simulateur) est réellement produit.
+          # (pas simulateur) est réellement produit. `--archive-xcargs`/`--export-xcargs` : voir le
+          # commentaire détaillé sur l'étape précédente — force explicitement la signature MANUELLE
+          # avec le profil réellement importé (PROFILE_UUID/PROFILE_TEAM_ID, exportés via $CM_ENV),
+          # `PROVISIONING_PROFILE` (clé UUID, historique) ET `PROVISIONING_PROFILE_SPECIFIER` (clé
+          # nom/UUID, moderne) réglés tous les deux par robustesse — un seul suffit normalement,
+          # mais aucun moyen de vérifier lequel Xcode préfère sans un vrai build.
+          SIGNING_XCARGS="CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=$PROFILE_TEAM_ID PROVISIONING_PROFILE=$PROFILE_UUID PROVISIONING_PROFILE_SPECIFIER=$PROFILE_UUID"
           xcode-project build-ipa \
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \
-            --ipa-directory "$CM_BUILD_DIR/build/ios/ipa"
+            --ipa-directory "$CM_BUILD_DIR/build/ios/ipa" \
+            --archive-xcargs "$SIGNING_XCARGS" \
+            --export-xcargs "$SIGNING_XCARGS"
 
       - name: Vérifier explicitement qu'un .ipa a bien été produit
         script: |

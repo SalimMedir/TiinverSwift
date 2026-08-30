@@ -69,6 +69,22 @@ targets:
       # contrairement à `type: folder`/`syncedFolder`, qui préserverait la hiérarchie).
       - path: Resources
         excludes:
+          # Assets.xcassets EXCLU ici (2026-08-28) et référencé séparément ci-dessous, PAR
+          # CONCEPTION — 3ᵉ occurrence de la même classe de problème que GoogleService-Info.plist/
+          # RemoteConfigDefaults.plist (voir les 2 exclusions suivantes) : App Store Connect a
+          # rejeté l'upload avec l'erreur 91111 "Missing app icon... 1024x1024... for the 'Any
+          # Appearance' image well" — alors que l'appiconset est confirmé complet et correct sur le
+          # disque (18 tailles, aucun canal alpha, `Contents.json` valide, vérifiés
+          # programmatiquement avant CHAQUE envoi précédent). Hypothèse retenue, cohérente avec
+          # l'historique déjà documenté de ce projet : `Assets.xcassets`, NESTÉ dans ce dossier
+          # `Resources` de type `group` générique, n'est peut-être pas fiablement détecté par
+          # XcodeGen comme un vrai Asset Catalog (type de référence spécial requis pour qu'`actool`
+          # le compile) — une entrée `resources:` DÉDIÉE et explicite, pointant directement sur le
+          # dossier `.xcassets`, force XcodeGen à appliquer son inférence de type par extension
+          # (documentée, fiable) plutôt que de compter sur un scan récursif générique. Non confirmé
+          # par un log réel (aucun accès Xcode/simulateur local) — meilleure hypothèse disponible
+          # avant un nouveau log de build.
+          - "Assets.xcassets"
           # GoogleService-Info.plist reste EXCLU ici en permanence, PAR CONCEPTION (pas pour éviter
           # une double inclusion avec une entrée `resources:` dédiée — cette approche a été
           # ABANDONNÉE, voir `postBuildScripts:` ci-dessous). Cause confirmée par preuve directe
@@ -93,6 +109,13 @@ targets:
           # `CFBundleVersion`/`Info.plist`), même contournement appliqué directement : copié par le
           # même script `postBuildScripts:` ci-dessous, hors du système resources de XcodeGen.
           - "RemoteConfigDefaults.plist"
+      # Entrée DÉDIÉE et explicite (2026-08-28, voir le commentaire `excludes: - "Assets.xcassets"`
+      # ci-dessus pour le contexte complet) — XcodeGen détecte l'extension `.xcassets` d'un `path:`
+      # référencé DIRECTEMENT et lui assigne le type de référence "Asset Catalog" nécessaire pour
+      # qu'`actool` le compile réellement (`Assets.car`) et en dérive `CFBundleIconName`/
+      # `CFBundleIcons`, plutôt que de compter sur la détection lors d'un scan récursif générique
+      # d'un dossier `type: group` (le `path: Resources` ci-dessus).
+      - path: Resources/Assets.xcassets
     # CONTOURNEMENT COMPLET du système resources: de XcodeGen pour GoogleService-Info.plist
     # (2026-08-13, 4ᵉ tentative — 3 précédentes insuffisantes, voir le commentaire `excludes:`
     # ci-dessus et MIGRATION_PROGRESS.md pour l'historique complet) : XcodeGen exclut

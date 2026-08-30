@@ -686,9 +686,18 @@ workflows:
       app_store_connect: Codemagic CI
     environment:
       <<: *checkpoint_env
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.tiinver.ios
+      # `ios_signing:` (bloc déclaratif) RETIRÉ ici le 2026-08-28 après un 2ᵉ échec réel avec la
+      # MÊME erreur malgré l'ajout de `app-store-connect fetch-signing-files --create` (voir
+      # commentaire détaillé sur cette étape, plus bas) — cause confirmée par la doc Codemagic
+      # (`docs.codemagic.io/yaml-code-signing/signing-ios/`, pas une supposition) : "Use either the
+      # declarative `ios_signing` approach or manual CLI tool scripting, but not both in the same
+      # workflow" — les deux mécanismes de signature sont explicitement documentés comme
+      # redondants/conflictuels. `ios_signing:` déclenche SA PROPRE résolution automatique
+      # (fetch SEUL, sans `--create` — la création via l'UI/API n'a jamais lieu pendant le build
+      # lui-même) indépendamment des scripts `keychain`/`xcode-project use-profiles` ci-dessous —
+      # c'est cette résolution intégrée, sans capacité de création, qui échouait en premier avec
+      # "No matching profiles found", empêchant les étapes manuelles (qui, elles, savent créer via
+      # `--create`) de jamais avoir l'occasion de résoudre le problème.
       groups:
         - firebase_ios_secrets
     scripts:

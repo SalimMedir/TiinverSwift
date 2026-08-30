@@ -673,13 +673,24 @@ workflows:
   ios-testflight:
     name: iOS — Build & publication TestFlight (App Store Connect)
     # Workflow SÉPARÉ des 3 ci-dessus, ne les modifie pas et ne dépend pas d'eux — seul workflow de
-    # ce dépôt qui publie réellement vers TestFlight. Signature gérée AUTOMATIQUEMENT par Codemagic
-    # via l'intégration Apple Developer Portal "Codemagic CI" (Team settings > Integrations > Apple
-    # Developer Portal, configurée par l'utilisateur le 2026-08-28) — contrairement à
-    # `browserstack-ipa-build`, PAS de certificat/profil manuel encodé en base64 : le bloc
-    # `ios_signing` + `integrations.app_store_connect` ci-dessous suffit, Codemagic récupère/crée
-    # lui-même le certificat de distribution et le profil de provisionnement "App Store" adaptés à
-    # `com.tiinver.ios` au moment du build.
+    # ce dépôt qui publie réellement vers TestFlight. Signature gérée via l'intégration Apple
+    # Developer Portal "Codemagic CI" (Team settings > Integrations > Apple Developer Portal,
+    # configurée par l'utilisateur le 2026-08-28) — contrairement à `browserstack-ipa-build`, PAS
+    # de certificat/profil manuel encodé en base64.
+    #
+    # **PAS de bloc `ios_signing:` ici (retiré le 2026-08-28, voir commentaire détaillé sur les
+    # étapes `fetch-signing-files`/`keychain`/`use-profiles` plus bas)** — 2 échecs réels de build
+    # consécutifs ("No matching profiles found for bundle identifier "com.tiinver.ios" and
+    # distribution type "app_store"") ont confirmé que `ios_signing:` déclenche SA PROPRE
+    # vérification/résolution AVANT le démarrage du build (cherche un profil déjà enregistré
+    # manuellement dans Team settings > Code Signing Identities), qui bloque le build avant même
+    # que les étapes manuelles ci-dessous (qui, elles, savent CRÉER un profil manquant via
+    # `--create`) n'aient la moindre chance de s'exécuter — confirmé par la doc Codemagic elle-même
+    # (`docs.codemagic.io/yaml-code-signing/signing-ios/`) : "Use either the declarative
+    # `ios_signing` approach or manual CLI tool scripting, but not both in the same workflow". Seule
+    # l'intégration `integrations.app_store_connect` ci-dessous est nécessaire — elle fournit les
+    # identifiants API que les commandes `app-store-connect` (scripts plus bas) utilisent
+    # directement, sans passer par `ios_signing:`.
     max_build_duration: 60
     instance_type: mac_mini_m2
     integrations:

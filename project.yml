@@ -153,6 +153,24 @@ targets:
       path: Resources/Info.plist
       properties:
         UILaunchScreen: {}
+        # **Ajouté (2026-08-28)** — validation App Store Connect rejetée à l'upload : "No
+        # orientations were specified". Jamais déclaré nulle part dans ce portage (confirmé par
+        # grep exhaustif avant ce correctif). Les 4 valeurs demandées explicitement, telles quelles
+        # — mais à noter pour une future session/décision produit : grep exhaustif de tout
+        # `Sources/TiinverSwift` confirme ZÉRO code de verrouillage d'orientation
+        # (`supportedInterfaceOrientations`/`UIInterfaceOrientationMask`), et aucun écran de l'app
+        # n'a été conçu ni testé pour un rendu paysage — déclarer les 4 valeurs permet à iOS de
+        # RÉELLEMENT faire pivoter l'app si l'utilisateur tourne son téléphone (contrairement à un
+        # simple contournement cosmétique de l'erreur de validation), ce qui pourrait exposer des
+        # écrans jamais pensés pour ce cas. Si un rendu cassé en paysage est constaté après
+        # publication, restreindre à `UIInterfaceOrientationPortrait`/`PortraitUpsideDown` seules
+        # suffirait aussi à satisfaire la validation Apple (elle exige au moins une orientation
+        # déclarée, pas les 4).
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         UIBackgroundModes:
           - audio
           - voip
@@ -238,6 +256,15 @@ targets:
         SWIFT_VERSION: 5.9
         TARGETED_DEVICE_FAMILY: "1,2"
         ENABLE_BITCODE: false
+        # **Ajouté (2026-08-28)** — validation App Store Connect rejetée à l'upload : "Missing
+        # Info.plist value... CFBundleIconName is missing". `Resources/Assets.xcassets/
+        # AppIcon.appiconset/` existe et est référencé nulle part comme build setting (confirmé par
+        # grep exhaustif avant ce correctif — absent de tout `project.yml`) : sans ce réglage, le
+        # compilateur ne sait jamais que cet asset catalog set REPRÉSENTE l'icône de l'app, donc
+        # `CFBundleIconName` n'est jamais généré automatiquement dans l'`Info.plist` compilé,
+        # indépendamment de la présence ou non d'images dans le set. Nom EXACT du dossier
+        # `.appiconset` (sans l'extension), convention Xcode standard.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # 2026-08-13 (suite) — CETTE TENTATIVE SEULE S'EST AVÉRÉE INSUFFISANTE, confirmé par preuve
         # directe (Info.plist extrait d'un `.app` téléchargé via plistlib, `CFBundleVersion`
         # toujours "1" malgré ces réglages). Cause réelle trouvée dans le CODE SOURCE de XcodeGen

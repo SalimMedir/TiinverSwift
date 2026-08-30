@@ -680,13 +680,33 @@ workflows:
           # `xcode-project build-ipa` enchaîne `xcodebuild archive -destination 'generic/
           # platform=iOS'` PUIS `xcodebuild -exportArchive` avec l'ExportOptions.plist généré par
           # l'étape précédente — c'est ICI, et seulement ici dans tout ce dépôt, qu'un build DEVICE
-          # (pas simulateur) est réellement produit. `--archive-xcargs`/`--export-xcargs` : voir le
-          # commentaire détaillé sur l'étape précédente — force explicitement la signature MANUELLE
-          # avec le profil réellement importé (PROFILE_UUID/PROFILE_TEAM_ID, exportés via $CM_ENV),
-          # `PROVISIONING_PROFILE` (clé UUID, historique) ET `PROVISIONING_PROFILE_SPECIFIER` (clé
-          # nom/UUID, moderne) réglés tous les deux par robustesse — un seul suffit normalement,
-          # mais aucun moyen de vérifier lequel Xcode préfère sans un vrai build.
-          SIGNING_XCARGS="CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=$PROFILE_TEAM_ID PROVISIONING_PROFILE=$PROFILE_UUID PROVISIONING_PROFILE_SPECIFIER=$PROFILE_UUID"
+          # (pas simulateur) est réellement produit.
+          #
+          # **Corrigé (2026-08-28)** — le réglage précédent (`PROVISIONING_PROFILE`/
+          # `PROVISIONING_PROFILE_SPECIFIER` inclus dans `--archive-xcargs`, appliqués globalement à
+          # TOUT le build) cassait l'archivage sur ~30 targets de dépendances SPM (Firebase, Google
+          # Utilities, Facebook, GoogleSignIn, Alamofire, Starscream, etc.) : "X does not support
+          # provisioning profiles, but provisioning profile [UUID] has been manually specified" —
+          # ces targets sont des librairies, jamais censées recevoir de profil de provisioning, mais
+          # les xcargs globaux d'`xcodebuild` ne peuvent PAS être scopés à un seul target depuis la
+          # ligne de commande. Confirmé par la doc Codemagic elle-même
+          # (`blog.codemagic.io/code-signing-issues-in-xcode-14-and-how-to-fix-them/`, pas une
+          # supposition) — problème connu et documenté pour EXACTEMENT ce cas (CocoaPods/SPM +
+          # signature manuelle + `xcode-project build-ipa`), avec un correctif précis repris tel
+          # quel : `PROVISIONING_PROFILE`/`PROVISIONING_PROFILE_SPECIFIER` RETIRÉS de
+          # `--archive-xcargs` (seuls `CODE_SIGN_STYLE`/`DEVELOPMENT_TEAM` y restent), et
+          # `CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=NO` ajoutés séparément via
+          # `--archive-flags` — désactive la vérification de profil PENDANT LA COMPILATION (où les
+          # dépendances SPM posent problème), sans empêcher la signature réelle du produit final,
+          # qui a lieu à l'étape d'EXPORT (`--export-xcargs`, INCHANGÉ, garde le profil complet —
+          # l'export ne touche jamais les targets SPM individuels, seulement l'app déjà archivée).
+          # Risque documenté par cette même source Codemagic à surveiller si le build réussit mais
+          # que BrowserStack refuse d'installer l'.ipa : un archive compilé avec signature
+          # désactivée peut dans de rares cas produire un binaire dont la signature finale est jugée
+          # invalide par certains validateurs stricts — non observé ici, mais pas à exclure sans
+          # test réel.
+          ARCHIVE_XCARGS="CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=$PROFILE_TEAM_ID"
+          EXPORT_XCARGS="CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=$PROFILE_TEAM_ID PROVISIONING_PROFILE=$PROFILE_UUID PROVISIONING_PROFILE_SPECIFIER=$PROFILE_UUID"
 
           # **Ajouté (2026-08-28)** — dernier échec (code de sortie 65) sans AUCUN détail au-delà
           # du résumé Codemagic ("Failed to archive", pas la ligne `error:` exacte). Codemagic
@@ -706,8 +726,9 @@ workflows:
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \
             --ipa-directory "$CM_BUILD_DIR/build/ios/ipa" \
-            --archive-xcargs "$SIGNING_XCARGS" \
-            --export-xcargs "$SIGNING_XCARGS"
+            --archive-xcargs "$ARCHIVE_XCARGS" \
+            --archive-flags "CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=NO" \
+            --export-xcargs "$EXPORT_XCARGS"
           BUILD_IPA_EXIT=$?
           set +x
           set -e

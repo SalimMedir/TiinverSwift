@@ -810,6 +810,16 @@ workflows:
             exit 1
           fi
           ls -la "$CM_BUILD_DIR/build/ios/ipa"
+          # **Ajouté (2026-08-28)** — `.ipa` confirmé produit à cet emplacement exact (celui
+          # référencé par `artifacts:` plus bas), mais absent de la section Artifacts de
+          # l'interface Codemagic malgré un pattern `artifacts:` vérifié correct. Précédent RÉEL
+          # dans ce même dépôt (workflow `visual-smoke-test`, étape "Compresser le .app...") : un
+          # `.zip` avait eu EXACTEMENT ce symptôme, avec l'hypothèse jamais tranchée d'une limite de
+          # taille de la collecte d'artifacts Codemagic (aucune limite officielle trouvée dans leur
+          # documentation pour confirmer OU infirmer). Taille affichée explicitement ici pour
+          # trancher cette hypothèse au prochain run, sans avoir à deviner davantage.
+          echo "Taille du .ipa produit :"
+          du -h "$CM_BUILD_DIR/build/ios/ipa"/*.ipa
 
     artifacts:
       # Nom exact dépend du nom du scheme/projet — Xcode nomme le .ipa exporté d'après le produit

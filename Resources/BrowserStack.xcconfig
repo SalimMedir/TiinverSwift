@@ -1,0 +1,14 @@
+// Placeholder — écrasé au moment du build par codemagic.yaml (workflow browserstack-ipa-build,
+// étape "Importer le certificat et le provisioning profile"), avec l'UUID/Team ID réels du
+// profil .mobileprovision importé pour ce build précis. Référencé uniquement par la
+// configuration Xcode "ReleaseBrowserStack" (voir project.yml, options.configs et
+// targets.TiinverSwift.settings.configs) — sans effet sur les 3 autres workflows, qui
+// continuent d'utiliser la configuration "Release" standard.
+//
+// Ce contenu placeholder n'est JAMAIS utilisé pour un vrai build : xcodegen generate n'a besoin
+// que du chemin de ce fichier pour référencer la configuration dans project.pbxproj, pas de son
+// contenu — celui-ci n'est lu par xcodebuild qu'au moment de l'archivage, largement après que le
+// script CI l'ait déjà réécrit avec les vraies valeurs.
+CODE_SIGN_STYLE = Manual
+DEVELOPMENT_TEAM =
+PROVISIONING_PROFILE_SPECIFIER =

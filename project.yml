@@ -6,6 +6,24 @@ options:
   createIntermediateGroups: true
   usesTabs: false
   indentWidth: 4
+  # **Ajouté (2026-08-28)** — 3ᵉ configuration `ReleaseBrowserStack`, dédiée exclusivement au
+  # workflow `browserstack-ipa-build`, PAS utilisée par les 3 autres workflows (qui continuent
+  # d'archiver/builder sur `Release` normalement). Nécessaire car `xcodebuild` n'a AUCUN moyen de
+  # scoper un réglage de signature "seulement au target principal, pas aux ~30 targets de
+  # dépendances SPM" depuis la ligne de commande — un xcarg global (`CODE_SIGN_STYLE=Manual`/
+  # `CODE_SIGNING_ALLOWED=NO`) s'applique à TOUTE la commande `xcodebuild archive`, y compris
+  # `TiinverSwift.app` lui-même (confirmé par un vrai échec : `CODE_SIGNING_ALLOWED=NO` en xcarg
+  # global produisait un `.app` NON SIGNÉ DU TOUT dans l'archive, "ARCHIVE SUCCEEDED" trompeur).
+  # Cette configuration dédiée porte la signature manuelle SEULEMENT sur le target `TiinverSwift`
+  # (voir `targets.TiinverSwift.settings.configs.ReleaseBrowserStack` plus bas, via un `xcconfig`
+  # écrit dynamiquement par `codemagic.yaml` avec l'UUID/Team ID réels du profil importé) — les
+  # targets de dépendances SPM, jamais gérés par XcodeGen (auto-générés par la résolution native
+  # de paquets Xcode, invisibles à `project.yml`), n'héritent JAMAIS de ce réglage par target/
+  # configuration et gardent leur comportement par défaut (aucune exigence de profil).
+  configs:
+    Debug: debug
+    Release: release
+    ReleaseBrowserStack: release
 
 packages:
   Alamofire:
@@ -373,6 +391,20 @@ targets:
         # MIGRATION_PROGRESS.md pour l'historique complet de cette investigation.
         CURRENT_PROJECT_VERSION: "1000"
         MARKETING_VERSION: "1.0.0"
+      # **Ajouté (2026-08-28)** — voir le commentaire détaillé sur `options.configs` en tête de ce
+      # fichier pour le contexte complet. `xcconfig:` SEULEMENT pour la configuration
+      # `ReleaseBrowserStack` — les valeurs réelles (`CODE_SIGN_STYLE`/`DEVELOPMENT_TEAM`/
+      # `PROVISIONING_PROFILE_SPECIFIER`) sont écrites DYNAMIQUEMENT dans ce fichier par
+      # `codemagic.yaml` (étape "Importer le certificat et le provisioning profile"), APRÈS avoir
+      # extrait l'UUID/Team ID réels du profil `.mobileprovision` importé — jamais codées en dur
+      # ici, le nom/UUID exact du profil BrowserStack n'étant pas connu à l'avance. Le fichier
+      # existe en placeholder (voir `Resources/BrowserStack.xcconfig`) pour que `xcodegen generate`
+      # ait un chemin réel à référencer ; XcodeGen n'a besoin que du CHEMIN à la génération, pas de
+      # son CONTENU — celui-ci n'est lu par `xcodebuild` qu'à l'archivage, bien après que la vraie
+      # valeur y ait été écrite.
+      configs:
+        ReleaseBrowserStack:
+          xcconfig: Resources/BrowserStack.xcconfig
     dependencies:
       - package: Alamofire
       - package: SocketIO

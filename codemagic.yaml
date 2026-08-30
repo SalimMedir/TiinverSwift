@@ -652,17 +652,26 @@ workflows:
             --project "$XCODE_PROJECT" \
             --archive-method "$IPA_EXPORT_METHOD"
 
-          # **Ajouté (2026-08-28)** — malgré `use-profiles` ci-dessus, l'archivage échouait avec
-          # "requires a provisioning profile. Select a provisioning profile in the Signing &
-          # Capabilities editor" : rien ne force `CODE_SIGN_STYLE=Manual` sur le projet généré par
-          # XcodeGen (confirmé absent de `project.yml`, par conception — ce fichier est PARTAGÉ par
-          # les 4 workflows, dont `ios-testflight` qui dépend de la signature AUTOMATIQUE via
-          # `ios_signing:`/l'intégration "Codemagic CI" ; y ajouter `CODE_SIGN_STYLE: Manual`
-          # casserait ce workflow-là). Extrait ici l'UUID et le Team ID RÉELS depuis le profil
-          # qu'on vient d'importer (PAS codés en dur — ce profil est généré/renommé par
-          # l'utilisateur, son nom exact n'est pas connu à l'avance), pour les passer en overrides
-          # `xcodebuild` UNIQUEMENT à ce workflow, via `--archive-xcargs`/`--export-xcargs` de
-          # `xcode-project build-ipa` (étape suivante) — pas de risque pour `ios-testflight`.
+          # **Corrigé (2026-08-28, 2ᵉ tour)** — malgré `use-profiles` ci-dessus, l'archivage
+          # échouait avec "requires a provisioning profile...". 1ʳᵉ tentative : forcer
+          # `CODE_SIGN_STYLE=Manual` via des xcargs GLOBAUX (`--archive-xcargs`/`--archive-flags`
+          # sur toute la commande `xcodebuild archive`) — a cassé l'archivage sur les ~30 targets de
+          # dépendances SPM (qui n'acceptent jamais de profil de provisioning), puis (en retirant le
+          # profil des xcargs et en ajoutant `CODE_SIGNING_ALLOWED=NO` pour les contourner) a produit
+          # un `TiinverSwift.app` NON SIGNÉ DU TOUT dans l'archive — `xcodebuild` n'a AUCUN moyen de
+          # scoper un xcarg de ligne de commande à un seul target, `CODE_SIGNING_ALLOWED=NO`
+          # s'appliquait à TOUT, y compris l'app elle-même. **Approche définitive** : une 3ᵉ
+          # configuration Xcode dédiée `ReleaseBrowserStack` (voir `project.yml`, `options.configs`
+          # + `targets.TiinverSwift.settings.configs.ReleaseBrowserStack.xcconfig`) porte la
+          # signature manuelle UNIQUEMENT sur le target `TiinverSwift`, via ce fichier `.xcconfig`
+          # — jamais via un xcarg global, donc jamais propagée aux targets SPM (qui ne sont de toute
+          # façon pas gérés par XcodeGen, invisibles à cette configuration). Extrait ici l'UUID et le
+          # Team ID RÉELS depuis le profil qu'on vient d'importer (PAS codés en dur — ce profil est
+          # généré/renommé par l'utilisateur, son nom exact n'est pas connu à l'avance), puis ÉCRIT
+          # ces valeurs dans `Resources/BrowserStack.xcconfig` (remplace le placeholder) — lu par
+          # `xcodebuild` seulement à l'archivage (étape suivante), largement après cette écriture ;
+          # l'ordre par rapport à `xcodegen generate` (déjà exécuté plus haut) n'a pas d'importance,
+          # XcodeGen n'a eu besoin que du CHEMIN de ce fichier, pas de son contenu.
           PROFILE_PLIST_PATH="/tmp/browserstack_profile.plist"
           security cms -D -i "$PROFILES_HOME/browserstack.mobileprovision" > "$PROFILE_PLIST_PATH"
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$PROFILE_PLIST_PATH")
@@ -675,6 +684,20 @@ workflows:
           echo "PROFILE_UUID=$PROFILE_UUID" >> $CM_ENV
           echo "PROFILE_TEAM_ID=$PROFILE_TEAM_ID" >> $CM_ENV
 
+          # `echo` ligne par ligne plutôt qu'un heredoc — un heredoc hériterait littéralement de
+          # l'indentation YAML de ce bloc `script:` sur chaque ligne de contenu (vérifié avant de
+          # committer, pas supposé), ce qui aurait écrit des clés `.xcconfig` précédées d'espaces.
+          XCCONFIG_PATH="${SRCROOT}/Resources/BrowserStack.xcconfig"
+          {
+            echo "// Écrit dynamiquement par codemagic.yaml (workflow browserstack-ipa-build) — voir"
+            echo "// Resources/BrowserStack.xcconfig et project.yml pour le contexte complet."
+            echo "CODE_SIGN_STYLE = Manual"
+            echo "DEVELOPMENT_TEAM = $PROFILE_TEAM_ID"
+            echo "PROVISIONING_PROFILE_SPECIFIER = $PROFILE_UUID"
+          } > "$XCCONFIG_PATH"
+          echo "Contenu de $XCCONFIG_PATH :"
+          cat "$XCCONFIG_PATH"
+
       - name: Archiver et exporter le .ipa (device réel, pas simulateur)
         script: |
           # `xcode-project build-ipa` enchaîne `xcodebuild archive -destination 'generic/
@@ -682,30 +705,24 @@ workflows:
           # l'étape précédente — c'est ICI, et seulement ici dans tout ce dépôt, qu'un build DEVICE
           # (pas simulateur) est réellement produit.
           #
-          # **Corrigé (2026-08-28)** — le réglage précédent (`PROVISIONING_PROFILE`/
-          # `PROVISIONING_PROFILE_SPECIFIER` inclus dans `--archive-xcargs`, appliqués globalement à
-          # TOUT le build) cassait l'archivage sur ~30 targets de dépendances SPM (Firebase, Google
-          # Utilities, Facebook, GoogleSignIn, Alamofire, Starscream, etc.) : "X does not support
-          # provisioning profiles, but provisioning profile [UUID] has been manually specified" —
-          # ces targets sont des librairies, jamais censées recevoir de profil de provisioning, mais
-          # les xcargs globaux d'`xcodebuild` ne peuvent PAS être scopés à un seul target depuis la
-          # ligne de commande. Confirmé par la doc Codemagic elle-même
-          # (`blog.codemagic.io/code-signing-issues-in-xcode-14-and-how-to-fix-them/`, pas une
-          # supposition) — problème connu et documenté pour EXACTEMENT ce cas (CocoaPods/SPM +
-          # signature manuelle + `xcode-project build-ipa`), avec un correctif précis repris tel
-          # quel : `PROVISIONING_PROFILE`/`PROVISIONING_PROFILE_SPECIFIER` RETIRÉS de
-          # `--archive-xcargs` (seuls `CODE_SIGN_STYLE`/`DEVELOPMENT_TEAM` y restent), et
-          # `CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=NO` ajoutés séparément via
-          # `--archive-flags` — désactive la vérification de profil PENDANT LA COMPILATION (où les
-          # dépendances SPM posent problème), sans empêcher la signature réelle du produit final,
-          # qui a lieu à l'étape d'EXPORT (`--export-xcargs`, INCHANGÉ, garde le profil complet —
-          # l'export ne touche jamais les targets SPM individuels, seulement l'app déjà archivée).
-          # Risque documenté par cette même source Codemagic à surveiller si le build réussit mais
-          # que BrowserStack refuse d'installer l'.ipa : un archive compilé avec signature
-          # désactivée peut dans de rares cas produire un binaire dont la signature finale est jugée
-          # invalide par certains validateurs stricts — non observé ici, mais pas à exclure sans
-          # test réel.
-          ARCHIVE_XCARGS="CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=$PROFILE_TEAM_ID"
+          # **Corrigé (2026-08-28, 3ᵉ tour — approche définitive)** — 2 tentatives précédentes par
+          # xcargs globaux (`--archive-xcargs`/`--archive-flags` appliqués à TOUTE la commande
+          # `xcodebuild archive`) ont chacune cassé quelque chose de différent : la 1ʳᵉ (profil en
+          # xcarg global) cassait les ~30 targets de dépendances SPM ("does not support provisioning
+          # profiles") ; la 2ᵉ (`CODE_SIGNING_ALLOWED=NO` en xcarg global pour contourner ça)
+          # produisait un `TiinverSwift.app` NON SIGNÉ DU TOUT ("ARCHIVE SUCCEEDED" trompeur,
+          # confirmé par un vrai traceback `OSError: ... code object is not signed at all`) —
+          # `xcodebuild` n'a structurellement AUCUN moyen de scoper un xcarg de ligne de commande à
+          # un seul target, un réglage global touche INÉVITABLEMENT l'app ET les dépendances à la
+          # fois. Solution retenue : la signature manuelle vit maintenant UNIQUEMENT dans
+          # `Resources/BrowserStack.xcconfig` (écrit avec les vraies valeurs juste au-dessus),
+          # référencé PAR LE TARGET `TiinverSwift` UNIQUEMENT sur la configuration Xcode dédiée
+          # `ReleaseBrowserStack` (voir `project.yml`, `options.configs` +
+          # `targets.TiinverSwift.settings.configs`) — les targets SPM, jamais gérés par XcodeGen,
+          # n'héritent JAMAIS de ce réglage par construction. Plus AUCUN xcarg de signature global :
+          # `--config ReleaseBrowserStack` (ci-dessous) sélectionne cette configuration pour
+          # l'ARCHIVE ; `--export-xcargs` reste nécessaire pour l'EXPORT (qui ne prend pas de
+          # `-configuration`, opère sur l'archive déjà produite) — INCHANGÉ, garde le profil complet.
           EXPORT_XCARGS="CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=$PROFILE_TEAM_ID PROVISIONING_PROFILE=$PROFILE_UUID PROVISIONING_PROFILE_SPECIFIER=$PROFILE_UUID"
 
           # **Ajouté (2026-08-28)** — dernier échec (code de sortie 65) sans AUCUN détail au-delà
@@ -734,9 +751,8 @@ workflows:
           xcode-project -v build-ipa \
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \
+            --config ReleaseBrowserStack \
             --ipa-directory "$CM_BUILD_DIR/build/ios/ipa" \
-            --archive-xcargs "$ARCHIVE_XCARGS" \
-            --archive-flags "CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=NO" \
             --export-xcargs "$EXPORT_XCARGS"
           BUILD_IPA_EXIT=$?
           set +x

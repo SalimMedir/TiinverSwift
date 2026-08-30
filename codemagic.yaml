@@ -722,7 +722,16 @@ workflows:
           # différent).
           set +e
           set -x
-          xcode-project build-ipa \
+          # **Corrigé (2026-08-28)** — Archive réussie, échec ensuite à l'étape EXPORT
+          # (`Executing "xcode-project build-ipa" failed unexpectedly`, code 9, détail dans un log
+          # non affiché par défaut). `-v`/`--verbose` ajouté ICI, AVANT le sous-commande `build-ipa`
+          # — confirmé par la doc CLI officielle : c'est une option GLOBALE de `xcode-project`, pas
+          # un flag de `build-ipa` (même piège que `--archive-method` précédemment, sur la mauvaise
+          # commande — vérifié cette fois avant d'écrire). `CODE_SIGNING_ALLOWED=NO` volontairement
+          # PAS ajouté à `--export-flags` : confirmé par la même doc, ce réglage ne concerne que la
+          # phase de compilation (archive) — l'export travaille sur une archive déjà compilée, il
+          # n'y a rien à "autoriser/interdire" de signer à ce stade.
+          xcode-project -v build-ipa \
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \
             --ipa-directory "$CM_BUILD_DIR/build/ios/ipa" \
@@ -750,6 +759,18 @@ workflows:
               echo "/tmp/xcodebuild_logs/ introuvable sur ce runner — cherche ailleurs :"
               find "$HOME/Library/Logs" -iname "*xcodebuild*" -o -iname "*TiinverSwift*" 2>/dev/null
             fi
+            # **Ajouté (2026-08-28)** — un échec réel a montré un message distinct : "Executing
+            # 'xcode-project build-ipa' failed unexpectedly. Detailed logs are available at
+            # '/var/folders/.../T/codemagic-30-08-26.log'" — un chemin `$TMPDIR` (dossier temporaire
+            # PAR PROCESSUS de macOS, PAS `/tmp/xcodebuild_logs/` ci-dessus, ni couvert par la
+            # recherche `~/Library/Logs`) que la recherche précédente ne trouvait pas. Ajouté en
+            # complément, pas en remplacement des 2 recherches précédentes.
+            echo "--- Recherche de logs codemagic-*.log dans \$TMPDIR/var/folders ---"
+            find "${TMPDIR:-/var/folders}" -iname "codemagic-*.log" 2>/dev/null | while read -r f; do
+              echo ""
+              echo "===== $f (200 dernières lignes) ====="
+              tail -n 200 "$f"
+            done
             exit "$BUILD_IPA_EXIT"
           fi
 

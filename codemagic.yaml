@@ -687,12 +687,50 @@ workflows:
           # nom/UUID, moderne) réglés tous les deux par robustesse — un seul suffit normalement,
           # mais aucun moyen de vérifier lequel Xcode préfère sans un vrai build.
           SIGNING_XCARGS="CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=$PROFILE_TEAM_ID PROVISIONING_PROFILE=$PROFILE_UUID PROVISIONING_PROFILE_SPECIFIER=$PROFILE_UUID"
+
+          # **Ajouté (2026-08-28)** — dernier échec (code de sortie 65) sans AUCUN détail au-delà
+          # du résumé Codemagic ("Failed to archive", pas la ligne `error:` exacte). Codemagic
+          # exécute chaque `script:` avec un `set -e` implicite — sans ce qui suit, un échec de
+          # `xcode-project build-ipa` interrompt le script IMMÉDIATEMENT, avant qu'aucune ligne de
+          # diagnostic ci-dessous n'ait la moindre chance de s'exécuter. `set +e`/`set -e` autour de
+          # l'appel + capture explicite de `$?` : le script continue volontairement après l'échec,
+          # le temps d'afficher les logs bruts `xcodebuild` (mentionnés par l'outil lui-même dans sa
+          # sortie précédente, `/tmp/xcodebuild_logs/`) AVANT de ressortir avec le même code
+          # d'échec. `set -x` juste autour de l'appel : trace la commande RÉELLEMENT exécutée, avec
+          # les valeurs résolues de `$PROFILE_UUID`/`$PROFILE_TEAM_ID` incluses (utile pour
+          # confirmer qu'elles ne sont pas vides/mal formées, cause plausible d'un futur échec
+          # différent).
+          set +e
+          set -x
           xcode-project build-ipa \
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \
             --ipa-directory "$CM_BUILD_DIR/build/ios/ipa" \
             --archive-xcargs "$SIGNING_XCARGS" \
             --export-xcargs "$SIGNING_XCARGS"
+          BUILD_IPA_EXIT=$?
+          set +x
+          set -e
+
+          if [ "$BUILD_IPA_EXIT" -ne 0 ]; then
+            echo "=================================================================="
+            echo "ERREUR : xcode-project build-ipa a échoué (code $BUILD_IPA_EXIT)."
+            echo "Codemagic n'affiche que le résumé — logs bruts xcodebuild ci-dessous :"
+            echo "=================================================================="
+            if [ -d /tmp/xcodebuild_logs ]; then
+              echo "--- Contenu de /tmp/xcodebuild_logs/ ---"
+              ls -la /tmp/xcodebuild_logs/
+              for f in /tmp/xcodebuild_logs/*; do
+                echo ""
+                echo "===== $f (200 dernières lignes) ====="
+                tail -n 200 "$f"
+              done
+            else
+              echo "/tmp/xcodebuild_logs/ introuvable sur ce runner — cherche ailleurs :"
+              find "$HOME/Library/Logs" -iname "*xcodebuild*" -o -iname "*TiinverSwift*" 2>/dev/null
+            fi
+            exit "$BUILD_IPA_EXIT"
+          fi
 
       - name: Vérifier explicitement qu'un .ipa a bien été produit
         script: |

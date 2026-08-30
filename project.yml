@@ -69,21 +69,18 @@ targets:
       # contrairement à `type: folder`/`syncedFolder`, qui préserverait la hiérarchie).
       - path: Resources
         excludes:
-          # Assets.xcassets EXCLU ici (2026-08-28) et référencé séparément ci-dessous, PAR
-          # CONCEPTION — 3ᵉ occurrence de la même classe de problème que GoogleService-Info.plist/
-          # RemoteConfigDefaults.plist (voir les 2 exclusions suivantes) : App Store Connect a
-          # rejeté l'upload avec l'erreur 91111 "Missing app icon... 1024x1024... for the 'Any
-          # Appearance' image well" — alors que l'appiconset est confirmé complet et correct sur le
-          # disque (18 tailles, aucun canal alpha, `Contents.json` valide, vérifiés
-          # programmatiquement avant CHAQUE envoi précédent). Hypothèse retenue, cohérente avec
-          # l'historique déjà documenté de ce projet : `Assets.xcassets`, NESTÉ dans ce dossier
-          # `Resources` de type `group` générique, n'est peut-être pas fiablement détecté par
-          # XcodeGen comme un vrai Asset Catalog (type de référence spécial requis pour qu'`actool`
-          # le compile) — une entrée `resources:` DÉDIÉE et explicite, pointant directement sur le
-          # dossier `.xcassets`, force XcodeGen à appliquer son inférence de type par extension
-          # (documentée, fiable) plutôt que de compter sur un scan récursif générique. Non confirmé
-          # par un log réel (aucun accès Xcode/simulateur local) — meilleure hypothèse disponible
-          # avant un nouveau log de build.
+          # Assets.xcassets EXCLU ici en permanence (2026-08-28) — **CAUSE CONFIRMÉE par log de
+          # build réel** (pas une hypothèse) : "Archive Succeeded"/"Export Succeeded" sans erreur,
+          # mais `actool` n'apparaît NULLE PART dans le log de build — la chaîne de compilation
+          # n'invoque jamais l'outil qui compile un asset catalog, quelle que soit la façon dont
+          # `Assets.xcassets` est déclaré dans `resources:` (testé avec une entrée dédiée
+          # `path: Resources/Assets.xcassets` en plus de celle-ci — toujours aucune trace d'`actool`
+          # dans le log suivant, tentative abandonnée). Cohérent avec l'historique déjà documenté de
+          # ce projet (GoogleService-Info.plist/RemoteConfigDefaults.plist, ci-dessous) : le système
+          # déclaratif `resources:`/`sources:` de XcodeGen s'est montré à plusieurs reprises peu
+          # fiable pour ce projet précis, cause jamais élucidée dans le détail. Plutôt que de
+          # continuer à deviner une syntaxe `project.yml` différente, même contournement que pour
+          # les 2 fichiers ci-dessous : `actool` invoqué manuellement dans `postBuildScripts:`.
           - "Assets.xcassets"
           # GoogleService-Info.plist reste EXCLU ici en permanence, PAR CONCEPTION (pas pour éviter
           # une double inclusion avec une entrée `resources:` dédiée — cette approche a été
@@ -109,13 +106,6 @@ targets:
           # `CFBundleVersion`/`Info.plist`), même contournement appliqué directement : copié par le
           # même script `postBuildScripts:` ci-dessous, hors du système resources de XcodeGen.
           - "RemoteConfigDefaults.plist"
-      # Entrée DÉDIÉE et explicite (2026-08-28, voir le commentaire `excludes: - "Assets.xcassets"`
-      # ci-dessus pour le contexte complet) — XcodeGen détecte l'extension `.xcassets` d'un `path:`
-      # référencé DIRECTEMENT et lui assigne le type de référence "Asset Catalog" nécessaire pour
-      # qu'`actool` le compile réellement (`Assets.car`) et en dérive `CFBundleIconName`/
-      # `CFBundleIcons`, plutôt que de compter sur la détection lors d'un scan récursif générique
-      # d'un dossier `type: group` (le `path: Resources` ci-dessus).
-      - path: Resources/Assets.xcassets
     # CONTOURNEMENT COMPLET du système resources: de XcodeGen pour GoogleService-Info.plist
     # (2026-08-13, 4ᵉ tentative — 3 précédentes insuffisantes, voir le commentaire `excludes:`
     # ci-dessus et MIGRATION_PROGRESS.md pour l'historique complet) : XcodeGen exclut
@@ -172,6 +162,59 @@ targets:
           - $(SRCROOT)/Resources/RemoteConfigDefaults.plist
         outputFiles:
           - $(BUILT_PRODUCTS_DIR)/$(WRAPPER_NAME)/RemoteConfigDefaults.plist
+      # **Ajouté (2026-08-28)** — 3ᵉ occurrence CONFIRMÉE (par log de build réel, pas une
+      # hypothèse) de la même classe de problème que les 2 scripts ci-dessus : App Store Connect a
+      # rejeté l'upload TestFlight (codes 90022/90023/91111, "Missing app icon... 1024x1024...")
+      # alors que `Assets.xcassets/AppIcon.appiconset` est confirmé complet et correct sur le
+      # disque (18 tailles, aucun canal alpha) — et le log de build confirme `actool` ABSENT de
+      # toute sortie, malgré "Archive Succeeded"/"Export Succeeded" sans erreur : la chaîne de
+      # compilation n'invoque jamais l'outil qui compile un asset catalog, quelle que soit sa
+      # déclaration dans `resources:` (testé avec une entrée dédiée en plus de l'exclusion
+      # ci-dessus, sans effet). `Assets.xcassets` exclu en permanence du système `resources:` de
+      # XcodeGen (voir `excludes: - "Assets.xcassets"` plus haut) — compilé ici manuellement via
+      # `actool` en ligne de commande, puis `Assets.car` copié dans le bundle ET les clés qu'actool
+      # dérive (`CFBundleIconName` notamment) fusionnées dans l'`Info.plist` DÉJÀ COMPILÉ via
+      # `PlistBuddy -c "Merge ..."` — reproduit manuellement ce que la phase de build standard
+      # Xcode pour un asset catalog est censée faire automatiquement mais ne fait apparemment
+      # jamais sur ce projet. Compile AUSSI `AccentColor.colorset` (même catalogue, jamais compilé
+      # non plus jusqu'ici si `actool` n'a jamais tourné — bug silencieux distinct, corrigé au
+      # passage).
+      - name: "Compiler Assets.xcassets manuellement via actool (contournement — actool absent des logs de build malgré resources: correctement déclaré)"
+        script: |
+          ACTOOL_OUTPUT_DIR="${TEMP_DIR}/actool_compiled"
+          mkdir -p "$ACTOOL_OUTPUT_DIR"
+          PARTIAL_PLIST="${TEMP_DIR}/actool_partial_info.plist"
+
+          xcrun actool \
+            --output-format human-readable-text \
+            --notices --warnings --errors \
+            --app-icon AppIcon \
+            --accent-color AccentColor \
+            --enable-on-demand-resources NO \
+            --development-region en \
+            --target-device iphone --target-device ipad \
+            --minimum-deployment-target "${IPHONEOS_DEPLOYMENT_TARGET}" \
+            --platform "${PLATFORM_NAME}" \
+            --output-partial-info-plist "$PARTIAL_PLIST" \
+            --compile "$ACTOOL_OUTPUT_DIR" \
+            "${SRCROOT}/Resources/Assets.xcassets"
+
+          if [ ! -f "$ACTOOL_OUTPUT_DIR/Assets.car" ]; then
+            echo "ERREUR : actool n'a pas produit Assets.car — voir la sortie actool ci-dessus pour la cause exacte."
+            exit 1
+          fi
+
+          cp "$ACTOOL_OUTPUT_DIR/Assets.car" "${BUILT_PRODUCTS_DIR}/${WRAPPER_NAME}/Assets.car"
+          echo "Assets.car compilé et copié dans le bundle."
+
+          BUILT_INFO_PLIST="${BUILT_PRODUCTS_DIR}/${WRAPPER_NAME}/Info.plist"
+          if [ -f "$PARTIAL_PLIST" ]; then
+            /usr/libexec/PlistBuddy -c "Merge $PARTIAL_PLIST" "$BUILT_INFO_PLIST"
+          fi
+          echo "CFBundleIconName après fusion :"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIconName" "$BUILT_INFO_PLIST" || echo "ABSENT — la fusion n'a pas fonctionné comme attendu."
+        outputFiles:
+          - $(BUILT_PRODUCTS_DIR)/$(WRAPPER_NAME)/Assets.car
     info:
       path: Resources/Info.plist
       properties:

@@ -6,24 +6,32 @@ options:
   createIntermediateGroups: true
   usesTabs: false
   indentWidth: 4
-  # **Ajouté (2026-08-28)** — 3ᵉ configuration `ReleaseBrowserStack`, dédiée exclusivement au
-  # workflow `browserstack-ipa-build`, PAS utilisée par les 3 autres workflows (qui continuent
-  # d'archiver/builder sur `Release` normalement). Nécessaire car `xcodebuild` n'a AUCUN moyen de
-  # scoper un réglage de signature "seulement au target principal, pas aux ~30 targets de
-  # dépendances SPM" depuis la ligne de commande — un xcarg global (`CODE_SIGN_STYLE=Manual`/
-  # `CODE_SIGNING_ALLOWED=NO`) s'applique à TOUTE la commande `xcodebuild archive`, y compris
-  # `TiinverSwift.app` lui-même (confirmé par un vrai échec : `CODE_SIGNING_ALLOWED=NO` en xcarg
-  # global produisait un `.app` NON SIGNÉ DU TOUT dans l'archive, "ARCHIVE SUCCEEDED" trompeur).
-  # Cette configuration dédiée porte la signature manuelle SEULEMENT sur le target `TiinverSwift`
-  # (voir `targets.TiinverSwift.settings.configs.ReleaseBrowserStack` plus bas, via un `xcconfig`
-  # écrit dynamiquement par `codemagic.yaml` avec l'UUID/Team ID réels du profil importé) — les
-  # targets de dépendances SPM, jamais gérés par XcodeGen (auto-générés par la résolution native
-  # de paquets Xcode, invisibles à `project.yml`), n'héritent JAMAIS de ce réglage par target/
-  # configuration et gardent leur comportement par défaut (aucune exigence de profil).
-  configs:
-    Debug: debug
-    Release: release
-    ReleaseBrowserStack: release
+
+# **Corrigé (2026-08-28)** — `xcodegen generate` échouait : "Spec validation error: Build setting
+# has invalid build configuration 'ReleaseBrowserStack'". Cause confirmée par la doc officielle
+# XcodeGen (`Docs/ProjectSpec.md`, pas une supposition) : `configs:` est une clé de PREMIER NIVEAU
+# du fichier (sœur de `name`/`options`/`packages`/`targets`), PAS un sous-réglage de `options:` —
+# je l'avais nichée par erreur sous `options:` juste au-dessus, où XcodeGen ne la voit simplement
+# jamais, d'où l'erreur "configuration invalide" dès la génération.
+#
+# 3ᵉ configuration `ReleaseBrowserStack`, dédiée exclusivement au workflow `browserstack-ipa-build`,
+# PAS utilisée par les 3 autres workflows (qui continuent d'archiver/builder sur `Release`
+# normalement). Nécessaire car `xcodebuild` n'a AUCUN moyen de scoper un réglage de signature
+# "seulement au target principal, pas aux ~30 targets de dépendances SPM" depuis la ligne de
+# commande — un xcarg global (`CODE_SIGN_STYLE=Manual`/`CODE_SIGNING_ALLOWED=NO`) s'applique à
+# TOUTE la commande `xcodebuild archive`, y compris `TiinverSwift.app` lui-même (confirmé par un
+# vrai échec : `CODE_SIGNING_ALLOWED=NO` en xcarg global produisait un `.app` NON SIGNÉ DU TOUT
+# dans l'archive, "ARCHIVE SUCCEEDED" trompeur). Cette configuration dédiée porte la signature
+# manuelle SEULEMENT sur le target `TiinverSwift` (voir
+# `targets.TiinverSwift.settings.configs.ReleaseBrowserStack` plus bas, via un `xcconfig` écrit
+# dynamiquement par `codemagic.yaml` avec l'UUID/Team ID réels du profil importé) — les targets de
+# dépendances SPM, jamais gérés par XcodeGen (auto-générés par la résolution native de paquets
+# Xcode, invisibles à `project.yml`), n'héritent JAMAIS de ce réglage par target/configuration et
+# gardent leur comportement par défaut (aucune exigence de profil).
+configs:
+  Debug: debug
+  Release: release
+  ReleaseBrowserStack: release
 
 packages:
   Alamofire:

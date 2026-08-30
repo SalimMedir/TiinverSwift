@@ -774,16 +774,29 @@ workflows:
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME"
 
+      # **Corrigé (2026-08-28)** — le build a échoué à cette étape avec `xcode-project: error:
+      # unrecognized arguments: --archive-method app-store`. Cause confirmée par la doc CLI
+      # officielle (`github.com/codemagic-ci-cd/cli-tools/.../build-ipa.md`, liste exhaustive des
+      # flags) : `xcode-project build-ipa` n'a AUCUN flag `--archive-method` — cette option
+      # appartient à `xcode-project use-profiles` (déjà utilisée avec exactement ce flag dans
+      # `browserstack-ipa-build` ci-dessus), pas à `build-ipa`. `build-ipa` lit la méthode d'export
+      # depuis un `ExportOptions.plist` (par défaut `$HOME/export_options.plist`), qu'il ne génère
+      # PAS lui-même — c'est `use-profiles` qui le fait. Pas de conflit avec `ios_signing:` ici :
+      # seuls `keychain initialize`/`keychain add-certificates` sont documentés comme inutiles avec
+      # `ios_signing:` (celui-ci gère le trousseau automatiquement) — `xcode-project use-profiles`
+      # reste explicitement recommandé par la doc "avant les scripts de build", `ios_signing:` ou
+      # pas, pour appliquer réellement le profil au projet Xcode ET produire ce fichier.
+      - name: Appliquer le profil au projet Xcode et générer l'ExportOptions.plist (App Store)
+        script: |
+          xcode-project use-profiles \
+            --project "$XCODE_PROJECT" \
+            --archive-method app-store
+
       - name: Archiver et exporter le .ipa (signature automatique via l'intégration App Store Connect)
         script: |
-          # Pas d'étape `fetch-signing-files`/`keychain`/`use-profiles` manuelle ici — le bloc
-          # `ios_signing:` (voir commentaire détaillé en tête de ce workflow) gère la résolution du
-          # certificat/profil automatiquement AVANT cette étape, maintenant que les deux existent
-          # bien dans le registre Codemagic (Team settings > Code Signing Identities).
           xcode-project build-ipa \
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \
-            --archive-method app-store \
             --ipa-directory "$CM_BUILD_DIR/build/ios/ipa"
 
       - name: Vérifier explicitement qu'un .ipa a bien été produit

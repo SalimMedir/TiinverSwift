@@ -678,37 +678,34 @@ workflows:
     # configurée par l'utilisateur le 2026-08-28) — contrairement à `browserstack-ipa-build`, PAS
     # de certificat/profil manuel encodé en base64.
     #
-    # **PAS de bloc `ios_signing:` ici (retiré le 2026-08-28, voir commentaire détaillé sur les
-    # étapes `fetch-signing-files`/`keychain`/`use-profiles` plus bas)** — 2 échecs réels de build
-    # consécutifs ("No matching profiles found for bundle identifier "com.tiinver.ios" and
-    # distribution type "app_store"") ont confirmé que `ios_signing:` déclenche SA PROPRE
-    # vérification/résolution AVANT le démarrage du build (cherche un profil déjà enregistré
-    # manuellement dans Team settings > Code Signing Identities), qui bloque le build avant même
-    # que les étapes manuelles ci-dessous (qui, elles, savent CRÉER un profil manquant via
-    # `--create`) n'aient la moindre chance de s'exécuter — confirmé par la doc Codemagic elle-même
-    # (`docs.codemagic.io/yaml-code-signing/signing-ios/`) : "Use either the declarative
-    # `ios_signing` approach or manual CLI tool scripting, but not both in the same workflow". Seule
-    # l'intégration `integrations.app_store_connect` ci-dessous est nécessaire — elle fournit les
-    # identifiants API que les commandes `app-store-connect` (scripts plus bas) utilisent
-    # directement, sans passer par `ios_signing:`.
+    # **Historique du bloc `ios_signing:` ci-dessous (pour une future session — ne pas répéter ce
+    # cycle sans relire ceci)** : retiré une première fois le 2026-08-28 après 2 échecs réels
+    # ("No matching profiles found for bundle identifier "com.tiinver.ios" and distribution type
+    # "app_store"") — à l'époque, AUCUN certificat de distribution/profil "App Store" n'existait
+    # encore, ni sur developer.apple.com (vérifié directement par l'utilisateur), ni dans le
+    # registre Codemagic (Team settings > Code Signing Identities), et `ios_signing:` seul ne sait
+    # que FETCH un profil déjà enregistré, jamais en CRÉER un pendant le build (confirmé par la
+    # doc Codemagic, `docs.codemagic.io/yaml-code-signing/signing-ios/`). Remplacé temporairement
+    # par les outils CLI manuels (`app-store-connect fetch-signing-files --create`), qui ont
+    # ensuite buté sur une 2ᵉ erreur ("Cannot save Signing Certificates without certificate private
+    # key" — un certificat correspondant existait déjà quelque part sans que Codemagic ait accès à
+    # sa clé privée). **Résolu le 2026-08-28** en créant directement le certificat "Apple
+    # Distribution" ET le profil "Tiinver App Store Profile" (App Store Connect, `com.tiinver.ios`)
+    # dans le registre Codemagic lui-même (Team settings > Code Signing Identities), où leur clé
+    # privée est donc garantie présente — `ios_signing:` REMIS en place ci-dessous, cette fois avec
+    # un profil réellement trouvable dès la vérification pré-build. Les 3 étapes CLI manuelles
+    # (`fetch-signing-files`/`keychain add-certificates`/`xcode-project use-profiles`) ont été
+    # retirées des scripts plus bas — inutiles maintenant, et documentées comme conflictuelles avec
+    # `ios_signing:` par la doc Codemagic elle-même si jamais réintroduites en même temps.
     max_build_duration: 60
     instance_type: mac_mini_m2
     integrations:
       app_store_connect: Codemagic CI
     environment:
       <<: *checkpoint_env
-      # `ios_signing:` (bloc déclaratif) RETIRÉ ici le 2026-08-28 après un 2ᵉ échec réel avec la
-      # MÊME erreur malgré l'ajout de `app-store-connect fetch-signing-files --create` (voir
-      # commentaire détaillé sur cette étape, plus bas) — cause confirmée par la doc Codemagic
-      # (`docs.codemagic.io/yaml-code-signing/signing-ios/`, pas une supposition) : "Use either the
-      # declarative `ios_signing` approach or manual CLI tool scripting, but not both in the same
-      # workflow" — les deux mécanismes de signature sont explicitement documentés comme
-      # redondants/conflictuels. `ios_signing:` déclenche SA PROPRE résolution automatique
-      # (fetch SEUL, sans `--create` — la création via l'UI/API n'a jamais lieu pendant le build
-      # lui-même) indépendamment des scripts `keychain`/`xcode-project use-profiles` ci-dessous —
-      # c'est cette résolution intégrée, sans capacité de création, qui échouait en premier avec
-      # "No matching profiles found", empêchant les étapes manuelles (qui, elles, savent créer via
-      # `--create`) de jamais avoir l'occasion de résoudre le problème.
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.tiinver.ios
       groups:
         - firebase_ios_secrets
     scripts:
@@ -777,38 +774,12 @@ workflows:
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME"
 
-      # **Corrigé (2026-08-28)** — 1ᵉʳ run réel de ce workflow échoué avec "No matching profiles
-      # found for bundle identifier "com.tiinver.ios" and distribution type "app_store"". Cause
-      # confirmée par la doc Codemagic (`docs.codemagic.io/yaml-code-signing/signing-ios/` ET
-      # `.../alternative-code-signing-methods/`, pas une supposition) : le bloc `ios_signing:`
-      # déclaratif seul (ci-dessus) suppose qu'un certificat de distribution/profil "App Store"
-      # correspondant EXISTE DÉJÀ (sur le compte Apple Developer, ou uploadé manuellement dans
-      # Codemagic, Team settings > Code Signing Identities) — il ne le crée jamais lui-même
-      # pendant le build. Pour le tout premier envoi App Store de cette app (aucun profil de
-      # distribution encore généré côté Apple), il faut explicitement passer par les outils CLI
-      # `codemagic-cli-tools` (déjà utilisés dans `browserstack-ipa-build`) avec le flag `--create`
-      # de `app-store-connect fetch-signing-files` — "fetch OR create" : réutilise un
-      # certificat/profil existant s'il y en a déjà un (builds suivants), sinon en crée un nouveau
-      # via l'API (ce build-ci). Les identifiants de l'intégration nommée "Codemagic CI"
-      # (`integrations.app_store_connect` ci-dessus) sont injectés automatiquement comme variables
-      # d'environnement pour ce workflow — aucune clé API à redéclarer ici.
-      - name: Récupérer (ou créer si absent) le certificat de distribution et le profil App Store
-        script: |
-          app-store-connect fetch-signing-files "com.tiinver.ios" \
-            --type IOS_APP_STORE \
-            --create
-
-      - name: Installer le certificat récupéré/créé dans le trousseau du runner
-        script: |
-          keychain initialize
-          keychain add-certificates
-
-      - name: Appliquer le profil récupéré/créé au projet Xcode généré
-        script: |
-          xcode-project use-profiles
-
       - name: Archiver et exporter le .ipa (signature automatique via l'intégration App Store Connect)
         script: |
+          # Pas d'étape `fetch-signing-files`/`keychain`/`use-profiles` manuelle ici — le bloc
+          # `ios_signing:` (voir commentaire détaillé en tête de ce workflow) gère la résolution du
+          # certificat/profil automatiquement AVANT cette étape, maintenant que les deux existent
+          # bien dans le registre Codemagic (Team settings > Code Signing Identities).
           xcode-project build-ipa \
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \

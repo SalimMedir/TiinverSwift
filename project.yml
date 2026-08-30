@@ -243,6 +243,29 @@ targets:
             CFBundleURLSchemes:
               - myapp
               - tiinver
+        # **Ajouté (2026-08-28)** — l'appiconset complet (18 tailles, `AppIcon.appiconset`,
+        # `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon` ci-dessous) n'a PAS suffi : App Store
+        # Connect a quand même rejeté l'upload (codes 90022/90023) en réclamant les icônes
+        # 120x120 (iPhone) et 152x152 (iPad) — malgré leur présence confirmée dans l'asset
+        # catalog, tailles et absence de canal alpha vérifiées avant chaque envoi précédent. Le
+        # message d'erreur Apple lui-même suggère explicitement ce filet de sécurité : "the icon
+        # may be required in the bundle outside of an asset catalog. Make sure the Info.plist
+        # file includes appropriate entries referencing the file." `Resources/Icon-120.png`/
+        # `Icon-152.png` (copies des mêmes fichiers déjà validés dans l'appiconset) sont des
+        # fichiers PLATS à la racine de `Resources/` (PAS dans `Assets.xcassets`), inclus via le
+        # `resources: - path: Resources` déjà existant plus bas (mécanisme déjà éprouvé sur ce
+        # projet pour d'autres fichiers plats). Non testé sur un vrai build — à confirmer au
+        # prochain envoi.
+        CFBundleIcons:
+          CFBundlePrimaryIcon:
+            CFBundleIconFiles:
+              - Icon-120
+            CFBundleIconName: AppIcon
+        CFBundleIcons~ipad:
+          CFBundlePrimaryIcon:
+            CFBundleIconFiles:
+              - Icon-152
+            CFBundleIconName: AppIcon
     settings:
       base:
         # CONFIRMÉ (pas une supposition) par Resources/GoogleService-Info.plist, clé BUNDLE_ID

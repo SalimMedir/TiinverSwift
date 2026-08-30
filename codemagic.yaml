@@ -669,3 +669,133 @@ workflows:
     # Volontairement AUCUNE section `publishing:` (pas de TestFlight/App Store Connect) — le .ipa
     # produit est destiné à un téléversement MANUEL sur BrowserStack App Live
     # (https://app-live.browserstack.com), pas à une distribution Apple automatisée.
+
+  ios-testflight:
+    name: iOS — Build & publication TestFlight (App Store Connect)
+    # Workflow SÉPARÉ des 3 ci-dessus, ne les modifie pas et ne dépend pas d'eux — seul workflow de
+    # ce dépôt qui publie réellement vers TestFlight. Signature gérée AUTOMATIQUEMENT par Codemagic
+    # via l'intégration Apple Developer Portal "Codemagic CI" (Team settings > Integrations > Apple
+    # Developer Portal, configurée par l'utilisateur le 2026-08-28) — contrairement à
+    # `browserstack-ipa-build`, PAS de certificat/profil manuel encodé en base64 : le bloc
+    # `ios_signing` + `integrations.app_store_connect` ci-dessous suffit, Codemagic récupère/crée
+    # lui-même le certificat de distribution et le profil de provisionnement "App Store" adaptés à
+    # `com.tiinver.ios` au moment du build.
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: Codemagic CI
+    environment:
+      <<: *checkpoint_env
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.tiinver.ios
+      groups:
+        - firebase_ios_secrets
+    scripts:
+      - name: Installer XcodeGen
+        script: |
+          brew list xcodegen &>/dev/null || brew install xcodegen
+
+      - name: Décoder GoogleService-Info.plist depuis le secret d'environnement
+        script: |
+          if [ -z "${GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" ]; then
+            echo "ERREUR : la variable d'environnement GOOGLE_SERVICE_INFO_PLIST_BASE64 n'est pas définie."
+            echo "À configurer dans Codemagic : Team settings > Environment variables > groupe 'firebase_ios_secrets'."
+            exit 1
+          fi
+          mkdir -p Resources
+          echo "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > Resources/GoogleService-Info.plist
+          plutil -lint Resources/GoogleService-Info.plist
+
+      - name: xcodegen generate
+        script: |
+          xcodegen generate
+
+      # `project.yml` n'a jamais réglé `CURRENT_PROJECT_VERSION` de façon à ce que ça compte
+      # réellement pour `CFBundleVersion` — cause déjà identifiée avec certitude ailleurs dans ce
+      # même fichier (workflow `visual-smoke-test`, étape "Forcer CFBundleVersion/
+      # CFBundleShortVersionString...") : `InfoPlistGenerator.swift` de XcodeGen code en dur
+      # `CFBundleVersion = "1"` dans l'`Info.plist` généré, quoi que `project.yml` déclare. Laisser
+      # cette valeur figée à "1" est FATAL spécifiquement pour TestFlight (contrairement aux 3
+      # autres workflows, qui n'envoient jamais rien à App Store Connect) : Apple rejette tout build
+      # dont le `CFBundleVersion` n'est pas STRICTEMENT supérieur au dernier déjà accepté pour la
+      # même app — le tout premier envoi réussirait, puis CHAQUE envoi suivant échouerait avec "The
+      # bundle version must be higher than the previously uploaded version". Interroge donc
+      # l'API App Store Connect (même intégration "Codemagic CI") pour le dernier numéro de build
+      # réellement accepté, puis force le numéro suivant via PlistBuddy sur l'`Info.plist` QUE
+      # XcodeGen vient de produire — même stratégie de contournement direct, déjà éprouvée sur ce
+      # projet, que pour `GoogleService-Info.plist`/`RemoteConfigDefaults.plist` (voir
+      # `project.yml`, section `postBuildScripts:`).
+      - name: Calculer et forcer le prochain numéro de build (requis par TestFlight, incrémental)
+        script: |
+          APPLE_APP_ID=$(app-store-connect apps list --bundle-id-identifier "com.tiinver.ios" --json | jq -r '.[0].id')
+          if [ -z "$APPLE_APP_ID" ] || [ "$APPLE_APP_ID" = "null" ]; then
+            echo "ERREUR : aucune app 'com.tiinver.ios' trouvée sur App Store Connect via l'intégration 'Codemagic CI'."
+            echo "L'app doit exister sur App Store Connect (App Store Connect > Mes Apps > +) AVANT le premier envoi TestFlight — Codemagic ne la crée pas lui-même."
+            exit 1
+          fi
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-build-number "$APPLE_APP_ID" 2>/dev/null || echo 0)
+          LATEST_BUILD_NUMBER=${LATEST_BUILD_NUMBER:-0}
+          NEW_BUILD_NUMBER=$((LATEST_BUILD_NUMBER + 1))
+          echo "Dernier build number sur App Store Connect : $LATEST_BUILD_NUMBER → prochain : $NEW_BUILD_NUMBER"
+
+          INFO_PLIST_PATH="Resources/Info.plist"
+          if /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$INFO_PLIST_PATH" > /dev/null 2>&1; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEW_BUILD_NUMBER" "$INFO_PLIST_PATH"
+          else
+            /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $NEW_BUILD_NUMBER" "$INFO_PLIST_PATH"
+          fi
+          echo "CFBundleVersion forcé à $NEW_BUILD_NUMBER dans $INFO_PLIST_PATH"
+
+      - name: Install Metal Toolchain
+        script: |
+          xcodebuild -downloadComponent MetalToolchain
+
+      - name: Résoudre les dépendances Swift Package Manager
+        script: |
+          xcodebuild -resolvePackageDependencies \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME"
+
+      - name: Archiver et exporter le .ipa (signature automatique via l'intégration App Store Connect)
+        script: |
+          # Pas d'étape `keychain`/`xcode-project use-profiles` manuelle ici (contrairement à
+          # `browserstack-ipa-build`) — c'est tout l'intérêt du bloc `ios_signing`/`integrations`
+          # ci-dessus : Codemagic récupère/génère lui-même le certificat de distribution "App Store"
+          # et le profil de provisionnement correspondant à `com.tiinver.ios`, et les applique au
+          # projet Xcode généré avant cette étape.
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME" \
+            --archive-method app-store \
+            --ipa-directory "$CM_BUILD_DIR/build/ios/ipa"
+
+      - name: Vérifier explicitement qu'un .ipa a bien été produit
+        script: |
+          IPA_COUNT=$(find "$CM_BUILD_DIR/build/ios/ipa" -maxdepth 1 -name "*.ipa" 2>/dev/null | wc -l | tr -d ' ')
+          echo "Nombre de .ipa trouvés dans $CM_BUILD_DIR/build/ios/ipa : $IPA_COUNT"
+          if [ "$IPA_COUNT" -eq 0 ]; then
+            echo "ERREUR : aucun .ipa produit malgré un step précédent réussi — ce workflow échoue"
+            echo "explicitement ici plutôt que de laisser la section Artifacts silencieusement vide."
+            exit 1
+          fi
+          ls -la "$CM_BUILD_DIR/build/ios/ipa"
+
+    artifacts:
+      - $CM_BUILD_DIR/build/ios/ipa/*.ipa
+
+    publishing:
+      app_store_connect:
+        # `auth: integration` — utilise explicitement l'intégration nommée déclarée dans
+        # `integrations.app_store_connect` ci-dessus ("Codemagic CI"), pas une clé API séparée à
+        # redéclarer ici.
+        auth: integration
+        submit_to_testflight: true
+        # PAS de `beta_groups:` (demande explicite) — le build reste disponible aux testeurs
+        # INTERNES par défaut (comptes ayant un rôle App Store Connect sur cette app, ajoutés au
+        # groupe interne par défaut), sans passer par la revue Beta App Review qu'exigerait un
+        # groupe de testeurs EXTERNES. Prérequis côté App Store Connect, hors de portée de ce
+        # dépôt : l'app "com.tiinver.ios" doit déjà exister sous App Store Connect > Mes Apps (voir
+        # l'étape "Calculer et forcer le prochain numéro de build" ci-dessus, qui échoue
+        # explicitement si ce n'est pas le cas), et au moins un testeur interne doit être invité
+        # sur ce compte pour recevoir réellement le build.

@@ -687,7 +687,17 @@ workflows:
           # `echo` ligne par ligne plutôt qu'un heredoc — un heredoc hériterait littéralement de
           # l'indentation YAML de ce bloc `script:` sur chaque ligne de contenu (vérifié avant de
           # committer, pas supposé), ce qui aurait écrit des clés `.xcconfig` précédées d'espaces.
-          XCCONFIG_PATH="${SRCROOT}/Resources/BrowserStack.xcconfig"
+          #
+          # **Corrigé (2026-08-28)** — `${SRCROOT}/Resources/...` donnait `/Resources/...`
+          # (chemin absolu depuis la racine du système, introuvable) : `SRCROOT` est une variable
+          # d'environnement XCODE, définie UNIQUEMENT à l'intérieur d'un vrai build Xcode
+          # (`postBuildScripts:` de `project.yml`, où elle est utilisée correctement ailleurs dans
+          # ce même fichier) — CETTE étape est un `scripts:` Codemagic classique, exécuté HORS de
+          # tout build Xcode, où `SRCROOT` n'existe simplement pas (chaîne vide). Chemin RELATIF
+          # utilisé à la place, cohérent avec toutes les autres étapes `scripts:` de ce fichier qui
+          # référencent `Resources/...` (ex. "Décoder GoogleService-Info.plist" ci-dessus) — le
+          # dossier de travail courant d'une étape Codemagic `scripts:` est déjà la racine du clone.
+          XCCONFIG_PATH="Resources/BrowserStack.xcconfig"
           {
             echo "// Écrit dynamiquement par codemagic.yaml (workflow browserstack-ipa-build) — voir"
             echo "// Resources/BrowserStack.xcconfig et project.yml pour le contexte complet."

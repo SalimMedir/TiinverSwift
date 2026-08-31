@@ -595,20 +595,40 @@ final class AnimemesEditorState: ObservableObject {
     /// `scaleChanged` l'appellent tous les 3, sans savoir si le lien existe déjà) — un lien déjà
     /// actif n'est jamais recréé, seul `activeCaptureObjectIndex` est rafraîchi (sans effet en
     /// pratique, un même geste continu ne change jamais de calque cible).
+    /// **Corrigé (2026-08-31, PRIORITÉ 1 — bug physique "objet difficile/impossible à déplacer avec
+    /// Capture automatique active")** — cause racine identifiée par comparaison précise avec Android
+    /// avant toute correction : `cummuleMatrix` (`MemesView2.java:1451-1477`) est bien déclenché de
+    /// façon DIFFÉRÉE (`post(() -> cummuleMatrix(...))`, `View.post` = `Handler`/`Looper` du fil
+    /// principal), mais s'exécute ensuite de façon SYNCHRONE et immédiate une fois son tour venu —
+    /// `Handler.post` est une primitive native légère, une simple entrée dans la file de messages du
+    /// fil principal. La première version de ce correctif (revue B1) enveloppait chaque tick dans un
+    /// `Task { @MainActor in ... }` **non structuré** — recréé à CHAQUE rafraîchissement d'écran
+    /// (jusqu'à 120 fois/s sur ProMotion) tant qu'un geste de capture était actif. Contrairement à
+    /// `Handler.post`, chaque `Task` non structuré implique une allocation + un ordonnancement par
+    /// l'exécuteur de concurrence Swift — un coût mesurable, répété à un rythme élevé, en concurrence
+    /// DIRECTE avec le traitement des évènements tactiles de `DragGesture`/`MagnificationGesture`/
+    /// `RotationGesture` sur ce même fil principal. Pire : l'exécution d'un `Task` n'est pas
+    /// immédiate — elle est planifiée pour un tour ULTÉRIEUR de la boucle d'exécution, sans délai
+    /// borné. Sous charge (fil principal occupé par le geste actif), les tâches créées s'accumulent
+    /// et finissent par s'exécuter en RAFALE, plusieurs quasi simultanément — `lastAutoCaptureTime`
+    /// (throttle de 33ms) rejette alors presque toutes les tâches d'une même rafale, cassant la
+    /// cadence d'enregistrement voulue ET aggravant la contention du fil principal, produisant le
+    /// symptôme observé physiquement (objet qui suit mal le doigt).
+    ///
+    /// **Correctif** : `AnimemesCaptureTickerProxy` devient lui-même `@MainActor` — `tick(_:)`
+    /// (toujours appelé par `CADisplayLink` sur le fil principal, `.add(to: .main, ...)`) peut alors
+    /// appeler `captureFrameIfNeeded` DIRECTEMENT et SYNCHRONEMENT, sans file d'attente ni allocation
+    /// de tâche — le plus proche équivalent Swift du `Handler.post` Android : une entrée légère dans
+    /// le tour de boucle du fil principal, exécutée immédiatement à son tour, jamais retardée par son
+    /// propre ordonnancement. `CADisplayLink` lui-même n'est PAS la cause du problème (conservé tel
+    /// quel, voir sa justification ci-dessus) — seul le relais `Task` l'était.
     private func beginCaptureTickerIfNeeded(objectIndex idx: Int) {
         guard autoCaptureEnabled else { return }
         activeCaptureObjectIndex = idx
         guard captureDisplayLink == nil else { return }
-        // Saut explicite vers `@MainActor` — même motif que `AnimationEnginePlaybackDelegate`
-        // ci-dessous (voir sa doc de tête) : le rappel `CADisplayLink` n'arrive pas dans un contexte
-        // statiquement connu comme `@MainActor`, même si `.add(to: .main, ...)` garantit en pratique
-        // qu'il s'exécute sur le fil principal.
         let proxy = AnimemesCaptureTickerProxy { [weak self] in
-            guard let self else { return }
-            Task { @MainActor in
-                guard let target = self.activeCaptureObjectIndex, target < self.layers.count else { return }
-                self.captureFrameIfNeeded(objectIndex: target)
-            }
+            guard let self, let target = self.activeCaptureObjectIndex, target < self.layers.count else { return }
+            self.captureFrameIfNeeded(objectIndex: target)
         }
         captureDisplayLinkProxy = proxy
         let link = CADisplayLink(target: proxy, selector: #selector(AnimemesCaptureTickerProxy.tick(_:)))
@@ -1267,13 +1287,30 @@ final class AnimemesEditorState: ObservableObject {
         version += 1
     }
 
-    /// Port de `AnimemesCompound.isAnimation()` (`AnimationUtils.isAnimation(composer, FrameCount)`)
-    /// — vrai si au moins un calque porte une trajectoire animée. Signal Swift équivalent le plus
-    /// fiable disponible dans ce portage : présence d'une piste de keyframes non vide sur au moins
-    /// un calque (`hasKeyframes`) — Android teste aussi le nombre de `Transform` capturées par
-    /// geste en mode `automateCapture`, chemin non porté dans cette passe (voir `MIGRATION_AUDIT.md`).
+    /// Port de `AnimemesCompound.isAnimation()` → `AnimationUtils.isAnimation(composer, FrameCount)`
+    /// (`core/AnimationUtils.java:10-23`, lu en entier) — vrai si au moins un calque porte une
+    /// trajectoire animée.
+    ///
+    /// **Corrigé (2026-08-31, PRIORITÉ 1 — bug physique "export = image statique")** — cause racine
+    /// confirmée avec certitude par lecture directe d'Android : ce calcul ne testait QUE
+    /// `hasKeyframes` (présence d'une piste de keyframes ÉPARSE, mécanisme du bouton ◆ explicite),
+    /// alors qu'`AnimationUtils.isAnimation` teste RÉELLEMENT 3 conditions (n'importe laquelle vraie
+    /// suffit) : `frameCount > 2` (compteur global, non repris ici — redondant avec la 2ᵉ condition
+    /// dans TOUS les cas pertinents à ce correctif) ; **`obj.getTransforms().size() > 2`** — le
+    /// tableau DENSE alimenté par la capture automatique (`captureFrameIfNeeded`, PAS
+    /// `keyframeTracks`) ; `obj.getBitmaps().size() > 2` (texture/GIF animé par timestamps). Un
+    /// ancien commentaire de ce fichier documentait déjà ce trou ("Android teste aussi le nombre de
+    /// Transform capturées... chemin non porté dans cette passe") en le déférant sciemment, à un
+    /// moment où la capture automatique n'était pas encore réellement câblée. Depuis son câblage réel
+    /// (commit `3522dc4`), toute composition animée UNIQUEMENT par capture automatique a
+    /// `hasKeyframes == false` (le mécanisme dense n'écrit jamais dans `keyframeTracks`) — `export()`
+    /// routait donc silencieusement vers `exportStaticImage()` (JPEG figé) au lieu du vrai pipeline
+    /// vidéo `AnimemesExporter`, exactement le symptôme rapporté par le test physique. Les 2
+    /// conditions manquantes sont ajoutées ici ; `hasKeyframes` reste conservé (pas dans la fonction
+    /// Android d'origine, mais aucune raison de retirer une condition dont le chemin — export animé
+    /// par keyframes explicites — est déjà validé et non signalé comme cassé).
     var hasAnimation: Bool {
-        composer.layers.contains { $0.hasKeyframes }
+        composer.layers.contains { $0.hasKeyframes || $0.transforms.count > 2 || $0.bitmaps.count > 2 }
     }
 
     // MARK: - Modèles de mouvement (port de `saveAsMotionTemplate`/`MotionTemplateManager`,
@@ -1571,6 +1608,15 @@ extension AnimemesEditorState: AnimationEnginePlaybackDelegate {
 /// `DisplayLinkProxy` dans `AnimationEngine.swift` (`private`, donc non réutilisable depuis ce
 /// fichier), reproduit ici à l'identique pour `beginCaptureTickerIfNeeded`/`stopCaptureTicker`
 /// (voir `AnimemesEditorState`).
+///
+/// **`@MainActor` (2026-08-31, correction du bug physique "objet difficile à déplacer" — voir la
+/// doc complète sur `beginCaptureTickerIfNeeded`)** — `CADisplayLink.add(to: .main, forMode:)`
+/// garantit que `tick(_:)` s'exécute TOUJOURS sur le fil principal ; annoter la classe elle-même
+/// permet à `tick(_:)` d'appeler `onTick()` (donc, en amont, `AnimemesEditorState.
+/// captureFrameIfNeeded`) directement et SYNCHRONEMENT, sans passer par un `Task` non structuré
+/// recréé à chaque tick — élimine le coût d'allocation/ordonnancement répété qui entrait en
+/// concurrence avec le traitement des gestes SwiftUI actifs.
+@MainActor
 private final class AnimemesCaptureTickerProxy: NSObject {
     private let onTick: () -> Void
 

@@ -217,8 +217,9 @@ enum LayerRenderer {
     /// calque (export `MP4Encoder`, `recomposeObjects` — pas encore portés, mais le mécanisme de
     /// "baking" est reproduit dès maintenant pour rester cohérent avec eux le moment venu).
     /// **Corrigé (2026-08-28, V6-F-006)** — `currentNs` ajouté (optionnel, `nil` par défaut =
-    /// comportement statique inchangé pour les appelants "aplatissement"/`isSliderPreview`, voir
-    /// `exportStaticImage`/`repeatBackgroundImage`). Quand fourni, reproduit EXACTEMENT le
+    /// comportement statique inchangé pour l'appelant "aplatissement" `exportStaticImage`, seul
+    /// site qui passe encore `nil` délibérément — `repeatBackgroundImage` passe désormais un
+    /// horodatage réel depuis le correctif du finding F1, 2026-08-31). Quand fourni, reproduit EXACTEMENT le
     /// repli `hasTransformKeyframes`/`interpolatedMatrixValues` déjà utilisé par
     /// `drawObjectFrame` (lignes 135-144 ci-dessus) — jusqu'ici `drawText` ignorait
     /// systématiquement les keyframes matrice, contrairement aux calques bitmap/forme.

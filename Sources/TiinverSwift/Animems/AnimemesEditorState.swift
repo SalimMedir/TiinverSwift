@@ -1026,6 +1026,39 @@ final class AnimemesEditorState: ObservableObject {
         version += 1
     }
 
+    /// Port de `clearBoard()` (`MemesView2.java:475-487`, appelé par `onRepeateImage()` juste après
+    /// avoir capturé l'état visible — voir `AnimemesEditorView.repeatBackgroundImage()`).
+    ///
+    /// **Vérifié précisément avant d'écrire ce correctif (2026-08-31, correction F1)** — hypothèse
+    /// d'un audit précédent (`repeatBackgroundImage`, doc de tête) erronée : `clearBoard()` NE VIDE
+    /// PAS toute la composition. Lu en entier : il retire UNIQUEMENT `composer.getPaintLayers()`
+    /// (conteneur de traits de dessin libre SÉPARÉ côté Android, jamais fusionné à
+    /// `composer.getLayers()`) + tout calque de type `PATH` (mort côté Android — `Type.PATH` n'est
+    /// JAMAIS assigné, confirmé par grep exhaustif du moteur, cohérent avec `ObjectType` de ce
+    /// module iOS où `.path`/`.line`/`.clip`/`.erase`/`.background` existent pour la fidélité de
+    /// sérialisation mais ne sont jamais instanciés). Les calques image/texte/sticker/forme restent
+    /// INTACTS après `clearBoard()` — Android EMPILE le nouveau calque aplati par-dessus la
+    /// composition existante, il ne la REMPLACE PAS. `repeatBackgroundImage()` ne doit donc PAS
+    /// vider tous les calques.
+    ///
+    /// Équivalent iOS fidèle, vu l'absence d'un conteneur `paintLayers` séparé ici (les traits de
+    /// dessin libre vivent DANS `composer.layers`, marqués `isFreehandStroke`, voir
+    /// `addFreehandDrawing`) : retirer tous les calques `isFreehandStroke`, PAS tous les calques.
+    /// Sans cela, un trait de dessin déjà présent au moment de l'aplatissement serait dessiné DEUX
+    /// FOIS après coup — une fois "baked" dans le nouveau calque aplati (il était visible au moment
+    /// de la capture), une fois comme son propre calque original resté en place, exactement le
+    /// doublon que Android évite en retirant ses `paintLayers` à ce même point du flux.
+    func removeFreehandStrokes() {
+        let remaining = composer.layers.filter { !$0.isFreehandStroke }
+        guard remaining.count != composer.layers.count else { return }
+        if let id = selectedId, !remaining.contains(where: { $0.id == id }) {
+            selectedId = nil
+        }
+        composer.setLayers(remaining)
+        syncTimeline()
+        version += 1
+    }
+
     /// Port de `remover` (rangée du bas, confirmé réel par audit du 2026-08-16) — supprime le calque
     /// SÉLECTIONNÉ précisément, PAS forcément le dernier ajouté (distinct de `removeLast()`/`undo`
     /// ci-dessus, qui reste le bouton `undo` séparé de la rangée d'outils du haut).

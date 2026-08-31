@@ -795,32 +795,66 @@ struct AnimemesEditorView: View {
         .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 18))
     }
 
-    /// Port approximé d'`onRepeateImage`/`ic_repeate` (confirmé réel par l'audit : aplatit l'état
-    /// visible courant en un nouveau calque bitmap statique via `CroperView`) — réutilise le même
-    /// chemin de rendu que l'export image statique (`LayerRenderer.drawLastTransform`) plutôt que de
-    /// reconstruire `CroperView`, puis ajoute le résultat comme nouveau calque via
-    /// `addFreehandDrawing` (même signature : image déjà à l'échelle du canevas).
+    /// Port de `onRepeateImage`/`ic_repeate` (`AnimemesCompound.java:2541-2555`) — aplatit l'état
+    /// VISIBLE COURANT en un nouveau calque bitmap.
+    ///
+    /// **Corrigé (2026-08-31, finding F1 de la revue finale Animems)** — utilisait auparavant
+    /// `LayerRenderer.drawLastTransform`/`obj.transforms.last` inconditionnellement, quelle que soit
+    /// la position du playhead. Vérifié précisément côté Android : `getBitmapFromView(mView)`
+    /// capture littéralement ce que `MemesView2.onDraw` affiche À CET INSTANT — mais `onDraw`
+    /// bascule lui-même entre 3 chemins selon l'état (`playPreview`/`seekDraw`, tous deux résolus
+    /// PAR FRAME, si lecture ou scrub actifs ; `startDraw`→`drawBitmapLastTransform`, TOUJOURS
+    /// `.last`, dès que l'écran est simplement immobile — `MemesView2.java:759-772`). Le bouton
+    /// "répéter fond" étant un tap de barre d'outils, quasi toujours pressé hors lecture/scrub
+    /// actifs, une comparaison Android littérale resterait donc souvent sur `.last` aussi.
+    ///
+    /// **Ce qui tranche réellement en faveur de ce correctif** : le canevas live iOS
+    /// (`canvasArea` ci-dessus) N'A PAS ce chemin "immobile → `.last`" — c'est un choix
+    /// architectural DÉJÀ fait et déjà audité (voir sa doc de tête : "remplace l'ancien rendu
+    /// toujours-dernière-transform, équivalent à un playhead figé sur la dernière frame") : le
+    /// canevas iOS affiche TOUJOURS la frame résolue au playhead courant, lecture ou non. Capturer
+    /// "ce qui est visuellement à l'écran" côté iOS — l'intention réelle de `getBitmapFromView`,
+    /// au-delà de son implémentation Android particulière — exige donc de suivre le MÊME mécanisme
+    /// que ce canevas (`localTransformIndex`/`transformationArray`), pas de le contredire.
+    /// `LayerRenderer.drawObjectFrame` remplace donc `drawLastTransform` pour bitmap/forme (même
+    /// substitution déjà faite pour le canevas live, 2026-08-16) ; le repli `?? obj.transforms.last`
+    /// reste le filet de sécurité standard (avant tout `prepare()`, calque hors bornes de frame).
+    ///
+    /// **`clearBoard()` — vérifié, PAS un remplacement complet, voir `AnimemesEditorState.
+    /// removeFreehandStrokes()` pour la preuve et la justification complète** : appelé ici APRÈS la
+    /// capture (le nouveau calque doit contenir un rendu des traits de dessin encore présents) et
+    /// AVANT l'ajout du nouveau calque aplati (même ordre qu'Android :
+    /// `getBitmapFromView`→`clearBoard()`→`onNewAddBitmap`), pour éviter que les traits déjà
+    /// "bakés" dans l'image ne soient aussi dessinés une seconde fois en tant que calques distincts.
+    /// Les autres types de calque (image/texte/sticker/forme) restent volontairement intacts,
+    /// fidèle à Android qui empile, ne remplace jamais toute la composition.
     private func repeatBackgroundImage() {
         guard canvasSize.width > 0, canvasSize.height > 0 else { return }
+        let frame = state.timeline.playheadFrame
+        let ns = state.timeline.frameToTimestampNs(frame)
         let renderer = UIGraphicsImageRenderer(size: canvasSize)
         let image = renderer.image { context in
-            for obj in state.layers {
+            for (index, obj) in state.layers.enumerated() {
                 guard obj.visible else { continue }
+                let localIndex = state.localTransformIndex(forLayer: index, frame: frame)
+                let tfm = localIndex.flatMap { obj.transforms.indices.contains($0) ? obj.transforms[$0] : nil }
+                    ?? obj.transforms.last ?? Transform()
                 switch obj.objectType {
                 case .bitmap, .shapeRect, .shapeCircle, .shapeLine:
-                    LayerRenderer.drawLastTransform(
-                        obj, in: context.cgContext, currentNs: 0, isSliderPreview: true,
-                        bitmapCache: state.bitmapCache, viewSize: canvasSize
+                    LayerRenderer.drawObjectFrame(
+                        obj, transform: tfm, frameIndex: localIndex ?? 0, in: context.cgContext,
+                        currentNs: ns, viewSize: canvasSize
                     )
                 case .text:
-                    LayerRenderer.drawText(obj, in: context.cgContext, textRect: state.textRect, viewSize: canvasSize, transform: obj.transforms.last ?? Transform())
+                    LayerRenderer.drawText(obj, in: context.cgContext, textRect: state.textRect, viewSize: canvasSize, transform: tfm, currentNs: ns)
                 case .sticker:
-                    LayerRenderer.drawSticker(obj, in: context.cgContext, transform: obj.transforms.last ?? Transform())
+                    LayerRenderer.drawSticker(obj, in: context.cgContext, transform: tfm, currentNs: ns)
                 default:
                     break
                 }
             }
         }
+        state.removeFreehandStrokes()
         state.addFreehandDrawing(image, canvasSize: canvasSize)
     }
 

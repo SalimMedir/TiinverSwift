@@ -72,13 +72,14 @@ final class AnimemesEditorState: ObservableObject {
     /// matrice de transformation de l'objet.
     @Published var isMaskEditMode = false
     /// Port de `auto_checkbox`/`automateCapture` (`AnimemesCompound.java:1900-1904`, confirmé réel
-    /// par audit dédié du 2026-08-16 sur les captures Android) — Android enregistre en continu de
-    /// nouvelles frames pendant le geste quand actif. **Approximation assumée, documentée** : le
-    /// moteur ici utilise un modèle "keyframe explicite" (bouton ◆, voir `recordKeyframe()`) plutôt
-    /// que la capture continue frame-par-frame d'Android — activer ce bouton enregistre
-    /// automatiquement un keyframe à la FIN de chaque glissement (`dragEnded()`) au lieu d'exiger un
-    /// tap manuel sur ◆, ce qui rapproche le comportement observable sans réécrire le moteur vers un
-    /// modèle de capture continue distinct.
+    /// par audit dédié du 2026-08-16 sur les captures Android). **Corrigé (2026-08-30, audit
+    /// Animems profond)** — une "approximation assumée" antérieure (un seul keyframe éparse à la
+    /// fin du geste) a été retirée : elle ne pouvait structurellement produire aucune animation
+    /// (un point seul n'a rien à interpoler). Port RÉEL de la capture continue d'Android
+    /// maintenant en place — voir `captureFrameIfNeeded(objectIndex:)`, appelée depuis
+    /// `dragMoved`/`rotationChanged`/`scaleChanged`, qui clone la dernière transform du calque et
+    /// l'ajoute à `obj.transforms` à un rythme throttlé de 33ms (port fidèle de `cummuleMatrix`,
+    /// `MemesView2.java:1451-1477`), tant que ce booléen est actif.
     @Published var autoCaptureEnabled = false
     /// Port du fichier `.tmpl`/piste audio de l'export (`AnimemesExporter.audioURL`, déjà pris en
     /// charge par l'exporteur — seul le point d'entrée UI "Ajouter un son" manquait). `nil` = pas de
@@ -228,7 +229,16 @@ final class AnimemesEditorState: ObservableObject {
             item.label = obj.objectType?.rawValue.capitalized ?? "Layer"
             item.track = index
             item.startFrame = max(0, obj.startFrame)
-            item.endFrame = obj.endFrame
+            // **Corrigé (2026-08-30, audit Animems profond)** — `obj.endFrame == -1` (jamais
+            // recadré manuellement NI encore capturé) faisait retomber `TimelineItem.visibleEnd`
+            // sur `totalFrames - 1`, soit la largeur ENTIÈRE de la timeline — alors qu'un calque
+            // fraîchement ajouté doit afficher une piste COURTE (juste assez pour la manipuler),
+            // qui grandit ensuite au fil de la capture (`captureFrameIfNeeded`, qui écrit
+            // `obj.endFrame` explicitement dès la première frame enregistrée). Repli local sur
+            // `obj.transforms.count` — le nombre RÉEL de frames déjà posées pour ce calque — plutôt
+            // que la largeur totale, uniquement pour ce cas "jamais encore défini" ; `obj.endFrame`
+            // une fois explicitement posé (recadrage manuel OU capture) prime toujours, inchangé.
+            item.endFrame = obj.endFrame >= 0 ? obj.endFrame : max(1, obj.transforms.count)
             item.locked = obj.locked
             item.visibility = obj.visible
             item.recomposeGroupId = obj.recomposeGroupId
@@ -432,17 +442,77 @@ final class AnimemesEditorState: ObservableObject {
         }
         gestureController.touchMoveTranslate(to: point, objectIndex: idx, composer: composer)
         renderVersion += 1
+        captureFrameIfNeeded(objectIndex: idx)
         let values = layers[idx].transforms.last?.matrixValues ?? []
         let tx = values.count > 2 ? values[2] : -1
         let ty = values.count > 5 ? values[5] : -1
         gestureDiagnostics = "DRAG at \(point) → calque #\(idx) déplacé, matrice tx=\(tx) ty=\(ty)"
     }
 
+    /// **Corrigé (2026-08-30, audit Animems profond — cause racine réelle de "l'animation ne
+    /// fonctionne ni en preview ni à l'export")** — remplace l'ancienne "approximation assumée"
+    /// documentée sur `autoCaptureEnabled` (un seul keyframe posé dans la piste ÉPARSE à la FIN du
+    /// glissement, via `recordKeyframe()` — RETIRÉ d'ici). Cette approximation ne pouvait
+    /// structurellement produire aucune animation : une piste de keyframes à UN SEUL point n'a rien
+    /// à interpoler ENTRE deux valeurs, elle renvoie une pose CONSTANTE — exactement le symptôme
+    /// rapporté ("le résultat c'est juste une image, pas d'animation"). Port RÉEL de `cummuleMatrix`
+    /// (`MemesView2.java:1451-1477`, throttlé à `FRAME_INTERVAL_MS=33`) : `captureFrameIfNeeded(...)`
+    /// ci-dessous fait le travail réel maintenant, appelée depuis `dragMoved`/`rotationChanged`/
+    /// `scaleChanged` — clone la DERNIÈRE transform et l'ajoute à `obj.transforms` (tableau DENSE,
+    /// une entrée par tick), exactement le modèle que `AnimationEngine.prepareFrame` a TOUJOURS
+    /// supposé (`objLen[i] = obj.transforms.count`, jamais modifié, jamais le problème). Le bouton ◆
+    /// explicite (`recordKeyframe()`, piste éparse) reste un mécanisme SÉPARÉ, fidèle à Android
+    /// (modèle "marqueur", pas de rapport avec la capture automatique).
+    ///
+    /// `dragEnded()` reste le point de sortie PARTAGÉ pour glisser/pincer/pivoter (voir
+    /// `AnimemesEditorView.magnificationGesture`/`rotationGesture`, `.onEnded`) — port de
+    /// `touchUp()` (`MemesView2.java:1737-1747`), qui unifie déjà les 3 gestes côté Android dans le
+    /// même flux `MotionEvent`. Ne fait plus que la housekeeping de fin de geste
+    /// (`gestureController.touchUp`) — plus d'enregistrement de keyframe ici, la capture s'est déjà
+    /// faite en continu pendant le geste via `captureFrameIfNeeded`.
     func dragEnded() {
         guard let id = selectedId, let idx = index(of: id) else { return }
         gestureController.touchUp(objectIndex: idx, composer: composer, engine: engine)
-        if autoCaptureEnabled { recordKeyframe() }
-        gestureDiagnostics += " | DRAG END sur calque #\(idx)"
+        lastAutoCaptureTime = nil
+        gestureDiagnostics += " | GESTURE END sur calque #\(idx)"
+    }
+
+    /// Horodatage du dernier tick de capture automatique — remis à `nil` à chaque fin de geste
+    /// (`dragEnded()`) pour que le TOUT PREMIER mouvement d'un nouveau geste capture immédiatement
+    /// une frame, sans attendre `captureIntervalMs`, fidèle à Android (`lastCaptureTime` n'est jamais
+    /// réinitialisé explicitement côté Android, mais `now - lastCaptureTime` reste presque toujours
+    /// ≥ l'intervalle entre 2 gestes distincts dans la pratique — réinitialiser explicitement ici
+    /// est plus sûr qu'un repli sur ce même raisonnement implicite).
+    private var lastAutoCaptureTime: Date?
+    /// Port de `FRAME_INTERVAL_MS = 33` (`MemesView2.java:148`) — valeur EXACTE, pas une
+    /// approximation (~30 fps, cohérent avec `AnimationEngine.frameRate`/`nsPerFrame` déjà à 30fps
+    /// ailleurs dans ce moteur).
+    private static let captureIntervalMs: TimeInterval = 33.0 / 1000.0
+
+    /// Port de `cummuleMatrix(i)` (`MemesView2.java:1451-1477`) — voir la doc de tête de
+    /// `dragMoved`/`dragEnded` pour le contexte complet. Throttlé par `lastAutoCaptureTime` (port de
+    /// `if (now - lastCaptureTime >= FRAME_INTERVAL_MS)`) : sans ce throttle, un geste rapportant
+    /// des dizaines d'événements `.onChanged`/seconde ajouterait autant de `Transform` quasi
+    /// identiques, gonflant `obj.transforms` bien au-delà de ce qu'un enregistrement à ~30fps
+    /// produirait. Met aussi à jour `obj.endFrame` (port de `onFrameCount` — `MemesView2.java:1473`
+    /// → `AnimemesCompound.java:3241-3249`, `timelineView.getItems().get(pos).endFrame =
+    /// frameByObject` où `frameByObject = obj.getTransforms().size()`) : c'est CE champ, PAS
+    /// `obj.transforms.count` directement, qui pilote la longueur visuelle du bloc de piste dans
+    /// `TimelineView` (voir `syncTimeline()`, `item.endFrame = obj.endFrame`) — sans cette mise à
+    /// jour, le tableau `transforms` aurait grossi correctement en interne, mais le bloc de piste
+    /// serait resté visuellement figé à sa longueur initiale pendant tout l'enregistrement.
+    private func captureFrameIfNeeded(objectIndex idx: Int) {
+        guard autoCaptureEnabled else { return }
+        let now = Date()
+        if let last = lastAutoCaptureTime, now.timeIntervalSince(last) < Self.captureIntervalMs { return }
+        lastAutoCaptureTime = now
+
+        let obj = layers[idx]
+        guard var tfm = obj.transforms.last else { return }
+        tfm.frameIndex = obj.transforms.count
+        obj.transforms.append(tfm)
+        obj.endFrame = obj.transforms.count
+        syncTimeline()
     }
 
     /// Port de `touchPointerDown` — amorce un geste rotation/pincement, pivot = centre du calque
@@ -476,6 +546,7 @@ final class AnimemesEditorState: ObservableObject {
         guard !layers[idx].locked else { return }
         gestureController.rotate(to: newDegrees, objectIndex: idx, composer: composer)
         renderVersion += 1
+        captureFrameIfNeeded(objectIndex: idx)
         gestureDiagnostics = "ROTATE calque #\(idx) → \(String(format: "%.1f", newDegrees))°"
     }
 
@@ -498,6 +569,7 @@ final class AnimemesEditorState: ObservableObject {
         let clamped = AnimemesGestureController.clampPerEventScaleFactor(incrementalFactor)
         gestureController.scale(factor: clamped, focus: CGPoint(x: bound.midX, y: bound.midY), objectIndex: idx, composer: composer)
         renderVersion += 1
+        captureFrameIfNeeded(objectIndex: idx)
         let values = layers[idx].transforms.last?.matrixValues ?? []
         let scaleX = values.count > 0 ? values[0] : -1
         gestureDiagnostics = "SCALE calque #\(idx) → facteur=\(String(format: "%.3f", clamped)) scaleX résultant=\(String(format: "%.3f", scaleX))"
@@ -1241,9 +1313,9 @@ final class AnimemesEditorState: ObservableObject {
                         bitmapCache: bitmapCache, viewSize: canvasSize
                     )
                 case .text:
-                    LayerRenderer.drawText(obj, in: context.cgContext, textRect: textRect, viewSize: canvasSize)
+                    LayerRenderer.drawText(obj, in: context.cgContext, textRect: textRect, viewSize: canvasSize, transform: obj.transforms.last ?? Transform())
                 case .sticker:
-                    LayerRenderer.drawSticker(obj, in: context.cgContext)
+                    LayerRenderer.drawSticker(obj, in: context.cgContext, transform: obj.transforms.last ?? Transform())
                 default:
                     break
                 }

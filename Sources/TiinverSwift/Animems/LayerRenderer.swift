@@ -222,8 +222,19 @@ enum LayerRenderer {
     /// repli `hasTransformKeyframes`/`interpolatedMatrixValues` déjà utilisé par
     /// `drawObjectFrame` (lignes 135-144 ci-dessus) — jusqu'ici `drawText` ignorait
     /// systématiquement les keyframes matrice, contrairement aux calques bitmap/forme.
-    static func drawText(_ obj: AnimationObjectData, in context: CGContext, textRect: TextRect, viewSize: CGSize, currentNs: Int64? = nil) {
-        guard let tfm = obj.transforms.last, let text = obj.text else { return }
+    ///
+    /// **Corrigé (2026-08-30, audit Animems profond)** — `transform tfm:` ajouté comme paramètre
+    /// EXPLICITE (auparavant dérivé en interne, TOUJOURS `obj.transforms.last`, quelle que soit la
+    /// frame en cours) — aligne enfin cette fonction sur `drawObjectFrame`, qui reçoit déjà sa
+    /// transform RÉSOLUE PAR L'APPELANT (via `localTransformIndex`/`transformationArray`, la frame
+    /// COURANTE dans le tableau DENSE `obj.transforms`, pas systématiquement la dernière entrée).
+    /// Sans ce paramètre, un calque texte animé par capture automatique (qui alimente ce même
+    /// tableau dense, PAS la piste de keyframes éparse — voir `AnimemesEditorState.
+    /// captureFrameIfNeeded`) restait visuellement figé sur sa DERNIÈRE pose capturée pendant toute
+    /// la lecture/l'export, `hasTransformKeyframes` étant `false` dans ce cas (rien à interpoler
+    /// depuis la piste éparse, qui n'est jamais utilisée par la capture automatique).
+    static func drawText(_ obj: AnimationObjectData, in context: CGContext, textRect: TextRect, viewSize: CGSize, transform tfm: Transform, currentNs: Int64? = nil) {
+        guard let text = obj.text else { return }
 
         let matrixToUse: CGAffineTransform
         if let currentNs, obj.hasTransformKeyframes, let interpolated = obj.interpolatedMatrixValues(at: currentNs) {
@@ -300,9 +311,11 @@ enum LayerRenderer {
     /// identité/vue, même hypothèse déjà posée pour `drawBitmapLastTransform`/`drawObjectFrame`.
     /// **Corrigé (2026-08-28, V6-F-006)** — même principe que `drawText` ci-dessus : `currentNs`
     /// optionnel, `nil` = comportement statique inchangé, sinon repli keyframes fidèle à
-    /// `drawObjectFrame`.
-    static func drawSticker(_ obj: AnimationObjectData, in context: CGContext, currentNs: Int64? = nil) {
-        guard let tfm = obj.transforms.last, let bmp = obj.currentBitmap else { return }
+    /// `drawObjectFrame`. **Corrigé (2026-08-30, audit Animems profond)** — `transform tfm:` en
+    /// paramètre explicite, même raison que `drawText` ci-dessus (voir sa doc) : un sticker animé
+    /// par capture automatique restait figé sur sa dernière pose sans ce paramètre.
+    static func drawSticker(_ obj: AnimationObjectData, in context: CGContext, transform tfm: Transform, currentNs: Int64? = nil) {
+        guard let bmp = obj.currentBitmap else { return }
         let matrixToUse: CGAffineTransform
         if let currentNs, obj.hasTransformKeyframes, let interpolated = obj.interpolatedMatrixValues(at: currentNs) {
             matrixToUse = Transform(matrixValues: interpolated).cgAffineTransform

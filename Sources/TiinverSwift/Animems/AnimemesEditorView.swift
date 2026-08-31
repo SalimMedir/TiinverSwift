@@ -586,10 +586,22 @@ struct AnimemesEditorView: View {
                                     obj, transform: tfm, frameIndex: localIndex ?? 0, in: cgContext,
                                     currentNs: ns, viewSize: size
                                 )
-                            case .text:
-                                LayerRenderer.drawText(obj, in: cgContext, textRect: state.textRect, viewSize: size, currentNs: ns)
-                            case .sticker:
-                                LayerRenderer.drawSticker(obj, in: cgContext, currentNs: ns)
+                            case .text, .sticker:
+                                // **Corrigé (2026-08-30, audit Animems profond)** — même résolution
+                                // que le cas bitmap/forme ci-dessus (frame COURANTE dans le tableau
+                                // dense `obj.transforms`, pas systématiquement la dernière entrée) :
+                                // `drawText`/`drawSticker` recevaient jusqu'ici uniquement `currentNs`
+                                // (pour la piste de keyframes éparse) et dérivaient leur transform en
+                                // interne via `obj.transforms.last`, ignorant totalement une animation
+                                // capturée dans le tableau dense (capture automatique).
+                                let localIndex = state.localTransformIndex(forLayer: index, frame: frame)
+                                let tfm = localIndex.flatMap { obj.transforms.indices.contains($0) ? obj.transforms[$0] : nil }
+                                    ?? obj.transforms.last ?? Transform()
+                                if obj.objectType == .text {
+                                    LayerRenderer.drawText(obj, in: cgContext, textRect: state.textRect, viewSize: size, transform: tfm, currentNs: ns)
+                                } else {
+                                    LayerRenderer.drawSticker(obj, in: cgContext, transform: tfm, currentNs: ns)
+                                }
                             default:
                                 break
                             }
@@ -793,9 +805,9 @@ struct AnimemesEditorView: View {
                         bitmapCache: state.bitmapCache, viewSize: canvasSize
                     )
                 case .text:
-                    LayerRenderer.drawText(obj, in: context.cgContext, textRect: state.textRect, viewSize: canvasSize)
+                    LayerRenderer.drawText(obj, in: context.cgContext, textRect: state.textRect, viewSize: canvasSize, transform: obj.transforms.last ?? Transform())
                 case .sticker:
-                    LayerRenderer.drawSticker(obj, in: context.cgContext)
+                    LayerRenderer.drawSticker(obj, in: context.cgContext, transform: obj.transforms.last ?? Transform())
                 default:
                     break
                 }
@@ -994,7 +1006,7 @@ struct AnimemesEditorView: View {
                     lastMaskMagnification = 1.0
                 } else {
                     lastMagnification = 1.0
-                    isPinching = false
+                    endPinchIfNeeded()
                 }
             }
     }
@@ -1016,7 +1028,7 @@ struct AnimemesEditorView: View {
                 if state.isMaskEditMode {
                     lastMaskRotationDegrees = 0
                 } else {
-                    isPinching = false
+                    endPinchIfNeeded()
                 }
             }
     }
@@ -1047,6 +1059,22 @@ struct AnimemesEditorView: View {
         guard !isPinching else { return }
         isPinching = true
         state.beginPinchRotate()
+    }
+
+    /// **Ajouté (2026-08-30, audit Animems profond)** — symétrique de `beginPinchIfNeeded()` :
+    /// `MagnificationGesture` et `RotationGesture` sont deux reconnaisseurs INDÉPENDANTS qui se
+    /// terminent quasi simultanément sur un même geste physique à 2 doigts (les deux `.onEnded`
+    /// se déclenchent l'un après l'autre) — `isPinching` sert ici de garde anti-double-déclenchement
+    /// (le premier `.onEnded` à s'exécuter effectue le travail et repasse `isPinching` à `false`,
+    /// le second n'a alors plus rien à faire). Appelle `state.dragEnded()` — nom historique, mais
+    /// c'est bien le même point de sortie PARTAGÉ que la fin d'un glisser (voir sa doc : port de
+    /// `touchUp()`, `MemesView2.java`, qui traite glisser/pincer/pivoter de façon identique) : sans
+    /// cet appel, aucune keyframe n'était jamais capturée pour un calque animé par pincement/
+    /// rotation, même avec la capture automatique active — seule la translation l'était.
+    private func endPinchIfNeeded() {
+        guard isPinching else { return }
+        isPinching = false
+        state.dragEnded()
     }
 
     /// Port de `MaskAddPanel` (choix du type) + `MaskPreviewEditorPanel` (inversion/flou/écart

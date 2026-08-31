@@ -311,16 +311,24 @@ final class AnimemesExporter {
                     obj, transform: obj.transforms[t], frameIndex: t, in: context,
                     currentNs: currentNs, viewSize: viewSize
                 )
-            case .text:
+            case .text, .sticker:
                 // **Corrigé (2026-08-28, V7-F-004)** — garde de bornes temporelles manquante,
                 // seule différence avec le cas bitmap/shape ci-dessus (qui l'applique déjà via
                 // `startAt`/`endAt`, lignes 298/308) : un calque texte recadré sur la timeline
                 // restait visible sur toute la durée de l'export MP4, contredisant l'éditeur.
                 guard i < startAt.count, i < endAt.count, renderFrame >= startAt[i], renderFrame <= endAt[i] else { continue }
-                LayerRenderer.drawText(obj, in: context, textRect: textRect, viewSize: viewSize, currentNs: currentNs)
-            case .sticker:
-                guard i < startAt.count, i < endAt.count, renderFrame >= startAt[i], renderFrame <= endAt[i] else { continue }
-                LayerRenderer.drawSticker(obj, in: context, currentNs: currentNs)
+                // **Corrigé (2026-08-30, audit Animems profond)** — même résolution de transform
+                // que le cas bitmap/forme (frame COURANTE dans le tableau dense `obj.transforms`,
+                // pas systématiquement la dernière entrée) : sans elle, un texte/sticker animé par
+                // capture automatique (tableau dense, pas la piste de keyframes éparse) restait
+                // figé sur sa dernière pose capturée pendant tout l'export.
+                let localT = (i < transformationArray.count && renderFrame < transformationArray[i].count) ? transformationArray[i][renderFrame] : nil
+                let tfm = localT.flatMap { $0 < obj.transforms.count ? obj.transforms[$0] : nil } ?? obj.transforms.last ?? Transform()
+                if obj.objectType == .text {
+                    LayerRenderer.drawText(obj, in: context, textRect: textRect, viewSize: viewSize, transform: tfm, currentNs: currentNs)
+                } else {
+                    LayerRenderer.drawSticker(obj, in: context, transform: tfm, currentNs: currentNs)
+                }
             case .path, .line, .clip, .erase, .background, .none:
                 continue
             }

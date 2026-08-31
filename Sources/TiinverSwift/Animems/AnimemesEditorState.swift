@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreGraphics
 import Foundation
+import QuartzCore
 import UIKit
 
 /// État de l'écran `AnimemesEditorView` — wrapper `ObservableObject` autour du moteur Animems déjà
@@ -442,6 +443,7 @@ final class AnimemesEditorState: ObservableObject {
         }
         gestureController.touchMoveTranslate(to: point, objectIndex: idx, composer: composer)
         renderVersion += 1
+        beginCaptureTickerIfNeeded(objectIndex: idx)
         captureFrameIfNeeded(objectIndex: idx)
         let values = layers[idx].transforms.last?.matrixValues ?? []
         let tx = values.count > 2 ? values[2] : -1
@@ -467,11 +469,43 @@ final class AnimemesEditorState: ObservableObject {
     /// `dragEnded()` reste le point de sortie PARTAGÉ pour glisser/pincer/pivoter (voir
     /// `AnimemesEditorView.magnificationGesture`/`rotationGesture`, `.onEnded`) — port de
     /// `touchUp()` (`MemesView2.java:1737-1747`), qui unifie déjà les 3 gestes côté Android dans le
-    /// même flux `MotionEvent`. Ne fait plus que la housekeeping de fin de geste
-    /// (`gestureController.touchUp`) — plus d'enregistrement de keyframe ici, la capture s'est déjà
-    /// faite en continu pendant le geste via `captureFrameIfNeeded`.
+    /// même flux `MotionEvent`.
+    ///
+    /// **Étendu (revue B2/C2, 2026-08-31)** — `AnimemesCompound.touchUp(int)` (`:3217-3221`) fait
+    /// RÉELLEMENT 2 choses de plus que la housekeeping de geste, vérifiées en remontant toute la
+    /// chaîne d'appel avant d'écrire ce correctif :
+    /// - `pause()` (`AnimemesCompound.java:2221-2235`) → `mView.pause()` → `MemesView2.pause()`
+    ///   (`:1957-1959`) → `animationEngine.pause()` — PAS un simple arrêt audio comme son nom
+    ///   pourrait le laisser supposer isolément : la chaîne complète confirme qu'il arrête bien LA
+    ///   LECTURE (`AnimationEngine`), inconditionnellement, à CHAQUE fin de geste (glisser/pincer/
+    ///   pivoter), qu'un objet en cours de lecture soit ou non celui manipulé. `engine.pause()`
+    ///   ci-dessous reproduit fidèlement cet appel — avant ce correctif, `dragEnded()` ne touchait
+    ///   jamais `engine`, donc rien n'empêchait Play de continuer à tourner PENDANT qu'un geste
+    ///   modifiait `obj.transforms` en direct.
+    /// - `if (automateCapture) { mView.prepare(); ... }` → `animationEngine.prepare(composer)` :
+    ///   reconstruit `transformationArray`/`totalFramesMinus1` à partir de l'état FRAÎCHEMENT
+    ///   capturé de `obj.transforms`. Sans cet appel, `transformationArray` restait figé sur le
+    ///   dernier `prepare()` (généralement au tout premier appui sur Play) pendant toute la durée
+    ///   de l'édition suivante — la lecture suivante rejouait donc une version PÉRIMÉE de
+    ///   l'animation, ignorant tout ce qui avait été capturé depuis. `engine.prepare(composer:)`
+    ///   ci-dessous reproduit cet appel EXACTEMENT au même point du cycle de vie qu'Android (juste
+    ///   après la pause, à la fin du geste) plutôt que d'inventer un autre mécanisme de
+    ///   synchronisation. Confirmé fidèle : `AnimationEngine.java:78` (`prepare()` Android) remet
+    ///   aussi `totalFrame = 0` inconditionnellement — même effet de bord ici
+    ///   (`AnimationEngine.swift:80`), pas une régression introduite par ce correctif.
+    ///
+    /// `stopCaptureTicker()` et `engine.pause()` sont volontairement placés AVANT le `guard` de
+    /// résolution du calque : ils doivent s'exécuter à CHAQUE fin de geste, même dans le cas
+    /// (normalement impossible en usage normal, mais pas structurellement exclu) où `selectedId`
+    /// aurait changé entre le début et la fin du geste — aucune trace du minuteur de capture (voir
+    /// `beginCaptureTickerIfNeeded`) ne doit pouvoir survivre à un retour anticipé de cette fonction.
     func dragEnded() {
+        stopCaptureTicker()
+        engine.pause()
         guard let id = selectedId, let idx = index(of: id) else { return }
+        if autoCaptureEnabled {
+            engine.prepare(composer: composer)
+        }
         gestureController.touchUp(objectIndex: idx, composer: composer, engine: engine)
         lastAutoCaptureTime = nil
         gestureDiagnostics += " | GESTURE END sur calque #\(idx)"
@@ -501,6 +535,11 @@ final class AnimemesEditorState: ObservableObject {
     /// `TimelineView` (voir `syncTimeline()`, `item.endFrame = obj.endFrame`) — sans cette mise à
     /// jour, le tableau `transforms` aurait grossi correctement en interne, mais le bloc de piste
     /// serait resté visuellement figé à sa longueur initiale pendant tout l'enregistrement.
+    ///
+    /// Appelée depuis 2 déclencheurs distincts depuis la revue B1 (2026-08-31), voir
+    /// `beginCaptureTickerIfNeeded` ci-dessous pour le second — les deux sont sûrs à combiner car
+    /// throttlés par le MÊME `lastAutoCaptureTime`, un appel redondant à moins de 33ms d'écart est
+    /// un simple no-op.
     private func captureFrameIfNeeded(objectIndex idx: Int) {
         guard autoCaptureEnabled else { return }
         let now = Date()
@@ -513,6 +552,91 @@ final class AnimemesEditorState: ObservableObject {
         obj.transforms.append(tfm)
         obj.endFrame = obj.transforms.count
         syncTimeline()
+    }
+
+    /// `CADisplayLink` qui pilote la capture continue PENDANT un geste — voir sa doc de tête pour la
+    /// justification du choix face à l'alternative `Timer`/`Task`. `nil` en dehors de tout geste en
+    /// mode capture automatique : jamais permanent, jamais créé tant qu'aucun geste actif ne le
+    /// requiert.
+    private var captureDisplayLink: CADisplayLink?
+    private var captureDisplayLinkProxy: AnimemesCaptureTickerProxy?
+    /// Calque ciblé par le tick en cours — un seul geste actif à la fois cible toujours le MÊME
+    /// calque du début à la fin (`selectedId` ne change jamais en cours de geste, voir
+    /// `dragGesture`/`magnificationGesture`/`rotationGesture` dans `AnimemesEditorView.swift`), donc
+    /// une simple valeur remplacée au (re)démarrage suffit, pas une pile.
+    private var activeCaptureObjectIndex: Int?
+
+    /// **Ajouté (2026-08-31, correction B1 de la revue du correctif Animems)** — `cummuleMatrix`
+    /// côté Android (`MemesView2.java:1015-1018`/`:1409-1413`) est appelé depuis la méthode de
+    /// DESSIN, réinvoquée à chaque redraw tant que `onTouchMove` reste actif — INDÉPENDAMMENT du
+    /// fait que la position du doigt ait changé. `captureFrameIfNeeded` seule (appelée depuis les
+    /// callbacks `.onChanged` de `DragGesture`/`MagnificationGesture`/`RotationGesture`) ne capture
+    /// RIEN pendant qu'un geste est maintenu immobile, car SwiftUI ne rappelle `.onChanged` que si
+    /// la VALEUR du geste change — écart réel avec Android identifié lors de la revue (finding B1) :
+    /// un temps d'arrêt en plein geste disparaissait de l'enregistrement au lieu d'être préservé.
+    ///
+    /// **Choix du mécanisme — `CADisplayLink` scopé à la durée du geste, PAS un `Timer`/`Task`
+    /// permanent** : `AnimationEngine` (ce même fichier de moteur) utilise déjà `CADisplayLink` pour
+    /// piloter la lecture, précisément parce qu'il est cadencé sur le rafraîchissement d'écran réel
+    /// (le plus proche équivalent iOS de la boucle de dessin Android qui pilote `cummuleMatrix`), se
+    /// met en pause automatiquement quand l'app passe en arrière-plan (contrairement à un `Timer`
+    /// planifié sur une run loop, qui continuerait de se déclencher hors écran), et s'invalide de
+    /// façon strictement déterministe via `invalidate()`. Son cycle de vie est borné aux DEUX SEULS
+    /// points d'entrée/sortie déjà garantis exister pour tout geste (voir `dragMoved`/
+    /// `rotationChanged`/`scaleChanged` pour le début, `dragEnded()` pour la fin PARTAGÉE des 3
+    /// types de geste) — jamais démarré hors d'un geste actif (`guard autoCaptureEnabled`, idem
+    /// `captureFrameIfNeeded`), jamais laissé actif après `dragEnded()` (voir `stopCaptureTicker()`,
+    /// appelé inconditionnellement en tout DÉBUT de `dragEnded()`, avant même la résolution du
+    /// calque) — et `cancelActiveCapture()`/`deinit` couvrent les 2 sorties non couvertes par
+    /// `dragEnded()` : la vue Animems qui disparaît en plein geste (`.onDisappear`,
+    /// `AnimemesEditorView.swift`) et la désallocation de cet état lui-même.
+    ///
+    /// Idempotent : sûr à appeler à chaque tick de geste (`dragMoved`/`rotationChanged`/
+    /// `scaleChanged` l'appellent tous les 3, sans savoir si le lien existe déjà) — un lien déjà
+    /// actif n'est jamais recréé, seul `activeCaptureObjectIndex` est rafraîchi (sans effet en
+    /// pratique, un même geste continu ne change jamais de calque cible).
+    private func beginCaptureTickerIfNeeded(objectIndex idx: Int) {
+        guard autoCaptureEnabled else { return }
+        activeCaptureObjectIndex = idx
+        guard captureDisplayLink == nil else { return }
+        // Saut explicite vers `@MainActor` — même motif que `AnimationEnginePlaybackDelegate`
+        // ci-dessous (voir sa doc de tête) : le rappel `CADisplayLink` n'arrive pas dans un contexte
+        // statiquement connu comme `@MainActor`, même si `.add(to: .main, ...)` garantit en pratique
+        // qu'il s'exécute sur le fil principal.
+        let proxy = AnimemesCaptureTickerProxy { [weak self] in
+            guard let self else { return }
+            Task { @MainActor in
+                guard let target = self.activeCaptureObjectIndex, target < self.layers.count else { return }
+                self.captureFrameIfNeeded(objectIndex: target)
+            }
+        }
+        captureDisplayLinkProxy = proxy
+        let link = CADisplayLink(target: proxy, selector: #selector(AnimemesCaptureTickerProxy.tick(_:)))
+        link.add(to: .main, forMode: .common)
+        captureDisplayLink = link
+    }
+
+    /// Invalidation déterministe — voir `beginCaptureTickerIfNeeded` pour l'inventaire complet des
+    /// points d'appel garantis (`dragEnded()`, `cancelActiveCapture()`, `deinit`).
+    private func stopCaptureTicker() {
+        captureDisplayLink?.invalidate()
+        captureDisplayLink = nil
+        captureDisplayLinkProxy = nil
+        activeCaptureObjectIndex = nil
+    }
+
+    /// Filet de sécurité — appelé par `AnimemesEditorView.onDisappear` en plus de `engine.stop()`
+    /// (déjà présent), pour le cas où la vue Animems disparaîtrait de l'écran PENDANT un geste actif
+    /// sans que `dragEnded()` n'ait eu l'occasion de s'exécuter normalement (fermeture programmatique
+    /// de l'écran, navigation système). Sans cet appel, `captureDisplayLink` continuerait de tourner
+    /// tant que l'app reste au premier plan, même après que l'écran Animems ait quitté l'écran.
+    func cancelActiveCapture() {
+        stopCaptureTicker()
+        lastAutoCaptureTime = nil
+    }
+
+    deinit {
+        captureDisplayLink?.invalidate()
     }
 
     /// Port de `touchPointerDown` — amorce un geste rotation/pincement, pivot = centre du calque
@@ -546,6 +670,7 @@ final class AnimemesEditorState: ObservableObject {
         guard !layers[idx].locked else { return }
         gestureController.rotate(to: newDegrees, objectIndex: idx, composer: composer)
         renderVersion += 1
+        beginCaptureTickerIfNeeded(objectIndex: idx)
         captureFrameIfNeeded(objectIndex: idx)
         gestureDiagnostics = "ROTATE calque #\(idx) → \(String(format: "%.1f", newDegrees))°"
     }
@@ -569,6 +694,7 @@ final class AnimemesEditorState: ObservableObject {
         let clamped = AnimemesGestureController.clampPerEventScaleFactor(incrementalFactor)
         gestureController.scale(factor: clamped, focus: CGPoint(x: bound.midX, y: bound.midY), objectIndex: idx, composer: composer)
         renderVersion += 1
+        beginCaptureTickerIfNeeded(objectIndex: idx)
         captureFrameIfNeeded(objectIndex: idx)
         let values = layers[idx].transforms.last?.matrixValues ?? []
         let scaleX = values.count > 0 ? values[0] : -1
@@ -1405,5 +1531,21 @@ extension AnimemesEditorState: AnimationEnginePlaybackDelegate {
 
     nonisolated func animationEngineDidInvalidate(_ engine: AnimationEngine) {
         Task { @MainActor [weak self] in self?.bumpRenderVersion() }
+    }
+}
+
+/// `CADisplayLink` exige une cible Objective-C (`target:selector:`) — même motif que
+/// `DisplayLinkProxy` dans `AnimationEngine.swift` (`private`, donc non réutilisable depuis ce
+/// fichier), reproduit ici à l'identique pour `beginCaptureTickerIfNeeded`/`stopCaptureTicker`
+/// (voir `AnimemesEditorState`).
+private final class AnimemesCaptureTickerProxy: NSObject {
+    private let onTick: () -> Void
+
+    init(onTick: @escaping () -> Void) {
+        self.onTick = onTick
+    }
+
+    @objc func tick(_ link: CADisplayLink) {
+        onTick()
     }
 }

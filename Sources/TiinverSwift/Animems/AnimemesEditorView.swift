@@ -192,7 +192,15 @@ struct AnimemesEditorView: View {
         // INDÉPENDAMMENT de `AnimationEngine` (capturé `[weak self]`, voir `startPlayback`), donc
         // rien ne l'invalidait jamais. `engine.stop()` invalide déjà le lien (`stopDisplayLink()`)
         // et est sans effet si aucune lecture n'est en cours (`if displayLink != nil` guard).
-        .onDisappear { state.engine.stop() }
+        // **Étendu (revue B1, 2026-08-31)** — `state.cancelActiveCapture()` invalide le
+        // `CADisplayLink` de capture automatique s'il tournait encore (geste en cours au moment où
+        // cette vue disparaît, ex. fermeture programmatique de l'écran plutôt qu'un relâchement
+        // normal du doigt, qui aurait sinon déclenché `dragEnded()`) — sans cet appel, il continuerait
+        // de tourner tant que l'app reste au premier plan, même hors écran Animems.
+        .onDisappear {
+            state.engine.stop()
+            state.cancelActiveCapture()
+        }
         .background(Color.black)
         .statusBarHidden(false)
         .sheet(isPresented: $showGalleryPicker) {

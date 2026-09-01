@@ -422,6 +422,36 @@ final class AnimemesEditorState: ObservableObject {
 
     private func index(of id: String) -> Int? { layers.firstIndex { $0.id == id } }
 
+    /// **Ajouté (2026-09-01, bug physique "l'objet ne se déplace pas visuellement pendant le geste
+    /// quand Capture automatique est active, seulement au rendu final")** — cause racine identifiée
+    /// AVANT toute correction, en re-traçant précisément comment le canevas résout la transform à
+    /// dessiner (`AnimemesEditorView.canvasArea`, la boucle `Canvas { ... }`) : celle-ci résout
+    /// TOUJOURS la transform via `state.localTransformIndex(forLayer:frame:)` à
+    /// `timeline.playheadFrame` (typiquement `0`, jamais avancé pendant l'édition), PAS via
+    /// `obj.transforms.last`. `localTransformIndex` lit `engine.transformationArray`, un instantané
+    /// figé au dernier `engine.prepare()` — quand Capture auto est INACTIVE, `obj.transforms` reste
+    /// à 1 SEULE entrée pendant tout le geste (mutée EN PLACE par `touchMoveTranslate`/`rotate`/
+    /// `scale`), donc `transformationArray[layer][0]` pointe TOUJOURS sur cette même entrée : le
+    /// rendu suit le doigt normalement, par coïncidence. Quand Capture auto est ACTIVE,
+    /// `captureFrameIfNeeded` (ci-dessous) AJOUTE une NOUVELLE entrée à `obj.transforms` à chaque
+    /// tick — mais `transformationArray[layer][0]` reste figé sur l'index `0` (la toute première
+    /// pose, jamais mise à jour tant qu'aucun `prepare()` ne survient), donc le canevas continue de
+    /// dessiner cette pose FIGÉE pendant tout le geste : l'objet semble immobile, alors que
+    /// `obj.transforms` grandit bel et bien en arrière-plan (visible ensuite en lecture/export, où
+    /// chaque frame réelle est parcourue). Confirmé par comparaison Android : `MemesView2.onDraw`
+    /// (`:759-772`) n'utilise la résolution PAR FRAME (`seekDraw`/`playPreview`) que pendant un
+    /// scrub ou une lecture active — à l'arrêt (le mode actif PENDANT un geste de manipulation
+    /// d'objet), il retombe sur `drawBitmapLastTransform`, TOUJOURS `.last`. Corrigé en donnant au
+    /// canevas un signal explicite du calque EN COURS de manipulation directe (`liveEditObjectId`
+    /// ci-dessous) : CE calque précis est dessiné via `obj.transforms.last` (le geste en cours),
+    /// tous les autres restent résolus par frame comme avant (lecture/scrub inchangés). Positionné
+    /// ICI (pas seulement dans `captureFrameIfNeeded`) car le bug existe QUE la capture auto ajoute
+    /// ou non une entrée — c'est la RÉSOLUTION DE RENDU qui est en cause, pas la capture elle-même.
+    /// Pas `@Published` — toujours lu par le `Canvas` dans le MÊME passage de rendu qu'un
+    /// `renderVersion += 1` déjà émis juste après par l'appelant (`dragMoved`/`rotationChanged`/
+    /// `scaleChanged` ci-dessous), qui déclenche déjà le redessin nécessaire.
+    private(set) var liveEditObjectId: String?
+
     /// Port de `touchMove` (translation à un doigt) — délègue à `AnimemesGestureController.
     /// touchMoveTranslate`, qui opère directement sur la matrice de la dernière `Transform` (PAS
     /// `offsetX`/`offsetY`, corrigé le 2026-08-16 — la version initiale mutait `offsetX`/`offsetY`
@@ -441,6 +471,7 @@ final class AnimemesEditorState: ObservableObject {
             gestureDiagnostics = "DRAG at \(point) → IGNORÉ, calque #\(idx) verrouillé"
             return
         }
+        liveEditObjectId = id
         gestureController.touchMoveTranslate(to: point, objectIndex: idx, composer: composer)
         renderVersion += 1
         beginCaptureTickerIfNeeded(objectIndex: idx)
@@ -502,6 +533,11 @@ final class AnimemesEditorState: ObservableObject {
     func dragEnded() {
         stopCaptureTicker()
         engine.pause()
+        // Voir la doc de `liveEditObjectId` — retiré inconditionnellement ici pour la même raison
+        // que `stopCaptureTicker()`/`engine.pause()` juste au-dessus : ce signal ne doit jamais
+        // survivre à un retour anticipé de cette fonction, le canevas doit revenir à la résolution
+        // par frame normale dès la fin de N'IMPORTE quel geste.
+        liveEditObjectId = nil
         guard let id = selectedId, let idx = index(of: id) else { return }
         if autoCaptureEnabled {
             engine.prepare(composer: composer)
@@ -653,6 +689,7 @@ final class AnimemesEditorState: ObservableObject {
     func cancelActiveCapture() {
         stopCaptureTicker()
         lastAutoCaptureTime = nil
+        liveEditObjectId = nil
     }
 
     deinit {
@@ -688,6 +725,7 @@ final class AnimemesEditorState: ObservableObject {
         // sautée pour tout calque verrouillé par la boucle de `onTouchEvent` (ligne 1604-1609) —
         // **ajouté le 2026-08-23 (V4-F-050, Phase B P1)**.
         guard !layers[idx].locked else { return }
+        liveEditObjectId = id
         gestureController.rotate(to: newDegrees, objectIndex: idx, composer: composer)
         renderVersion += 1
         beginCaptureTickerIfNeeded(objectIndex: idx)
@@ -712,6 +750,7 @@ final class AnimemesEditorState: ObservableObject {
             return
         }
         let clamped = AnimemesGestureController.clampPerEventScaleFactor(incrementalFactor)
+        liveEditObjectId = id
         gestureController.scale(factor: clamped, focus: CGPoint(x: bound.midX, y: bound.midY), objectIndex: idx, composer: composer)
         renderVersion += 1
         beginCaptureTickerIfNeeded(objectIndex: idx)

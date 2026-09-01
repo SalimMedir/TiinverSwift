@@ -585,9 +585,21 @@ struct AnimemesEditorView: View {
                         let ns = state.timeline.frameToTimestampNs(frame)
                         for (index, obj) in state.layers.enumerated() {
                             guard obj.visible else { continue }
+                            // **Corrigé (2026-09-01, bug physique "objet figé pendant le geste avec
+                            // Capture auto active")** — voir la doc complète sur
+                            // `AnimemesEditorState.liveEditObjectId`. Tant qu'un geste manipule
+                            // DIRECTEMENT ce calque précis, sa transform vient de `obj.transforms.
+                            // last` (le point courant du geste), PAS de la résolution par frame
+                            // habituelle (`localTransformIndex`/`transformationArray`, un instantané
+                            // figé au dernier `prepare()` — jamais rafraîchi PENDANT un geste, donc
+                            // aveugle aux nouvelles entrées ajoutées par la capture automatique en
+                            // cours). Les autres calques (non manipulés à cet instant) continuent
+                            // d'utiliser la résolution par frame normale, inchangée — nécessaire au
+                            // scrub/à la lecture, qui restent corrects.
+                            let isLiveEdited = obj.id == state.liveEditObjectId
                             switch obj.objectType {
                             case .bitmap, .shapeRect, .shapeCircle, .shapeLine:
-                                let localIndex = state.localTransformIndex(forLayer: index, frame: frame)
+                                let localIndex = isLiveEdited ? nil : state.localTransformIndex(forLayer: index, frame: frame)
                                 let tfm = localIndex.flatMap { obj.transforms.indices.contains($0) ? obj.transforms[$0] : nil }
                                     ?? obj.transforms.last ?? Transform()
                                 LayerRenderer.drawObjectFrame(
@@ -602,7 +614,7 @@ struct AnimemesEditorView: View {
                                 // (pour la piste de keyframes éparse) et dérivaient leur transform en
                                 // interne via `obj.transforms.last`, ignorant totalement une animation
                                 // capturée dans le tableau dense (capture automatique).
-                                let localIndex = state.localTransformIndex(forLayer: index, frame: frame)
+                                let localIndex = isLiveEdited ? nil : state.localTransformIndex(forLayer: index, frame: frame)
                                 let tfm = localIndex.flatMap { obj.transforms.indices.contains($0) ? obj.transforms[$0] : nil }
                                     ?? obj.transforms.last ?? Transform()
                                 if obj.objectType == .text {

@@ -63,6 +63,14 @@ struct RootRouterView: View {
         .task {
             await checkForceUpdate()
         }
+        // Port de la vérification recommandée par Apple pour "Sign in with Apple"
+        // (`ASAuthorizationAppleIDProvider.getCredentialState`, voir `AppleSignInCoordinator.
+        // checkCredentialStateAtLaunch()`) — au lancement, une fois, comme `checkForceUpdate()`
+        // ci-dessus. Sans effet (retour immédiat) si la session en cours n'a jamais été établie via
+        // Apple.
+        .task {
+            await AppleSignInCoordinator.checkCredentialStateAtLaunch()
+        }
         // Port de `ShareActivity`/`SplashActivity` (réception d'un lien profond) — monté ICI (pas
         // dans `HomeShellView`) pour capter un lien reçu AVANT authentification (parrainage
         // notamment, lu dès l'inscription — voir `RegisterView.swift`/`SignUpWithGoogleView.swift`),

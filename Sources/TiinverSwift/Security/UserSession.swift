@@ -26,6 +26,7 @@ final class UserSession {
         static let pendingCoinsAmount = "pendingCoinsAmount"
         static let pendingGemsAmount = "pendingGemsAmount"
         static let debugLastLoginRawUserJSON = "debugLastLoginRawUserJSON"
+        static let appleUserIdentifier = "appleUserIdentifier"
     }
 
     private init() {}
@@ -90,6 +91,18 @@ final class UserSession {
 
     var isLoggedIn: Bool {
         apiKey != nil && myId != nil
+    }
+
+    /// Identifiant STABLE Apple (`ASAuthorizationAppleIDCredential.user`) — DIFFÉRENT du `uid`
+    /// Firebase déjà stocké ailleurs (`provider`/`providerId` du `User` backend) : c'est CET
+    /// identifiant précis, PAS le `uid` Firebase, qu'`ASAuthorizationAppleIDProvider.
+    /// getCredentialState(forUserID:)` attend en entrée pour vérifier au démarrage que
+    /// l'utilisateur n'a pas révoqué l'accès depuis les réglages iOS. `nil` si la session en cours
+    /// n'a jamais été établie via Apple (email/téléphone/Google). Voir
+    /// `AppleSignInCoordinator.checkCredentialStateAtLaunch()`.
+    var appleUserIdentifier: String? {
+        get { defaults.string(forKey: Keys.appleUserIdentifier) }
+        set { defaults.set(newValue, forKey: Keys.appleUserIdentifier) }
     }
 
     /// Port de `Settings.getFloatPreference(COINS_AMOUNT)`/`setFloatPreference` (module 15, Wallet)
@@ -171,6 +184,7 @@ final class UserSession {
         defaults.removeObject(forKey: Keys.gemsAmount)
         defaults.removeObject(forKey: Keys.pendingCoinsAmount)
         defaults.removeObject(forKey: Keys.pendingGemsAmount)
+        defaults.removeObject(forKey: Keys.appleUserIdentifier)
         PushTokenRegistrar.clearToken()
     }
 }

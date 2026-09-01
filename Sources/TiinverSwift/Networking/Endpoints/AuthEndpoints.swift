@@ -23,7 +23,12 @@ enum AuthEndpoints {
         return try parseLoginResponse(json)
     }
 
-    /// Équivalent de `AuthRepository.setLoginWithGoogle(user, provider)`.
+    /// Équivalent de `AuthRepository.setLoginWithGoogle(user, provider)` — malgré son nom, générique
+    /// côté réseau (`provider` est un `String` libre, jamais contraint à `"google"` par cette
+    /// fonction). Réutilisée telle quelle pour "Sign in with Apple" (`provider: "apple"`, voir
+    /// `AppleSignInCoordinator.swift`/`LoginView.swift`) plutôt que dupliquée — **support backend de
+    /// cette valeur précise NON VÉRIFIÉ**, aucune preuve disponible dans ce dépôt (code source
+    /// backend absent) que l'API Tiinver reconnaît `"apple"` sur l'endpoint `login`.
     static func loginWithGoogle(providerId: String, email: String, provider: String) async throws -> User {
         let params = [
             "token": "normal",

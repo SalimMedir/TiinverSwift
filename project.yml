@@ -380,6 +380,21 @@ targets:
         # indépendamment de la présence ou non d'images dans le set. Nom EXACT du dossier
         # `.appiconset` (sans l'extension), convention Xcode standard.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # **Ajouté (2026-09-01)** — "Sign in with Apple" (`AppleSignInCoordinator.swift`) exige
+        # l'entitlement `com.apple.developer.applesignin`, lui-même exigé par le codesigning dès que
+        # `ASAuthorizationAppleIDProvider`/`ASAuthorizationController` sont utilisés à l'exécution —
+        # sans lui, la requête échoue au runtime avec une erreur `ASAuthorizationError` même en
+        # simulateur. Fichier écrit à la main (`Resources/TiinverSwift.entitlements`), PAS via la clé
+        # déclarative `entitlements:` de XcodeGen (génération automatique d'un plist) : ce projet a un
+        # historique documenté (voir les commentaires `excludes:`/`postBuildScripts:` plus haut) de
+        # génération XcodeGen peu fiable pour ce type de fichier annexe — un fichier écrit
+        # explicitement, référencé par un simple chemin de build setting, est le mécanisme déjà
+        # éprouvé sur ce projet (même logique que `Resources/BrowserStack.xcconfig`).
+        # **Nécessite aussi, côté Apple Developer Portal (hors de ce dépôt, action manuelle) : la
+        # capacité "Sign In with Apple" activée sur l'App ID `com.tiinver.ios`, et un profil de
+        # provisioning régénéré après son activation** — voir le résumé de session pour le détail
+        # complet.
+        CODE_SIGN_ENTITLEMENTS: Resources/TiinverSwift.entitlements
         # 2026-08-13 (suite) — CETTE TENTATIVE SEULE S'EST AVÉRÉE INSUFFISANTE, confirmé par preuve
         # directe (Info.plist extrait d'un `.app` téléchargé via plistlib, `CFBundleVersion`
         # toujours "1" malgré ces réglages). Cause réelle trouvée dans le CODE SOURCE de XcodeGen

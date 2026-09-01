@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 /// Port de `Authentification/login/LoginFragment.java` + `Authentification/view/LoginCompound.java`
@@ -55,6 +56,10 @@ struct LoginView: View {
     @State private var password = ""
     @State private var showError = false
     @State private var errorText = ""
+    /// Pont entre les deux closures de `SignInWithAppleButton` (`onRequest`/`onCompletion`, voir
+    /// `appleButton` ci-dessous) : le nonce BRUT généré au moment de la requête doit être conservé
+    /// jusqu'à la réception du résultat, pour être transmis à `AppleSignInCoordinator.resolveUser`.
+    @State private var pendingAppleNonce: String?
 
     var onLoginSuccess: (User) -> Void
     var onForgotPassword: () -> Void
@@ -117,6 +122,7 @@ struct LoginView: View {
                 .padding(.vertical, 8)
 
                 googleButton
+                appleButton
 
                 VStack(spacing: 6) {
                     Button("mot de passe oublié ?", action: onForgotPassword)
@@ -232,6 +238,33 @@ struct LoginView: View {
         .disabled(viewModel.isLoading)
     }
 
+    /// "Sign in with Apple" — composant NATIF `SignInWithAppleButton` (`AuthenticationServices`),
+    /// pas un bouton redessiné à la main comme `googleButton` ci-dessus (qui n'a, lui, aucun
+    /// équivalent système à réutiliser) : respecte par construction les Human Interface Guidelines
+    /// Apple (typographie/marges/comportement du logo  imposés par le système, non personnalisables
+    /// — précisément ce que les HIG demandent). `.frame(height: 50)`/coins 10pt alignés sur
+    /// `googleButton` juste au-dessus pour une taille et une visibilité équivalentes entre les deux
+    /// boutons de connexion tierce, comme demandé.
+    ///
+    /// `onRequest`/`onCompletion` délèguent la configuration (nonce/portée) et la résolution
+    /// (échange Firebase) à `AppleSignInCoordinator.configureRequest(_:)`/`resolveUser(from:rawNonce:)`
+    /// — CE bouton gère son propre `ASAuthorizationController`/sa propre présentation en interne (il
+    /// n'y a donc pas de second contrôleur créé ici), mais la logique nonce/Firebase reste
+    /// STRICTEMENT identique à `AppleSignInCoordinator.signIn(presenting:)` (chemin non-UI du même
+    /// service), aucune duplication.
+    private var appleButton: some View {
+        SignInWithAppleButton(.signIn) { request in
+            pendingAppleNonce = AppleSignInCoordinator.configureRequest(request)
+        } onCompletion: { result in
+            Task { await handleAppleSignIn(result) }
+        }
+        .signInWithAppleButtonStyle(.black)
+        .frame(maxWidth: .infinity)
+        .frame(height: 50)
+        .cornerRadius(10)
+        .disabled(viewModel.isLoading)
+    }
+
     // MARK: - Logique (inchangée fonctionnellement, voir version précédente de ce fichier)
 
     private var canSubmit: Bool { !mail.isEmpty && !password.isEmpty }
@@ -242,6 +275,26 @@ struct LoginView: View {
         guard let presenter = UIApplication.shared.rootViewController else { return }
         guard let googleUser = try? await GoogleSignInCoordinator.signIn(presenting: presenter) else { return }
         await viewModel.loginWithGoogle(providerId: googleUser.providerId, email: googleUser.email ?? "", provider: "google")
+    }
+
+    /// Port du résultat de `SignInWithAppleButton` (`appleButton` ci-dessus) — même point d'arrivée
+    /// que `signInWithGoogle()` : `AuthViewModel.loginWithGoogle(providerId:email:provider:)` est
+    /// générique côté réseau (voir `AuthEndpoints.swift`, `provider` est un `String` arbitraire déjà
+    /// envoyé tel quel), réutilisé ici avec `provider: "apple"` plutôt que dupliqué. **Support
+    /// backend NON VÉRIFIÉ pour cette valeur précise de `provider`** — voir `AppleSignInCoordinator`.
+    private func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) async {
+        guard let nonce = pendingAppleNonce else { return }
+        pendingAppleNonce = nil
+        guard case .success(let authorization) = result,
+              let appleUser = try? await AppleSignInCoordinator.resolveUser(from: authorization, rawNonce: nonce)
+        else { return }
+        // Persisté AVANT l'appel réseau — voir `UserSession.appleUserIdentifier`, nécessaire à
+        // `AppleSignInCoordinator.checkCredentialStateAtLaunch()` dès la prochaine ouverture de
+        // l'app, y compris si l'utilisateur quitte l'app avant que la navigation post-login n'ait
+        // eu lieu (cohérent avec la sauvegarde SYNCHRONE de session déjà pratiquée par `handle(_:)`
+        // ci-dessous, voir `AuthSessionPersistence.saveSession`).
+        UserSession.shared.appleUserIdentifier = appleUser.appleUserIdentifier
+        await viewModel.loginWithGoogle(providerId: appleUser.providerId, email: appleUser.email ?? "", provider: "apple")
     }
 
     private func submit() async {

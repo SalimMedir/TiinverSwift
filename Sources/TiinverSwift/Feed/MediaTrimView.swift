@@ -569,7 +569,7 @@ struct MediaTrimView: View {
         // `[0,1]×[0,1]` relatifs à `size`, exactement l'espace dans lequel `size` vit ici) donnent
         // directement le rectangle final, sans recalcul de ratio séparé.
         guard case .ratio(let w, let h) = state.cropRatio, w > 0, h > 0 else {
-            return (transform, size)
+            return (transform, Self.roundedToEvenPixels(size))
         }
         let targetRatio = CGFloat(w) / CGFloat(h)
         let videoAspect = size.width / size.height
@@ -580,7 +580,30 @@ struct MediaTrimView: View {
             y: state.cropCenter.y * size.height - cropSize.height / 2
         )
         transform = transform.concatenating(CGAffineTransform(translationX: -cropOrigin.x, y: -cropOrigin.y))
-        return (transform, cropSize)
+        return (transform, Self.roundedToEvenPixels(cropSize))
+    }
+
+    /// **Ajouté (2026-09-01, bug physique "export vidéo incorrect")** — `AVMutableVideoComposition.
+    /// renderSize` recevait jusqu'ici directement `cropSize`, un `CGSize` calculé par des
+    /// multiplications de fractions (`cropSizeNorm.width * size.width`, etc.) — quasiment JAMAIS un
+    /// nombre entier, encore moins PAIR, en pratique. Contrainte AVFoundation/H.264 documentée : la
+    /// sous-échantillonnage chroma 4:2:0 utilisé par l'encodage vidéo standard exige des dimensions
+    /// PAIRES ; `AVAssetExportSession` ne lève aucune erreur explicite sur une `renderSize` non
+    /// paire, mais arrondit/gère cette situation de façon non garantie selon les cas (échec silencieux,
+    /// artefact de bord, décalage du contenu par rapport au rectangle de recadrage réellement
+    /// choisi par l'utilisateur) — exactement le symptôme "le résultat final est incorrect" alors
+    /// que l'écran d'édition lui-même semble fonctionner normalement (aucune vérification visible
+    /// n'est possible avant export : voir la note de tête de fichier, l'aperçu `VideoPlayer` ne
+    /// reflète PAS rotation/miroir/recadrage, seul le rectangle de sélection est affiché en overlay).
+    /// Résolution DÉLIBÉRÉMENT DIFFÉRÉE à la toute fin (translation/rotation/miroir/recadrage déjà
+    /// tous appliqués à `transform`) — seule la taille de rendu finale est arrondie, jamais un
+    /// paramètre intermédiaire, pour ne décaler le contenu que d'une fraction de pixel au pire.
+    private static func roundedToEvenPixels(_ size: CGSize) -> CGSize {
+        func evenFloor(_ v: CGFloat) -> CGFloat {
+            let floored = v.rounded(.down)
+            return floored.truncatingRemainder(dividingBy: 2) == 0 ? floored : floored - 1
+        }
+        return CGSize(width: max(2, evenFloor(size.width)), height: max(2, evenFloor(size.height)))
     }
 
     private func formatted(_ seconds: Double) -> String {

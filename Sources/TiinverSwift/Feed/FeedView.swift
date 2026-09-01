@@ -771,6 +771,24 @@ struct FeedDetailPagerView: View {
                 .rotationEffect(.degrees(90), anchor: .topLeading)
                 .offset(x: geo.size.width)
                 .tabViewStyle(.page(indexDisplayMode: .never))
+                // **Ajouté (2026-09-01, bug physique "barre blanche à droite en plein écran",
+                // photo ET vidéo confondues)** — piste retenue après analyse (PAS confirmée
+                // physiquement, à revérifier) : `TabView(.page)` est porté par un `UIScrollView`/
+                // `UIPageViewController` UIKit sous-jacent, dont `contentInsetAdjustmentBehavior`
+                // gère SA PROPRE prise en compte de la zone sûre, indépendamment de
+                // `.ignoresSafeArea()` posé sur le `GeometryReader` englobant (qui agit au niveau
+                // du système de layout SwiftUI, pas nécessairement propagé à l'intérieur d'une vue
+                // UIKit pontée) — un comportement d'interopérabilité SwiftUI/UIKit documenté pour
+                // `TabView(.page)`. Concrètement, le bord de la zone sûre NATIVEMENT concerné
+                // (haut ou bas de cette `TabView`, AVANT sa rotation de 90°) devient, après
+                // rotation, le bord DROIT du résultat visible à l'écran — cohérent avec le
+                // symptôme rapporté ("légèrement décalé vers la droite") et avec le fait qu'il
+                // touche indifféremment photo et vidéo (un effet du conteneur partagé, pas d'un
+                // rendu média spécifique — déjà vérifié séparément dans `FeedDetailCell`, qui
+                // encadre chaque média dans sa propre `GeometryReader`+`.clipped()`, V8). Appliqué
+                // ICI, directement sur la `TabView`, en plus de celui du `GeometryReader` englobant
+                // (conservé, ne fait pas de mal) — à confirmer par un nouveau test physique.
+                .ignoresSafeArea()
             }
             .ignoresSafeArea()
             .onChange(of: currentIndex) { newIndex in

@@ -14,10 +14,11 @@ import UIKit
 /// **Non disponible sur Android** — aucun équivalent à porter depuis l'app Android de référence,
 /// fonctionnalité nouvelle demandée directement côté iOS (2026-09-01).
 ///
-/// **⚠️ Support backend NON VÉRIFIÉ** — contrairement au reste de ce portage, il n'existe aucune
-/// preuve (code source backend indisponible dans ce dépôt) que l'API Tiinver accepte réellement
-/// `provider: "apple"` sur l'endpoint `login`/`register`. À confirmer par un test réel avant de
-/// considérer ce flux fonctionnel de bout en bout — voir résumé de session.
+/// **Support backend confirmé (2026-09-01, propriétaire du projet)** — l'API Tiinver accepte
+/// n'importe quelle valeur de `provider` sur l'endpoint `login`/`register` : ce champ sert
+/// uniquement à IDENTIFIER la source de connexion côté serveur, il n'est pas restreint à une liste
+/// fermée. `provider: "apple"` est donc un identifiant valide au même titre que `"google"`/`"email"`,
+/// sans changement requis côté backend.
 enum AppleSignInCoordinator {
     struct AppleUser {
         /// `uid` Firebase — même rôle que `GoogleUser.providerId`, envoyé au backend Tiinver.

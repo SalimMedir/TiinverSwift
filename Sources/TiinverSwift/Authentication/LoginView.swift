@@ -280,8 +280,8 @@ struct LoginView: View {
     /// Port du résultat de `SignInWithAppleButton` (`appleButton` ci-dessus) — même point d'arrivée
     /// que `signInWithGoogle()` : `AuthViewModel.loginWithGoogle(providerId:email:provider:)` est
     /// générique côté réseau (voir `AuthEndpoints.swift`, `provider` est un `String` arbitraire déjà
-    /// envoyé tel quel), réutilisé ici avec `provider: "apple"` plutôt que dupliqué. **Support
-    /// backend NON VÉRIFIÉ pour cette valeur précise de `provider`** — voir `AppleSignInCoordinator`.
+    /// envoyé tel quel — accepté sans restriction par le backend, confirmé par le propriétaire du
+    /// projet), réutilisé ici avec `provider: "apple"` plutôt que dupliqué.
     private func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) async {
         guard let nonce = pendingAppleNonce else { return }
         pendingAppleNonce = nil

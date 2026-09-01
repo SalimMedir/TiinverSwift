@@ -22,6 +22,12 @@ struct MonetizationView: View {
     @State private var showContactPicker = false
     @State private var showReferral = false
     @State private var showAnimems = false
+    /// **Ajouté (2026-09-02, revue post-implémentation du pipeline vidéo)** — ce hub a son PROPRE
+    /// point d'entrée Caméra/Galerie (`actionCard("Publier du contenu")` ci-dessous), distinct de
+    /// celui de `FeedView.swift` mais routé de façon identique côté Android (même `MediasDisplay`
+    /// intercalé avant `PublishFragment`, voir `MediasDisplayView.swift`) — manqué lors du premier
+    /// câblage (2026-09-01), qui n'avait modifié que `FeedView.swift`/`AnimemesEditorView.swift`.
+    @State private var pendingMediasDisplayURL: URL?
 
     var body: some View {
         ScrollView {
@@ -64,7 +70,7 @@ struct MonetizationView: View {
             CameraView(
                 onClose: { showCamera = false },
                 onPhotoCaptured: { image in showCamera = false; pendingMedia = .photo(image) },
-                onVideoRecorded: { url, _ in showCamera = false; pendingMedia = .video(url) },
+                onVideoRecorded: { url, _ in showCamera = false; pendingMediasDisplayURL = url },
                 onImagePickedFromGallery: { url in
                     showCamera = false
                     if let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
@@ -82,8 +88,20 @@ struct MonetizationView: View {
             if let url = pendingTrimURL {
                 MediaTrimView(
                     sourceURL: url,
-                    onTrimmed: { trimmedURL in pendingTrimURL = nil; pendingMedia = .video(trimmedURL) },
+                    onTrimmed: { trimmedURL in pendingTrimURL = nil; pendingMediasDisplayURL = trimmedURL },
                     onCancel: { pendingTrimURL = nil }
+                )
+            }
+        }
+        .fullScreenCover(isPresented: Binding(get: { pendingMediasDisplayURL != nil }, set: { if !$0 { pendingMediasDisplayURL = nil } })) {
+            if let url = pendingMediasDisplayURL {
+                MediasDisplayView(
+                    sourceURL: url,
+                    onDone: { finalURL in
+                        pendingMediasDisplayURL = nil
+                        pendingMedia = .video(finalURL)
+                    },
+                    onCancel: { pendingMediasDisplayURL = nil }
                 )
             }
         }

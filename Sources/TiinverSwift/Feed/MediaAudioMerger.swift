@@ -61,7 +61,17 @@ enum MediaAudioMerger {
         if let originalAudioTrack = try? await asset.loadTracks(withMediaType: .audio).first,
             let compOriginalAudioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
         {
-            try? compOriginalAudioTrack.insertTimeRange(CMTimeRange(start: .zero, duration: videoDuration), of: originalAudioTrack, at: .zero)
+            // **Corrigé (2026-09-02, revue post-implémentation)** — `insertTimeRange` avec
+            // `duration: videoDuration` sans clamp pouvait lever si la piste audio propre de la
+            // vidéo est ne serait-ce que légèrement plus courte que la durée globale de l'asset
+            // (écart réel et courant entre pistes audio/vidéo d'une capture caméra, PAS un cas
+            // hypothétique) — avec l'ancien `try?`, cet échec passait silencieusement, l'audio
+            // ORIGINAL disparaissant purement et simplement du résultat final. Borné ici à la durée
+            // RÉELLE de la piste audio elle-même (`timeRange.duration`, jamais supposée égale à
+            // `videoDuration`), qui ne peut plus jamais dépasser ce qui existe réellement.
+            let originalAudioDuration = (try? await originalAudioTrack.load(.timeRange))?.duration ?? videoDuration
+            let originalAudioRange = CMTimeRange(start: .zero, duration: min(videoDuration, originalAudioDuration))
+            try? compOriginalAudioTrack.insertTimeRange(originalAudioRange, of: originalAudioTrack, at: .zero)
             let params = AVMutableAudioMixInputParameters(track: compOriginalAudioTrack)
             params.setVolume(originalVolume, at: .zero)
             audioMixParams.append(params)

@@ -69,14 +69,34 @@ struct PublishComposeView: View {
     /// `publishedShareText` ci-dessus, qui partagent le TEXTE de la légende APRÈS une publication
     /// réussie (`PublishFragment.java:499-526`, flux séparé, déjà porté).
     ///
-    /// **Écart assumé, documenté** : Android bascule vers `ExportVideoService` (service
-    /// d'arrière-plan avec file d'attente/notification) pour les comptes NON premium avant de
-    /// partager une vidéo — son traitement exact (probable limitation de taille/durée ou
-    /// filigrane, non confirmé sans relecture dédiée de `ExportVideoService.java`) n'est PAS
-    /// reproduit ici. Ce bouton partage directement le fichier réel (photo ou vidéo), fidèle au
-    /// chemin PREMIUM d'Android (`shareVideo(fileUri)` immédiat, sans étape intermédiaire) — la
-    /// distinction premium/non-premium elle-même n'existe nulle part ailleurs dans ce portage iOS
-    /// (aucun concept d'abonnement câblé, `hasPremium` jamais lu), donc pas introduite isolément ici.
+    /// **`ExportVideoService` — audit dédié effectué (2026-09-02), `ExportVideoService.java` (623
+    /// lignes) lu en entier avant de conclure quoi que ce soit.** Confirmé avec certitude, PAS une
+    /// supposition : ce service n'applique AUCUNE compression/limitation de résolution/durée/taille
+    /// — `matchParams()` calque au contraire largeur/hauteur/fps/bitrate de la SORTIE sur ceux de la
+    /// vidéo source. Ce qu'il fait réellement : (1) génère un court "outro" de marque (~4s,
+    /// `MP4Encoder`/`OutroConfig`, logo + nom d'utilisateur + message "connect_grow_and_monetize"),
+    /// (2) superpose un FILIGRANE ANIMÉ "Tiinver" (`AnimatedWatermarkComposer`, logo qui se déplace
+    /// selon des keyframes temporelles — coin haut-gauche → haut-droite → bas-gauche, où il reste)
+    /// sur la vidéo ORIGINALE (pas de ré-encodage destructif du contenu lui-même, la vidéo est
+    /// composée avec l'overlay), (3) `UnifiedComposerFinal.compose(...)` assemble logo d'intro +
+    /// vidéo filigranée + outro en UN seul fichier, (4) `remuxFastStart` (même objectif que
+    /// `shouldOptimizeForNetworkUse` déjà utilisé ici). `PublishFragment.exportingVideo()` confirme
+    /// le déclenchement : `if (hasPremium) shareVideo(fileUri) [fichier propre, inchangé] else
+    /// [passe par ExportVideoService → fichier filigrané+outro]`. C'est un mécanisme PROMOTIONNEL de
+    /// marque (comparable au filigrane TikTok sur un téléchargement gratuit), PAS une limitation
+    /// technique — confirmé, pas une hypothèse.
+    ///
+    /// **Réalisable nativement avec AVFoundation** (overlay animé via `AVVideoCompositionCoreAnimationTool`/
+    /// `AVMutableVideoComposition`, concaténation d'outro via `AVMutableComposition`, sans FFmpeg) —
+    /// **délibérément NON implémenté ici** : ce n'est pas un simple écart technique à combler mais
+    /// une fonctionnalité de marque entière, gated par un système Premium qui N'EXISTE NULLE PART
+    /// AILLEURS dans ce portage iOS (aucun concept d'abonnement câblé, `hasPremium` jamais lu) — et
+    /// qui nécessiterait en plus les assets de marque réels (logo animé, texte exact). L'implémenter
+    /// isolément ici inventerait un système Premium à la place du propriétaire du produit, contraire
+    /// à la consigne explicite. Ce bouton partage donc le fichier réel tel quel (photo ou vidéo),
+    /// fidèle au chemin PREMIUM d'Android (`shareVideo(fileUri)` immédiat) — décision produit à
+    /// prendre séparément : ajouter le filigrane+outro pour TOUS (comme Android non-premium),
+    /// AUCUN (état actuel), ou construire d'abord un vrai système Premium iOS.
     @State private var showRealMediaShareSheet = false
     /// Port de `PublishFragment.java:274-283` (V3-F-058, Phase B P1) — `post.setOnClickListener`
     /// vérifie `getCurrentCategory()` AVANT de publier ; si vide, lance `CategoryActivity` et

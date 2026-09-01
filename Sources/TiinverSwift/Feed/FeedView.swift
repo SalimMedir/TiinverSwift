@@ -56,6 +56,15 @@ struct FeedView: View {
     @State private var pendingMedia: PublishMedia?
     @State private var showAnimems = false
     @State private var pendingTrimURL: URL?
+    /// **Ajouté (2026-09-01, audit pipeline vidéo Android)** — `MediasDisplay.java` (727 lignes,
+    /// lu en entier) : écran de revue (musique/voix off) intercalé entre la capture/le recadrage
+    /// d'une vidéo et Publish, pour LES TROIS sources (Caméra, Galerie après `MediaTrim`, export
+    /// Animems — confirmé par `inputOutputPath.contains("ANIMEMES")`, `MediasDisplay.java:169-171`).
+    /// Absent jusqu'ici côté iOS : Caméra ET Galerie envoyaient directement `pendingMedia`, sans
+    /// jamais passer par cet écran. `MediaTrim` (recadrage géométrique) reste RÉSERVÉ à la Galerie —
+    /// confirmé par `MediaTrim.next.setOnClickListener` → `onArticleSelected(7, ...)` (case 7 =
+    /// `MediasDisplay`), PAS `MediaTrim` lui-même vers Caméra/Animems.
+    @State private var pendingMediasDisplayURL: URL?
     @State private var moreActionsPost: FeedActivity?
     @State private var reportTargetPost: FeedActivity?
     @State private var showReportReasons = false
@@ -240,13 +249,11 @@ struct FeedView: View {
                     pendingMedia = .photo(image)
                 },
                 onVideoRecorded: { url, _ in
-                    // Port de `onArticleSelected(7, args)` — Android route vers un écran de
-                    // prévisualisation avant `PublishFragment` (fragment non identifié précisément
-                    // dans l'ordre de portage) ; ici la vidéo va directement à la légende/publication,
-                    // même destination finale (`PublishFragment`/`activity/add`), juste sans l'étape
-                    // de prévisualisation intermédiaire.
+                    // Port de `onArticleSelected(7, args)` — Android route vers `MediasDisplay`
+                    // (identifié précisément le 2026-09-01, voir doc de `pendingMediasDisplayURL`),
+                    // PAS directement vers `PublishFragment`.
                     showCamera = false
-                    pendingMedia = .video(url)
+                    pendingMediasDisplayURL = url
                 },
                 onImagePickedFromGallery: { url in
                     // Port de la branche image de `pickMedia` → `onArticleSelected(2, bundle)` →
@@ -283,9 +290,24 @@ struct FeedView: View {
                     sourceURL: url,
                     onTrimmed: { trimmedURL in
                         pendingTrimURL = nil
-                        pendingMedia = .video(trimmedURL)
+                        // Port de `MediaTrim.next.setOnClickListener` → `onArticleSelected(7, ...)`
+                        // (case 7 = `MediasDisplay`, PAS `PublishFragment` directement) — voir doc
+                        // de `pendingMediasDisplayURL`.
+                        pendingMediasDisplayURL = trimmedURL
                     },
                     onCancel: { pendingTrimURL = nil }
+                )
+            }
+        }
+        .fullScreenCover(isPresented: Binding(get: { pendingMediasDisplayURL != nil }, set: { if !$0 { pendingMediasDisplayURL = nil } })) {
+            if let url = pendingMediasDisplayURL {
+                MediasDisplayView(
+                    sourceURL: url,
+                    onDone: { finalURL in
+                        pendingMediasDisplayURL = nil
+                        pendingMedia = .video(finalURL)
+                    },
+                    onCancel: { pendingMediasDisplayURL = nil }
                 )
             }
         }

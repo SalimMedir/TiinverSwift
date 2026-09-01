@@ -16,7 +16,9 @@ enum AdMobIdentifiers {
     /// même ID bannière recopié dans TOUS ces layouts (analyse §5.1). **Aussi réutilisé par
     /// `feed_header_layout.xml`'s `<AdView>`** (en-tête du fil d'accueil, `ActivityAdapter.
     /// HeaderViewHolder.adView`, trouvé le 2026-08-17 en portant `FeedView.homeHeader`) — même ID
-    /// numérique, pas un troisième identifiant distinct.
+    /// numérique, pas un troisième identifiant distinct. **Aussi réutilisé par
+    /// `fragment_publish.xml:149`** (`R.id.adView`, écran de publication — `ads:adUnitId="ca-app-pub-
+    /// 2461482190230201/5840810574"`, vérifié le 2026-09-01) — voir `PublishComposeView.swift`.
     static let bannerWallet = "ca-app-pub-2461482190230201/5840810574"
     /// Port de `activity_monegtization.xml`/`activity_referral.xml`, seul écran à utiliser un
     /// second ID bannière distinct (`ads_layout.xml`, analyse §5.1) — PAS unifié avec

@@ -61,6 +61,23 @@ struct PublishComposeView: View {
     @State private var errorText: String?
     @State private var showShareSheet = false
     @State private var publishedShareText: String?
+    /// **Ajouté (2026-09-01, audit `PublishFragment.java` complet)** — port du bouton "Partager"
+    /// (`R.id.share`, `PublishFragment.java:306-312`), DISTINCT du bouton "Publier" (`R.id.post`) :
+    /// Android partage le FICHIER MÉDIA RÉEL vers le partage système, indépendamment de toute
+    /// publication sur Tiinver (`share.setOnClickListener` → `sharePhoto`/`exportingVideo` →
+    /// `shareVideo`, jamais `proceedToPublish`). Ne PAS confondre avec `showShareSheet`/
+    /// `publishedShareText` ci-dessus, qui partagent le TEXTE de la légende APRÈS une publication
+    /// réussie (`PublishFragment.java:499-526`, flux séparé, déjà porté).
+    ///
+    /// **Écart assumé, documenté** : Android bascule vers `ExportVideoService` (service
+    /// d'arrière-plan avec file d'attente/notification) pour les comptes NON premium avant de
+    /// partager une vidéo — son traitement exact (probable limitation de taille/durée ou
+    /// filigrane, non confirmé sans relecture dédiée de `ExportVideoService.java`) n'est PAS
+    /// reproduit ici. Ce bouton partage directement le fichier réel (photo ou vidéo), fidèle au
+    /// chemin PREMIUM d'Android (`shareVideo(fileUri)` immédiat, sans étape intermédiaire) — la
+    /// distinction premium/non-premium elle-même n'existe nulle part ailleurs dans ce portage iOS
+    /// (aucun concept d'abonnement câblé, `hasPremium` jamais lu), donc pas introduite isolément ici.
+    @State private var showRealMediaShareSheet = false
     /// Port de `PublishFragment.java:274-283` (V3-F-058, Phase B P1) — `post.setOnClickListener`
     /// vérifie `getCurrentCategory()` AVANT de publier ; si vide, lance `CategoryActivity` et
     /// n'appelle `proceedToPublish` qu'après un choix confirmé (retour avec `categoryId` non vide).
@@ -197,8 +214,33 @@ struct PublishComposeView: View {
                     Section {
                         Toggle("Autoriser l'utilisation de mon contenu pour l'entraînement de l'IA", isOn: $acceptAiConsent)
                     }
+                    // Port de `R.id.share` (`PublishFragment.java:306-312`) — voir doc de
+                    // `showRealMediaShareSheet`. Positionné ici, dans le formulaire, PAS dans la
+                    // barre d'outils : les deux actions (Publier/Partager) sont deux boutons
+                    // distincts côté Android, `Publier` reste seul dans la barre d'outils
+                    // (`.confirmationAction`, déjà l'action principale attendue à cet emplacement
+                    // par les conventions iOS).
+                    Section {
+                        Button {
+                            showRealMediaShareSheet = true
+                        } label: {
+                            Label("Partager le fichier", systemImage: "square.and.arrow.up")
+                        }
+                    }
                     if let errorText {
                         Text(errorText).foregroundStyle(.red)
+                    }
+                    // Port de `R.id.adView` (`fragment_publish.xml:141-149`, même ID que
+                    // `AdMobIdentifiers.bannerWallet` — vérifié le 2026-09-01, voir sa doc).
+                    // **Pas de garde premium** — aucun concept d'abonnement premium n'existe
+                    // ailleurs dans ce portage iOS (voir doc de `showRealMediaShareSheet`),
+                    // cohérent avec les autres bannières déjà affichées inconditionnellement
+                    // (`FeedView`/écrans Wallet).
+                    Section {
+                        AdBannerView(adUnitID: AdMobIdentifiers.resolvedBanner(AdMobIdentifiers.bannerWallet))
+                            .frame(height: 50)
+                            .frame(maxWidth: .infinity)
+                            .listRowInsets(EdgeInsets())
                     }
                 }
                 .navigationTitle("Nouvelle publication")
@@ -226,6 +268,21 @@ struct PublishComposeView: View {
             .sheet(isPresented: $showShareSheet, onDismiss: onPublished) {
                 if let publishedShareText {
                     ActivityShareSheet(items: [publishedShareText])
+                }
+            }
+            // Port de `R.id.share` — voir doc de `showRealMediaShareSheet`. Partage le fichier RÉEL
+            // (photo affichée dans l'aperçu, ou fichier vidéo local), indépendamment de toute
+            // publication — `onDismiss` volontairement absent (contrairement au partage post-
+            // publication ci-dessus) : partager n'est pas une action de sortie de cet écran côté
+            // Android non plus (`share.setOnClickListener` ne ferme jamais `PublishFragment`).
+            .sheet(isPresented: $showRealMediaShareSheet) {
+                switch media {
+                case .photo:
+                    if let croppedImage {
+                        ActivityShareSheet(items: [croppedImage])
+                    }
+                case .video(let url):
+                    ActivityShareSheet(items: [url])
                 }
             }
             // Port de `CategoryActivity` (V3-F-058) — sélection FORCÉE avant publication quand le

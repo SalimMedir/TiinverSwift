@@ -65,20 +65,23 @@ struct AnimemesEditorView: View {
     @State private var lastMagnification: CGFloat = 1.0
     @State private var isPinching = false
     @State private var exportedURL: URL?
-    /// Port du chaînage `bundleDeliver(RESULT_IMAGE|RESULT_VIDEO)` → `MediaEditor`/`MediaTrim` →
+    /// Port du chaînage `bundleDeliver(RESULT_IMAGE|RESULT_VIDEO)` → `MediasDisplay` →
     /// `PublishFragment` (`MemesFragment.java:327-351/410-433`, `CameraActivity.java:138-208`) —
-    /// **ajouté le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-022 BUNNY-06, Phase B P0-3)**.
-    /// Avant ce correctif, `exportedURL` n'alimentait QU'un `ShareLink` système — aucun chemin ne
-    /// menait à `PublishComposeView`/`FeedRepository.publish`, contrairement à Android où l'export
-    /// Animems rejoint TOUJOURS le pipeline de publication standard (crop/trim intermédiaire puis
-    /// `PublishFragment`, le MÊME écran final que pour une photo/vidéo caméra/galerie classique).
-    /// Choix assumé, documenté : le résultat Animems est injecté directement comme `PublishMedia`
-    /// dans `PublishComposeView` — CE portage a déjà unifié tout le recadrage/les outils dans cet
-    /// écran unique (`PhotoCropView`/`PhotoToolsView`), donc reproduire un second écran
-    /// intermédiaire séparé (`MediaEditor`/`MediaTrim` d'Android) réinventerait un chemin qui existe
-    /// déjà — l'utilisateur retrouve exactement le même recadrage/légende qu'une photo/vidéo
-    /// classique, la parité FONCTIONNELLE (pas la parité d'écran) est respectée.
+    /// **ajouté le 2026-08-19 (MIGRATION_PARITY_AUDIT_V3.md V3-F-022 BUNNY-06, Phase B P0-3)**,
+    /// **corrigé le 2026-09-01 (audit pipeline vidéo Android)** : l'ancienne doc de ce champ
+    /// affirmait à tort que l'écran intermédiaire Android était `MediaEditor`/`MediaTrim`
+    /// (recadrage) — vérifié précisément en traçant `MediasDisplay.onViewCreated`
+    /// (`inputOutputPath.contains("ANIMEMES") → isAnimemes = true`, `MediasDisplay.java:169-171`) :
+    /// c'est en réalité `MediasDisplay` (revue + musique/voix off), un écran ENTIÈREMENT différent
+    /// du recadrage, jamais confondu par Android lui-même. Un export VIDÉO (`.mp4`/`.mov`) route
+    /// désormais par `MediasDisplayView` avant `PublishComposeView` (voir `pendingMediasDisplayURL`
+    /// ci-dessous) ; un export IMAGE statique (`createImage()`, pas de piste vidéo à prévisualiser/
+    /// sonoriser) continue d'aller directement à `PublishComposeView`, fidèle à la nature de l'écran
+    /// Android (conçu autour d'un `ExoPlayer`, pas d'une image fixe).
     @State private var pendingPublishMedia: PublishMedia?
+    /// Voir doc de `pendingPublishMedia` ci-dessus — `MediasDisplayView` intercalé pour un export
+    /// VIDÉO uniquement.
+    @State private var pendingMediasDisplayURL: URL?
     @State private var publishConversionError: String?
     @State private var showDurationSlider = false
     /// Port de `GestureListener.onLongPress` (`MemesView2.java:1571-1574`) — **ajouté le
@@ -359,12 +362,20 @@ struct AnimemesEditorView: View {
                 // Port du choix réel `PublishFragment` — le chemin principal Android, ajouté ici
                 // (voir doc de `pendingPublishMedia`).
                 Button {
-                    Task {
-                        if let media = await Self.publishMedia(from: export.url) {
-                            pendingPublishMedia = media
-                            exportedURL = nil
-                        } else {
-                            publishConversionError = "Impossible de préparer ce fichier pour la publication."
+                    let ext = export.url.pathExtension.lowercased()
+                    if ext == "mp4" || ext == "mov" {
+                        // Port de `MediasDisplay` intercalé avant Publish pour un export vidéo —
+                        // voir doc de `pendingMediasDisplayURL`.
+                        pendingMediasDisplayURL = export.url
+                        exportedURL = nil
+                    } else {
+                        Task {
+                            if let media = await Self.publishMedia(from: export.url) {
+                                pendingPublishMedia = media
+                                exportedURL = nil
+                            } else {
+                                publishConversionError = "Impossible de préparer ce fichier pour la publication."
+                            }
                         }
                     }
                 } label: {
@@ -375,6 +386,18 @@ struct AnimemesEditorView: View {
             }
             .padding()
             .presentationDetents([.height(160)])
+        }
+        .fullScreenCover(isPresented: Binding(get: { pendingMediasDisplayURL != nil }, set: { if !$0 { pendingMediasDisplayURL = nil } })) {
+            if let url = pendingMediasDisplayURL {
+                MediasDisplayView(
+                    sourceURL: url,
+                    onDone: { finalURL in
+                        pendingMediasDisplayURL = nil
+                        pendingPublishMedia = .video(finalURL)
+                    },
+                    onCancel: { pendingMediasDisplayURL = nil }
+                )
+            }
         }
         .fullScreenCover(item: $pendingPublishMedia) { media in
             PublishComposeView(

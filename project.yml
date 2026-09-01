@@ -294,6 +294,12 @@ targets:
         # lecture ci-dessus utilisée pour la publication).
         NSPhotoLibraryAddUsageDescription: "Tiinver a besoin d'enregistrer les photos et vidéos que vous téléchargez."
         NSContactsUsageDescription: "Tiinver utilise vos contacts pour vous suggérer des amis."
+        # **Ajouté (2026-09-01)** — port de `MusicShooserDialog` (`MediasDisplayView.swift`,
+        # `MPMediaPickerController`) : choix d'un morceau de la bibliothèque musicale à mélanger à
+        # une vidéo (Caméra/Galerie/Animems) avant publication. Requis par iOS dès le premier appel
+        # à `MPMediaPickerController`, sans quoi l'app plante immédiatement (comportement standard
+        # de toute permission `NS*UsageDescription` manquante).
+        NSAppleMusicUsageDescription: "Tiinver a besoin d'accéder à votre musique pour l'ajouter en fond sonore de vos vidéos."
         # Module 16 (AdMob) — App ID CONFIRMÉ (pas deviné) : `AndroidManifest.xml:419`,
         # `ca-app-pub-2461482190230201~9045103625`, identique quelle que soit la plateforme (un
         # même compte AdMob héberge les unités pub Android ET iOS de la même app, confirmé par

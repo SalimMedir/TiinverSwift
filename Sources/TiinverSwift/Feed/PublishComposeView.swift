@@ -207,23 +207,29 @@ struct PublishComposeView: View {
         case .caption:
             NavigationStack {
                 Form {
-                    Section {
-                        preview
-                            .frame(maxWidth: .infinity)
-                            .listRowInsets(EdgeInsets())
-                    }
                     Section("Légende") {
-                        // Port de `HashtagComposerView` (limite 80 caractères côté Android) —
-                        // extraction des hashtags reproduite (mots commençant par "#"), l'UI de
-                        // suggestion en direct N'EST PAS reproduite (secondaire, pas envoyée au
-                        // serveur telle quelle de toute façon).
-                        TextEditor(text: $caption)
-                            .frame(minHeight: 80)
-                            .onChange(of: caption) { newValue in
-                                if newValue.count > Self.captionLimit {
-                                    caption = String(newValue.prefix(Self.captionLimit))
+                        // **Corrigé (2026-09-02, revue de validation finale)** — `hashtag_composer_
+                        // view.xml:11-54` lu en entier : Android affiche le média en PETITE MINIATURE
+                        // (`container_video`, 110dp × match_parent, `centerCrop` + `playIcon` en
+                        // overlay pour une vidéo) à CÔTÉ du champ de légende (`inputEditText`, weight=1
+                        // sur la largeur restante) — PAS un grand aperçu séparé en pleine largeur/
+                        // portrait comme l'ancienne Section `preview` ci-dessous le faisait (écart
+                        // confirmé par capture d'écran comparative Android/iOS). Extraction des
+                        // hashtags reproduite (mots commençant par "#") via `HashtagMentionText.
+                        // extractHashtags`, l'UI de suggestion en direct N'EST PAS reproduite
+                        // (secondaire, pas envoyée au serveur telle quelle de toute façon).
+                        HStack(alignment: .top, spacing: 8) {
+                            TextEditor(text: $caption)
+                                .frame(height: 150)
+                                .onChange(of: caption) { newValue in
+                                    if newValue.count > Self.captionLimit {
+                                        caption = String(newValue.prefix(Self.captionLimit))
+                                    }
                                 }
-                            }
+                            preview
+                                .frame(width: 110, height: 150)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
                         Text("\(caption.count)/\(Self.captionLimit)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -353,12 +359,15 @@ struct PublishComposeView: View {
         .disabled(isActive)
     }
 
+    /// Port de `hashtag_composer_view.xml:35-44` (`image_view`, `android:scaleType="centerCrop"`) —
+    /// miniature RECADRÉE pour remplir son cadre (pas de bandes vides), fidèle au `centerCrop`
+    /// Android plutôt qu'au `.fit` utilisé par l'ancien grand aperçu séparé.
     @ViewBuilder
     private var preview: some View {
         switch media {
         case .photo:
             if let croppedImage {
-                Image(uiImage: croppedImage).resizable().aspectRatio(contentMode: .fit).frame(maxHeight: 280)
+                Image(uiImage: croppedImage).resizable().aspectRatio(contentMode: .fill).clipped()
             }
         case .video(let url):
             VideoThumbnailPreview(url: url)
@@ -621,55 +630,36 @@ private extension UIImage {
     }
 }
 
+/// Port de `hashtag_composer_view.xml:35-52` (`image_view` + `playIcon`, PAS de `TextView` de
+/// durée dans cette miniature côté Android — `container_video` ne contient que ces deux vues).
 private struct VideoThumbnailPreview: View {
     let url: URL
     @State private var thumbnail: UIImage?
-    @State private var durationText: String?
 
     var body: some View {
         ZStack {
             if let thumbnail {
-                Image(uiImage: thumbnail).resizable().aspectRatio(contentMode: .fit)
+                Image(uiImage: thumbnail).resizable().aspectRatio(contentMode: .fill).clipped()
             } else {
                 Color(.secondarySystemBackground)
             }
+            // Port de `playIcon` (`ic_play_arrow_white_24dp`, `layout_gravity="center"`).
             Image(systemName: "play.circle.fill")
-                .font(.system(size: 40))
+                .font(.system(size: 24))
                 .foregroundStyle(.white)
-                .shadow(radius: 4)
-            if let durationText {
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        Text(durationText)
-                            .font(.caption2).bold()
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(Color.black.opacity(0.6))
-                            .foregroundStyle(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                            .padding(8)
-                    }
-                }
-            }
+                .shadow(radius: 3)
         }
-        .frame(maxWidth: .infinity, minHeight: 200)
-        .task { await loadMetadata() }
+        .task { await loadThumbnail() }
     }
 
-    /// Port de `PublishFragment.java:213-217,597-643` (miniature Glide + durée) — extraction réelle
-    /// via `AVAssetImageGenerator`/`AVURLAsset.duration` plutôt que l'icône statique de la première
-    /// passe de ce portage.
-    private func loadMetadata() async {
+    /// Port de `PublishFragment.java:197-211` (Glide `.asBitmap().load(fileUri).centerCrop()`) —
+    /// équivalent via `AVAssetImageGenerator`.
+    private func loadThumbnail() async {
         let asset = AVURLAsset(url: url)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         if let cgImage = try? await generator.image(at: .zero).image {
             thumbnail = UIImage(cgImage: cgImage)
-        }
-        if let seconds = try? await asset.load(.duration).seconds, seconds.isFinite, seconds > 0 {
-            let totalSeconds = Int(seconds)
-            durationText = String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)
         }
     }
 }

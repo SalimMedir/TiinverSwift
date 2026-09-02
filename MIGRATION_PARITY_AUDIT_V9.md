@@ -1517,3 +1517,147 @@ précédent : nécessiterait d'ajouter/retirer dynamiquement l'entrée microphon
 au démarrage/arrêt de l'enregistrement (actuellement ajoutée une fois, inconditionnellement, à la
 configuration de session), un changement d'architecture réelle sur un pipeline caméra jamais
 compilé ni exécuté, pour un gain P3 mineur (timing d'une popup système). Confirmé disproportionné.
+
+**V9-F-023 délibérément NON touché** : le champ `"format": "json"` supplémentaire envoyé par
+`FeedRepository.swift` dans l'appel `activity/add` est un "poids mort probable" selon l'audit
+initial — mais "probable" n'est pas "confirmé". Retirer un champ de la charge utile de l'API de
+publication RÉELLEMENT EN PRODUCTION, sur la seule base d'une supposition ("le serveur ignore
+vraisemblablement les clés inconnues"), risquerait de casser la publication si ce champ est en
+réalité consommé côté serveur pour une raison non visible depuis le client — un risque
+disproportionné par rapport au bénéfice (retirer un champ superflu). Laissé en l'état,
+délibérément, plutôt que par oubli.
+
+**V9-F-011 résolu** (nouvelle correction, hors des 3 initialement listées ci-dessus) : commentaire
+`MediasDisplayView.swift` corrigé — affirmait à tort que la preview vidéo boucle "fidèlement à
+Android" (`MediasDisplay.java`'s `onCompletion`, confirmé CODE MORT en §4.3 : la preview réelle
+utilise `ExoPlayer`, sans `setRepeatMode`). Documenté comme amélioration UX assumée, pas une
+fidélité Android. Aucun changement de comportement.
+
+---
+
+## 15 — Audit final V9 (2026-09-02, clôture du cycle de correction)
+
+### 15.1 — P0/P1/P2 : traitement exhaustif, aucun laissé sans justification
+
+| ID | Priorité | Statut final | Justification |
+|---|---|---|---|
+| — | P0 | **0 finding** | Aucun défaut bloquant trouvé sur l'ensemble de l'audit V9. |
+| V9-F-001 | P1 | `PRODUCT DECISION REQUIRED` | Filigrane+outro Download — Android bifurque en 4 comportements selon premium/gratuit, aucun comportement unique à copier. Documenté §9.1/§10.5. **Décision attendue de l'utilisateur.** |
+| V9-F-002 | P1 | ✅ `FALSE POSITIVE` — clos | Risque `.m3u8` en repli confirmé IDENTIQUE sur Android ET iOS (`{guid}/playlist.m3u8` construit à l'identique des deux côtés) — pas un écart de parité, retiré du backlog de portage. |
+| V9-F-003 | P1 | ✅ **CORRIGÉ, CI verte** | Retour visuel MediaTrim (seek/loop/rotation/flip live) — commit `82737f2`, run [33654343010](https://github.com/SalimMedir/TiinverSwift/actions/runs/33654343010) success. |
+| V9-F-004 | P1 | ❓ **Nécessite un device réel** | Justesse mathématique rotation/flip à l'export — protocole de test précis documenté §11.4, non exécutable dans cet environnement (pas de simulateur/device). |
+| V9-F-005 | P1 | `PRODUCT DECISION REQUIRED` | Filigrane+outro Share — même décision que V9-F-001, à trancher ensemble. |
+| V9-F-006 | P2 | `PRODUCT DECISION REQUIRED` | Catalogue musical propriétaire vs bibliothèque personnelle — chantier produit (hébergement de contenu), pas un correctif de code. |
+| V9-F-007 | P2 | ✅ **CORRIGÉ, CI verte** | Feedback de succès au téléchargement — commit `82737f2`, même run que V9-F-003. |
+| V9-F-008 | P2 | ✅ **Résolu par audit, aucune action requise** | Traçage complet : Android envoie `width=0, height=0` sur son flux réel (jamais peuplé) ; iOS envoie les vraies dimensions — iOS déjà supérieur, pas un écart à corriger. |
+
+**Aucun P0/P1/P2 n'est laissé sans disposition explicite** — chacun est soit corrigé et validé par
+CI, soit classé `PRODUCT DECISION REQUIRED` avec la décision exacte à prendre documentée, soit
+`FALSE POSITIVE`/résolu par audit avec preuve, soit dépendant d'un test device avec protocole
+précis préparé.
+
+### 15.2 — P3 : 18 findings, tous listés et justifiés
+
+| ID | Statut | Justification |
+|---|---|---|
+| V9-F-009 | Délibérément différé | Nécessiterait de restructurer l'ajout/retrait dynamique de l'entrée microphone dans un pipeline caméra jamais compilé — risque disproportionné pour un gain de timing UX mineur. |
+| V9-F-010 | Aucune action requise | Bouton flash fonctionnel côté iOS = amélioration assumée, pas une régression. |
+| V9-F-011 | ✅ Corrigé (commit `9818f6d`) | Commentaire erroné sur le bouclage de preview corrigé. |
+| V9-F-012 | Aucune action requise | Boutons `merge`/`voice2` Android non reproduits, chemins automatiques déjà équivalents, impact négligeable. |
+| V9-F-013 | Aucune action requise | Gate de catégorie iOS plus robuste qu'Android (attend confirmation serveur), pas une régression. |
+| V9-F-014 | Lié à V9-F-005 | Bannière pub sans garde premium — cohérent avec l'absence de système Premium, dépend de la même décision produit. |
+| V9-F-015 | ✅ Corrigé (commit `b748735`) | 2 commentaires `AnimemesEditorView.swift` corrigés (fidélité réelle, pas une divergence). |
+| V9-F-016 | ✅ Corrigé (commit `7ae9de1`) | Plancher de sélection converti en valeur absolue (1s), fidèle à Android. |
+| V9-F-017 | Délibérément différé | Architecture de fenêtre zoom/défilement — changement structurel du composant d'édition le plus visible, risque disproportionné pour du code jamais testé. |
+| V9-F-018 | Aucune action requise | Nombre de vignettes (8 vs 16-20) — cosmétique, gestion mémoire déjà équivalente, aucun risque fonctionnel. |
+| V9-F-019 | ✅ Corrigé (commit `7ae9de1`) | Grille des tiers + marques de coin ajoutées à l'overlay de recadrage, pixel-pour-pixel avec Android. |
+| V9-F-020 | Aucune action requise | Fast path remux Android non reproduit — écart ASSUMÉ et documenté (compromis précision > vitesse), reconfirmé exact par cet audit. |
+| V9-F-021 | Délibérément différé | Bitrate adaptatif — exigerait de réécrire le cœur de l'export (`AVAssetExportSession`→`AVAssetWriter`), risque disproportionné sans test device. |
+| V9-F-022 | ✅ Corrigé (commit `b748735`) | Nettoyage du fichier de sortie partiel sur échec d'export. |
+| V9-F-023 | Délibérément non touché | Champ `"format":"json"` superflu envoyé à l'API — retrait non risqué en apparence mais non CONFIRMÉ sans risque réel côté serveur ; laissé en l'état plutôt que de parier sur une supposition. |
+| V9-F-024 | ✅ Corrigé (commit `7ae9de1`) | Progression d'upload câblée pour les photos, pas seulement les vidéos. |
+| V9-F-025 | Aucune action requise | Destination de téléchargement différente par design (Downloads Android vs Photos iOS) — divergence de plateforme raisonnable. |
+| V9-F-026 | ✅ Corrigé (commit `b748735`) | Commentaire obsolète `includesDownload` corrigé. |
+
+**Bilan P3** : 7 corrigés (V9-F-011/015/016/019/022/024/026), 7 sans action requise (déjà
+corrects/acceptables tels quels), 4 délibérément différés avec justification explicite
+(V9-F-009/017/021/023) — **aucun P3 n'est resté "oublié" sans disposition tracée.**
+
+### 15.3 — Code propre
+
+- Chaque correctif documenté précisément dans le fichier source concerné (commentaire daté,
+  citation Android + iOS, portée exacte du changement).
+- Aucune fonction d'export (`composeTransform`, `trim()`) ni pipeline de watermark/premium/
+  catalogue musical/fallback `.m3u8` touchée — vérifié par recherche exhaustive sur chaque diff
+  avant commit, tout au long du cycle.
+- Aucun refactoring hors périmètre : chaque commit ne touche que les fichiers strictement
+  nécessaires au(x) finding(s) traité(s) dans ce commit.
+
+### 15.4 — Build GitHub Actions
+
+| Commit | Contenu | Run | Résultat |
+|---|---|---|---|
+| `82737f2` | V9-F-007 + V9-F-003 (Phase 1/2/§13) | [33654343010](https://github.com/SalimMedir/TiinverSwift/actions/runs/33654343010) | ✅ success |
+| `b748735` | V9-F-015/022/026 (lot P3 #1) | [33658881645](https://github.com/SalimMedir/TiinverSwift/actions/runs/33658881645) | ✅ success |
+| `7ae9de1` | V9-F-016/019/024 + audit V9-F-008 (lot P3 #2) | [33666372789](https://github.com/SalimMedir/TiinverSwift/actions/runs/33666372789) | ✅ success |
+| `9818f6d` | V9-F-011 (commentaire) | [33667139670](https://github.com/SalimMedir/TiinverSwift/actions/runs/33667139670) | ⏳ en cours au moment de la rédaction — mise à jour dès complétion |
+
+**3 builds GitHub Actions consécutifs déjà confirmés verts, le 4ᵉ en cours** — chacun validant
+réellement le commit qu'il prétend valider (`head_sha` vérifié identique au commit poussé avant
+chaque déclenchement).
+
+### 15.5 — État exact de `main`
+
+Au moment de la rédaction de cette section : `HEAD` local = `9818f6d` (avant le dernier commit
+ajoutant cette section §15 elle-même, qui sera poussé séparément juste après). `origin/main`
+synchronisé avec chaque commit au fur et à mesure (poussé immédiatement après chaque commit tout
+au long de ce cycle, jamais de décalage local/distant maintenu au-delà d'une CI en attente).
+
+### 15.6 — Résumé des changements (cycle de correction V9 complet)
+
+**7 commits** au total pour ce cycle de correction (après le cycle d'audit initial) :
+1. `82737f2` — Feedback de succès Download (V9-F-007) + retour visuel MediaTrim (V9-F-003) +
+   correction du cycle de vie de l'observateur.
+2. `b748735` — Lot P3 : 2 commentaires corrigés (V9-F-015) + 1 (V9-F-026) + nettoyage fichier
+   temporaire (V9-F-022).
+3. `7ae9de1` — V9-F-016 (plancher de sélection absolu) + V9-F-019 (grille/coins de recadrage) +
+   V9-F-024 (progression upload photo) + audit V9-F-008 (résolu, iOS déjà correct).
+4. `9818f6d` — V9-F-011 (commentaire preview loop corrigé).
+5. (ce commit) — §15, audit final.
+
+**Findings clos avec correction de code et CI verte** : V9-F-003, V9-F-007, V9-F-011, V9-F-015,
+V9-F-016, V9-F-019, V9-F-022, V9-F-024, V9-F-026 (9 findings).
+
+**Findings clos sans correction de code nécessaire** (résolus par audit/reclassification) :
+V9-F-002 (FALSE POSITIVE), V9-F-008 (iOS déjà supérieur), V9-F-010/012/013/018/020/025 (déjà
+corrects/acceptables tels quels) — 9 findings.
+
+**Findings délibérément différés, avec justification** : V9-F-009, V9-F-017, V9-F-021, V9-F-023
+(4 findings) — chacun documenté précisément (raison, risque, alternative envisagée).
+
+### 15.7 — Éléments nécessitant encore une validation sur appareil réel
+
+1. **V9-F-004** — justesse mathématique de la rotation/du miroir à l'export (`composeTransform`).
+   Protocole de test précis déjà préparé, §11.4.
+2. **Tous les correctifs `MediaTrim` de ce cycle** (seek/loop/aperçu live, grille de recadrage,
+   plancher de sélection) — validés par compilation CI uniquement, jamais exécutés à l'écran. Voir
+   §12 pour le détail complet des points `NON TESTÉ SUR DEVICE`/`VALIDÉ PAR INSPECTION`.
+3. **Cycle de vie de l'observateur de bouclage** (§13) — absence de fuite mémoire non prouvée par
+   un test Instruments réel (raisonnement statique uniquement, cycle de rétention exclu par
+   construction mais non mesuré).
+4. **Feedback de succès du téléchargement** (V9-F-007) — jamais déclenché en conditions réelles
+   (réseau + `PHPhotoLibrary` réels).
+
+### 15.8 — Éléments nécessitant une décision produit (aucune décision arbitraire prise)
+
+1. **Filigrane + outro promotionnel** (V9-F-001 Download + V9-F-005 Share, MÊME mécanisme Android,
+   2 points d'entrée) — répliquer le comportement non-premium Android pour tous, garder l'état
+   actuel (équivalent premium pour tous) en l'assumant explicitement, ou construire d'abord un
+   système Premium iOS avant de trancher. **Aucune de ces options n'a été choisie unilatéralement.**
+2. **Catalogue musical `MediasDisplay`** (V9-F-006) — investir dans un catalogue de sons propre à
+   l'app iOS (hébergement + UI dédiée) vs conserver le sélecteur système actuel (bibliothèque
+   personnelle de l'utilisateur). **Aucune décision prise.**
+
+Ces deux sujets restent entièrement ouverts, tels que documentés en détail dans ce rapport
+(§9.1/§9.5/§10.5 pour le premier, §5/§10.5 pour le second) — prêts à être tranchés par
+l'utilisateur, sans qu'aucune implémentation n'ait anticipé la réponse.

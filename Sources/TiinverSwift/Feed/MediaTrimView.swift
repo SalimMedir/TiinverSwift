@@ -607,6 +607,12 @@ struct MediaTrimView: View {
         }
         guard exportSession.status == .completed else {
             print("MEDIA TRIM: export a échoué — \(String(describing: exportSession.error))")
+            // **Ajouté le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md V9-F-022)** — `AVAssetExportSession`
+            // peut avoir écrit un fichier PARTIEL à `outputURL` avant l'échec (contrairement aux
+            // gardes précédentes de cette fonction, qui échouent toutes AVANT tout octet écrit sur
+            // disque) ; port de `VideoTransformer.run()`/`SimpleTrimmer.trim()` côté Android, qui
+            // suppriment explicitement leur fichier de sortie avant de notifier `onError`.
+            try? FileManager.default.removeItem(at: outputURL)
             errorText = "Le recadrage a échoué — réessaie ou annule."
             return
         }

@@ -82,16 +82,20 @@ struct AnimemesEditorView: View {
     /// Voir doc de `pendingPublishMedia` ci-dessus — `MediasDisplayView` intercalé pour un export
     /// VIDÉO uniquement.
     ///
-    /// **Écart produit délibéré du 2026-09-02** (demande explicite utilisateur, PAS une fidélité
-    /// Android) : sur Android, un export Animems va TOUJOURS directement à `MediasDisplay`, jamais
-    /// à `MediaTrim` (confirmé par `MediasDisplay.onViewCreated`, voir doc ci-dessus). iOS fait
-    /// volontairement diverger ce point : une vidéo exportée passe désormais par `MediaTrimView`
-    /// (voir `pendingTrimURL` ci-dessous) AVANT d'arriver ici, pour offrir le même recadrage/pivot/
-    /// miroir/trim temporel qu'un export Galerie ou Caméra — `pendingMediasDisplayURL` n'est donc
-    /// plus alimenté QUE par `MediaTrimView.onTrimmed`, jamais directement par `exportedURL`.
+    /// **Corrigé le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md §4.1, V9-F-015)** — l'affirmation
+    /// précédente ("écart produit délibéré, PAS une fidélité Android : Android va TOUJOURS
+    /// directement à MediasDisplay") était FACTUELLEMENT INEXACTE, invalidée par un traçage complet
+    /// du code Android réel : `MemesFragment.java:336-337` (`RESULT_VIDEO` →
+    /// `onArticleSelected(10, bundle)`) → `CameraActivity.java:196-200` (`case 10` → **`MediaTrim`**)
+    /// → `MediaTrim.java:180-206` (`onVideo` → `onArticleSelected(7, b)`) → `MediasDisplay`. Android
+    /// fait donc bien passer une vidéo Animems par `MediaTrim` avant `MediasDisplay`, exactement
+    /// comme la Galerie (même `case 10`) — seule la Caméra saute directement à `MediasDisplay`
+    /// (`case 7` direct, confirmé indépendamment). Le passage par `MediaTrimView` ci-dessous (voir
+    /// `pendingTrimURL`) est donc la FIDÉLITÉ RÉELLE au tracé Android, pas une divergence produit.
     @State private var pendingMediasDisplayURL: URL?
-    /// Point d'entrée de `MediaTrimView` pour un export vidéo Animems — voir écart produit
-    /// documenté sur `pendingMediasDisplayURL` ci-dessus.
+    /// Point d'entrée de `MediaTrimView` pour un export vidéo Animems — port fidèle du tracé Android
+    /// réel documenté sur `pendingMediasDisplayURL` ci-dessus (`MemesFragment`→`MediaTrim`→
+    /// `MediasDisplay`), pas un écart produit.
     @State private var pendingTrimURL: URL?
     @State private var publishConversionError: String?
     @State private var showDurationSlider = false
@@ -375,8 +379,9 @@ struct AnimemesEditorView: View {
                 Button {
                     let ext = export.url.pathExtension.lowercased()
                     if ext == "mp4" || ext == "mov" {
-                        // Écart produit délibéré du 2026-09-02 — `MediaTrimView` intercalé avant
-                        // `MediasDisplay` pour un export vidéo, voir doc de `pendingTrimURL`.
+                        // `MediaTrimView` intercalé avant `MediasDisplay` pour un export vidéo —
+                        // fidélité au tracé Android réel, pas un écart produit, voir doc corrigée
+                        // de `pendingTrimURL` (MIGRATION_PARITY_AUDIT_V9.md §4.1, V9-F-015).
                         pendingTrimURL = export.url
                         exportedURL = nil
                     } else {

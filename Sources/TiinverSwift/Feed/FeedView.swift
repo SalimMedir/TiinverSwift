@@ -643,9 +643,16 @@ struct FeedDetailPagerView: View {
     /// "..." de `ProfileFeedFragment`/`FullScreenMedia`/`HashtagProfile` (vérifié par lecture des 4
     /// fichiers, V4-F-007).
     var showManagementActions = false
-    /// Port de `R.id.download` (`layout_post_action.xml`) — `true` SEULEMENT depuis `ProfileView` :
-    /// c'est le SEUL menu "..." Android où le download est réellement câblé (voir
-    /// `FeedMediaDownloader.swift`, V4-F-007 — les 3 autres menus `MainFragment`/`FullScreenMedia`/
+    /// Port de `R.id.download` (`layout_post_action.xml`).
+    ///
+    /// **Corrigé le 2026-08-24 (V5-F-006)** — l'affirmation précédente ("`true` SEULEMENT depuis
+    /// `ProfileView`") était inexacte : le menu "..." RÉEL atteint depuis le fil principal Home est
+    /// `Activity/ui/FeedFragment.OnclickMoreExpand` (PAS `MainFragment`, qui n'a pas cet item) —
+    /// confirmé de nouveau lors de l'audit V9 (`MIGRATION_PARITY_AUDIT_V9.md` §4.3/V9-F-026),
+    /// `FeedFragment.java:1246-1247,1266-1396` liste bien `download` dans son bottom-sheet, masqué
+    /// uniquement sur les posts PROPRES via `idContentHide`. `includesDownload: true` est donc
+    /// transmis à la fois par `FeedView` (grille Home, ligne ~248) ET `ProfileView` — les deux seuls
+    /// écrans où Android câble réellement cette action (`MainFragment`/`FullScreenMedia`/
     /// `HashtagProfile` n'ont pas cet item, ou pointent vers un handler mort/erroné).
     var includesDownload = false
     let onClose: () -> Void

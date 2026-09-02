@@ -1600,18 +1600,19 @@ corrects/acceptables tels quels), 4 délibérément différés avec justificatio
 | `82737f2` | V9-F-007 + V9-F-003 (Phase 1/2/§13) | [33654343010](https://github.com/SalimMedir/TiinverSwift/actions/runs/33654343010) | ✅ success |
 | `b748735` | V9-F-015/022/026 (lot P3 #1) | [33658881645](https://github.com/SalimMedir/TiinverSwift/actions/runs/33658881645) | ✅ success |
 | `7ae9de1` | V9-F-016/019/024 + audit V9-F-008 (lot P3 #2) | [33666372789](https://github.com/SalimMedir/TiinverSwift/actions/runs/33666372789) | ✅ success |
-| `9818f6d` | V9-F-011 (commentaire) | [33667139670](https://github.com/SalimMedir/TiinverSwift/actions/runs/33667139670) | ⏳ en cours au moment de la rédaction — mise à jour dès complétion |
+| `9818f6d` | V9-F-011 (commentaire) | [33667139670](https://github.com/SalimMedir/TiinverSwift/actions/runs/33667139670) | ✅ success |
 
-**3 builds GitHub Actions consécutifs déjà confirmés verts, le 4ᵉ en cours** — chacun validant
-réellement le commit qu'il prétend valider (`head_sha` vérifié identique au commit poussé avant
-chaque déclenchement).
+**4 builds GitHub Actions consécutifs, tous verts** — chacun validant réellement le commit qu'il
+prétend valider (`head_sha` vérifié identique au commit poussé avant chaque déclenchement). Le
+commit `470675f` (cette section §15) est documentaire uniquement (`.md`, aucun fichier Swift) —
+aucun build dédié nécessaire, le dernier build de code réel (`9818f6d`) reste la référence.
 
 ### 15.5 — État exact de `main`
 
-Au moment de la rédaction de cette section : `HEAD` local = `9818f6d` (avant le dernier commit
-ajoutant cette section §15 elle-même, qui sera poussé séparément juste après). `origin/main`
-synchronisé avec chaque commit au fur et à mesure (poussé immédiatement après chaque commit tout
-au long de ce cycle, jamais de décalage local/distant maintenu au-delà d'une CI en attente).
+`HEAD` local = `origin/main` = `470675f` (ce commit inclut cette section §15). Chaque commit de ce
+cycle a été poussé immédiatement après création, jamais de décalage local/distant maintenu au-delà
+du temps d'une CI en attente — confirmé à chaque étape par `git rev-parse HEAD` = `git rev-parse
+origin/main`.
 
 ### 15.6 — Résumé des changements (cycle de correction V9 complet)
 

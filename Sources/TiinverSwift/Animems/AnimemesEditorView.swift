@@ -81,7 +81,18 @@ struct AnimemesEditorView: View {
     @State private var pendingPublishMedia: PublishMedia?
     /// Voir doc de `pendingPublishMedia` ci-dessus — `MediasDisplayView` intercalé pour un export
     /// VIDÉO uniquement.
+    ///
+    /// **Écart produit délibéré du 2026-09-02** (demande explicite utilisateur, PAS une fidélité
+    /// Android) : sur Android, un export Animems va TOUJOURS directement à `MediasDisplay`, jamais
+    /// à `MediaTrim` (confirmé par `MediasDisplay.onViewCreated`, voir doc ci-dessus). iOS fait
+    /// volontairement diverger ce point : une vidéo exportée passe désormais par `MediaTrimView`
+    /// (voir `pendingTrimURL` ci-dessous) AVANT d'arriver ici, pour offrir le même recadrage/pivot/
+    /// miroir/trim temporel qu'un export Galerie ou Caméra — `pendingMediasDisplayURL` n'est donc
+    /// plus alimenté QUE par `MediaTrimView.onTrimmed`, jamais directement par `exportedURL`.
     @State private var pendingMediasDisplayURL: URL?
+    /// Point d'entrée de `MediaTrimView` pour un export vidéo Animems — voir écart produit
+    /// documenté sur `pendingMediasDisplayURL` ci-dessus.
+    @State private var pendingTrimURL: URL?
     @State private var publishConversionError: String?
     @State private var showDurationSlider = false
     /// Port de `GestureListener.onLongPress` (`MemesView2.java:1571-1574`) — **ajouté le
@@ -364,9 +375,9 @@ struct AnimemesEditorView: View {
                 Button {
                     let ext = export.url.pathExtension.lowercased()
                     if ext == "mp4" || ext == "mov" {
-                        // Port de `MediasDisplay` intercalé avant Publish pour un export vidéo —
-                        // voir doc de `pendingMediasDisplayURL`.
-                        pendingMediasDisplayURL = export.url
+                        // Écart produit délibéré du 2026-09-02 — `MediaTrimView` intercalé avant
+                        // `MediasDisplay` pour un export vidéo, voir doc de `pendingTrimURL`.
+                        pendingTrimURL = export.url
                         exportedURL = nil
                     } else {
                         Task {
@@ -386,6 +397,18 @@ struct AnimemesEditorView: View {
             }
             .padding()
             .presentationDetents([.height(160)])
+        }
+        .fullScreenCover(isPresented: Binding(get: { pendingTrimURL != nil }, set: { if !$0 { pendingTrimURL = nil } })) {
+            if let url = pendingTrimURL {
+                MediaTrimView(
+                    sourceURL: url,
+                    onTrimmed: { trimmedURL in
+                        pendingTrimURL = nil
+                        pendingMediasDisplayURL = trimmedURL
+                    },
+                    onCancel: { pendingTrimURL = nil }
+                )
+            }
         }
         .fullScreenCover(isPresented: Binding(get: { pendingMediasDisplayURL != nil }, set: { if !$0 { pendingMediasDisplayURL = nil } })) {
             if let url = pendingMediasDisplayURL {

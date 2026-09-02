@@ -55,15 +55,24 @@ struct FeedView: View {
     @State private var detailStartIndex = 0
     @State private var pendingMedia: PublishMedia?
     @State private var showAnimems = false
+    /// Point d'entrée UNIQUE de `MediaTrimView` pour toute vidéo à publier depuis cet écran — voir
+    /// la doc de `pendingMediasDisplayURL` ci-dessous pour l'écart produit du 2026-09-02 (Caméra
+    /// route ici aussi désormais, pas seulement la Galerie).
     @State private var pendingTrimURL: URL?
     /// **Ajouté (2026-09-01, audit pipeline vidéo Android)** — `MediasDisplay.java` (727 lignes,
     /// lu en entier) : écran de revue (musique/voix off) intercalé entre la capture/le recadrage
     /// d'une vidéo et Publish, pour LES TROIS sources (Caméra, Galerie après `MediaTrim`, export
     /// Animems — confirmé par `inputOutputPath.contains("ANIMEMES")`, `MediasDisplay.java:169-171`).
     /// Absent jusqu'ici côté iOS : Caméra ET Galerie envoyaient directement `pendingMedia`, sans
-    /// jamais passer par cet écran. `MediaTrim` (recadrage géométrique) reste RÉSERVÉ à la Galerie —
-    /// confirmé par `MediaTrim.next.setOnClickListener` → `onArticleSelected(7, ...)` (case 7 =
-    /// `MediasDisplay`), PAS `MediaTrim` lui-même vers Caméra/Animems.
+    /// jamais passer par cet écran.
+    ///
+    /// **Écart produit délibéré du 2026-09-02** (demande explicite utilisateur) : sur Android,
+    /// `MediaTrim` (recadrage géométrique) est RÉSERVÉ à la Galerie — confirmé par `MediaTrim.
+    /// next.setOnClickListener` → `onArticleSelected(7, ...)` (case 7 = `MediasDisplay`), Caméra et
+    /// Animems ne le traversent JAMAIS sur Android. iOS choisit volontairement de faire passer les
+    /// TROIS sources par `MediaTrimView` avant d'arriver ici (voir `pendingTrimURL` ci-dessus) —
+    /// `pendingMediasDisplayURL` n'est donc plus alimenté QUE par la sortie de `MediaTrimView.
+    /// onTrimmed`, jamais directement par la caméra.
     @State private var pendingMediasDisplayURL: URL?
     @State private var moreActionsPost: FeedActivity?
     @State private var reportTargetPost: FeedActivity?
@@ -249,11 +258,16 @@ struct FeedView: View {
                     pendingMedia = .photo(image)
                 },
                 onVideoRecorded: { url, _ in
-                    // Port de `onArticleSelected(7, args)` — Android route vers `MediasDisplay`
-                    // (identifié précisément le 2026-09-01, voir doc de `pendingMediasDisplayURL`),
-                    // PAS directement vers `PublishFragment`.
+                    // **Écart produit délibéré du 2026-09-02** (demande explicite utilisateur,
+                    // PAS une fidélité Android) : sur Android, `onArticleSelected(7, args)` route
+                    // directement vers `MediasDisplay` (voir doc de `pendingMediasDisplayURL`),
+                    // en sautant `MediaTrim` — confirmé par lecture directe du source, `MediaTrim`
+                    // y est réservé à la Galerie. iOS fait volontairement DIVERGER ce point : TOUTE
+                    // vidéo (caméra, galerie, export Animems) passe désormais par `MediaTrimView`
+                    // avant `MediasDisplayView`, pour offrir le même recadrage/pivot/miroir/trim
+                    // temporel quelle que soit la source.
                     showCamera = false
-                    pendingMediasDisplayURL = url
+                    pendingTrimURL = url
                 },
                 onImagePickedFromGallery: { url in
                     // Port de la branche image de `pickMedia` → `onArticleSelected(2, bundle)` →

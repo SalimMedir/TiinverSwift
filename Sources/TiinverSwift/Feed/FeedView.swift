@@ -704,6 +704,17 @@ struct FeedDetailPagerView: View {
     @State private var boostTargetPost: FeedActivity?
     @State private var statsTargetPost: FeedActivity?
     @State private var downloadError: String?
+    /// **Ajouté le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md V9-F-007, CONFIRMED BUG)** — port de
+    /// `DownloadReceiver.onReceive` (`Toast.makeText(context, "Download completed",
+    /// Toast.LENGTH_SHORT).show()`, ligne 90) : Android confirme systématiquement la fin RÉELLE
+    /// d'un téléchargement, succès comme échec (l'échec a déjà son `.alert` ci-dessous,
+    /// `downloadError`, préexistant). Avant ce correctif, seul l'échec était confirmé côté iOS —
+    /// un téléchargement réussi ne produisait AUCUN retour utilisateur, en particulier gênant pour
+    /// une vidéo volumineuse (aucune façon de savoir si le fichier est bien arrivé dans Photos).
+    /// Positionné à `true` UNIQUEMENT après le retour sans erreur de `FeedMediaDownloader.download`,
+    /// qui ne rend la main qu'après le succès de `PHPhotoLibrary.performChanges` (le fichier est
+    /// RÉELLEMENT enregistré dans Photos à ce point, pas seulement téléchargé depuis le réseau).
+    @State private var downloadSucceeded = false
     /// Port de `uniqueDowloadSet` (`ProfileFeedFragment.java:101,769-773`, V5-F-096) — un `post.id`
     /// une fois inséré n'est JAMAIS retiré (pas de `defer`/retrait au succès ou à l'échec, fidèle à
     /// Android : le `Set` n'est vidé qu'en recréant le Fragment, ici l'équivalent est la durée de
@@ -930,7 +941,10 @@ struct FeedDetailPagerView: View {
                         Button("Télécharger") {
                             guard queuedDownloadPostIds.insert(post.id).inserted else { return }
                             Task {
-                                do { try await FeedMediaDownloader.download(post) } catch {
+                                do {
+                                    try await FeedMediaDownloader.download(post)
+                                    downloadSucceeded = true
+                                } catch {
                                     downloadError = error.localizedDescription
                                 }
                             }
@@ -969,6 +983,9 @@ struct FeedDetailPagerView: View {
             Button("OK", role: .cancel) { downloadError = nil }
         } message: {
             Text(downloadError ?? "")
+        }
+        .alert("Téléchargement réussi", isPresented: $downloadSucceeded) {
+            Button("OK", role: .cancel) {}
         }
         // Port du `Toast` d'échec de `deleteMyPost` (V4-F-032, voir `FeedViewModel.deleteOwnPost`).
         .alert("Échec de la suppression", isPresented: Binding(get: { viewModel.deleteError != nil }, set: { if !$0 { viewModel.deleteError = nil } })) {

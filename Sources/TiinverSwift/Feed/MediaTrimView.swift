@@ -69,6 +69,12 @@ struct MediaTrimView: View {
     @State private var thumbnails: [UIImage] = []
     @State private var isProcessing = false
     @State private var player: AVPlayer?
+    /// **Ajouté le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md §12/§13, correction du cycle de vie de
+    /// l'observateur de bouclage)** — token retourné par `player.addPeriodicTimeObserver`, requis
+    /// pour l'invalider proprement via `removeTimeObserver(_:)`. Voir `addLoopObserver()`/`load()`
+    /// pour le protocole exact (retirer l'ancien AVANT tout remplacement de `player`) et `.onDisappear`
+    /// dans `body` pour le nettoyage à la fermeture de l'écran.
+    @State private var loopObserverToken: Any?
     @State private var trimState = VideoTrimState()
     /// Aspect ratio (largeur/hauteur) de la vidéo APRÈS correction d'orientation native
     /// (`preferredTransform`), AVANT toute rotation manuelle (`trimState.rotationDegrees`) —
@@ -93,12 +99,7 @@ struct MediaTrimView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
-                if let player {
-                    VideoPlayer(player: player).frame(height: 240).background(Color.black)
-                        .overlay { cropOverlay }
-                } else {
-                    Color.black.frame(height: 240)
-                }
+                videoPreview
                 filmstrip
                 HStack {
                     Text(formatted(startFraction * duration))
@@ -164,6 +165,18 @@ struct MediaTrimView: View {
             }
         }
         .task { await load() }
+        // **Ajouté le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md §12/§13)** — retire explicitement
+        // l'observateur de bouclage à la fermeture de l'écran (annulation, validation réussie, ou
+        // tout autre chemin de sortie de `MediaTrimView`), conformément à la pratique documentée
+        // par Apple pour `addPeriodicTimeObserver`. `player` est encore le lecteur actif à ce point
+        // (rien ne le réassigne après `load()`), donc `removeTimeObserver` cible bien le lecteur
+        // sur lequel le token a été obtenu.
+        .onDisappear {
+            if let token = loopObserverToken {
+                player?.removeTimeObserver(token)
+                loopObserverToken = nil
+            }
+        }
         .alert(
             "Échec du recadrage",
             isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })
@@ -172,6 +185,41 @@ struct MediaTrimView: View {
         } message: {
             Text(errorText ?? "")
         }
+    }
+
+    /// **Ajouté le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md V9-F-003, CONFIRMED BUG — portée
+    /// UX/interaction)** — port de `applyPreview()` (`VideoTrimmerView.java:306-338`) : Android
+    /// anime le conteneur du lecteur (`playerContainer`, `rotation`/`scaleX`/`scaleY`) à chaque
+    /// appui sur pivot/miroir, avec un fit-to-screen dont les dimensions sont ÉCHANGÉES pour une
+    /// rotation 90°/270° (une rotation ne change PAS la taille de mise en page d'une vue, donc sans
+    /// ce pré-dimensionnement inversé le contenu pivoté déborderait/serait rogné). Avant ce
+    /// correctif, aucun `.rotationEffect`/`.scaleEffect` conditionnel n'existait — l'utilisateur ne
+    /// voyait JAMAIS l'effet d'une rotation/d'un miroir avant l'export. `videoRect` réutilise
+    /// EXACTEMENT le même calcul (`letterboxedRect`/`currentPreviewAspect`) déjà utilisé par
+    /// `cropOverlay` ci-dessous, pour que les deux overlays restent alignés. `trimState.
+    /// rotationDegrees`/`flippedHorizontally` sont lus tels quels (pas modifiés) — les
+    /// transformations réellement appliquées à l'export (`composeTransform`) sont inchangées.
+    @ViewBuilder
+    private var videoPreview: some View {
+        GeometryReader { geo in
+            ZStack {
+                Color.black
+                if let player {
+                    let videoRect = Self.letterboxedRect(in: geo.size, aspect: currentPreviewAspect)
+                    let isSideways = trimState.rotationDegrees == 90 || trimState.rotationDegrees == 270
+                    let preRotationSize = isSideways
+                        ? CGSize(width: videoRect.height, height: videoRect.width)
+                        : videoRect.size
+                    VideoPlayer(player: player)
+                        .frame(width: preRotationSize.width, height: preRotationSize.height)
+                        .rotationEffect(.degrees(Double(trimState.rotationDegrees)))
+                        .scaleEffect(x: trimState.flippedHorizontally ? -1 : 1, y: 1)
+                        .position(x: videoRect.midX, y: videoRect.midY)
+                }
+            }
+        }
+        .frame(height: 240)
+        .overlay { cropOverlay }
     }
 
     /// Port de `CropOverlayView` (`:1-266`, montée par `setBtnCropRatioVisibility`/`applyRatio` —
@@ -309,6 +357,15 @@ struct MediaTrimView: View {
     /// de poignée, dans les DEUX directions — si la nouvelle largeur dépasserait la limite, c'est la
     /// poignée en cours de déplacement qui est ramenée à la largeur maximale (pas un blocage dur du
     /// geste), exactement le même comportement reproduit ici via `maxWidthFraction`.
+    ///
+    /// **Corrigé le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md V9-F-003, CONFIRMED BUG — portée
+    /// UX/interaction, PAS les valeurs exportées, qui restent inchangées)** — port de
+    /// `ProTimelineView.Listener.onSelectionChanged(startMs, endMs)` → `player.seekTo(...)`
+    /// (`VideoTrimmerView.java:514-527`) : Android déplace immédiatement le lecteur au point
+    /// touché pendant le glissement d'une poignée, pour un retour visuel du point de coupe.
+    /// Ajout du seul appel `player?.seek(...)` correspondant — `startFraction`/`endFraction`
+    /// (les valeurs réellement utilisées par `trim()` à l'export) ne sont pas modifiées par ce
+    /// correctif.
     private func dragGesture(isStart: Bool, width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
@@ -331,6 +388,11 @@ struct MediaTrimView: View {
                         endFraction = startFraction + maxWidthFraction
                     }
                 }
+                let seekFraction = isStart ? startFraction : endFraction
+                player?.seek(
+                    to: CMTime(seconds: seekFraction * duration, preferredTimescale: 600),
+                    toleranceBefore: .zero, toleranceAfter: .zero
+                )
             }
     }
 
@@ -342,7 +404,21 @@ struct MediaTrimView: View {
                 endFraction = Self.maxDurationSeconds / seconds
             }
         }
+        // **Corrigé le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md §12/§13)** — retire l'observateur
+        // de l'ANCIEN `player` (s'il existe) AVANT de le remplacer, pas après : à ce point précis,
+        // `player` désigne encore l'instance sur laquelle `loopObserverToken` a réellement été
+        // obtenu (celle éventuellement créée par un appel antérieur de `load()`) — inverser l'ordre
+        // (remplacer `player` PUIS tenter de retirer le token) invaliderait l'appel, le token
+        // n'appartenant plus au nouveau lecteur. Protège contre un double observateur si `load()`
+        // était un jour appelé plusieurs fois (défensif — `.task` ne le déclenche qu'une fois par
+        // apparition de la vue dans le flux SwiftUI actuel, mais ce protocole reste correct même si
+        // cette hypothèse changeait).
+        if let token = loopObserverToken {
+            player?.removeTimeObserver(token)
+            loopObserverToken = nil
+        }
         player = AVPlayer(url: sourceURL)
+        addLoopObserver()
         await generateThumbnails(asset: asset)
         // Port de `calculateVideoRect` (`CropOverlayView.java`) — nécessaire à l'aperçu de
         // recadrage interactif (`cropOverlay`). Même calcul d'orientation que l'étape 1 de
@@ -354,6 +430,37 @@ struct MediaTrimView: View {
             let oriented = naturalSize.applying(preferredTransform)
             let width = abs(oriented.width), height = abs(oriented.height)
             if height > 0 { orientedVideoAspect = width / height }
+        }
+    }
+
+    /// **Ajouté le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md V9-F-003, CONFIRMED BUG — portée
+    /// UX/interaction)** — port du bouclage dans la sélection
+    /// (`myPlayerListener.onPlaybackStateChanged`, `Player.STATE_ENDED` → `player.seekTo
+    /// (timeline.getSelStartMs())` → `player.play()`, `VideoTrimmerView.java:985-990`) : Android
+    /// boucle la lecture DANS la fenêtre `[selStart, selEnd]` pendant l'édition, jamais au-delà.
+    /// Un observateur de temps périodique (pas seulement `AVPlayerItemDidPlayToEndTime`) est
+    /// nécessaire ici car la vidéo COMPLÈTE reste lisible via les contrôles natifs `VideoPlayer` —
+    /// le bouclage doit se déclencher DÈS la fin de la SÉLECTION, pas seulement à la fin réelle du
+    /// fichier. `[weak player]` évite le cycle de rétention (le lecteur retient l'observateur, qui
+    /// retiendrait sinon le lecteur en retour). N'affecte QUE la lecture pendant l'édition — les
+    /// bornes `startFraction`/`endFraction` réellement utilisées par `trim()` à l'export sont lues
+    /// telles quelles, inchangées par ce correctif.
+    ///
+    /// **Corrigé le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md §12/§13)** — le token retourné par
+    /// `addPeriodicTimeObserver` est désormais conservé (`loopObserverToken`) plutôt qu'ignoré, pour
+    /// permettre son retrait explicite (`removeTimeObserver`) ailleurs (`load()` avant tout
+    /// remplacement de `player`, `.onDisappear` dans `body` à la fermeture de l'écran) — cette
+    /// fonction elle-même ne retire plus rien, l'appelant (`load()`) est seul responsable de retirer
+    /// l'ANCIEN token avant d'appeler cette fonction, car lui seul dispose encore d'une référence à
+    /// l'ancien `player` au moment du remplacement.
+    private func addLoopObserver() {
+        guard let player else { return }
+        let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
+        loopObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak player] time in
+            guard let player, duration > 0 else { return }
+            if time.seconds >= endFraction * duration {
+                player.seek(to: CMTime(seconds: startFraction * duration, preferredTimescale: 600))
+            }
         }
     }
 

@@ -1007,12 +1007,56 @@ workflows:
             --project "$XCODE_PROJECT" \
             --archive-method app-store
 
+      # **Ajouté (2026-09-03)** — ce workflow échouait avec "Failed to archive TiinverSwift.xcodeproj"
+      # / status code 65, SANS aucune ligne `error:` réelle visible dans le résumé Codemagic (celui-ci
+      # n'affiche que le statut final, pas le log `xcodebuild` brut). Même symptôme EXACT déjà
+      # rencontré et résolu dans `browserstack-ipa-build` ci-dessus (voir son historique de
+      # commentaires) : `xcode-project build-ipa`, appelé nu, ne surface aucun détail avant que le
+      # `set -e` implicite de Codemagic n'interrompe le step. `-v`/`--verbose` (flag GLOBAL de
+      # `xcode-project`, pas de `build-ipa` — même piège déjà documenté plus haut) + `set +e`/capture
+      # de `$?`/dump des logs bruts sur échec, repris ici À L'IDENTIQUE de `browserstack-ipa-build`
+      # (3 emplacements de logs possibles : `/tmp/xcodebuild_logs/`, `~/Library/Logs`, et
+      # `$TMPDIR/var/folders/.../codemagic-*.log`) — nécessaire pour obtenir la VRAIE première erreur
+      # `xcodebuild` avant de pouvoir diagnostiquer quoi que ce soit d'autre. Ne change AUCUN réglage
+      # de signature (toujours `ios_signing:`/intégration App Store Connect, inchangés) : cette étape
+      # ne fait qu'exposer l'erreur déjà présente, jamais tentée d'être contournée ici.
       - name: Archiver et exporter le .ipa (signature automatique via l'intégration App Store Connect)
         script: |
-          xcode-project build-ipa \
+          set +e
+          set -x
+          xcode-project -v build-ipa \
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \
             --ipa-directory "$CM_BUILD_DIR/build/ios/ipa"
+          BUILD_IPA_EXIT=$?
+          set +x
+          set -e
+
+          if [ "$BUILD_IPA_EXIT" -ne 0 ]; then
+            echo "=================================================================="
+            echo "ERREUR : xcode-project build-ipa a échoué (code $BUILD_IPA_EXIT)."
+            echo "Codemagic n'affiche que le résumé — logs bruts xcodebuild ci-dessous :"
+            echo "=================================================================="
+            if [ -d /tmp/xcodebuild_logs ]; then
+              echo "--- Contenu de /tmp/xcodebuild_logs/ ---"
+              ls -la /tmp/xcodebuild_logs/
+              for f in /tmp/xcodebuild_logs/*; do
+                echo ""
+                echo "===== $f (200 dernières lignes) ====="
+                tail -n 200 "$f"
+              done
+            else
+              echo "/tmp/xcodebuild_logs/ introuvable sur ce runner — cherche ailleurs :"
+              find "$HOME/Library/Logs" -iname "*xcodebuild*" -o -iname "*TiinverSwift*" 2>/dev/null
+            fi
+            echo "--- Recherche de logs codemagic-*.log dans \$TMPDIR/var/folders ---"
+            find "${TMPDIR:-/var/folders}" -iname "codemagic-*.log" 2>/dev/null | while read -r f; do
+              echo ""
+              echo "===== $f (200 dernières lignes) ====="
+              tail -n 200 "$f"
+            done
+            exit "$BUILD_IPA_EXIT"
+          fi
 
       - name: Vérifier explicitement qu'un .ipa a bien été produit
         script: |
@@ -1024,6 +1068,8 @@ workflows:
             exit 1
           fi
           ls -la "$CM_BUILD_DIR/build/ios/ipa"
+          echo "Taille du .ipa produit :"
+          du -h "$CM_BUILD_DIR/build/ios/ipa"/*.ipa
 
     artifacts:
       - $CM_BUILD_DIR/build/ios/ipa/*.ipa

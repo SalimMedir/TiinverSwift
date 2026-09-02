@@ -57,8 +57,17 @@ struct MediasDisplayView: View {
                     .frame(maxHeight: 420)
                     .background(Color.black)
                     .onAppear { player.play() }
-                    // Port de `onCompletion`/`mp.seekTo(0); mp.start()` (`MediasDisplay.java:573-578`)
-                    // — la preview boucle, fidèle à Android.
+                    // **Corrigé le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md V9-F-011)** — l'affirmation
+                    // précédente ("fidèle à Android", citant `MediasDisplay.java:573-578`'s
+                    // `onCompletion`) était inexacte : `MediasDisplay` implémente bien
+                    // `MediaPlayer.OnCompletionListener`, mais la preview réelle utilise `ExoPlayer`
+                    // (`mVideoView.setPlayer`), jamais `android.media.MediaPlayer` — `onCompletion`
+                    // est du code MORT, jamais invoqué (confirmé : aucun `MediaPlayer` instancié dans
+                    // ce fichier, `myPlayerListener` — le vrai `Player.Listener` ExoPlayer — ne gère
+                    // que `onPlaybackStateChanged`/`onVideoSizeChanged`, aucun `setRepeatMode`
+                    // trouvé). La preview Android ne boucle donc PAS — elle joue une fois puis
+                    // s'arrête. Le bouclage ci-dessous est une amélioration UX délibérée assumée,
+                    // pas une reproduction du comportement Android réel.
                     .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime, object: player.currentItem)) { _ in
                         player.seek(to: .zero)
                         player.play()

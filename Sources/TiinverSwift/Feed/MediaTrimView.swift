@@ -94,7 +94,18 @@ struct MediaTrimView: View {
 
     /// Port de `videotrimmer.setTrimeLimitMax(60000)`.
     private static let maxDurationSeconds: Double = 60
-    private static let minHandleSpacing: Double = 0.03
+    /// **Corrigé le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md V9-F-016)** — était une FRACTION fixe
+    /// de la durée totale (`0.03`, soit 1.8s sur une vidéo de 60s mais seulement 0.15s sur une
+    /// vidéo de 5s) alors qu'Android (`ProTimelineView.java:315-318`, `recalcWindow`) impose un
+    /// plancher en valeur ABSOLUE, `minTrimMs = 1000` (1 seconde), INDÉPENDANT de la durée totale —
+    /// jamais surchargé par `MediaTrim.java` (`setTrimeLimitMin` jamais appelé), donc bien la valeur
+    /// par défaut réellement utilisée. Exprimé ici en secondes ; converti en fraction de `duration`
+    /// au point d'usage (`dragGesture`), seul endroit qui le consomme. Le plancher visuel Android
+    /// complémentaire (`dp(30)`, un minimum en pixels indépendant du temps) n'est PAS reproduit —
+    /// nécessiterait l'architecture de fenêtre zoom/défilement de `ProTimelineView` (V9-F-017, non
+    /// portée, voir doc de `filmstrip`), hors périmètre de ce correctif ciblé sur le plancher
+    /// temporel.
+    private static let minTrimSeconds: Double = 1.0
 
     var body: some View {
         NavigationStack {
@@ -252,6 +263,23 @@ struct MediaTrimView: View {
                     }
                     .fill(Color.black.opacity(0.5), style: FillStyle(eoFill: true))
                     .allowsHitTesting(false)
+                    // **Ajouté le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md V9-F-019)** — port de
+                    // `CropOverlayView.drawGrid` (`:309-319`) : grille des tiers, 2 lignes
+                    // verticales + 2 horizontales divisant `cropRect` en 9 cases égales. Couleur/
+                    // épaisseur reprises à l'identique (`gridPaint` : blanc alpha 70/255 ≈ 0.27,
+                    // `strokeWidth = 0.8`) — purement visuel, aucun effet sur `trimState.cropCenter`
+                    // ni sur `composeTransform`.
+                    Path { path in
+                        let cropRect = CGRect(origin: cropOrigin, size: cropSize)
+                        let x1 = cropRect.minX + cropRect.width / 3, x2 = cropRect.minX + cropRect.width * 2 / 3
+                        let y1 = cropRect.minY + cropRect.height / 3, y2 = cropRect.minY + cropRect.height * 2 / 3
+                        path.move(to: CGPoint(x: x1, y: cropRect.minY)); path.addLine(to: CGPoint(x: x1, y: cropRect.maxY))
+                        path.move(to: CGPoint(x: x2, y: cropRect.minY)); path.addLine(to: CGPoint(x: x2, y: cropRect.maxY))
+                        path.move(to: CGPoint(x: cropRect.minX, y: y1)); path.addLine(to: CGPoint(x: cropRect.maxX, y: y1))
+                        path.move(to: CGPoint(x: cropRect.minX, y: y2)); path.addLine(to: CGPoint(x: cropRect.maxX, y: y2))
+                    }
+                    .stroke(Color.white.opacity(0.27), lineWidth: 0.8)
+                    .allowsHitTesting(false)
                     Rectangle()
                         .strokeBorder(Color.white, lineWidth: 2)
                         .frame(width: cropSize.width, height: cropSize.height)
@@ -274,6 +302,28 @@ struct MediaTrimView: View {
                                     trimState.moveCropCenter(dx: dx, dy: dy, cropSize: cropSizeNorm)
                                 }
                         )
+                    // **Ajouté le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md V9-F-019)** — port de
+                    // `CropOverlayView.drawCornerHandles` (`:321-337`) : 8 segments en L aux 4
+                    // coins (longueur `HANDLE_LEN=28`, épaisseur `HANDLE_W=3.5`, blanc), dessinés
+                    // APRÈS la bordure — même ordre que `onDraw` Android (`drawGrid` →
+                    // `canvas.drawRect(cropRect, borderPaint)` → `drawCornerHandles`). Purement
+                    // visuel, `.allowsHitTesting(false)` pour ne pas intercepter le geste de
+                    // déplacement déjà attaché au `Rectangle` ci-dessus.
+                    Path { path in
+                        let l = cropOrigin.x, t = cropOrigin.y
+                        let r = cropOrigin.x + cropSize.width, b = cropOrigin.y + cropSize.height
+                        let s: CGFloat = 28
+                        path.move(to: CGPoint(x: l, y: t)); path.addLine(to: CGPoint(x: l + s, y: t))
+                        path.move(to: CGPoint(x: l, y: t)); path.addLine(to: CGPoint(x: l, y: t + s))
+                        path.move(to: CGPoint(x: r - s, y: t)); path.addLine(to: CGPoint(x: r, y: t))
+                        path.move(to: CGPoint(x: r, y: t)); path.addLine(to: CGPoint(x: r, y: t + s))
+                        path.move(to: CGPoint(x: l, y: b - s)); path.addLine(to: CGPoint(x: l, y: b))
+                        path.move(to: CGPoint(x: l, y: b)); path.addLine(to: CGPoint(x: l + s, y: b))
+                        path.move(to: CGPoint(x: r - s, y: b)); path.addLine(to: CGPoint(x: r, y: b))
+                        path.move(to: CGPoint(x: r, y: b - s)); path.addLine(to: CGPoint(x: r, y: b))
+                    }
+                    .stroke(Color.white, lineWidth: 3.5)
+                    .allowsHitTesting(false)
                 }
             }
             .allowsHitTesting(true)
@@ -375,14 +425,17 @@ struct MediaTrimView: View {
                 }
                 let delta = Double(value.translation.width / width)
                 let maxWidthFraction = duration > 0 ? min(1, Self.maxDurationSeconds / duration) : 1
+                // V9-F-016 : plancher ABSOLU (1s), pas une fraction de la durée totale — voir doc
+                // de `minTrimSeconds`.
+                let minHandleSpacingFraction = duration > 0 ? min(1, Self.minTrimSeconds / duration) : 0
                 if isStart {
-                    let maxAllowed = endFraction - Self.minHandleSpacing
+                    let maxAllowed = endFraction - minHandleSpacingFraction
                     startFraction = min(max(0, startFractionAtDragBegin + delta), max(0, maxAllowed))
                     if endFraction - startFraction > maxWidthFraction {
                         startFraction = endFraction - maxWidthFraction
                     }
                 } else {
-                    let minAllowed = startFraction + Self.minHandleSpacing
+                    let minAllowed = startFraction + minHandleSpacingFraction
                     endFraction = max(min(1, endFractionAtDragBegin + delta), min(1, minAllowed))
                     if endFraction - startFraction > maxWidthFraction {
                         endFraction = startFraction + maxWidthFraction

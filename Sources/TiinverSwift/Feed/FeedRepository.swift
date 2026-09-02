@@ -213,7 +213,11 @@ final class FeedRepository {
                 cdnThumbnailUrl = result.cdnThumbnailUrl
             } else {
                 guard let fileData else { throw PublishError.missingMedia }
-                let result = try await FeedMediaUploader.uploadPhoto(token: token, jpegData: fileData)
+                // **Corrigé le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md V9-F-024)** — `uploadProgress`
+                // était déjà un paramètre de cette fonction, câblé pour `uploadVideo` ci-dessus, mais
+                // jamais transmis à `uploadPhoto` — silencieusement ignoré pour toute publication
+                // photo. Même callback réutilisé, aucun nouveau paramètre côté appelant.
+                let result = try await FeedMediaUploader.uploadPhoto(token: token, jpegData: fileData, progress: uploadProgress)
                 cdnContentId = result.cdnContentId
                 cdnContentUrl = result.cdnContentUrl
             }

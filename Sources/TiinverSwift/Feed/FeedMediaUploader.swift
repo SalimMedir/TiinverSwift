@@ -57,7 +57,14 @@ enum FeedMediaUploader {
     /// confirmé fonctionnel pour LIRE les posts existants via `object_url` absolu en retour de
     /// `feedtimeline` — la normalisation relative→absolue est donc une responsabilité serveur, pas
     /// cliente, reproduite fidèlement en envoyant le même chemin relatif qu'Android).
-    static func uploadPhoto(token: String, jpegData: Data) async throws -> PhotoResult {
+    /// **Corrigé le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md V9-F-024)** — `progress` optionnel
+    /// ajouté, réutilisant `UploadProgressDelegate` (déjà porté pour `uploadVideo` ci-dessous) —
+    /// Android fournit bien un callback de progression pour CETTE PUT aussi
+    /// (`ProgressRequestBodyUri` enveloppe la PUT storage/photo ET la PUT vidéo, confirmé par
+    /// lecture directe d'`ActivityService.java`, même mécanisme des deux côtés). Optionnel et
+    /// par défaut `nil` pour ne pas casser les appelants existants — impact mineur en pratique
+    /// (upload photo généralement court), mais fidélité complète à moindre coût.
+    static func uploadPhoto(token: String, jpegData: Data, progress: (@Sendable (Double) -> Void)? = nil) async throws -> PhotoResult {
         let folder = "tiinver/photos"
         let filename = "\(token).webp"
         let remoteURL = URL(string: "\(storageBaseURL)/\(storageZone)/\(folder)/\(filename)")!
@@ -66,7 +73,8 @@ enum FeedMediaUploader {
         request.setValue(storageAPIKey, forHTTPHeaderField: "AccessKey")
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
 
-        let (_, response) = try await URLSession.shared.upload(for: request, from: jpegData)
+        let delegate = progress.map { UploadProgressDelegate(onProgress: $0) }
+        let (_, response) = try await URLSession.shared.upload(for: request, from: jpegData, delegate: delegate)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw UploadError.httpFailure((response as? HTTPURLResponse)?.statusCode ?? -1)
         }

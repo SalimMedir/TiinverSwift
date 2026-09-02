@@ -1432,6 +1432,88 @@ actuelles** :
 3. Déclencher `workflow_dispatch` sur `ios-build.yml` (même mécanisme qu'en §14.3).
 4. Attendre la complétion (`status: completed`) et lire `conclusion` (`success`/`failure`).
 
-**Aucune de ces 4 étapes n'a été effectuée dans cette session** — conformément à la consigne
-explicite de ne rien commiter ni pousser sans autorisation. J'attends cette autorisation avant
-d'entreprendre l'étape 1.
+**Mise à jour (2026-09-02, autorisation explicite reçue)** — les 4 étapes ont été exécutées :
+commit `82737f2` (Phase 1 + Phase 2 + §13, 3 fichiers), poussé sur `origin/main`
+(`9e9b96e..82737f2`), `workflow_dispatch` déclenché, run
+[33654343010](https://github.com/SalimMedir/TiinverSwift/actions/runs/33654343010) →
+**`status: completed`, `conclusion: success`**. **C'est la PREMIÈRE compilation réelle des
+corrections Phase 1/Phase 2/§13** (feedback de succès au téléchargement, aperçu live MediaTrim,
+correction du cycle de vie de l'observateur) — confirmée compilable sur le runner GitHub
+(`macos-14`, Xcode le plus récent disponible), pas seulement validée par lecture statique.
+`git rev-parse HEAD` = `git rev-parse origin/main` = `82737f2` désormais identiques.
+
+**Mise à jour (2026-09-02, lot P3 technique)** — poursuite autonome (consigne explicite de
+l'utilisateur : corrections techniques sans décision produit → pas d'arrêt requis) : commit
+`b748735`, CI run
+[33658881645](https://github.com/SalimMedir/TiinverSwift/actions/runs/33658881645) →
+**success**. **V9-F-008 résolu (audit seul, aucun code touché)** — traçage complet de l'origine réelle de
+`width`/`height` sur le flux de publication Android RÉEL (pas le flux de reprise), demandé en
+complément de l'audit Upload/API initial. Chaîne tracée intégralement :
+`editor/PublishFragment.java:369-390` (`proceedToPublish`) construit l'`Intent` vers `HomeActivity`
+— **ne contient AUCUN `intent.putExtra("width",...)`/`("height",...)`**, confirmé par lecture
+complète de la méthode (comparé champ par champ à la liste réellement présente : `object`,
+`fileUri`, `message`, `hashtag`, `duration`, `consentAi`, `category`, `metadata`, `template_id`,
+`user` — `width`/`height` absents). `Activity/ui/MainFragment.java:733-767` (le point qui reçoit
+CET intent et construit le VRAI `UploadData` pour une publication réelle, PAS le code de reprise
+`URL_LOADER_TRANSFER` à la ligne 1043 déjà cité dans l'audit initial) — **n'appelle jamais
+`data.setWidth(...)`/`data.setHeight(...)`** parmi les 15 setters réellement appelés. `uploading/
+UploadData.java:25-26` : `public int width;`/`public int height;` — primitifs Java, valeur par
+défaut `0` si jamais assignés. **Conclusion certaine, pas une supposition** : sur le flux de
+publication Android RÉEL, `width`/`height` valent littéralement `"0"`/`"0"` dans CHAQUE appel
+`activity/add` envoyé — un défaut confirmé du code Android lui-même, pas un flux alternatif
+correctement peuplé qu'iOS aurait manqué de reproduire. iOS (`PublishComposeView.swift`, `pixelSize`/
+`videoWidth`/`videoHeight` calculés à partir du média réel) envoie les VRAIES dimensions — **iOS
+est donc plus correct qu'Android sur ce champ précis**, pas un écart de parité à corriger.
+**Verdict final : ✅ Conforme (iOS supérieur), aucune action requise.**
+
+Contenu : **V9-F-015** (2 commentaires `AnimemesEditorView.swift` corrigés — la
+fidélité réelle au tracé Android confirmée en §4.1, plus une divergence produit fictive à corriger,
+aucun changement de comportement), **V9-F-026** (commentaire obsolète `includesDownload` dans
+`FeedView.swift` corrigé), **V9-F-022** (`MediaTrimView.trim()` supprime désormais explicitement le
+fichier de sortie partiel si `AVAssetExportSession` échoue après avoir commencé à écrire —
+changement additif uniquement, aucun changement de flux de contrôle). Aucune décision produit
+touchée (filigrane/outro/Premium/Share/catalogue musical inchangés).
+
+**Mise à jour (2026-09-02, poursuite autonome du backlog technique)** — après le lot précédent :
+
+- **V9-F-016 résolu** : `minHandleSpacing` (fraction fixe `0.03` de la durée totale) remplacé par
+  `minTrimSeconds = 1.0`, converti en fraction au point d'usage (`dragGesture`) — reproduit
+  fidèlement le plancher ABSOLU `minTrimMs = 1000` d'Android (`ProTimelineView.java:315-318`),
+  indépendant de la durée totale de la vidéo. Le plancher visuel complémentaire d'Android
+  (`dp(30)`, un minimum en PIXELS) reste hors périmètre — nécessiterait l'architecture de fenêtre
+  zoom/défilement de V9-F-017 (voir ci-dessous, délibérément non entreprise).
+- **V9-F-019 résolu** : grille des tiers (2 lignes verticales + 2 horizontales, blanc 27% d'opacité,
+  épaisseur 0.8) et marques de coin en L (longueur 28pt, épaisseur 3.5pt, blanc) ajoutées à
+  `cropOverlay` — port pixel-pour-pixel de `CropOverlayView.drawGrid`/`drawCornerHandles`
+  (`:309-337`), mêmes couleurs/épaisseurs/ordre de dessin (grille → bordure → coins). Purement
+  visuel, `allowsHitTesting(false)`, aucun effet sur `trimState.cropCenter` ni `composeTransform`.
+- **V9-F-024 résolu** : `FeedMediaUploader.uploadPhoto` accepte désormais un `progress` optionnel
+  (même `UploadProgressDelegate` déjà utilisé pour `uploadVideo`) ; `FeedRepository.publish`
+  transmettait déjà `uploadProgress` en PARAMÈTRE mais ne le passait jamais à `uploadPhoto` — corrigé
+  ; la branche photo de `PublishComposeView` ne câblait pas non plus `uploadProgress:` vers
+  `videoUploadProgress`/la `ProgressView` déjà affichée — corrigé, réutilise le même état, aucun
+  nouveau champ UI.
+
+**V9-F-017 délibérément NON entrepris** — décision de portée, pas un oubli : reproduire
+l'architecture de fenêtre zoom/défilement d'Android (`ProTimelineView.java`, fenêtre visible
+`≈75s` max, l'utilisateur défile pour atteindre le reste d'une vidéo longue) remplacerait
+entièrement le modèle géométrique actuel de `filmstrip` (mapping direct durée totale → largeur
+écran) par celui, déjà écrit mais jamais câblé, de `ProTimelineViewModel.swift`. C'est un
+changement structurel du composant d'édition le plus visible de l'écran, pas une correction
+ciblée — risque disproportionné pour un P3 dans du code jamais exécuté sur device. Laissé en
+l'état, `ProTimelineViewModel.swift` reste disponible pour un chantier dédié futur si jugé
+nécessaire.
+
+**V9-F-021 délibérément NON entrepris** — même raisonnement que V9-F-017. Reproduire le bitrate
+adaptatif d'Android (`adaptiveBitrate()`, 800kbps-4Mbps selon résolution) exigerait de remplacer
+`AVAssetExportSession`/`AVAssetExportPresetHighestQuality` par un pipeline `AVAssetReader`/
+`AVAssetWriter` avec `AVVideoCompressionPropertiesKey` explicite — `AVAssetExportSession` n'expose
+aucun paramètre de bitrate direct. C'est une réécriture du CŒUR de la fonction d'export
+(`trim()`), la fonction que la consigne demande explicitement de ne pas modifier à la légère, sans
+pouvoir vérifier le résultat sur un device réel. Documenté, non entrepris.
+
+**V9-F-009 confirmé disproportionné, non entrepris** — voir raisonnement déjà donné dans le tour
+précédent : nécessiterait d'ajouter/retirer dynamiquement l'entrée microphone de la session caméra
+au démarrage/arrêt de l'enregistrement (actuellement ajoutée une fois, inconditionnellement, à la
+configuration de session), un changement d'architecture réelle sur un pipeline caméra jamais
+compilé ni exécuté, pour un gain P3 mineur (timing d'une popup système). Confirmé disproportionné.

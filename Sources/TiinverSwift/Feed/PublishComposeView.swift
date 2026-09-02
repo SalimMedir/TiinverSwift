@@ -469,7 +469,14 @@ struct PublishComposeView: View {
                     // Port de `createImage()` (`AnimemesCompound.java:2597-2602`, V5-F-083) —
                     // `template_id` JAMAIS inclus pour une image statique, même côté Android.
                     contentType: animemsMetadata != nil ? "image" : nil,
-                    style: animemsMetadata != nil ? "animemes" : nil
+                    style: animemsMetadata != nil ? "animemes" : nil,
+                    // **Ajouté le 2026-09-02 (MIGRATION_PARITY_AUDIT_V9.md V9-F-024)** — même
+                    // `videoUploadProgress`/`ProgressView` déjà affichés pour la vidéo, désormais
+                    // aussi alimentés pour une publication photo (paramètre déjà présent côté
+                    // `FeedRepository.publish`/`FeedMediaUploader.uploadPhoto`, jamais câblé ici).
+                    uploadProgress: { fraction in
+                        Task { @MainActor in videoUploadProgress = fraction }
+                    }
                 )
             case .video(let url):
                 // Corrigé (V3-F-019, BUNNY-03) : ne charge plus toute la vidéo en `Data` avant

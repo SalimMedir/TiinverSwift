@@ -775,6 +775,17 @@ struct FeedDetailPagerView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
+            // **Ajouté (2026-09-03)** — fond noir plein écran posé sous le pager, confirmé
+            // nécessaire par capture physique (ligne blanche verticale à droite du plein écran).
+            // Chaque `FeedDetailCell` a déjà son propre `.background(Color.black)` (voir plus bas),
+            // mais celui-ci ne couvre que `geo.size` À L'INTÉRIEUR du hack rotation+offset — pas le
+            // conteneur `TabView` tourné lui-même (commentaire du 2026-09-01 ci-dessous, jamais
+            // confirmé jusqu'ici) : un interstice d'arrondi laissé par la rotation/offset expose donc
+            // le fond PAR DÉFAUT (blanc), pas le noir des cellules. Cette couche ne corrige pas la
+            // géométrie de la rotation elle-même (non touchée, trop fragile pour la modifier sans
+            // accès à un vrai device) — elle rend simplement invisible tout interstice résiduel,
+            // cohérent avec le fond noir déjà utilisé partout ailleurs dans ce pager.
+            Color.black.ignoresSafeArea()
             GeometryReader { geo in
                 TabView(selection: $currentIndex) {
                     ForEach(Array(posts.enumerated()), id: \.offset) { index, post in

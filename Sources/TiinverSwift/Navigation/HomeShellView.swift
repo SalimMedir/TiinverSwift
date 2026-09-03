@@ -305,6 +305,7 @@ struct HomeShellView: View {
         case .notifications: showNotifications = true
         case .profile: showProfile = true
         case .chat: selectedTab = 1
+        case .creators: selectedTab = 2
         case .userProfile(let userId): deepLinkUserId = userId
         case .post(let post): deepLinkPost = post
         case .groupChat(let roster): deepLinkRoster = roster

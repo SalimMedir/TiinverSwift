@@ -17,6 +17,13 @@ enum DeepLinkDestination: Equatable {
     case home
     case notifications
     case chat
+    /// **Ajouté (2026-09-03)** — pas un lien profond réel côté Android (aucun `case` correspondant
+    /// dans `ShareActivity.processUrl`), réutilise ce mécanisme existant pour un besoin PUREMENT
+    /// iOS : la barre à 5 onglets custom du pager plein écran (`FeedDetailPagerView`,
+    /// `showsHomeTabBar`) a besoin de sélectionner l'onglet "Créateurs" (2) de `HomeShellView`
+    /// après fermeture — aucun autre canal de communication n'existe déjà entre ces 2 vues, et ce
+    /// mécanisme `pending`/`consume()` fait exactement ce qu'il faut sans en inventer un second.
+    case creators
     case profile
     case userProfile(userId: String)
     case post(FeedActivity)

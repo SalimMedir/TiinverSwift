@@ -261,7 +261,7 @@ struct FeedView: View {
             FeedDetailPagerView(
                 viewModel: viewModel, startIndex: detailStartIndex,
                 showManagementActions: true, includesDownload: true,
-                onClose: { showDetail = false }
+                showsHomeTabBar: true, onClose: { showDetail = false }
             )
         }
         .fullScreenCover(isPresented: $showCamera) {
@@ -672,6 +672,23 @@ struct FeedDetailPagerView: View {
     /// `HashtagProfile` n'ont pas cet item, ou pointent vers un handler mort/erroné).
     var includesDownload = false
     let onClose: () -> Void
+    /// **Ajouté (2026-09-03)** — `true` UNIQUEMENT depuis `FeedView` (grille Accueil). Demande
+    /// explicite, répétée : une VRAIE barre à onglets, visible ET fonctionnelle, sur l'écran plein
+    /// écran de l'Accueil — pas juste un espace vide. Une 1ʳᵉ tentative montait ce pager DANS la
+    /// vraie `TabView` de `HomeShellView` pour réutiliser SA barre directement ; 3 captures
+    /// physiques ont confirmé que ce changement de CONTEXTE D'HÉBERGEMENT (plein écran isolé →
+    /// intégré dans une `TabView` hôte) faisait apparaître une bande noire sur le bord gauche, un
+    /// artefact `TabView(.page)`/`UIScrollView` déjà documenté comme fragile (`body`, 2026-09-01),
+    /// et qui a résisté à 3 correctifs ciblés sur le frame du pager. Cette 2ᵉ approche est
+    /// DÉLIBÉRÉMENT différente : ce pager REVIENT en `.fullScreenCover` (contexte d'hébergement
+    /// jamais bugué, identique aux 6 autres écrans) — la barre est reconstruite comme un simple
+    /// calque SwiftUI ordinaire (`homeTabBar`, plus bas), dessiné DANS `bottomReservedSpace` (déjà
+    /// réservé, déjà noir, déjà présent dans les 7 contextes) — ZÉRO modification du `GeometryReader`
+    /// /`TabView`/frame du pager, donc aucun risque de retoucher l'artefact documenté. La navigation
+    /// réelle (changer d'onglet) passe par `DeepLinkCenter.shared` (mécanisme déjà existant,
+    /// `HomeShellView.handleDeepLink` observe déjà `deepLinks.pending`) — seul canal déjà en place
+    /// entre ce pager et `HomeShellView`, pas un second système inventé pour l'occasion.
+    var showsHomeTabBar = false
     /// Espace vide réservé en haut (zone sûre réelle — barre d'état) et en bas (~49pt = hauteur
     /// STANDARD, fixe, d'une barre à onglets iOS + zone sûre réelle) — demande explicite (parité
     /// Android, 2026-09-03) : ni le média ni la légende/rail d'actions ne doivent atteindre les
@@ -784,11 +801,12 @@ struct FeedDetailPagerView: View {
         _currentIndex = State(initialValue: startIndex)
     }
 
-    init(viewModel: FeedViewModel, startIndex: Int, showManagementActions: Bool = false, includesDownload: Bool = false, onClose: @escaping () -> Void) {
+    init(viewModel: FeedViewModel, startIndex: Int, showManagementActions: Bool = false, includesDownload: Bool = false, showsHomeTabBar: Bool = false, onClose: @escaping () -> Void) {
         _viewModel = StateObject(wrappedValue: viewModel)
         self.startIndex = startIndex
         self.showManagementActions = showManagementActions
         self.includesDownload = includesDownload
+        self.showsHomeTabBar = showsHomeTabBar
         self.onClose = onClose
         _currentIndex = State(initialValue: startIndex)
     }
@@ -950,6 +968,17 @@ struct FeedDetailPagerView: View {
             }
             .padding(.top, Self.deviceSafeAreaInsets.top)
             .padding(.leading, 4)
+
+            // **Ajouté (2026-09-03)** — voir la doc de `showsHomeTabBar` ci-dessus. Rendu DANS
+            // `bottomReservedSpace` (déjà réservé, déjà noir) — n'ajoute AUCUN espace supplémentaire,
+            // ne touche à rien du `GeometryReader`/`TabView` du pager.
+            if showsHomeTabBar {
+                VStack {
+                    Spacer()
+                    homeTabBar
+                }
+                .ignoresSafeArea()
+            }
         }
         .fullScreenCover(isPresented: Binding(get: { openProfileUserId != nil }, set: { if !$0 { openProfileUserId = nil } })) {
             if let userId = openProfileUserId {
@@ -1197,6 +1226,51 @@ struct FeedDetailPagerView: View {
             let post = posts[target]
             guard post.isVideo, let url = post.playbackURL else { continue }
             VideoPlayerManager.shared.preload(url)
+        }
+    }
+
+    /// Réplique visuelle de la barre à 5 onglets de `HomeShellView` (mêmes icônes/libellés/ordre :
+    /// `house.fill`/Accueil, `message.fill`/Chat, `trophy.fill`/Créateurs, `bell.fill`/Notifications,
+    /// `person.crop.circle.fill`/Profil) — PAS une vraie `TabView` native (une seule existe dans
+    /// toute l'app, celle de `HomeShellView`) : chaque tap ferme ce pager (`onClose`) PUIS route via
+    /// `DeepLinkCenter.shared` vers l'onglet demandé, seul canal de navigation RÉEL derrière cette
+    /// apparence dupliquée. **Limite assumée** : pas de badge (nombre de messages/notifications non
+    /// lus) — ces compteurs vivent dans les view models de `HomeShellView`, non accessibles ici sans
+    /// les faire redescendre jusqu'à ce pager ; jugé disproportionné pour une barre qui ferme de
+    /// toute façon l'écran au premier tap.
+    private var homeTabBar: some View {
+        HStack(spacing: 0) {
+            homeTabBarItem(icon: "house.fill", label: "Accueil", isSelected: true, action: onClose)
+            homeTabBarItem(icon: "message.fill", label: "Chat") {
+                DeepLinkCenter.shared.route(.chat)
+                onClose()
+            }
+            homeTabBarItem(icon: "trophy.fill", label: "Créateurs") {
+                DeepLinkCenter.shared.route(.creators)
+                onClose()
+            }
+            homeTabBarItem(icon: "bell.fill", label: "Notifications") {
+                DeepLinkCenter.shared.route(.notifications)
+                onClose()
+            }
+            homeTabBarItem(icon: "person.crop.circle.fill", label: "Profil") {
+                DeepLinkCenter.shared.route(.profile)
+                onClose()
+            }
+        }
+        .padding(.top, 8)
+        .padding(.bottom, Self.deviceSafeAreaInsets.bottom)
+        .background(Color(.secondarySystemBackground))
+    }
+
+    private func homeTabBarItem(icon: String, label: String, isSelected: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Image(systemName: icon).font(.system(size: 20))
+                Text(label).font(.caption2)
+            }
+            .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+            .frame(maxWidth: .infinity)
         }
     }
 }

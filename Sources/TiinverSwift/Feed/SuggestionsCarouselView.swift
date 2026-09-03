@@ -95,10 +95,19 @@ struct SuggestionsCarouselView: View {
     }
 
     private func load() async {
-        guard let myId = UserSession.shared.myId, users.isEmpty, !isLoading else { return }
+        guard let myId = UserSession.shared.myId else {
+            print("SUGGESTIONS: skipped, UserSession.shared.myId is nil at load() time")
+            return
+        }
+        guard users.isEmpty, !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
-        users = (try? await SuggestionsRepository.shared.fetchSuggestions(userId: myId)) ?? []
+        do {
+            users = try await SuggestionsRepository.shared.fetchSuggestions(userId: myId)
+        } catch {
+            print("SUGGESTIONS: fetchSuggestions threw — \(error)")
+            users = []
+        }
     }
 
     /// Port de `AdapterSuggestContact.ViewHolder.mSeguirClick` — écho optimiste immédiat

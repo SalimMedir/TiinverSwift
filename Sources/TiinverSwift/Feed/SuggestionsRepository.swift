@@ -17,20 +17,28 @@ final class SuggestionsRepository {
 
     func fetchSuggestions(userId: String) async throws -> [User] {
         let value = try await APIClient.shared.get("suggestions/\(userId)")
-        guard value.isBackendSuccess else { return [] }
-        // `js.getString("users")` + `Gson.fromJson(..., User[].class)` côté Android
-        // (`TransportData.java:1261-1262`) : chaîne JSON ré-encodée à l'intérieur du champ
-        // "users". Tolère AUSSI un tableau JSON direct par prudence — la même hypothèse de
-        // double-encodage s'est révélée FAUSSE sur `weekly_rank` (voir `TrophyRepository.swift`,
-        // cause racine confirmée le 2026-08-17 par JSON réel) : aucun JSON réel de CET endpoint
-        // précis n'a encore été fourni par l'utilisateur, donc les deux formes sont essayées
-        // plutôt que d'en supposer une seule sans preuve.
+        guard value.isBackendSuccess else {
+            print("SUGGESTIONS: backend reported error — message=\(value.backendErrorMessage ?? "nil")")
+            return []
+        }
+        // **Confirmé (2026-09-03) par un JSON réel fourni par l'utilisateur** — "users" est un
+        // tableau JSON DIRECT (pas une chaîne ré-encodée) : `{"error": false, "message": "...",
+        // "users": [{...}, {...}]}`. Le repli `stringEncodedJSON` ci-dessous reste en premier par
+        // prudence (aucune preuve qu'un AUTRE compte/contexte ne renvoie jamais la forme
+        // chaîne-encodée — même motif que `TrophyRepository`), mais avec cette forme réelle
+        // confirmée, il échoue systématiquement puis retombe sur `jsonArray` juste en dessous, qui
+        // est la branche qui décode réellement. `print()` ajoutés ici (même convention que
+        // `decodeUsers` plus bas) pour la PROCHAINE fois que ce carrousel apparaît vide malgré une
+        // réponse serveur non vide — sans accès physique à l'appareil, impossible de confirmer
+        // depuis ce dépôt seul si le carrousel vide observé vient d'un vrai échec réseau/session, ou
+        // d'un compte de test sans suggestion.
         if let nested = try? value.stringEncodedJSON("users"), let array = nested.toArray() {
             return Self.decodeUsers(array)
         }
         if let array = try? value.jsonArray("users") {
             return Self.decodeUsers(array)
         }
+        print("SUGGESTIONS: neither stringEncodedJSON(\"users\") nor jsonArray(\"users\") produced an array — raw=\(value.toDictionary() ?? [:])")
         return []
     }
 

@@ -168,7 +168,6 @@ struct FeedView: View {
     }
 
     var body: some View {
-        ZStack {
         Group {
             if viewModel.posts.isEmpty {
                 ScrollView {
@@ -231,22 +230,22 @@ struct FeedView: View {
                 .padding(.trailing, 20)
                 .padding(.bottom, 90)
         }
-
-        // **Corrigé (2026-09-03, parité Android demandée explicitement)** — présenté ici comme calque
-        // INTERNE à `FeedView` (`if showDetail { ... }` dans le `ZStack` englobant) plutôt qu'en
-        // `.fullScreenCover` (qui, par définition, recouvre TOUT l'écran, y compris la vraie barre à
-        // 5 onglets de `HomeShellView`). Confiné au CADRE de `FeedView` (le contenu de l'onglet
-        // Accueil dans la `TabView` de `HomeShellView`) : affiché AU-DESSUS de la grille mais
-        // toujours EN DESSOUS de la barre à onglets, qui reste visible/fonctionnelle sans code
-        // supplémentaire (SwiftUI réserve déjà cet espace au contenu de tout onglet). L'espace bas du
-        // pager lui-même (`bottomReservedSpace`, `FeedDetailPagerView`) s'arrête pile à la hauteur
-        // standard d'une barre à onglets iOS — ni plus ni moins que ce que la vraie barre occupe ici.
-        //
-        // Décision explicite (2026-09-03) : ce traitement (monté DANS la vraie `TabView`) reste
-        // PROPRE à l'Accueil — les 6 autres écrans qui réutilisent `FeedDetailPagerView` (Profil/
-        // Recherche/Notifications/Hashtag/lien profond) restent en `.fullScreenCover` inchangé, avec
-        // le MÊME `bottomReservedSpace` par défaut (espace vide réservé, pas de barre reconstruite).
-        if showDetail {
+        // **Corrigé (2026-09-03) — revenu à `.fullScreenCover`.** Une tentative précédente montait
+        // ce pager DANS le contenu de l'onglet Accueil (au lieu d'un `.fullScreenCover`) pour révéler
+        // la vraie barre à 5 onglets de `HomeShellView` en dessous. Confirmé par 3 captures physiques
+        // sur des posts totalement différents (dessin, photo, vidéo) : ce changement de contexte
+        // d'hébergement a fait apparaître une bande noire persistante sur le bord GAUCHE — cause
+        // cohérente avec le même artefact `TabView(.page)`/`UIScrollView` déjà documenté comme
+        // fragile dans `FeedDetailPagerView.body` (2026-09-01), mais visiblement dépendant du
+        // CONTEXTE d'hébergement (plein écran isolé vs intégré dans une `TabView` hôte) d'une façon
+        // qui a résisté à 3 tentatives de correctif ciblé. Priorité donnée à la fiabilité (largeur
+        // toujours pleine, confirmée SANS bug sur les 6 autres écrans qui n'ont jamais quitté
+        // `.fullScreenCover`) plutôt qu'à une barre à onglets réellement fonctionnelle sur l'Accueil —
+        // décision explicite de l'utilisateur. Accueil traité maintenant EXACTEMENT comme les 6
+        // autres contextes qui réutilisent ce pager : `.fullScreenCover`, espace vide réservé en
+        // haut/bas (`FeedDetailPagerView.topReservedSpace`/`bottomReservedSpace`), pas de barre
+        // reconstruite.
+        .fullScreenCover(isPresented: $showDetail) {
             // `showManagementActions: true` — SEUL contexte "..." avec Statistiques/Promouvoir (voir
             // `boostTargetPost`/`statsTargetPost` ci-dessus, propres posts du fil principal
             // uniquement, fidèle à `promoteBtn`/`statisticBtn` de `CustomCardView`).
@@ -264,8 +263,6 @@ struct FeedView: View {
                 showManagementActions: true, includesDownload: true,
                 onClose: { showDetail = false }
             )
-            .zIndex(1)
-        }
         }
         .fullScreenCover(isPresented: $showCamera) {
             CameraView(

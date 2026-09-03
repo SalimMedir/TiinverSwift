@@ -95,18 +95,26 @@ struct SuggestionsCarouselView: View {
     }
 
     private func load() async {
+        guard users.isEmpty, !isLoading else { return }
+        // **Ajouté (2026-09-03)** — affichage immédiat depuis le cache local (`wk_suggest`, port de
+        // `CursorWorkerTask`, voir `SuggestionsCacheRepository`) pendant que le réseau répond,
+        // fidèle à Android où l'UI lit systématiquement la base locale, jamais le réseau
+        // directement.
+        if let cached = try? await SuggestionsCacheRepository.shared.cached(), !cached.isEmpty {
+            users = cached
+        }
         guard let myId = UserSession.shared.myId else {
             print("SUGGESTIONS: skipped, UserSession.shared.myId is nil at load() time")
             return
         }
-        guard users.isEmpty, !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
         do {
-            users = try await SuggestionsRepository.shared.fetchSuggestions(userId: myId)
+            let fresh = try await SuggestionsRepository.shared.fetchSuggestions(userId: myId)
+            users = fresh
+            try? await SuggestionsCacheRepository.shared.replaceAll(fresh)
         } catch {
             print("SUGGESTIONS: fetchSuggestions threw — \(error)")
-            users = []
         }
     }
 

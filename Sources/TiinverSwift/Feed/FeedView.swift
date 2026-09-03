@@ -907,6 +907,14 @@ struct FeedDetailPagerView: View {
             // d'`.ignoresSafeArea()`.
             .ignoresSafeArea()
             .padding(.bottom, bottomReservedSpace)
+            // **Ajouté (2026-09-03, demande explicite)** — le média passait jusqu'ici SOUS la barre
+            // d'état (texte heure/réseau/batterie superposé dessus), `.ignoresSafeArea()` (tous
+            // bords, conservé ci-dessus pour la même raison anti-artefact que `bottomReservedSpace`)
+            // l'y laissant délibérément déborder. Corrigé avec le MÊME mécanisme que le bas (padding
+            // explicite APRÈS `.ignoresSafeArea()`, PAS un bord retiré de son périmètre — modifier
+            // les bords ignorés a déjà causé une régression documentée juste au-dessus) : le haut du
+            // plein écran s'arrête maintenant exactement sous la barre d'état réelle de l'appareil.
+            .padding(.top, Self.deviceSafeAreaInsets.top)
             .onChange(of: currentIndex) { newIndex in
                 // Port de `OnPageChangeCallback.onPageSelected` (`FeedFragment.java:652-690`,
                 // V6-F-019) — flush + enregistrement de l'item précédent, démarrage du suivi du

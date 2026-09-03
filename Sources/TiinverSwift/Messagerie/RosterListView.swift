@@ -12,10 +12,16 @@ import SwiftUI
 /// **PAS porté, décision de portée** (comme le reste de ce portage lorsqu'un sous-écran nécessite sa
 /// propre passe de lecture dédiée) : sélection multiple/suppression (`ToolBarActionCompound`,
 /// `RosterListAdapter.itemSelected`) ; assistant IA (`TiinverGeminiAIChat`, hors périmètre
-/// `TIINVER_IOS_PORT_ANALYSIS.md`) ; mise à jour temps réel de la liste (présence en ligne/frappe/
-/// nouveau message reçu pendant que l'écran est ouvert — `Roster.organizeAndDisplayMessage`, non
-/// câblé, `refresh()` manuel via le bouton toolbar en attendant). Recherche d'une conversation
-/// existante et navigation vers `ChatView` sont portés.
+/// `TIINVER_IOS_PORT_ANALYSIS.md`) ; présence en ligne/indicateur de frappe (`Roster.
+/// organizeAndDisplayMessage`, distinct du point suivant). Recherche d'une conversation existante et
+/// navigation vers `ChatView` sont portés.
+///
+/// **Corrigé (2026-09-04, CHAT_CONSISTENCY_REVIEW.md)** — "mise à jour temps réel de la liste... non
+/// câblé" ci-dessus n'est plus vrai : un nouveau message reçu pendant que cet écran est affiché
+/// relance désormais `viewModel.refresh()` via `ChatRepository.chatEvents` (voir `.onReceive` dans
+/// `body`), même mécanisme déjà utilisé par le badge de l'onglet Chat (`HomeShellView.swift`). Reste
+/// un `refresh()` complet (pas une mise à jour incrémentale ciblée sur la seule conversation
+/// concernée) — fidèle au bouton manuel préexistant, pas une optimisation ajoutée au passage.
 ///
 /// **Création de groupe portée le 2026-08-15** (test Appetize réel, GAP fonctionnel) — port de
 /// `Contact.class` (FAB `GoToContact`) : voir `ContactPickerView.swift`/`GroupCreationView.swift`.
@@ -114,6 +120,17 @@ struct RosterListView: View {
             NewMessageView()
         }
         .task { await viewModel.refresh() }
+        // **Corrigé (2026-09-04, CHAT_CONSISTENCY_REVIEW.md)** — "mise à jour temps réel de la
+        // liste... non câblé, refresh() manuel via le bouton toolbar en attendant" (voir doc de tête
+        // de ce fichier). Même mécanisme déjà câblé pour le badge de l'onglet Chat
+        // (`HomeShellView.swift`, `ChatRepository.chatEvents` publie `.message(meta)` à chaque
+        // nouveau message privé/groupe, persistance Core Data déjà `await`ée avant l'émission) —
+        // réutilisé ici tel quel plutôt qu'une seconde architecture temps réel : un message reçu
+        // pendant que cet écran est affiché relance le même `refresh()` que le bouton manuel.
+        .onReceive(ChatRepository.shared.chatEvents) { event in
+            guard case .message = event else { return }
+            Task { await viewModel.refresh() }
+        }
         .onChange(of: showContactPicker) { presented in
             // Reflète immédiatement le nouveau groupe dans la liste dès qu'on revient (pas
             // d'observation temps réel de `wk_roster`, voir réserves de portée ci-dessus).

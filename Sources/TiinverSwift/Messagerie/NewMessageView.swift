@@ -38,6 +38,12 @@ struct NewMessageView: View {
         target.userId = String(userId)
         target.sender = UserSession.shared.myId
         target.receiver = String(userId)
+        // **Corrigé (2026-09-04, CHAT_CONSISTENCY_REVIEW.md)** — jamais assigné, laissant
+        // `conversationId` vide sur toute conversation démarrée depuis cet écran. Port de
+        // `ConversationIdGenerator.java` (déjà porté, `ConversationIdGenerator.swift`) : identifiant
+        // déterministe (tri alphabétique des 2 participants), même calcul que celui déjà utilisé à
+        // la réception (`ChatViewModel.swift:353`) et dans les autres flux de création (`MessageRepository.swift:131`).
+        target.conversationId = ConversationIdGenerator.conversationId(currentUser: UserSession.shared.myId ?? "", remoteUser: String(userId))
         target.title = nikname
         target.subTitle = foundUser.username
         target.profile = foundUser.profile

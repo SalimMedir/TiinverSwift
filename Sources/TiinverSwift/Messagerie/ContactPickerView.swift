@@ -139,6 +139,9 @@ struct ContactPickerView: View {
         target.title = candidate.displayName
         target.subTitle = candidate.username
         target.profile = candidate.profile
+        // **Corrigé (2026-09-04, CHAT_CONSISTENCY_REVIEW.md)** — voir `NewMessageView.swift` pour
+        // le même correctif/la même justification.
+        target.conversationId = ConversationIdGenerator.conversationId(currentUser: UserSession.shared.myId ?? "", remoteUser: candidate.userId)
         return target
     }
 

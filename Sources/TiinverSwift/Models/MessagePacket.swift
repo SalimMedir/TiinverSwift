@@ -290,6 +290,21 @@ struct MessagePacket {
             f["groupName"] = groupName ?? ""
             f["description"] = description ?? ""
         }
+        // **Corrigé (2026-09-04, CHAT_CONSISTENCY_REVIEW.md)** — la propriété `giftId` était déjà
+        // affectée (`init(fromPrivate:)`) mais jamais sérialisée : absente de TOUS les messages
+        // sortants, gift compris. Port exact de `MessagePacket.java` : `giftId` n'apparaît QUE dans
+        // `getTextPrivateMessageNoquotedPattern`/`...Quoted` (`:439-459`/`:461-...`) — jamais dans
+        // les 2 patrons groupe (`getTextGroupMessage...`, aucune occurrence de `giftId` dans les
+        // deux), ni dans les patrons dédiés audio/vidéo/photo-gif-sticker (aucune occurrence non
+        // plus, ces 3 objets ont chacun leur propre patron sans ce champ) — mais présent pour
+        // `text`/`gift`/`information`/`missedvoicecall`/tout objet non listé, qui retombent TOUS sur
+        // le patron texte côté Android (`getPacketString`, `default: return
+        // getTextPrivateMessageNoquotedPattern()`). Valeur par défaut `"null"` (chaîne, pas JSON
+        // null) : `Arrays`/concaténation Java d'un champ `null` non initialisé produit littéralement
+        // le texte `"null"` — confirmé par l'exemple réel capturé (`"giftId":"null"`).
+        if !isGroup, !["audio", "video", "photo", "gif", "sticker"].contains(object ?? "") {
+            f["giftId"] = giftId ?? "null"
+        }
         return f
     }
 

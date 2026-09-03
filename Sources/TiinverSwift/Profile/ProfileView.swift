@@ -330,6 +330,9 @@ struct ProfileView: View {
         target.title = target.nikname
         target.subTitle = username
         target.profile = profile.profile
+        // **Corrigé (2026-09-04, CHAT_CONSISTENCY_REVIEW.md)** — voir `NewMessageView.swift` pour
+        // le même correctif/la même justification.
+        target.conversationId = ConversationIdGenerator.conversationId(currentUser: UserSession.shared.myId ?? "", remoteUser: viewModel.userId)
         return target
     }
 

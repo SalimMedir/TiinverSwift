@@ -50,6 +50,18 @@ struct FeedView: View {
     // Port de `MainFragment.OnLikeClicked`/`OnclickCommentaire`/`OnclickPrtg` → `notifyUser` —
     // câblé pour ce contexte (V4-F-030).
     @StateObject private var viewModel = FeedViewModel(notifiesAuthorOnInteraction: true)
+    /// **Ajouté (2026-09-03)** — bouton de recherche du fil Home (`RechercheTiinver` universelle,
+    /// PAS `ChatSearchView`/`showChatSearch` de `RosterListView.swift` — celui-là reste dédié aux
+    /// conversations, deux points d'entrée distincts, fidèle à Android où `FeedFragment`/`Roster`
+    /// ouvrent chacun leur propre instance de la même Activity). Géré ICI, localement — pas via
+    /// `HomeShellView` (qui portait cet état avant ce correctif, mais dans un `.toolbar` posé
+    /// directement sur son `TabView` SANS aucun `NavigationStack` englobant : un `.toolbar` sans
+    /// `NavigationStack` ne produit AUCUNE barre de navigation visible en SwiftUI, donc ni le titre
+    /// "Tiinver" ni ce bouton n'apparaissaient jamais — confirmé par capture physique, absent des 2
+    /// captures). Chaque onglet gère déjà SON PROPRE `NavigationStack` (`Chat`/`Créateurs`,
+    /// `HomeShellView.body`) ; celui-ci fait de même pour l'Accueil plutôt que d'envelopper tout le
+    /// `TabView` (qui casserait l'historique de navigation indépendant de chaque onglet).
+    @State private var showSearch = false
     @State private var showCamera = false
     @State private var showDetail = false
     @State private var detailStartIndex = 0
@@ -168,6 +180,7 @@ struct FeedView: View {
     }
 
     var body: some View {
+        NavigationStack {
         Group {
             if viewModel.posts.isEmpty {
                 ScrollView {
@@ -420,6 +433,19 @@ struct FeedView: View {
             Button("OK", role: .cancel) { viewModel.blockError = nil }
         } message: {
             Text(viewModel.blockError ?? "")
+        }
+        // R.string.app_name = "Tiinver" — titre + bouton de recherche portés de la toolbar
+        // Android (`MainFragment`/`fragment_main.xml`), jamais rendus côté iOS jusqu'ici (voir la
+        // doc de `showSearch` ci-dessus).
+        .navigationTitle("Tiinver")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { showSearch = true } label: { Image(systemName: "magnifyingglass") }
+            }
+        }
+        .sheet(isPresented: $showSearch) {
+            NavigationStack { SearchView() }
+        }
         }
     }
 

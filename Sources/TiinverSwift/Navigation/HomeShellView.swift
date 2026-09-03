@@ -53,7 +53,6 @@ struct HomeShellView: View {
     @State private var chatUnreadCount = 0
     @State private var showNotifications = false
     @State private var showProfile = false
-    @State private var showSearch = false
     @State private var deepLinkUserId: String?
     @State private var deepLinkPost: FeedActivity?
     @State private var deepLinkRoster: RosterModel?
@@ -115,16 +114,6 @@ struct HomeShellView: View {
                 userIdDebugBanner
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                // Port du point d'entrée `RechercheTiinver` (module 18, `MainFragment`/
-                // `FeedFragment`/`Roster` ouvrent tous cette même Activity) — bouton de recherche
-                // ajouté ici plutôt qu'un onglet dédié : aucun item "recherche" dans
-                // `navigation_layout.xml` (5 items réels, tous identifiés), donc pas de position de
-                // barre de navigation à lui attribuer fidèlement.
-                Button { showSearch = true } label: { Image(systemName: "magnifyingglass") }
-            }
-        }
         .sheet(isPresented: $showNotifications, onDismiss: {
             Task { await notificationsViewModel.refresh() } // rafraîchit le badge après `markAllRead` dans la feuille
         }) {
@@ -132,9 +121,6 @@ struct HomeShellView: View {
         }
         .sheet(isPresented: $showProfile) {
             NavigationStack { ProfileView() }
-        }
-        .sheet(isPresented: $showSearch) {
-            NavigationStack { SearchView() }
         }
         // Port des destinations de `ShareActivity.processUrl`/`joinGroup` (`DeepLinkRouter.swift`,
         // 2026-08-16) — même motif `sheet(item:)`/`fullScreenCover` que le reste de l'écran.

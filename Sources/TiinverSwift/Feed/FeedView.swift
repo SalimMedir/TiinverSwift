@@ -238,15 +238,14 @@ struct FeedView: View {
         // 5 onglets de `HomeShellView`). Confiné au CADRE de `FeedView` (le contenu de l'onglet
         // Accueil dans la `TabView` de `HomeShellView`) : affiché AU-DESSUS de la grille mais
         // toujours EN DESSOUS de la barre à onglets, qui reste visible/fonctionnelle sans code
-        // supplémentaire (SwiftUI réserve déjà cet espace au contenu de tout onglet).
-        // `embedInHostTabBar: true` fait respecter la zone sûre basse plutôt que l'ignorer, pour que
-        // le pager s'arrête pile au-dessus de cette barre réelle plutôt que de passer dessous.
+        // supplémentaire (SwiftUI réserve déjà cet espace au contenu de tout onglet). L'espace bas du
+        // pager lui-même (`bottomReservedSpace`, `FeedDetailPagerView`) s'arrête pile à la hauteur
+        // standard d'une barre à onglets iOS — ni plus ni moins que ce que la vraie barre occupe ici.
         //
-        // Décision explicite (2026-09-03) : ce traitement reste PROPRE à l'Accueil — les 6 autres
-        // écrans qui réutilisent `FeedDetailPagerView` (Profil/Recherche/Notifications/Hashtag/lien
-        // profond) restent en `.fullScreenCover` inchangé, `embedInHostTabBar` valant `false` par
-        // défaut pour eux (voir `bottomReservedSpace` dans `FeedDetailPagerView` — espace vide
-        // réservé en bas plutôt qu'une fausse barre reconstruite).
+        // Décision explicite (2026-09-03) : ce traitement (monté DANS la vraie `TabView`) reste
+        // PROPRE à l'Accueil — les 6 autres écrans qui réutilisent `FeedDetailPagerView` (Profil/
+        // Recherche/Notifications/Hashtag/lien profond) restent en `.fullScreenCover` inchangé, avec
+        // le MÊME `bottomReservedSpace` par défaut (espace vide réservé, pas de barre reconstruite).
         if showDetail {
             // `showManagementActions: true` — SEUL contexte "..." avec Statistiques/Promouvoir (voir
             // `boostTargetPost`/`statsTargetPost` ci-dessus, propres posts du fil principal
@@ -263,7 +262,7 @@ struct FeedView: View {
             FeedDetailPagerView(
                 viewModel: viewModel, startIndex: detailStartIndex,
                 showManagementActions: true, includesDownload: true,
-                embedInHostTabBar: true, onClose: { showDetail = false }
+                onClose: { showDetail = false }
             )
             .zIndex(1)
         }
@@ -676,24 +675,20 @@ struct FeedDetailPagerView: View {
     /// `HashtagProfile` n'ont pas cet item, ou pointent vers un handler mort/erroné).
     var includesDownload = false
     let onClose: () -> Void
-    /// **Ajouté (2026-09-03, parité Android demandée explicitement)** — `true` UNIQUEMENT depuis
-    /// `FeedView` (grille Accueil, seul contexte parmi les 7 réutilisant ce pager qui est monté DANS
-    /// la vraie `TabView` à 5 onglets de `HomeShellView`, plutôt que présenté par-dessus elle en
-    /// `.fullScreenCover`). Décidé explicitement de NE PAS étendre ce comportement aux 6 autres
-    /// contextes (Profil/Recherche/Notifications/Hashtag/lien profond) : ceux-ci sont déjà hors de
-    /// l'arborescence de la vraie `TabView`, y reconstruire une fausse barre fonctionnelle exigerait
-    /// de faire remonter l'état de navigation de `HomeShellView` (onglet sélectionné, badges) à
-    /// travers plusieurs couches de sheets/covers indépendantes — voir `bottomReservedSpace`
-    /// ci-dessous pour leur traitement (espace vide réservé, pas de barre reconstruite).
-    var embedInHostTabBar = false
-    /// Espace vide réservé en bas pour les 6 contextes `.fullScreenCover` (`embedInHostTabBar ==
-    /// false`) — demande explicite : ne pas laisser le média aller jusqu'au bord bas réel de l'écran
-    /// même sans barre à onglets reconstruite, pour ne pas donner l'impression d'un plein écran
-    /// total. ~49pt = hauteur de contenu standard d'une barre à onglets iOS, + la zone sûre réelle
-    /// de l'appareil. Réduit d'autant le `geo.size` que reçoit tout le pager (rotation hack ET
-    /// `FeedDetailCell`, dont le padding bas est resté un simple `.padding()` par défaut depuis ce
-    /// correctif — voir sa doc). Ignoré quand `embedInHostTabBar == true` (Accueil) : la vraie
-    /// `TabView` hôte réserve alors elle-même l'espace exact de sa barre.
+    /// Espace vide réservé en bas — demande explicite (parité Android, 2026-09-03) : ne pas laisser
+    /// le média aller jusqu'au bord bas réel de l'écran. Appliqué UNIFORMÉMENT aux 7 contextes qui
+    /// réutilisent ce pager (voir les 2 initialiseurs plus haut), Accueil compris — **corrigé
+    /// (2026-09-03, régression physique confirmée par capture)** : une 1ʳᵉ version le désactivait
+    /// pour l'Accueil (monté directement dans la vraie `TabView` de `HomeShellView`, plutôt que
+    /// présenté en `.fullScreenCover` comme les 6 autres) en modifiant à la place quels bords
+    /// `.ignoresSafeArea()` ignore — ça a fait réapparaître une bande noire sur le bord droit (voir
+    /// le commentaire du 2026-09-01 dans `body`, sur le même artefact déjà documenté comme fragile).
+    /// ~49pt = hauteur de contenu STANDARD (fixe, pas une estimation) d'une barre à onglets iOS, +
+    /// la zone sûre réelle de l'appareil — cette valeur amène le média à s'arrêter très exactement
+    /// où la vraie barre à onglets commence sur l'Accueil, sans avoir besoin de connaître sa hauteur
+    /// réelle ni de toucher aux bords d'`.ignoresSafeArea()`. Réduit d'autant le `geo.size` que
+    /// reçoit tout le pager (rotation hack ET `FeedDetailCell`, dont le padding bas est resté un
+    /// simple `.padding()` par défaut depuis ce correctif — voir sa doc).
     var bottomReservedSpace: CGFloat = Self.deviceSafeAreaInsets.bottom + 49
 
     @State private var currentIndex: Int
@@ -783,12 +778,11 @@ struct FeedDetailPagerView: View {
         _currentIndex = State(initialValue: startIndex)
     }
 
-    init(viewModel: FeedViewModel, startIndex: Int, showManagementActions: Bool = false, includesDownload: Bool = false, embedInHostTabBar: Bool = false, onClose: @escaping () -> Void) {
+    init(viewModel: FeedViewModel, startIndex: Int, showManagementActions: Bool = false, includesDownload: Bool = false, onClose: @escaping () -> Void) {
         _viewModel = StateObject(wrappedValue: viewModel)
         self.startIndex = startIndex
         self.showManagementActions = showManagementActions
         self.includesDownload = includesDownload
-        self.embedInHostTabBar = embedInHostTabBar
         self.onClose = onClose
         _currentIndex = State(initialValue: startIndex)
     }
@@ -894,21 +888,25 @@ struct FeedDetailPagerView: View {
                 // (conservé, ne fait pas de mal) — à confirmer par un nouveau test physique.
                 .ignoresSafeArea()
             }
-            // **Ajouté (2026-09-03, parité Android demandée explicitement)** — ce pager est réutilisé
-            // à 7 endroits (voir les 2 initialiseurs plus haut) ; par défaut (les 6 contextes présentés
-            // en `.fullScreenCover` — Profil/Recherche/Notifications/Hashtag/lien profond), le
-            // comportement plein écran d'origine est conservé, avec `bottomReservedSpace` en plus qui
-            // réserve une bande VIDE (pas de barre fonctionnelle) en bas, pour ne pas donner
-            // l'impression d'un plein écran total — cohérent avec la demande explicite de ne PAS
-            // reconstruire une fausse barre à onglets dans ces contextes, qui sont déjà hors de la
-            // vraie `TabView` à 5 onglets (`HomeShellView`) dans l'arborescence de vues actuelle.
-            // `embedInHostTabBar` (Accueil uniquement, voir `FeedView.body`) ne bloque QUE le bord bas :
-            // ce pager y est monté directement DANS le contenu de l'onglet Accueil (plus de
-            // `.fullScreenCover` pour ce seul appel, voir plus bas) — la vraie `TabView` de
-            // `HomeShellView` réserve alors elle-même l'espace de sa barre, respecté ici en ne l'ignorant
-            // PAS, plutôt que reproduit par une valeur en dur qui pourrait diverger de la vraie hauteur.
-            .ignoresSafeArea(edges: embedInHostTabBar ? .top : .all)
-            .padding(.bottom, embedInHostTabBar ? 0 : bottomReservedSpace)
+            // **Corrigé (2026-09-03, régression physique confirmée par capture)** — la 1ʳᵉ version de
+            // ce correctif restreignait `.ignoresSafeArea()` à `edges: .top` seul pour le cas Accueil
+            // (monté DANS la vraie `TabView` hôte), pour la laisser réserver elle-même l'espace de sa barre.
+            // Conséquence non prévue, confirmée par capture réelle : une bande NOIRE verticale est
+            // apparue sur le bord droit de l'écran. Cause cohérente avec le commentaire du 2026-09-01
+            // juste au-dessus (`TabView(.page)` : le bord de zone sûre natif AVANT rotation devient le
+            // bord DROIT après rotation) — cette bordure n'était masquée QUE parce que l'ancien
+            // `.ignoresSafeArea()` (sans argument) ignorait TOUS les bords, y compris ceux concernés
+            // par ce contournement UIKit interne ; le restreindre à `.top` a démasqué exactement ce
+            // artefact déjà documenté comme fragile, sur un bord que je ne modifiais pourtant pas
+            // intentionnellement. `.ignoresSafeArea()` (tous bords) restauré INCONDITIONNELLEMENT —
+            // `bottomReservedSpace` (padding explicite, PAS un edge d'`ignoresSafeArea`) suffit à lui
+            // seul à réserver l'espace bas dans les 2 cas : ~49pt + zone sûre réelle est la hauteur de
+            // contenu STANDARD (fixe, pas une estimation) d'une barre à onglets iOS — appliqué aussi à
+            // l'Accueil, ça amène le média à s'arrêter au bon endroit sans avoir besoin de laisser la
+            // vraie zone sûre du `TabView` hôte agir, donc sans re-décocher aucun bord
+            // d'`.ignoresSafeArea()`.
+            .ignoresSafeArea()
+            .padding(.bottom, bottomReservedSpace)
             .onChange(of: currentIndex) { newIndex in
                 // Port de `OnPageChangeCallback.onPageSelected` (`FeedFragment.java:652-690`,
                 // V6-F-019) — flush + enregistrement de l'item précédent, démarrage du suivi du
@@ -1403,8 +1401,8 @@ private struct FeedDetailCell: View {
                 // 49)`, demande du 2026-08-27) ne faisait que pousser CE bloc vers le haut pendant
                 // que le média derrière continuait, lui, jusqu'au bord bas réel de l'écran — un
                 // compromis cosmétique posé avant que `FeedDetailPagerView` ne réserve RÉELLEMENT
-                // cet espace (barre à onglets hôte sur l'Accueil, bande vide explicite ailleurs, voir
-                // `embedInHostTabBar`/`bottomReservedSpace`). Le `geo.size` reçu ici est maintenant
+                // cet espace, uniformément dans les 7 contextes (voir `bottomReservedSpace`). Le
+                // `geo.size` reçu ici est maintenant
                 // déjà réduit d'autant en amont — un double réglage aurait remonté ce bloc bien
                 // au-dessus de l'espace réservé, laissant un vide inutile. Le `.padding()` par défaut
                 // ci-dessus suffit désormais.

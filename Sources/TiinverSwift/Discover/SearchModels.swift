@@ -100,7 +100,12 @@ struct SearchPostResult: Codable, Identifiable, Hashable {
         case id, token, verb, object, object_url, message, likes
         case comment = "comments"
         case views, stamp, cdn_thumbnail_url, cdn_content_url, cdn_provider, cdn_content_id, isLiked, actor, username, firstname, profile
-        case certified
+        // **Corrigé (2026-09-03)** — `case certified` (sans réaffectation) faisait échouer la
+        // conformance `Encodable` auto-synthétisée : chaque cas de `CodingKeys` doit correspondre
+        // au NOM DE LA PROPRIÉTÉ pour cette synthèse (`isCertified`), la valeur brute portant
+        // séparément le nom de la clé JSON réelle (`"certified"`) — confirmé par l'erreur CI
+        // "type 'SearchPostResult' does not conform to protocol 'Encodable'".
+        case isCertified = "certified"
     }
 
     /// Décodage tolérant (2026-08-16) — même cause racine que `SearchUserResult` ci-dessus,
@@ -126,7 +131,7 @@ struct SearchPostResult: Codable, Identifiable, Hashable {
         username = try container.decodeIfPresent(String.self, forKey: .username)
         firstname = try container.decodeIfPresent(String.self, forKey: .firstname)
         profile = try container.decodeIfPresent(String.self, forKey: .profile)
-        isCertified = container.decodeLenientBoolIfPresent(forKey: .certified).map { $0 ? 1 : 0 }
+        isCertified = container.decodeLenientBoolIfPresent(forKey: .isCertified).map { $0 ? 1 : 0 }
     }
 
     /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-010, Phase B P1-6)** — le

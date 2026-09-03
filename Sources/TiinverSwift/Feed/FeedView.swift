@@ -675,20 +675,29 @@ struct FeedDetailPagerView: View {
     /// `HashtagProfile` n'ont pas cet item, ou pointent vers un handler mort/erroné).
     var includesDownload = false
     let onClose: () -> Void
-    /// Espace vide réservé en bas — demande explicite (parité Android, 2026-09-03) : ne pas laisser
-    /// le média aller jusqu'au bord bas réel de l'écran. Appliqué UNIFORMÉMENT aux 7 contextes qui
-    /// réutilisent ce pager (voir les 2 initialiseurs plus haut), Accueil compris — **corrigé
-    /// (2026-09-03, régression physique confirmée par capture)** : une 1ʳᵉ version le désactivait
-    /// pour l'Accueil (monté directement dans la vraie `TabView` de `HomeShellView`, plutôt que
-    /// présenté en `.fullScreenCover` comme les 6 autres) en modifiant à la place quels bords
-    /// `.ignoresSafeArea()` ignore — ça a fait réapparaître une bande noire sur le bord droit (voir
-    /// le commentaire du 2026-09-01 dans `body`, sur le même artefact déjà documenté comme fragile).
-    /// ~49pt = hauteur de contenu STANDARD (fixe, pas une estimation) d'une barre à onglets iOS, +
-    /// la zone sûre réelle de l'appareil — cette valeur amène le média à s'arrêter très exactement
-    /// où la vraie barre à onglets commence sur l'Accueil, sans avoir besoin de connaître sa hauteur
-    /// réelle ni de toucher aux bords d'`.ignoresSafeArea()`. Réduit d'autant le `geo.size` que
-    /// reçoit tout le pager (rotation hack ET `FeedDetailCell`, dont le padding bas est resté un
-    /// simple `.padding()` par défaut depuis ce correctif — voir sa doc).
+    /// Espace vide réservé en haut (zone sûre réelle — barre d'état) et en bas (~49pt = hauteur
+    /// STANDARD, fixe, d'une barre à onglets iOS + zone sûre réelle) — demande explicite (parité
+    /// Android, 2026-09-03) : ni le média ni la légende/rail d'actions ne doivent atteindre les
+    /// bords réels haut/bas de l'écran. Appliqué UNIFORMÉMENT aux 7 contextes qui réutilisent ce
+    /// pager (voir les 2 initialiseurs plus haut), Accueil compris.
+    ///
+    /// **Corrigé (2026-09-03) — 2 tentatives précédentes ont modifié le `GeometryReader`/`TabView`
+    /// DU PAGER lui-même (d'abord en restreignant les bords ignorés par `.ignoresSafeArea()`, ce qui
+    /// a causé une régression réelle — bande noire sur le bord droit, voir le commentaire du
+    /// 2026-09-01 dans `body` sur ce même artefact déjà documenté comme fragile — puis en ajoutant
+    /// un `.padding()` directement dessus, dont l'effet sur le FRAME RÉEL que `TabView(.page)`
+    /// occupe — et donc sur le comportement interne `UIScrollView`/`contentInsetAdjustmentBehavior`
+    /// documenté au même endroit — ne pouvait pas être prouvé par le seul raisonnement statique,
+    /// seulement par un test physique.** Ce réglage-ci ne touche plus DU TOUT le pager/`TabView` —
+    /// son `GeometryReader` est revenu STRICTEMENT identique au code jamais bugué (un seul
+    /// `.ignoresSafeArea()` sans argument, aucun padding). L'espace est réservé PLUS BAS, à
+    /// l'intérieur de CHAQUE `FeedDetailCell` (qui a déjà son propre `GeometryReader`+`.clipped()`
+    /// isolé, V8) — le média ET la légende y sont inset ensemble dans une zone de contenu plus
+    /// petite, centrée dans le cadre PLEIN (`geo.size`, inchangé) rempli de noir. Le frame que le
+    /// pager propose à chaque cellule reste ainsi rigoureusement identique à l'original — aucune
+    /// incertitude possible sur le bug UIKit documenté, puisque rien qui pourrait l'influencer n'est
+    /// modifié.
+    var topReservedSpace: CGFloat = Self.deviceSafeAreaInsets.top
     var bottomReservedSpace: CGFloat = Self.deviceSafeAreaInsets.bottom + 49
 
     @State private var currentIndex: Int
@@ -828,6 +837,7 @@ struct FeedDetailPagerView: View {
                                 FeedAdCell()
                             } else {
                                 FeedDetailCell(
+                                    topReservedSpace: topReservedSpace, bottomReservedSpace: bottomReservedSpace,
                                     post: post, isActive: index == currentIndex,
                                     onLike: { viewModel.toggleLike(post) },
                                     onComment: { commentsPost = post; viewModel.notifyCommentOpened(post) },
@@ -888,33 +898,21 @@ struct FeedDetailPagerView: View {
                 // (conservé, ne fait pas de mal) — à confirmer par un nouveau test physique.
                 .ignoresSafeArea()
             }
-            // **Corrigé (2026-09-03, régression physique confirmée par capture)** — la 1ʳᵉ version de
-            // ce correctif restreignait `.ignoresSafeArea()` à `edges: .top` seul pour le cas Accueil
-            // (monté DANS la vraie `TabView` hôte), pour la laisser réserver elle-même l'espace de sa barre.
-            // Conséquence non prévue, confirmée par capture réelle : une bande NOIRE verticale est
-            // apparue sur le bord droit de l'écran. Cause cohérente avec le commentaire du 2026-09-01
-            // juste au-dessus (`TabView(.page)` : le bord de zone sûre natif AVANT rotation devient le
-            // bord DROIT après rotation) — cette bordure n'était masquée QUE parce que l'ancien
-            // `.ignoresSafeArea()` (sans argument) ignorait TOUS les bords, y compris ceux concernés
-            // par ce contournement UIKit interne ; le restreindre à `.top` a démasqué exactement ce
-            // artefact déjà documenté comme fragile, sur un bord que je ne modifiais pourtant pas
-            // intentionnellement. `.ignoresSafeArea()` (tous bords) restauré INCONDITIONNELLEMENT —
-            // `bottomReservedSpace` (padding explicite, PAS un edge d'`ignoresSafeArea`) suffit à lui
-            // seul à réserver l'espace bas dans les 2 cas : ~49pt + zone sûre réelle est la hauteur de
-            // contenu STANDARD (fixe, pas une estimation) d'une barre à onglets iOS — appliqué aussi à
-            // l'Accueil, ça amène le média à s'arrêter au bon endroit sans avoir besoin de laisser la
-            // vraie zone sûre du `TabView` hôte agir, donc sans re-décocher aucun bord
-            // d'`.ignoresSafeArea()`.
+            // **Corrigé (2026-09-03, 2 tentatives précédentes annulées)** — 2 essais successifs ont
+            // modifié CE `GeometryReader`/`TabView` pour réserver l'espace haut/bas (bord droit,
+            // demande status bar) : le 1ᵉʳ a restreint les bords ignorés par `.ignoresSafeArea()`
+            // (régression réelle confirmée par capture — bande noire sur le bord droit, cause
+            // cohérente avec le commentaire du 2026-09-01 juste au-dessus sur ce même artefact déjà
+            // documenté comme fragile), le 2ᵉ a ajouté `.padding()` par-dessus un `.ignoresSafeArea()`
+            // resté sans argument — improuvable par le seul raisonnement statique dont l'effet sur le
+            // FRAME RÉEL occupé par `TabView(.page)` (et donc sur le comportement interne
+            // `UIScrollView` documenté au même endroit) sans un test physique. Les DEUX ont été
+            // annulés : ce `GeometryReader` est revenu STRICTEMENT identique au code jamais bugué,
+            // AUCUN padding. L'espace haut/bas est désormais réservé à l'intérieur de CHAQUE
+            // `FeedDetailCell` (voir `topReservedSpace`/`bottomReservedSpace` ci-dessus et la doc de
+            // `FeedDetailCell.body`) — le frame que CE pager propose à chaque cellule ne change plus
+            // du tout, éliminant toute incertitude sur l'artefact UIKit documenté.
             .ignoresSafeArea()
-            .padding(.bottom, bottomReservedSpace)
-            // **Ajouté (2026-09-03, demande explicite)** — le média passait jusqu'ici SOUS la barre
-            // d'état (texte heure/réseau/batterie superposé dessus), `.ignoresSafeArea()` (tous
-            // bords, conservé ci-dessus pour la même raison anti-artefact que `bottomReservedSpace`)
-            // l'y laissant délibérément déborder. Corrigé avec le MÊME mécanisme que le bas (padding
-            // explicite APRÈS `.ignoresSafeArea()`, PAS un bord retiré de son périmètre — modifier
-            // les bords ignorés a déjà causé une régression documentée juste au-dessus) : le haut du
-            // plein écran s'arrête maintenant exactement sous la barre d'état réelle de l'appareil.
-            .padding(.top, Self.deviceSafeAreaInsets.top)
             .onChange(of: currentIndex) { newIndex in
                 // Port de `OnPageChangeCallback.onPageSelected` (`FeedFragment.java:652-690`,
                 // V6-F-019) — flush + enregistrement de l'item précédent, démarrage du suivi du
@@ -1234,6 +1232,11 @@ private struct FillVideoPlayerView: UIViewRepresentable {
 }
 
 private struct FeedDetailCell: View {
+    /// Voir la doc de `FeedDetailPagerView.topReservedSpace`/`bottomReservedSpace` — transmis ICI
+    /// (pas au niveau du pager/`TabView`, voir la doc de `body` ci-dessous) pour ne jamais toucher
+    /// au frame réel que le pager propose à cette cellule.
+    var topReservedSpace: CGFloat = 0
+    var bottomReservedSpace: CGFloat = 0
     let post: FeedActivity
     let isActive: Bool
     var onLike: () -> Void = {}
@@ -1276,6 +1279,16 @@ private struct FeedDetailCell: View {
         // pinçant chaque branche média à `geo.size` + `.clipped()` — l'idiome SwiftUI standard
         // "remplir puis rogner", qui manquait spécifiquement ici.
         GeometryReader { geo in
+            // **Ajouté (2026-09-03, parité Android — espace réservé haut/bas)** — voir la doc de
+            // `topReservedSpace`/`bottomReservedSpace` (déclarés en tête de ce type) : cette
+            // hauteur réduite (jamais négative) plus un `.position()` explicite, appliqués
+            // INDÉPENDAMMENT à chaque enfant DIRECT de ce `ZStack` (médias ET bloc légende/rail,
+            // ci-dessous) plutôt qu'une imbrication supplémentaire de `ZStack`, les confine TOUS aux
+            // mêmes bornes, sans dépendre de l'alignement par défaut du `ZStack` (`.center`, qui
+            // centrerait un enfant plus petit au lieu de l'ancrer en haut) ni changer la taille que
+            // ce `GeometryReader` lui-même occupe/rapporte à `FeedDetailPagerView`.
+            let contentHeight = max(0, geo.size.height - topReservedSpace - bottomReservedSpace)
+            let contentCenterY = topReservedSpace + contentHeight / 2
             ZStack {
                 // **Ajouté (V4-F-034, 2026-08-24)** — port de `ExoPlayerManager.java:198-330`, qui
                 // détache explicitement le player de la vue précédente avant de l'attacher à la
@@ -1297,8 +1310,9 @@ private struct FeedDetailCell: View {
                     // `AVPlayerLayer.videoGravity = .resizeAspectFill`, seul moyen d'obtenir ce réglage
                     // (non exposé par le `VideoPlayer` SwiftUI).
                     FillVideoPlayerView(player: VideoPlayerManager.shared.player)
-                        .frame(width: geo.size.width, height: geo.size.height)
+                        .frame(width: geo.size.width, height: contentHeight)
                         .clipped()
+                        .position(x: geo.size.width / 2, y: contentCenterY)
                         .onAppear {
                             // Port de `VideoPlaybackCoordinator.tryPlayAt` — `fallbackURL` était
                             // jamais transmis avant le correctif V4 précédent malgré le mécanisme de
@@ -1317,9 +1331,10 @@ private struct FeedDetailCell: View {
                     // mémoire pour une photo source généralement bien plus grande que l'écran.
                     CDNAsyncImage(url: thumb, targetSize: UIScreen.main.bounds.size) { image in
                         image.resizable().aspectRatio(contentMode: .fill)
-                            .frame(width: geo.size.width, height: geo.size.height)
+                            .frame(width: geo.size.width, height: contentHeight)
                             .clipped()
                     } placeholder: { Color.black }
+                    .position(x: geo.size.width / 2, y: contentCenterY)
                 } else {
                     Color.black
                 }
@@ -1406,15 +1421,16 @@ private struct FeedDetailCell: View {
                 }
                 .padding()
                 // **Corrigé (2026-09-03)** — l'ancien réglage (`.padding(.bottom, bottomSafeArea +
-                // 49)`, demande du 2026-08-27) ne faisait que pousser CE bloc vers le haut pendant
-                // que le média derrière continuait, lui, jusqu'au bord bas réel de l'écran — un
-                // compromis cosmétique posé avant que `FeedDetailPagerView` ne réserve RÉELLEMENT
-                // cet espace, uniformément dans les 7 contextes (voir `bottomReservedSpace`). Le
-                // `geo.size` reçu ici est maintenant
-                // déjà réduit d'autant en amont — un double réglage aurait remonté ce bloc bien
-                // au-dessus de l'espace réservé, laissant un vide inutile. Le `.padding()` par défaut
-                // ci-dessus suffit désormais.
+                // 49)`, demande du 2026-08-27) poussait CE bloc vers le haut pendant que le média
+                // derrière continuait, lui, jusqu'au bord bas réel de l'écran — un compromis
+                // cosmétique. Le `.padding()` par défaut ci-dessus suffit désormais : ce bloc est
+                // maintenant confiné au MÊME rectangle inset que le média (`.frame`/`.position`
+                // ci-dessous, voir `contentHeight`/`contentCenterY` en tête de `body`), donc son
+                // `Spacer()` pousse la légende juste au-dessus de l'espace réservé, plus jusqu'au
+                // vrai bord bas de l'écran.
             }
+            .frame(width: geo.size.width, height: contentHeight)
+            .position(x: geo.size.width / 2, y: contentCenterY)
             .zIndex(1)
             }
             .background(Color.black)

@@ -148,17 +148,23 @@ final class GroupRepository {
                 print("GROUP SEARCH: item is not an object — raw=\(item.toDictionary() ?? [:])")
                 return nil
             }
+            // **Corrigé (2026-09-03, JSON réel `search/{myId}/{str}` fourni par l'utilisateur)** —
+            // 2 champs silencieusement perdus (aucun des deux ne lève d'erreur, `optionalString`
+            // renvoie juste `nil`/le repli par défaut) : la réponse réelle envoie la photo de groupe
+            // sous la clé `"profile_picture"`, jamais `"profile"` (avatar de groupe jamais affiché
+            // en résultat de recherche) ; `"creator"` arrive en NOMBRE JSON natif (l'id utilisateur
+            // du créateur, ex. `196`), pas en chaîne (`creator` retombait toujours à `""`).
             return GroupInfo(
                 id: (try? item.int("id")) ?? 0,
                 token: item.optionalString("token") ?? "",
                 name: item.optionalString("name") ?? "",
                 nikname: item.optionalString("nikname"),
                 description: item.optionalString("description"),
-                profile: item.optionalString("profile"),
+                profile: item.optionalString("profile") ?? item.optionalString("profile_picture"),
                 price: (try? item.int("price")) ?? 0,
                 lucrative: (try? item.int("lucrative")) ?? 0,
                 isMember: (try? item.bool("isMember")) ?? false,
-                creator: item.optionalString("creator") ?? "",
+                creator: item.optionalString("creator") ?? (try? item.int("creator")).map(String.init) ?? "",
                 type: item.optionalString("type") ?? "public"
             )
         }

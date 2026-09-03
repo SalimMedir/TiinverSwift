@@ -844,89 +844,44 @@ struct FeedDetailPagerView: View {
             // accès à un vrai device) — elle rend simplement invisible tout interstice résiduel,
             // cohérent avec le fond noir déjà utilisé partout ailleurs dans ce pager.
             Color.black.ignoresSafeArea()
-            GeometryReader { geo in
-                TabView(selection: $currentIndex) {
-                    ForEach(Array(posts.enumerated()), id: \.offset) { index, post in
-                        Group {
-                            if isAdPosition(index, count: posts.count) {
-                                FeedAdCell()
-                            } else {
-                                FeedDetailCell(
-                                    topReservedSpace: topReservedSpace, bottomReservedSpace: bottomReservedSpace,
-                                    post: post, isActive: index == currentIndex,
-                                    onLike: { viewModel.toggleLike(post) },
-                                    onComment: { commentsPost = post; viewModel.notifyCommentOpened(post) },
-                                    onShare: { Task { await viewModel.toggleShare(post) } },
-                                    onMore: { moreActionsPost = post },
-                                    onOpenProfile: { if let actor = post.actor { openProfileUserId = actor } },
-                                    onFollow: { Task { await viewModel.followFromDetail(post) } },
-                                    onOpenSearch: { query, tab in searchToken = (query, tab) }
-                                )
-                            }
-                        }
-                            // BUG 2/3 (validation physique, 2026-08-27, corrigé une 2ᵉ fois le même
-                            // jour après un retour de test réel confirmant un débordement bas d'écran)
-                            // — `.rotationEffect` ne change JAMAIS la taille de layout qu'une vue
-                            // remonte à son parent, seulement son RENDU visuel : un 1ᵉʳ correctif
-                            // n'appliquait qu'un SEUL frame, AVANT la rotation, aux dimensions RÉELLES
-                            // de l'écran (`geo.size`, non échangées) — nécessaire pour que le contenu
-                            // (image/vidéo) se dispose avec les bonnes proportions, mais ce frame,
-                            // n'étant pas affecté par la rotation qui suit, remontait TOUJOURS au
-                            // `TabView` un encombrement de layout NON échangé (portrait), alors que le
-                            // `TabView` lui-même réserve un encombrement ÉCHANGÉ (paysage, ligne
-                            // suivante) — décalage qui faisait déborder le contenu (et le rail
-                            // d'actions/l'avatar/le bouton "S'abonner" de `FeedDetailCell`, déjà
-                            // câblés, lignes 901-989 plus bas) hors de l'écran réel. Pattern complet du
-                            // contournement "TabView vertical par rotation" : DEUX frames par page —
-                            // celui AVANT rotation (dimensions réelles, proportions du contenu) ET un
-                            // second APRÈS rotation (dimensions échangées, ce que le `TabView` réserve
-                            // réellement pour cette page) — seul ce 2ᵉ frame était manquant.
-                            .frame(width: geo.size.width, height: geo.size.height)
-                            .rotationEffect(.degrees(-90))
-                            .frame(width: geo.size.height, height: geo.size.width)
-                            .tag(index)
-                            .onAppear {
-                                if index == posts.count - 2 { Task { await viewModel.loadNextPage() } }
-                            }
+            // **Remplacé (2026-09-03)** — le contournement "TabView tournée à 90°" (tout
+            // l'historique de commentaires ci-dessus, 3 tentatives de correctif échouées sur une
+            // bande noire réapparaissant tantôt à droite, tantôt à gauche selon le contexte
+            // d'hébergement) est ABANDONNÉ, pas repatché une 4ᵉ fois. Cause de fond identifiée :
+            // `TabView(.page)` ne pagine QUE horizontalement en SwiftUI — la rotation de 90° pour
+            // simuler un défilement vertical est un contournement intrinsèquement fragile, pas un
+            // détail de réglage. `VerticalPagerView` (défini plus bas dans ce fichier) est un vrai
+            // défilement vertical paginé NATIF UIKit (`UIScrollView.isPagingEnabled`, disponible
+            // depuis iOS 13 — n'exige AUCUNE hausse de la version minimale du projet, iOS 16) : ni
+            // rotation, ni frame échangé, ni artefact `contentInsetAdjustmentBehavior` à masquer
+            // (désactivé explicitement, `.never`, dans `PagerViewController` — la cause plutôt que
+            // le symptôme). Fenêtre de rendu réduite (`currentIndex ± 2`, même principe que
+            // `preloadAround` déjà existant) : seules les pages proches sont réellement montées.
+            VerticalPagerView(
+                pageCount: posts.count,
+                currentIndex: $currentIndex,
+                pageContent: { index in
+                    guard posts.indices.contains(index) else { return AnyView(EmptyView()) }
+                    if isAdPosition(index, count: posts.count) {
+                        return AnyView(FeedAdCell())
                     }
-                }
-                .frame(width: geo.size.height, height: geo.size.width)
-                .rotationEffect(.degrees(90), anchor: .topLeading)
-                .offset(x: geo.size.width)
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                // **Ajouté (2026-09-01, bug physique "barre blanche à droite en plein écran",
-                // photo ET vidéo confondues)** — piste retenue après analyse (PAS confirmée
-                // physiquement, à revérifier) : `TabView(.page)` est porté par un `UIScrollView`/
-                // `UIPageViewController` UIKit sous-jacent, dont `contentInsetAdjustmentBehavior`
-                // gère SA PROPRE prise en compte de la zone sûre, indépendamment de
-                // `.ignoresSafeArea()` posé sur le `GeometryReader` englobant (qui agit au niveau
-                // du système de layout SwiftUI, pas nécessairement propagé à l'intérieur d'une vue
-                // UIKit pontée) — un comportement d'interopérabilité SwiftUI/UIKit documenté pour
-                // `TabView(.page)`. Concrètement, le bord de la zone sûre NATIVEMENT concerné
-                // (haut ou bas de cette `TabView`, AVANT sa rotation de 90°) devient, après
-                // rotation, le bord DROIT du résultat visible à l'écran — cohérent avec le
-                // symptôme rapporté ("légèrement décalé vers la droite") et avec le fait qu'il
-                // touche indifféremment photo et vidéo (un effet du conteneur partagé, pas d'un
-                // rendu média spécifique — déjà vérifié séparément dans `FeedDetailCell`, qui
-                // encadre chaque média dans sa propre `GeometryReader`+`.clipped()`, V8). Appliqué
-                // ICI, directement sur la `TabView`, en plus de celui du `GeometryReader` englobant
-                // (conservé, ne fait pas de mal) — à confirmer par un nouveau test physique.
-                .ignoresSafeArea()
-            }
-            // **Corrigé (2026-09-03, 2 tentatives précédentes annulées)** — 2 essais successifs ont
-            // modifié CE `GeometryReader`/`TabView` pour réserver l'espace haut/bas (bord droit,
-            // demande status bar) : le 1ᵉʳ a restreint les bords ignorés par `.ignoresSafeArea()`
-            // (régression réelle confirmée par capture — bande noire sur le bord droit, cause
-            // cohérente avec le commentaire du 2026-09-01 juste au-dessus sur ce même artefact déjà
-            // documenté comme fragile), le 2ᵉ a ajouté `.padding()` par-dessus un `.ignoresSafeArea()`
-            // resté sans argument — improuvable par le seul raisonnement statique dont l'effet sur le
-            // FRAME RÉEL occupé par `TabView(.page)` (et donc sur le comportement interne
-            // `UIScrollView` documenté au même endroit) sans un test physique. Les DEUX ont été
-            // annulés : ce `GeometryReader` est revenu STRICTEMENT identique au code jamais bugué,
-            // AUCUN padding. L'espace haut/bas est désormais réservé à l'intérieur de CHAQUE
-            // `FeedDetailCell` (voir `topReservedSpace`/`bottomReservedSpace` ci-dessus et la doc de
-            // `FeedDetailCell.body`) — le frame que CE pager propose à chaque cellule ne change plus
-            // du tout, éliminant toute incertitude sur l'artefact UIKit documenté.
+                    let post = posts[index]
+                    return AnyView(
+                        FeedDetailCell(
+                            topReservedSpace: topReservedSpace, bottomReservedSpace: bottomReservedSpace,
+                            post: post, isActive: index == currentIndex,
+                            onLike: { viewModel.toggleLike(post) },
+                            onComment: { commentsPost = post; viewModel.notifyCommentOpened(post) },
+                            onShare: { Task { await viewModel.toggleShare(post) } },
+                            onMore: { moreActionsPost = post },
+                            onOpenProfile: { if let actor = post.actor { openProfileUserId = actor } },
+                            onFollow: { Task { await viewModel.followFromDetail(post) } },
+                            onOpenSearch: { query, tab in searchToken = (query, tab) }
+                        )
+                    )
+                },
+                onApproachingEnd: { Task { await viewModel.loadNextPage() } }
+            )
             .ignoresSafeArea()
             .onChange(of: currentIndex) { newIndex in
                 // Port de `OnPageChangeCallback.onPageSelected` (`FeedFragment.java:652-690`,
@@ -1272,6 +1227,170 @@ struct FeedDetailPagerView: View {
             .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
             .frame(maxWidth: .infinity)
         }
+    }
+}
+
+/// **Ajouté (2026-09-03)** — remplace le contournement "TabView tournée à 90°" (voir l'historique
+/// de commentaires dans `FeedDetailPagerView.body`) par un vrai défilement vertical paginé natif
+/// UIKit. `UIScrollView.isPagingEnabled` existe depuis iOS 5, la pagination VERTICALE est le
+/// comportement standard dès qu'on ne force pas `isDirectionalLockEnabled`/un `contentSize` large —
+/// aucune API récente nécessaire, compatible iOS 16 (version minimale de ce projet) sans réserve.
+/// Fenêtre de rendu réduite (`currentIndex ± windowRadius`, même principe que `preloadAround` déjà
+/// existant dans ce fichier) : seules les pages PROCHES de l'index courant sont réellement montées
+/// comme `UIHostingController` — un fil qui grandit indéfiniment (pagination réseau) ne garderait
+/// sinon jamais aucune page en mémoire, contrairement à `TabView(.page)` qui gère cette fenêtre en
+/// interne (mais avec le défaut de rendu documenté qui a motivé ce remplacement).
+private struct VerticalPagerView: UIViewControllerRepresentable {
+    let pageCount: Int
+    @Binding var currentIndex: Int
+    let pageContent: (Int) -> AnyView
+    var onApproachingEnd: () -> Void = {}
+
+    func makeUIViewController(context: Context) -> PagerViewController {
+        let vc = PagerViewController()
+        vc.onIndexChange = { newIndex in
+            if currentIndex != newIndex { currentIndex = newIndex }
+        }
+        vc.onApproachingEnd = onApproachingEnd
+        vc.configure(pageCount: pageCount, pageContent: pageContent)
+        return vc
+    }
+
+    func updateUIViewController(_ vc: PagerViewController, context: Context) {
+        vc.onApproachingEnd = onApproachingEnd
+        vc.configure(pageCount: pageCount, pageContent: pageContent)
+        vc.scrollToIndexIfNeeded(currentIndex)
+    }
+}
+
+private final class PagerViewController: UIViewController, UIScrollViewDelegate {
+    private let scrollView = UIScrollView()
+    private var pageCount = 0
+    private var pageContentProvider: ((Int) -> AnyView)?
+    private var hostedControllers: [Int: UIHostingController<AnyView>] = [:]
+    private var currentIndex = 0
+    private var didTriggerApproachingEnd = false
+    var onIndexChange: ((Int) -> Void)?
+    var onApproachingEnd: (() -> Void)?
+    private static let windowRadius = 2
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        scrollView.isPagingEnabled = true
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.bounces = false
+        scrollView.backgroundColor = .clear
+        scrollView.delegate = self
+        // Cause racine du "bord droit/gauche" documenté sur l'ancien contournement rotation+TabView
+        // (`FeedDetailPagerView.body`) : `UIScrollView.contentInsetAdjustmentBehavior = .automatic`
+        // (valeur par défaut) ajuste ses propres insets selon la zone sûre, indépendamment de ce que
+        // SwiftUI calcule. Désactivé explicitement ici — la cause plutôt que masquer le symptôme.
+        scrollView.contentInsetAdjustmentBehavior = .never
+        view.addSubview(scrollView)
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: view.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        layoutPages()
+    }
+
+    func configure(pageCount: Int, pageContent: @escaping (Int) -> AnyView) {
+        self.pageCount = pageCount
+        self.pageContentProvider = pageContent
+        if view.bounds.height > 0 { layoutPages() }
+        refreshWindow()
+    }
+
+    /// Appelé depuis `updateUIViewController` quand `currentIndex` change PAR SwiftUI (ex. ouverture
+    /// initiale sur `startIndex`) — distingué du changement inverse (scroll utilisateur détecté par
+    /// ce contrôleur lui-même, `scrollViewDidEndDecelerating`) pour ne jamais boucler les deux sens.
+    func scrollToIndexIfNeeded(_ index: Int) {
+        guard index != currentIndex, index >= 0, index < pageCount else { return }
+        currentIndex = index
+        didTriggerApproachingEnd = false
+        if view.bounds.height > 0 {
+            scrollView.setContentOffset(CGPoint(x: 0, y: view.bounds.height * CGFloat(index)), animated: false)
+        }
+        refreshWindow()
+    }
+
+    private func layoutPages() {
+        guard view.bounds.height > 0 else { return }
+        let h = view.bounds.height
+        scrollView.contentSize = CGSize(width: view.bounds.width, height: h * CGFloat(pageCount))
+        for (index, hc) in hostedControllers {
+            hc.view.frame = CGRect(x: 0, y: h * CGFloat(index), width: view.bounds.width, height: h)
+        }
+        if scrollView.contentOffset.y != h * CGFloat(currentIndex) {
+            scrollView.contentOffset = CGPoint(x: 0, y: h * CGFloat(currentIndex))
+        }
+    }
+
+    private func refreshWindow() {
+        guard let pageContentProvider, view.bounds.height > 0, pageCount > 0 else { return }
+        let lowerBound = max(0, currentIndex - Self.windowRadius)
+        let upperBound = min(pageCount - 1, currentIndex + Self.windowRadius)
+        guard lowerBound <= upperBound else { return }
+        let wanted = Set(lowerBound...upperBound)
+        for index in hostedControllers.keys where !wanted.contains(index) {
+            removePage(at: index)
+        }
+        for index in wanted {
+            if let hc = hostedControllers[index] {
+                hc.rootView = pageContentProvider(index)
+            } else {
+                addPage(at: index, content: pageContentProvider(index))
+            }
+        }
+        // Port de l'ancien `.onAppear { if index == posts.count - 2 { loadNextPage() } }` par page
+        // (`FeedDetailPagerView.body`, avant remplacement) — même seuil, déclenché ici plutôt que
+        // par `.onAppear` puisque les pages ne sont plus systématiquement toutes montées.
+        if currentIndex == pageCount - 2, !didTriggerApproachingEnd {
+            didTriggerApproachingEnd = true
+            onApproachingEnd?()
+        }
+    }
+
+    private func addPage(at index: Int, content: AnyView) {
+        let hc = UIHostingController(rootView: content)
+        hc.view.backgroundColor = .clear
+        addChild(hc)
+        let h = view.bounds.height
+        hc.view.frame = CGRect(x: 0, y: h * CGFloat(index), width: view.bounds.width, height: h)
+        scrollView.addSubview(hc.view)
+        hc.didMove(toParent: self)
+        hostedControllers[index] = hc
+    }
+
+    private func removePage(at index: Int) {
+        guard let hc = hostedControllers[index] else { return }
+        hc.willMove(toParent: nil)
+        hc.view.removeFromSuperview()
+        hc.removeFromParent()
+        hostedControllers[index] = nil
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { updateIndexFromScroll() }
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) { updateIndexFromScroll() }
+
+    private func updateIndexFromScroll() {
+        guard scrollView.bounds.height > 0, pageCount > 0 else { return }
+        let rawIndex = Int((scrollView.contentOffset.y / scrollView.bounds.height).rounded())
+        let clamped = max(0, min(pageCount - 1, rawIndex))
+        guard clamped != currentIndex else { return }
+        currentIndex = clamped
+        didTriggerApproachingEnd = false
+        refreshWindow()
+        onIndexChange?(clamped)
     }
 }
 

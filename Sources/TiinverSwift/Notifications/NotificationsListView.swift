@@ -76,7 +76,7 @@ struct NotificationsListView: View {
 /// Texte formaté réutilise EXACTEMENT le même mapping verb→phrase que
 /// `LocalNotificationBuilder.activityNotificationContent` (déjà porté), pas un texte réinventé.
 private struct NotificationRow: View {
-    let noti: NotiEntity
+    let noti: NotiItem
     var onOpenPost: (FeedActivity) -> Void = { _ in }
     @State private var justFollowedBack = false
 

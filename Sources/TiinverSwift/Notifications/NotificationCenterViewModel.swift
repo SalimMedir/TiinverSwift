@@ -6,7 +6,7 @@ import Foundation
 /// pas encore identifié).
 @MainActor
 final class NotificationCenterViewModel: ObservableObject {
-    @Published var notifications: [NotiEntity] = []
+    @Published var notifications: [NotiItem] = []
     @Published var unreadCount = 0
     @Published var isLoading = false
     @Published var errorMessage: String?

@@ -194,4 +194,20 @@ final class RosterRepository {
     func query(predicate: NSPredicate? = nil, sortDescriptors: [NSSortDescriptor] = []) async throws -> [RosterEntity] {
         try await roster.query(predicate: predicate, sortDescriptors: sortDescriptors)
     }
+
+    /// **Ajouté (2026-09-03)** — même bug de fond que celui corrigé dans `ViewEventRepository.pending()`
+    /// (voir sa doc) : `HomeShellView.refreshChatUnreadCount()` appelait `query(...)` puis lisait
+    /// `entity.unreadCount` sur chaque `RosterEntity` retourné, HORS du `context.perform` où ces
+    /// objets ont été fetchés — lecture cross-thread interdite par Core Data. L'agrégation est
+    /// désormais faite ICI, DANS le même `context.perform`, avant que les objets ne quittent la
+    /// queue du contexte qui les possède ; seul l'`Int` final traverse la frontière async.
+    func sumUnreadCount(predicate: NSPredicate) async throws -> Int {
+        let context = stack.newBackgroundContext()
+        return try await context.perform {
+            let request = RosterEntity.fetchRequest()
+            request.predicate = predicate
+            let rows = try context.fetch(request)
+            return rows.reduce(0) { $0 + Int($1.unreadCount) }
+        }
+    }
 }

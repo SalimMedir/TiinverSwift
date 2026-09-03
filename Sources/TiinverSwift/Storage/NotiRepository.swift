@@ -1,5 +1,31 @@
 import CoreData
 
+/// **Ajouté (2026-09-03)** — DTO valeur, même raisonnement que `PendingViewEvent`
+/// (`ViewEventRepository.swift`, voir sa doc pour le crash `EXC_BAD_ACCESS` de fond) : `getAll()`/
+/// `getById(_:)` renvoyaient auparavant des `NotiEntity` (`NSManagedObject`) vivants, dont
+/// `NotificationCenterViewModel`/`NotificationsListView` lisaient ensuite les propriétés bien après
+/// le `context.perform` d'origine — accès cross-thread interdit par Core Data. Porte uniquement les
+/// champs réellement consommés par ces deux appelants.
+struct NotiItem {
+    let id: Int32
+    let activityId: Int32
+    let userId: Int32
+    let object: String?
+    let objectUrl: String?
+    let cdnContentId: String?
+    let cdnThumbnailUrl: String?
+    let cdnContentUrl: String?
+    let verb: String?
+    let payloadType: String?
+    let commentText: String?
+    let firstname: String?
+    let lastname: String?
+    let profile: String?
+    let type: String?
+    let isRead: Int32
+    let systemNotificationShown: Bool
+}
+
 /// Port de `models/notification/NotiDao.java` (store `TiinverNotificationsModel`, voir
 /// `NotiCoreDataStack.swift`).
 final class NotiRepository {
@@ -38,13 +64,41 @@ final class NotiRepository {
 
     /// Port de `NotiDao.getAllLive()` — sans l'observation continue de `LiveData` (module UI pas
     /// encore atteint pour cet écran) : simple lecture triée par `stamp` décroissant.
-    func getAll() async throws -> [NotiEntity] {
-        try await repo.query(sortDescriptors: [NSSortDescriptor(key: "stamp", ascending: false)])
+    ///
+    /// **Corrigé (2026-09-03)** — voir la doc de `NotiItem` ci-dessus : projection en DTO faite ICI,
+    /// DANS le `context.perform` d'origine, avant que les objets ne quittent la queue du contexte
+    /// qui les possède.
+    func getAll() async throws -> [NotiItem] {
+        let context = stack.newBackgroundContext()
+        return try await context.perform {
+            let request = NotiEntity.fetchRequest()
+            request.sortDescriptors = [NSSortDescriptor(key: "stamp", ascending: false)]
+            return try context.fetch(request).map(Self.toItem)
+        }
     }
 
     /// Port de `NotiDao.getById(id)`.
-    func getById(_ id: Int32) async throws -> NotiEntity? {
-        try await repo.first(predicate: NSPredicate(format: "id == %d", id))
+    ///
+    /// **Corrigé (2026-09-03)** — même correctif et même raisonnement que `getAll()` ci-dessus.
+    func getById(_ id: Int32) async throws -> NotiItem? {
+        let context = stack.newBackgroundContext()
+        return try await context.perform {
+            let request = NotiEntity.fetchRequest()
+            request.predicate = NSPredicate(format: "id == %d", id)
+            request.fetchLimit = 1
+            return try context.fetch(request).first.map(Self.toItem)
+        }
+    }
+
+    private static func toItem(_ row: NotiEntity) -> NotiItem {
+        NotiItem(
+            id: row.id, activityId: row.activityId, userId: row.userId,
+            object: row.object, objectUrl: row.objectUrl, cdnContentId: row.cdnContentId,
+            cdnThumbnailUrl: row.cdnThumbnailUrl, cdnContentUrl: row.cdnContentUrl,
+            verb: row.verb, payloadType: row.payloadType, commentText: row.commentText,
+            firstname: row.firstname, lastname: row.lastname, profile: row.profile,
+            type: row.type, isRead: row.isRead, systemNotificationShown: row.systemNotificationShown
+        )
     }
 
     /// Port de `NotiDao.countUnread()`.

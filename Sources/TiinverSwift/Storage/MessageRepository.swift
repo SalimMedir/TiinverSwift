@@ -21,6 +21,7 @@ import Foundation
 /// champ `type` ("chatgroup" vs "chat") — exactement comme `addMessage`. `addGroupMessage` ci-dessous
 /// cible donc `messages` (pas `groupMessages`), pas une erreur de portage.
 final class MessageRepository {
+    private let stack: CoreDataStack
     private let messages: CoreDataRepository<MessageEntity>
     /// Conservé (modélise fidèlement `wk_gp_messages`, module 2) mais CONFIRMÉ INUTILISÉ par le
     /// code Android vivant — voir la note de tête de fichier. Aucune méthode de cette classe n'écrit
@@ -34,6 +35,7 @@ final class MessageRepository {
     private let insertSerializer = SerialTaskQueue()
 
     init(stack: CoreDataStack = .shared, roster: RosterRepository = RosterRepository()) {
+        self.stack = stack
         self.messages = CoreDataRepository(stack: stack)
         self.groupMessages = CoreDataRepository(stack: stack)
         self.roster = roster
@@ -336,12 +338,25 @@ final class MessageRepository {
     /// TOUS les messages locaux, pas seulement ceux de la conversation actuellement affichée à
     /// l'écran (contrairement à `ChatViewModel.handleAppear`, seul déclencheur de reprise avant ce
     /// correctif).
+    /// **Corrigé (2026-09-03)** — même bug de fond que celui corrigé dans `ViewEventRepository.
+    /// pending()` (voir sa doc en tête de fichier) : `messages.query(...)` renvoie des
+    /// `MessageEntity` (`NSManagedObject`) vivants, liés au contexte d'arrière-plan PRIVÉ où ils ont
+    /// été fetchés, une fois SORTIS de son `context.perform`. Le `.map { Self.toMessageLib($0, ...) }`
+    /// qui suivait lisait ensuite leurs propriétés (`entity.messageId`, etc.) HORS de cette queue —
+    /// accès cross-thread interdit par Core Data. La projection en `MessageLib` (DTO valeur) se fait
+    /// désormais ICI, DANS le `context.perform` d'origine, avant que les objets ne quittent la queue
+    /// qui les possède.
     func pendingUploads(currentUsername: String) async throws -> [MessageLib] {
         let predicate = NSPredicate(format: "isFileUploaded == 0 AND usernameFrom == %@", currentUsername)
-        let rows = try await messages.query(predicate: predicate)
-        return rows
-            .map { Self.toMessageLib($0, currentUsername: currentUsername) }
-            .filter { ["audio", "photo", "video", "sticker", "gif"].contains($0.object ?? "") }
+        let context = stack.newBackgroundContext()
+        return try await context.perform {
+            let request = MessageEntity.fetchRequest()
+            request.predicate = predicate
+            let rows = try context.fetch(request)
+            return rows
+                .map { Self.toMessageLib($0, currentUsername: currentUsername) }
+                .filter { ["audio", "photo", "video", "sticker", "gif"].contains($0.object ?? "") }
+        }
     }
 
     /// Symétrique de `pendingUploads` ci-dessus, côté téléchargement — port du même principe de
@@ -349,12 +364,19 @@ final class MessageRepository {
     /// téléchargement d'une pièce jointe reçue. Messages REÇUS d'autrui
     /// (`usernameFrom != currentUsername`), média pas encore téléchargé, TOUTES conversations
     /// confondues.
+    /// **Corrigé (2026-09-03)** — même correctif et même raisonnement que `pendingUploads`
+    /// ci-dessus : projection en `MessageLib` déplacée à l'intérieur du `context.perform` d'origine.
     func pendingDownloads(currentUsername: String) async throws -> [MessageLib] {
         let predicate = NSPredicate(format: "isFileDownloaded == 0 AND usernameFrom != %@", currentUsername)
-        let rows = try await messages.query(predicate: predicate)
-        return rows
-            .map { Self.toMessageLib($0, currentUsername: currentUsername) }
-            .filter { ["audio", "photo", "video", "sticker", "gif"].contains($0.object ?? "") }
+        let context = stack.newBackgroundContext()
+        return try await context.perform {
+            let request = MessageEntity.fetchRequest()
+            request.predicate = predicate
+            let rows = try context.fetch(request)
+            return rows
+                .map { Self.toMessageLib($0, currentUsername: currentUsername) }
+                .filter { ["audio", "photo", "video", "sticker", "gif"].contains($0.object ?? "") }
+        }
     }
 
     /// Port de `ChatFragmentTest.onCreateLoader`/`displayMessageOnInicialPage`/
@@ -366,11 +388,21 @@ final class MessageRepository {
     /// `moveToLast()`/`moveToPrevious()` vs `moveToNext()` des deux méthodes Android d'origine
     /// produit le MÊME ordre final dans les deux cas, juste construit différemment ; l'appelant
     /// (`ChatViewModel`) décide d'ajouter en tête ou en queue de la liste affichée.
+    /// **Corrigé (2026-09-03)** — même correctif et même raisonnement que `pendingUploads`
+    /// ci-dessus : projection en `MessageLib` déplacée à l'intérieur du `context.perform` d'origine.
     func page(conversationId: String, limit: Int, offset: Int, currentUsername: String) async throws -> [MessageLib] {
         let predicate = NSPredicate(format: "conversationId == %@", conversationId)
         let sort = [NSSortDescriptor(key: "stamp", ascending: false)]
-        let rows = try await messages.query(predicate: predicate, sortDescriptors: sort, limit: limit, offset: offset)
-        return rows.map { Self.toMessageLib($0, currentUsername: currentUsername) }.reversed()
+        let context = stack.newBackgroundContext()
+        return try await context.perform {
+            let request = MessageEntity.fetchRequest()
+            request.predicate = predicate
+            request.sortDescriptors = sort
+            request.fetchLimit = limit
+            request.fetchOffset = offset
+            let rows = try context.fetch(request)
+            return rows.map { Self.toMessageLib($0, currentUsername: currentUsername) }.reversed()
+        }
     }
 
     private static func toMessageLib(_ entity: MessageEntity, currentUsername: String) -> MessageLib {

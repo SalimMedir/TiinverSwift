@@ -284,8 +284,12 @@ struct HomeShellView: View {
     /// `SELECT unreadCount FROM wk_roster WHERE unreadCount > 0`, sommé.
     private func refreshChatUnreadCount() async {
         let roster = RosterRepository()
-        let rows = (try? await roster.query(predicate: NSPredicate(format: "unreadCount > 0"))) ?? []
-        chatUnreadCount = rows.reduce(0) { $0 + Int($1.unreadCount) }
+        // **Corrigé (2026-09-03)** — lisait auparavant `entity.unreadCount` sur des `RosterEntity`
+        // vivants hors du `context.perform` où ils ont été fetchés (lecture cross-thread Core Data
+        // interdite, même bug que celui corrigé dans `ViewEventRepository`/`ViewEventSyncService`) ;
+        // l'agrégation se fait désormais dans `RosterRepository.sumUnreadCount`, à l'intérieur du
+        // `context.perform` d'origine.
+        chatUnreadCount = (try? await roster.sumUnreadCount(predicate: NSPredicate(format: "unreadCount > 0"))) ?? 0
     }
 
     /// **Ajouté (2026-08-28, V6-F-025)** — badge d'icône système, combine les DEUX sources

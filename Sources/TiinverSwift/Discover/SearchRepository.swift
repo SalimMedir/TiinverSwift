@@ -32,10 +32,20 @@ final class SearchRepository {
         return try Self.decodeResults(value, isFull: true, tab: tab)
     }
 
-    /// Port de `object.getBoolean("error")`/`JSONObject results = object.getJSONObject("results")` —
-    /// **convention DIFFÉRENTE du reste du backend ici** : `"error"` est un VRAI booléen JSON sur
-    /// cet endpoint (vérifié dans `parseAndDisplay`), pas la chaîne `"false"`/`"true"` habituelle
-    /// (`JSONValue.isBackendSuccess`, qui NE S'APPLIQUE PAS ici — pas utilisée volontairement).
+    /// **Corrigé (2026-09-03, SEARCH_AUDIT.md, CRITIQUE)** — l'affirmation précédente ("`error` est
+    /// un VRAI booléen JSON sur cet endpoint, vérifié dans `parseAndDisplay`") était fausse : Android
+    /// lit ce champ via `response.getString(ERROR)` (`Http/TransportData.java:550-561`, appelé AVANT
+    /// même que le callback de `RechercheTiinver` ne s'exécute) — `org.json.getString()` LÈVE une
+    /// exception sur une valeur qui n'est pas une chaîne. Si `"error"` était vraiment un booléen JSON
+    /// natif ici, CHAQUE recherche Android planterait à ce niveau, ce qui n'est pas observé — la
+    /// seule lecture cohérente est que ce endpoint suit la convention chaîne `"false"`/`"true"`
+    /// habituelle du reste du backend, comme `GroupRepository.searchGroups` (même backend) le
+    /// confirme déjà en utilisant `isBackendSuccess`. Conséquence concrète du bug : `value.bool
+    /// ("error")` ne reconnaît QUE `Bool` natif, échoue silencieusement (`try?`) sur la chaîne
+    /// réelle, donc ce garde ne se déclenchait JAMAIS — un résultat `error:"true"` (silencieux,
+    /// équivalent "Aucun résultat" côté Android) tombait tout droit sur `results` absent, levant
+    /// "results manquant" → "Erreur de chargement" affiché pour ce qui devrait être un état vide
+    /// normal. `isBackendSuccess` (déjà tolérant chaîne ET booléen) remplace `bool("error")`.
     ///
     /// **Corrigé (V3-F-002, SEARCH-02)** — `parseAndDisplay` (`RechercheTiinver.java:461-573`)
     /// distingue deux états bien différents au même point du flux : `error==true` → `showEmpty(
@@ -63,7 +73,7 @@ final class SearchRepository {
     /// réponse réseau en vol arrive après un changement d'onglet, Android supprime la catégorie
     /// hors-scope de l'onglet demandé au moment de la requête, jamais reproduit côté iOS jusqu'ici.
     private static func decodeResults(_ value: JSONValue, isFull: Bool, tab: SearchTab) throws -> SearchResults {
-        guard (try? value.bool("error")) != true else { return SearchResults() }
+        guard value.isBackendSuccess else { return SearchResults() }
         guard let data = value["results"]?.rawData else {
             throw APIError.server(message: "results manquant")
         }

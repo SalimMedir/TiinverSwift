@@ -438,6 +438,12 @@ struct FeedView: View {
         // Android (`MainFragment`/`fragment_main.xml`), jamais rendus côté iOS jusqu'ici (voir la
         // doc de `showSearch` ci-dessus).
         .navigationTitle("Tiinver")
+        // **Corrigé (2026-09-03)** — sans ce réglage, `.navigationTitle` utilise par défaut le
+        // mode "large" (grand titre sur sa propre ligne, qui ne rétrécit qu'au scroll) : le titre
+        // apparaissait trop grand et jamais sur la même ligne que le bouton recherche. `.inline`
+        // le place directement dans la barre de navigation standard, à côté du bouton, comme sur
+        // la référence Android.
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showSearch = true } label: { Image(systemName: "magnifyingglass") }

@@ -25,6 +25,17 @@ struct SearchUserResult: Codable, Identifiable, Hashable {
     /// (`SearchResults.init(from:)` utilise `decodeIfPresent([SearchUserResult].self, ...)`, qui
     /// échoue sur le tableau ENTIER si un seul élément lève une erreur — pas un `compactMap`
     /// tolérant par élément), rattaché au P0 historique "résultats de recherche invisibles".
+    ///
+    /// **Corrigé (2026-09-03, JSON réel `content/search?q=sa` fourni par l'utilisateur)** —
+    /// `followers`/`following` restaient décodés en `String` STRICT (`decodeIfPresent(String.self,
+    /// ...)`), jamais passés au décodage tolérant appliqué au reste de ce même correctif ni au motif
+    /// déjà établi ailleurs dans ce projet (`User.followers`/`following`, `LenientDecoding.swift`).
+    /// La réponse réelle envoie `"followers": 0` — un NOMBRE JSON natif, pas une chaîne — donc CE
+    /// champ précis levait une erreur de décodage pour CHAQUE utilisateur de la réponse, faisant
+    /// échouer le tableau `users` entier (même mécanisme de propagation que documenté juste
+    /// au-dessus pour `id`), d'où "Erreur de chargement" malgré `error: false` et une réponse par
+    /// ailleurs bien formée. `decodeLenientStringIfPresent` (tolère `String` ET `Int`/`Double`
+    /// natifs) remplace le décodage strict.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeLenientInt(forKey: .id)
@@ -34,8 +45,8 @@ struct SearchUserResult: Codable, Identifiable, Hashable {
         profile = try container.decodeIfPresent(String.self, forKey: .profile)
         certified = container.decodeLenientBoolIfPresent(forKey: .certified)
         isFollowed = container.decodeLenientBoolIfPresent(forKey: .isFollowed)
-        followers = try container.decodeIfPresent(String.self, forKey: .followers)
-        following = try container.decodeIfPresent(String.self, forKey: .following)
+        followers = container.decodeLenientStringIfPresent(forKey: .followers)
+        following = container.decodeLenientStringIfPresent(forKey: .following)
         location = try container.decodeIfPresent(String.self, forKey: .location)
         biography = try container.decodeIfPresent(String.self, forKey: .biography)
         category = try container.decodeIfPresent(String.self, forKey: .category)
@@ -77,6 +88,21 @@ struct SearchPostResult: Codable, Identifiable, Hashable {
     var profile: String?
     var isCertified: Int?
 
+    /// **Corrigé (2026-09-03, JSON réel `content/search?q=sa`)** — 2 clés JSON réellement envoyées
+    /// par CET endpoint ne correspondaient pas aux noms Swift synthétisés par défaut à partir des
+    /// propriétés ci-dessus : `"comments"` (pluriel, pas `"comment"`) et `"certified"` (booléen —
+    /// même convention que `SearchUserResult.certified` — pas `"isCertified"` en entier). Les DEUX
+    /// étant `Int?`/optionnels côté Swift, le décodage ne LEVAIT aucune erreur (pas la cause de
+    /// "Erreur de chargement", voir `SearchUserResult.followers` pour celle-ci) — mais silencieusement
+    /// `nil` pour CHAQUE publication, perdant le nombre de commentaires et le badge certifié sans
+    /// aucune trace. `CodingKeys` explicite pour mapper les 2 vers leurs vraies clés JSON.
+    enum CodingKeys: String, CodingKey {
+        case id, token, verb, object, object_url, message, likes
+        case comment = "comments"
+        case views, stamp, cdn_thumbnail_url, cdn_content_url, cdn_provider, cdn_content_id, isLiked, actor, username, firstname, profile
+        case certified
+    }
+
     /// Décodage tolérant (2026-08-16) — même cause racine que `SearchUserResult` ci-dessus,
     /// `id`/`actor` sont ici les DEUX champs non-optionnels de cette struct.
     init(from decoder: Decoder) throws {
@@ -100,7 +126,7 @@ struct SearchPostResult: Codable, Identifiable, Hashable {
         username = try container.decodeIfPresent(String.self, forKey: .username)
         firstname = try container.decodeIfPresent(String.self, forKey: .firstname)
         profile = try container.decodeIfPresent(String.self, forKey: .profile)
-        isCertified = container.decodeLenientIntIfPresent(forKey: .isCertified)
+        isCertified = container.decodeLenientBoolIfPresent(forKey: .certified).map { $0 ? 1 : 0 }
     }
 
     /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-010, Phase B P1-6)** — le

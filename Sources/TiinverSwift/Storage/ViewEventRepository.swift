@@ -35,12 +35,35 @@ private actor RecordQueue {
     }
 }
 
+/// **Ajouté (2026-09-03)** — crash `EXC_BAD_ACCESS`/`snapshot_get_int32` reproductible en scroll
+/// rapide du feed, remonté par capture physique : `CoreDataRepository.query()` renvoie des
+/// `NSManagedObject` (`ViewEventEntity`) vivants, liés au contexte d'arrière-plan PRIVÉ où ils ont
+/// été fetchés (`context.perform { ... return try context.fetch(request) }`, `CoreDataRepository.
+/// swift`), une fois SORTIS de ce `context.perform`. `ViewEventSyncService.sync()` (`@MainActor`)
+/// lisait ensuite directement leurs propriétés (`event.scrollPosition`, etc.) sur l'acteur
+/// principal — accès CROSS-THREAD interdit par Core Data (chaque `NSManagedObject` n'est sûr à lire
+/// que sur la queue de SON PROPRE contexte), cause exacte de l'accès invalide rapporté. Un DTO valeur
+/// pur, entièrement projeté DEPUIS l'intérieur du `context.perform` d'origine (`pending()`
+/// ci-dessous), élimine cette fuite : plus aucune lecture de propriété Core Data ne se produit hors
+/// de la queue qui possède l'objet.
+struct PendingViewEvent {
+    let localId: Int64
+    let userId: String?
+    let activityId: Int32
+    let watchtime: Int64
+    let scrollPosition: Int32
+    let replayCount: Int32
+    let exitPoint: Int32
+}
+
 final class ViewEventRepository {
     private let repo: CoreDataRepository<ViewEventEntity>
+    private let stack: CoreDataContextProviding
     static let syncThreshold = 5 // ViewTracker.SYNC_THRESHOLD
 
     init(stack: CoreDataContextProviding = AnalyticsCoreDataStack.shared) {
         self.repo = CoreDataRepository(stack: stack)
+        self.stack = stack
     }
 
     /// Port de `ViewEventDao.findExisting(activityId, userId)`.
@@ -110,8 +133,24 @@ final class ViewEventRepository {
     }
 
     /// Port de `ViewEventDao.getPending()`.
-    func pending() async throws -> [ViewEventEntity] {
-        try await repo.query()
+    ///
+    /// Fetch direct (contourne `CoreDataRepository.query()`, qui renverrait des `ViewEventEntity`
+    /// vivants hors de leur contexte d'origine — voir la doc de `PendingViewEvent` ci-dessus) : la
+    /// projection en DTO se fait ICI, DANS le même `context.perform`, avant que quoi que ce soit ne
+    /// quitte la queue du contexte qui possède réellement ces objets.
+    func pending() async throws -> [PendingViewEvent] {
+        let context = stack.newBackgroundContext()
+        return try await context.perform {
+            let request = ViewEventEntity.fetchRequest()
+            let rows = try context.fetch(request)
+            return rows.map { row in
+                PendingViewEvent(
+                    localId: row.localId, userId: row.userId, activityId: row.activityId,
+                    watchtime: row.watchtime, scrollPosition: row.scrollPosition,
+                    replayCount: row.replayCount, exitPoint: row.exitPoint
+                )
+            }
+        }
     }
 
     /// Port de `ViewEventDao.deleteById(id)` — utilisé par `ViewSyncWorker` une fois la vue

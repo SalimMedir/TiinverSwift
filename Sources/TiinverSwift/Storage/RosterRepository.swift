@@ -93,6 +93,17 @@ final class RosterRepository {
         } else {
             try await roster.insert { entity in
                 Self.apply(message, userId: userId, isFromServer: isFromServer, to: entity)
+                // **Corrigé (2026-09-04, audit "historique de conversation absent après envoi")**
+                // — `localId` (`TiinverModel.xcdatamodel` : `defaultValueString="0"`) n'était
+                // JAMAIS assigné à l'insertion. `RosterListViewModel.refresh()` l'utilise comme
+                // `Row.id` (conformité `Identifiable` pour `ForEach`/`List`) — TOUTES les
+                // conversations nouvellement créées partageaient donc `id=0`, une collision
+                // silencieuse : SwiftUI ne peut distinguer plusieurs éléments de liste avec le
+                // même id (une seule conversation à la fois ne le révèle pas, mais dès qu'il y en
+                // a 2+, l'affichage/les mises à jour deviennent incorrects). Port du même motif
+                // déjà établi ailleurs dans ce portage pour cette exacte lacune de schéma
+                // (`ViewEventRepository.swift:128`, `Int64.random(in: 1...Int64.max)`).
+                entity.localId = Int64.random(in: 1...Int64.max)
             }
         }
         // Diagnostic temporaire (2026-09-04, audit "historique de conversation absent après
@@ -160,7 +171,12 @@ final class RosterRepository {
         if exists {
             try await roster.update(predicate: predicate, configure)
         } else {
-            try await roster.insert(configure)
+            try await roster.insert { entity in
+                configure(entity)
+                // Voir la doc de `updateRoster(message:isFromServer:)` ci-dessus — même correctif
+                // `localId` (2026-09-04), même lacune de schéma sur cette seconde variante insert.
+                entity.localId = Int64.random(in: 1...Int64.max)
+            }
         }
     }
 

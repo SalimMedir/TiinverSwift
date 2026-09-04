@@ -103,14 +103,18 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     }
 
     /// Port de `MyFirebaseMessagingService.onMessageReceived` (branche `remoteMessage.getData()`
-    /// non vide) → `TiinverSyncWorker.visiteServeur` → `MyBackgroundTask.notifyUser(id)` →
-    /// `NotificationRepository.fetchNotifications(id)`. Cette dernière étape est la SEULE
-    /// vraiment pertinente pour le module 4 (Notifications) — le reste de `TiinverSyncWorker`
-    /// (sync des messages de chat privés/groupe, `ChatRepository`) appartient au module 11
-    /// (Messagerie, pas encore atteint) et n'est PAS porté ici. `MyBackgroundTask`/
-    /// `Http/transportDataBackground.java`/`Activity/service/ActivityService.java` (repérés au
-    /// grep initial du module 4) lus et confirmés HORS SUJET : logout/suppression de compte
-    /// (module 17) et upload de média en premier plan (module 6/7), pas des notifications push.
+    /// non vide) → `TiinverSyncWorker.visiteServeur` → (1) `MyBackgroundTask.notifyUser(id)` →
+    /// `NotificationRepository.fetchNotifications(id)` (déjà porté) ET (2) `getPrivateMessage`
+    /// (`GET message/{myId}`, filet de récupération des messages de chat privés en attente —
+    /// **ajouté le 2026-09-04, audit forensique CHAT_GIFT_FORENSIC, item "absence du fallback
+    /// HTTPS de réception"**, voir `ChatRepository.fetchPendingPrivateMessages` pour le
+    /// raisonnement complet). Le reste de `TiinverSyncWorker` (sync de groupe `group/message/
+    /// {myId}`, statuts de livraison `messagestatus/{username}` — déjà couvert par le socket
+    /// `offlineStatus`, voir `ChatRepository.handleOfflineStatus`) reste HORS PÉRIMÈTRE de ce
+    /// correctif ciblé. `MyBackgroundTask`/`Http/transportDataBackground.java`/`Activity/service/
+    /// ActivityService.java` (repérés au grep initial du module 4) lus et confirmés HORS SUJET :
+    /// logout/suppression de compte (module 17) et upload de média en premier plan (module 6/7),
+    /// pas des notifications push.
     func application(
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
@@ -123,6 +127,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         Task { @MainActor in
             let viewModel = NotificationCenterViewModel()
             await viewModel.fetchNotifications(userId: userId)
+            await ChatRepository.shared.fetchPendingPrivateMessages()
             completionHandler(.newData)
         }
     }

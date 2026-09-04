@@ -327,6 +327,19 @@ final class MessageRepository {
         }
     }
 
+    /// Port de `ChatRepository.sendGift`'s confirmation serveur (Android
+    /// `messagerie/repository/ChatRepository.java:1101-1103`) : `ContentValues cv = new
+    /// ContentValues(); cv.put("isFileUploaded", 1); update(MSG_URI, cv, "messageId=?", ...)` —
+    /// UNIQUEMENT cette colonne, contrairement à `updateFileUploaded` ci-dessus (média) qui touche
+    /// aussi `object_url`/`thumbnail_uri` : un cadeau n'a ni URL de fichier ni miniature. **Ajouté
+    /// (2026-09-04, correction du séquencement paiement→socket du Gift tab)** — c'est le seul flag
+    /// qui gate l'émission socket réelle du message-cadeau (voir `ChatViewModel.handleAppear`).
+    func markGiftPaid(messageId: String) async throws {
+        try await messages.update(predicate: NSPredicate(format: "messageId == %@", messageId)) { entity in
+            entity.isFileUploaded = 1
+        }
+    }
+
     /// **Ajouté le 2026-08-26 (MIGRATION_PARITY_AUDIT_V5.md V5-F-078, Phase B P1-33)** — port du
     /// scan `isFileUploaded==0` indépendant de l'UI (`ChatManager.sendMessageFromCursor`, branche
     /// upload), déclenché côté Android par `WorkManager`/reconnexion réseau/notification push (voir

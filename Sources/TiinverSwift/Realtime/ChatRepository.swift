@@ -340,17 +340,7 @@ final class ChatRepository {
                     callEvents.send(.onCall(data: Self.stringify(payload)))
                 }
             } else if !isGroup {
-                do {
-                    // Port de `addMessage` — voir `MessageRepository.swift` pour la persistance
-                    // (`wk_messages`/`MessageEntity`).
-                    if let packet = try await messages.addMessage(meta) {
-                        emitDelivered(packet)
-                    }
-                    chatEvents.send(.message(meta))
-                    notifyIfNeeded(meta)
-                } catch {
-                    print("❌ ChatRepository.handleNewMessage:", error)
-                }
+                await processIncomingPrivateMessage(meta)
             } else {
                 do {
                     // Port de `addGroupMessage` — voir `MessageRepository.swift` : écrit en réalité
@@ -394,6 +384,66 @@ final class ChatRepository {
                     print("❌ ChatRepository.handleNewMessage (groupe):", error)
                 }
             }
+        }
+    }
+
+    /// Port du corps de la branche `!isGroup` de `NewPrivateMessage` (`ChatManager.addMessage`,
+    /// puis `sendLiveData`/`fcms.notificationShow`) — **factorisée (2026-09-04)** hors de
+    /// `handleNewMessage` pour être réutilisée à l'identique par `fetchPendingPrivateMessages`
+    /// ci-dessous (filet HTTPS), exactement comme Android appelle la MÊME méthode
+    /// `chatManager.addMessage(meta)` depuis le listener socket `NewPrivateMessage` ET depuis
+    /// `ChatManager.prepareMessage` (repli HTTP `TiinverSyncWorker.getPrivateMessage`) — un seul
+    /// pipeline de persistance/notification, deux déclencheurs.
+    private func processIncomingPrivateMessage(_ meta: MessageLib) async {
+        do {
+            // Port de `addMessage` — voir `MessageRepository.swift` pour la persistance
+            // (`wk_messages`/`MessageEntity`).
+            if let packet = try await messages.addMessage(meta) {
+                emitDelivered(packet)
+            }
+            chatEvents.send(.message(meta))
+            notifyIfNeeded(meta)
+        } catch {
+            print("❌ ChatRepository.processIncomingPrivateMessage:", error)
+        }
+    }
+
+    /// Port de `MyFirebaseMessagingService.onMessageReceived` → `TiinverSyncWorker.
+    /// getPrivateMessage` (`:141-165`, `GET message/{myId}`) → `ChatManager.prepareMessage
+    /// (JSONObject, false)` (`ChatManager.java:959-1021`) — filet de récupération HTTPS des
+    /// messages privés en attente, déclenché à la réception d'un push (voir `AppDelegate.
+    /// didReceiveRemoteNotification`), PAS un scan périodique en tâche de fond.
+    ///
+    /// **Ajouté (2026-09-04, audit forensique CHAT — item "absence du fallback HTTPS de
+    /// réception")** — confirmé qu'Android reçoit RÉELLEMENT une partie substantielle de ses
+    /// messages privés par ce chemin, pas seulement par Socket.IO :
+    /// `MyFirebaseMessagingService.onMessageReceived` déclenche INCONDITIONNELLEMENT ce `GET
+    /// message/{myId}` À CHAQUE push reçu, dont la réponse alimente le MÊME pipeline persistance/
+    /// UI que le socket (`ChatManager.prepareMessage` appelle `chatManager.addMessage(meta)`, la
+    /// méthode EXACTE qu'utilise aussi le listener socket `NewPrivateMessage`). Reproduit ici en
+    /// réutilisant `processIncomingPrivateMessage` (factorisée ci-dessus) plutôt qu'un second
+    /// pipeline parallèle — même enveloppe `{"data":[MessageLib,...]}` que le payload socket
+    /// (vérifié : `ChatManager.prepareMessage` fait `js.getJSONArray("data")`, identique à
+    /// `NewPrivateMessage`, tous deux décodables par `Self.decodeMessages(from:)` sans distinction).
+    /// Le délai fixe de 2s d'Android (`WorkRequest.setInitialDelay`) n'est PAS reproduit — aucune
+    /// contrainte système équivalente (WorkManager/contrainte réseau) ne le justifie côté iOS,
+    /// l'appel se fait dès la réception du push comme le reste de `didReceiveRemoteNotification`.
+    ///
+    /// **Portée volontairement réduite** : seul `message/{myId}` (messages PRIVÉS) est porté — pas
+    /// `group/message/{myId}` (endpoint distinct, `TiinverSyncWorker.getGroupMessage`, jamais
+    /// mentionné dans le rapport forensique qui a motivé ce correctif), ni la re-livraison
+    /// `voicecall`/`missedvoicecall` (un appel entrant reconstitué plusieurs secondes après coup
+    /// via ce filet n'aurait aucun sens fonctionnel côté CallKit — la signalisation d'appel garde
+    /// son propre mécanisme de réveil dédié, PushKit/VoIP, module 12, jamais concerné par ce gap).
+    func fetchPendingPrivateMessages() async {
+        guard let myId = UserSession.shared.myId, !myId.isEmpty else { return }
+        guard let value = try? await APIClient.shared.get("message/\(myId)"),
+            let dict = value.toDictionary(),
+            let metas = Self.decodeMessages(from: dict)
+        else { return }
+        for meta in metas {
+            guard meta.object != "voicecall", meta.object != "missedvoicecall" else { continue }
+            await processIncomingPrivateMessage(meta)
         }
     }
 

@@ -267,7 +267,24 @@ final class RosterListViewModel: ObservableObject {
             // ne contient que le texte de développement anglais, `values-fr` le traduit
             // réellement) ; iOS affichait le texte de développement anglais brut à TOUS les
             // utilisateurs, jamais la traduction réelle.
-            let subtitle = isGroup ? "onglet ici pour les informations sur le groupe" : (entity.username ?? "")
+            // Port de `RosterListAdapter.display` (`case "gift": mediaTitle.setText(R.string.gift)`
+            // + `ic_gift`, `RosterListAdapter.java:348-353`) — **ajouté (2026-09-04, audit
+            // forensique CHAT_GIFT_FORENSIC, item 6)**. Chaîne FRANÇAISE réelle de `R.string.gift`
+            // (`values-fr/strings.xml:848` = "cadeau", PAS l'anglais de développement "gift") +
+            // équivalent emoji de `ic_gift` (pas d'icône composée disponible sur cette ligne, qui
+            // n'affiche qu'un `Text` simple — voir `RosterRowView` ci-dessous). SEUL le cas `"gift"`
+            // du switch Android (`text`/`audio`/`photo`/`gif`/`sticker`/`gift`) est reproduit ici :
+            // ce champ `subtitle` sert par ailleurs au nom d'utilisateur (pas au texte du dernier
+            // message, voir `Row.lastMessage`, un champ SÉPARÉ), portée volontairement limitée au
+            // point explicitement demandé par l'audit, pas une refonte de la ligne roster.
+            let subtitle: String
+            if isGroup {
+                subtitle = "onglet ici pour les informations sur le groupe"
+            } else if entity.object == "gift" {
+                subtitle = "🎁 cadeau"
+            } else {
+                subtitle = entity.username ?? ""
+            }
 
             var model = RosterModel()
             model.id = Int(entity.localId)

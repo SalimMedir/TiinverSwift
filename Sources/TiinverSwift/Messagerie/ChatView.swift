@@ -15,6 +15,9 @@ struct ChatView: View {
     @State private var showMessageGraphicCompose = false
     @State private var showDeleteOptions = false
     @State private var showGroupDetail = false
+    /// Port de `SelectAmountActivity` (`GiftGalleryView.GiftListener.recharge()`) — voir
+    /// `GiftBottomPanel`.
+    @State private var showBuyCoins = false
     /// **CORRIGÉ le 2026-08-18 (P1)** : ce bouton menait AUPARAVANT directement à `ProfileView`,
     /// documenté comme un raccourci volontaire faute d'avoir porté l'écran de réglages complet
     /// (`setting/SettingPrivateMessageFragmant.java`, hébergé par `ProfileDetailActivity`, MÊME
@@ -43,7 +46,46 @@ struct ChatView: View {
         _viewModel = StateObject(wrappedValue: vm)
     }
 
+    /// **Restructuré (2026-09-04, correction Gift tab — étape 3 de l'audit forensique)** — `body`
+    /// enveloppe désormais `chatContent` (le VStack chat lui-même, inchangé) dans un `ZStack` qui
+    /// superpose le panneau cadeau EN PLUS, pas à la place : voir `GiftBottomPanel` pour le
+    /// raisonnement complet (port de `mContentView`/`activity_fullscreen.xml`/`gift_gallery.xml`,
+    /// `chat_salon.xml:23` — Android superpose le panneau sur LE MÊME écran de chat via un
+    /// `<include>` toujours présent dans la hiérarchie, PAS une nouvelle Activity/un nouvel écran).
     var body: some View {
+        ZStack(alignment: .bottom) {
+            chatContent
+            if showGiftPicker {
+                GiftBottomPanel(
+                    balance: Int(UserSession.shared.coinsAmount),
+                    onSend: { giftId in
+                        viewModel.sendGift(giftId: giftId)
+                        showGiftPicker = false
+                    },
+                    onRecharge: {
+                        showGiftPicker = false
+                        showBuyCoins = true
+                    },
+                    onClose: { showGiftPicker = false }
+                )
+                .transition(.move(edge: .bottom))
+            }
+        }
+        .animation(.easeInOut(duration: 0.22), value: showGiftPicker)
+        .sheet(isPresented: $showBuyCoins) { BuyCoinsView() }
+        // Port du `Toast` d'échec absent côté Android pour ces cas précis (voir doc de
+        // `ChatViewModel.giftSendError`) — corrigé, pas reproduit à l'identique.
+        .alert(
+            "Cadeau", isPresented: Binding(
+                get: { viewModel.giftSendError != nil }, set: { if !$0 { viewModel.giftSendError = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.giftSendError ?? "")
+        }
+    }
+
+    private var chatContent: some View {
         VStack(spacing: 0) {
             messageList
             if let quote = viewModel.quote {
@@ -367,12 +409,8 @@ struct ChatView: View {
             Text("Sélecteur de GIF/stickers — à porter (StickerPickerDialog.java non lu)")
                 .padding()
         }
-        .sheet(isPresented: $showGiftPicker) {
-            GiftPickerPlaceholder { giftId in
-                viewModel.sendGift(giftId: giftId)
-                showGiftPicker = false
-            }
-        }
+        // Port de `onDisplayGift`/`GiftGalleryView` — **corrigé (2026-09-04)** : n'est plus un
+        // `.sheet` (plein écran). Voir `GiftBottomPanel` (superposé dans `ChatView.body`, pas ici).
         // Port de `pickMedia` (`ActivityResultContracts.PickVisualMedia`, `ImageAndVideo` — même
         // filtre que `GalleryPickerView`, réutilisé tel quel plutôt qu'un second picker dédié).
         .sheet(isPresented: $showAttachmentPicker) {
@@ -519,28 +557,142 @@ struct ChatView: View {
     }
 }
 
-/// Sélecteur de cadeau minimal — le catalogue (`GiftCatalog`) est réel et vérifié, l'écran
-/// `GiftGalleryView.java` (mise en page complète, achat/recharge) n'a pas été lu cette passe.
-private struct GiftPickerPlaceholder: View {
-    let onSelect: (String) -> Void
-    private let giftIds = [
-        "gift_thumb_name", "gift_fire_name", "gift_rose_name", "gift_love_name", "gift_rainbow_name",
-        "gift_pearl_name", "gift_first_name", "gift_car_name", "gift_gold_name", "gift_elite_name",
-        "gift_diamond_name", "gift_crown_name",
-    ]
+/// Port de `GiftGalleryView.java`/`gift_gallery.xml`/`layout_gift_panel.xml` (lus en entier,
+/// 2026-09-04) — panneau cadeau du chat.
+///
+/// **Mécanisme de superposition (`gift_gallery.xml` lu en entier)** : Android n'ouvre PAS un
+/// nouvel écran. `ChatFragmentTest.onDisplayGift()` insère `GiftGalleryView` dans `mContentView`
+/// (`R.id.container_expended_media`, un `FrameLayout` `match_parent`×`match_parent` TOUJOURS
+/// présent dans `chat_salon.xml` via `<include layout="@layout/activity_fullscreen"/>`, juste
+/// `GONE` par défaut) puis appelle `toggle()` (le montre). `gift_gallery.xml` lui-même est un
+/// `<merge>` contenant un `LinearLayout id="container"` `gravity="bottom"` — CETTE gravité est
+/// tout le secret : le conteneur occupe techniquement tout l'écran (comme son parent), mais
+/// pousse son contenu réel (barre de fermeture + `layout_gift_panel`, tous deux `wrap_content`)
+/// tout en bas ; le `LinearLayout` lui-même n'a AUCUN fond (transparent), donc le Chat reste
+/// visible PARTOUT au-dessus du panneau réel — seul le TOUCHER y est intercepté
+/// (`container.setOnClickListener { listener.close() }`, `GiftGalleryView.java:134-141`, tap en
+/// dehors du panneau = fermeture, comme une feuille de fond de bas de page standard).
+///
+/// Reproduit ici EXACTEMENT ce principe (PAS un `.sheet`/`.fullScreenCover`, voir `ChatView.body`
+/// qui le superpose en `ZStack` sur `chatContent`, le Chat n'est jamais démonté) : un scrim
+/// transparent plein écran qui ferme au tap, un contenu réel ancré en bas avec `Spacer()`.
+struct GiftBottomPanel: View {
+    let balance: Int
+    let onSend: (String) -> Void
+    let onRecharge: () -> Void
+    let onClose: () -> Void
+
+    /// Port de `GiftGalleryView.selectedGift`/`GiftAdapter.selectedPos`.
+    @State private var selectedGiftId: String?
+
+    private var selectedPrice: Int { GiftCatalog.price(for: selectedGiftId) }
+    /// Port de `boolean canAfford = gift.getPrice() <= userCoinBalance` (`GiftGalleryView.java:106`).
+    private var canAfford: Bool { selectedGiftId != nil && selectedPrice <= balance }
+
     var body: some View {
-        ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))]) {
-                ForEach(giftIds, id: \.self) { id in
-                    Button { onSelect(id) } label: {
-                        VStack {
-                            Text(GiftCatalog.emoji(for: id)).font(.largeTitle)
-                            Text("\(GiftCatalog.price(for: id))").font(.caption2)
-                        }
-                    }
-                }
+        ZStack(alignment: .bottom) {
+            // Port du scrim transparent-mais-cliquable de `container`/`activity_fullscreen.xml`
+            // (`clickable="true"`, aucun fond) — le Chat reste visible à travers.
+            Color.black.opacity(0.0001)
+                .ignoresSafeArea()
+                .onTapGesture { onClose() }
+
+            // Pas de coins arrondis/ombre : ni `gift_gallery.xml` ni `layout_gift_panel.xml` n'en
+            // spécifient (fonds plats `colorPrimaryDark`/`?android:attr/windowBackground`) — pas
+            // ajouté ici pour ne pas deviner un détail visuel Android non vérifié dans le XML lu.
+            VStack(spacing: 0) {
+                closeBar
+                Divider()
+                header
+                giftGrid
+                actionRow
             }
-            .padding()
+            .background(Color(.systemBackground))
         }
+    }
+
+    /// Port de la `RelativeLayout` de fermeture (`gift_gallery.xml`, fond `colorPrimaryDark`,
+    /// `ImageView id="close"` → `ic_close_black_24dp`).
+    private var closeBar: some View {
+        HStack {
+            Spacer()
+            Button { onClose() } label: {
+                Image(systemName: "xmark")
+                    .padding(10)
+            }
+        }
+        .background(Color(.secondarySystemBackground))
+    }
+
+    /// Port de l'en-tête de `layout_gift_panel.xml` — titre "Envoyer un cadeau" (`R.string.
+    /// send_gift`) + solde de pièces (`tv_coin_balance`, `R.drawable.ic_coin`).
+    private var header: some View {
+        HStack {
+            Text("ENVOYER UN CADEAU") // R.string.send_gift
+                .font(.caption.bold()).foregroundStyle(.secondary)
+            Spacer()
+            Text("🪙 \(balance) pièces") // R.string.coins
+                .font(.caption.bold())
+        }
+        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 6)
+    }
+
+    /// Port de `rv_gifts`/`GridLayoutManager(context, 4)` — grille 4 colonnes, MÊME ordre que
+    /// `buildGiftCatalog()` (prix croissant).
+    private var giftGrid: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 4) {
+            ForEach(GiftCatalog.orderedGiftIds, id: \.self) { id in
+                giftCell(id)
+            }
+        }
+        .padding(.horizontal, 8)
+    }
+
+    /// Port de `GiftAdapter.onBindViewHolder`/`item_gift.xml` — emoji + nom localisé + prix,
+    /// fond/couleur de prix changés à la sélection (`gift_item_bg_selected`, prix en rouge).
+    private func giftCell(_ id: String) -> some View {
+        let selected = selectedGiftId == id
+        return Button {
+            selectedGiftId = id
+        } label: {
+            VStack(spacing: 2) {
+                Text(GiftCatalog.emoji(for: id)).font(.title2)
+                Text(GiftCatalog.name(for: id)).font(.caption2).lineLimit(1)
+                Text("\(GiftCatalog.price(for: id))")
+                    .font(.caption2.bold())
+                    .foregroundStyle(selected ? Color.red : Color.orange)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(selected ? Color.accentColor.opacity(0.15) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Port de la ligne d'action de `layout_gift_panel.xml` — `btn_recharge` (visible SEULEMENT
+    /// si `!canAfford`, `GiftGalleryView.java:109`), `tv_selected_gift_info` (emoji+prix, visible
+    /// seulement après sélection), `btn_send_gift` (désactivé tant qu'aucune sélection valide).
+    private var actionRow: some View {
+        HStack(spacing: 8) {
+            if selectedGiftId != nil, !canAfford {
+                Button("Recharger") { onRecharge() } // R.string.recharge
+                    .buttonStyle(.bordered)
+            }
+            Spacer()
+            if let selectedGiftId {
+                Text("\(GiftCatalog.emoji(for: selectedGiftId))  \(selectedPrice) pièces")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Button("Envoyer") { // R.string.send
+                if let selectedGiftId { onSend(selectedGiftId) }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+            .disabled(!canAfford)
+        }
+        .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 12)
     }
 }

@@ -28,6 +28,14 @@ final class ChatViewModel: ObservableObject {
     /// AUCUN retour visuel sur échec, indiscernable d'un téléchargement "en cours" pour
     /// l'utilisateur.
     @Published private(set) var failedDownloadMessageIds: Set<String> = []
+    /// **Ajouté (2026-09-04, correction Gift tab)** — Android ne montre AUCUNE erreur explicite à
+    /// l'utilisateur pour ces cas (`GiftGalleryView.btnSendGift` reste juste physiquement désactivé
+    /// tant que le solde est insuffisant ; le `Toast` d'échec réseau de `ChatFragmentTest.sendGift`
+    /// est LITTÉRALEMENT commenté dans le source, `Result.ERROR` ne fait rien de visible) — signalé
+    /// explicitement comme un manque réel dans l'audit forensique (item 4, "gestion insuffisante
+    /// des erreurs"), corrigé ici plutôt que reproduit à l'identique : c'est le comportement Android
+    /// documenté comme insuffisant qui est corrigé, pas un comportement fonctionnel divergent.
+    @Published var giftSendError: String?
 
     /// Port de `RosterModel` passé en argument de `ChatFragmentTest.newInstance` — identité de la
     /// conversation ouverte, fournie par l'appelant (écran de liste des conversations, PAS encore
@@ -44,6 +52,10 @@ final class ChatViewModel: ObservableObject {
     private var previousDayComponents: DateComponents?
     private var typingResetTask: Task<Void, Never>?
     private var isTypingFlag = false
+    /// **Ajouté (2026-09-04, correction Gift tab)** — voir `requestGiftPayment` pour le raisonnement
+    /// complet (garde absente côté Android, ajoutée pour satisfaire l'exigence explicite anti
+    /// double-débit).
+    private var pendingGiftMessageIds: Set<String> = []
     /// **Retiré le 2026-08-26 (V5-F-056, Phase B P3)** — `downloadingMessageIds` (local à cette
     /// instance, ajouté sous V5-F-069) remplacé par `ChatMediaDownloadService.shared` (réservation
     /// PARTAGÉE), pour ne pas rater une course entre CE déclencheur (bulle visible) et le nouveau
@@ -392,6 +404,17 @@ final class ChatViewModel: ObservableObject {
     // `prepareGifMessage`/`addMessage`, tous lus en entier)
 
     /// Port de `sendMessageText` + `addMessage` (écho optimiste immédiat) + persistance locale.
+    ///
+    /// **Corrigé (2026-09-04, audit forensique CHAT — item "roster ne se rafraîchit pas après un
+    /// envoi local")** — `RosterListView.onReceive(ChatRepository.shared.chatEvents)` est le SEUL
+    /// déclencheur "live" de `RosterListViewModel.refresh()` (voir `RosterListView.swift`), or
+    /// `chatEvents.send(.message(...))` n'était publié QUE côté réception
+    /// (`ChatRepository.handleNewMessage`), jamais depuis le chemin d'envoi local. Côté Android,
+    /// `RosterManager.updateRoster` (appelé par `ChatManager.insertTextMessage`, ENVOI comme
+    /// RÉCEPTION) écrit dans le même `ContentProvider` `wk_roster` observé par le `CursorLoader` de
+    /// `Roster.java` — l'équivalent Combine manquait pour le sens ENVOI. Publié ICI, APRÈS la fin de
+    /// `insertTextMessage` (pas dans `appendOptimistic`, synchrone) pour ne pas faire courir
+    /// `RosterListViewModel.refresh()` contre l'écriture Core Data pas encore validée.
     func sendText() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
@@ -399,7 +422,11 @@ final class ChatViewModel: ObservableObject {
         var mlib = buildOutgoingBase(object: "text")
         mlib.message = text
         appendOptimistic(mlib)
-        Task { try? await messages.insertTextMessage(mlib) }
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.messages.insertTextMessage(mlib)
+            self.chatRepository.chatEvents.send(.message(mlib))
+        }
         cancelQuote()
     }
 
@@ -414,44 +441,108 @@ final class ChatViewModel: ObservableObject {
         var mlib = buildOutgoingBase(object: "graphic")
         mlib.message = payload
         appendOptimistic(mlib)
-        Task { try? await messages.insertTextMessage(mlib) }
-    }
-
-    /// Port de `sendMessageGift`/`ChatFragmentTest.sendGift` — construit le message "gift",
-    /// l'écho optimiste, ET débite réellement les pièces via `POST message/gift`
-    /// (`ChatRepository.sendGift`, Android `ChatRepository.java:1087-1118`).
-    ///
-    /// **Corrigé (2026-08-28, V6-F-010)** — deux lacunes réelles corrigées ensemble : (1) le
-    /// bouton cadeau était affiché ET pleinement câblé dans les conversations de GROUPE côté iOS,
-    /// alors qu'Android le masque explicitement dans ce contexte (`ChatView.inputBar`, corrigé en
-    /// parallèle) ; (2) AUCUN débit de pièces n'était jamais appelé, quel que soit le contexte —
-    /// le message "cadeau" partait réellement sur le socket gratuitement. Le `guard !target.
-    /// isGroup` ci-dessous est une DEUXIÈME barrière (logique métier, pas seulement UI) : même si
-    /// un futur appelant contournait le bouton masqué, `sendGift` refuse toujours d'agir pour un
-    /// groupe — fidèle à `receiver=userData.getUserId()`, un champ à destinataire UNIQUE côté
-    /// Android, jamais valide pour un groupe. Solde vérifié AVANT tout envoi (`price <= balance`,
-    /// miroir de `btnSendGift.setEnabled(canAfford)` côté `GiftGalleryView`, qui bloque
-    /// physiquement l'action côté Android plutôt que de laisser l'appel réseau échouer) ;
-    /// décrémenté localement SEULEMENT après confirmation serveur (même principe que
-    /// `resolveGroupSubscription`/`transferCoins` ci-dessus/dans `WalletRepository` — jamais de
-    /// débit local optimiste avant succès réel, financier).
-    func sendGift(giftId: String) {
-        guard !target.isGroup, let receiverId = target.userId else { return }
-        let price = GiftCatalog.price(for: giftId)
-        guard UserSession.shared.coinsAmount >= Double(price) else { return }
-        var mlib = buildOutgoingBase(object: "gift")
-        mlib.giftId = giftId
-        guard let messageId = mlib.messageId else { return }
-        appendOptimistic(mlib)
+        // Voir la doc de `sendText()` — même correctif roster (2026-09-04).
         Task { [weak self] in
             guard let self else { return }
             try? await self.messages.insertTextMessage(mlib)
+            self.chatRepository.chatEvents.send(.message(mlib))
+        }
+    }
+
+    /// Port de `sendMessageGift` (`ChatFragmentTest.java:2364-2413`) — construit le message
+    /// "gift" et l'écho optimiste local, **RIEN D'AUTRE** : exactement comme son homologue Android,
+    /// cette fonction n'émet AUCUNE requête réseau (ni débit, ni socket). `mlib.isFileUploaded`
+    /// reste à sa valeur par défaut (0, `MessageLib.swift:79`), fidèle au `MessageLib` fraîchement
+    /// construit par `sendMessageGift` (jamais de `setIsFileUploaded` explicite avant l'insertion).
+    ///
+    /// **Corrigé (2026-09-04, audit forensique CHAT_GIFT_FORENSIC — item 3 "gift envoyé sur
+    /// Socket.IO sans attendre la confirmation du débit")** — cette fonction appelait auparavant
+    /// `WalletRepository.shared.sendGift` DIRECTEMENT ici, EN PARALLÈLE de l'émission socket réelle
+    /// déclenchée indépendamment par `handleAppear` dès que la bulle apparaissait à l'écran
+    /// (`.onAppear` → `status==0` → `send(mlib)`, "gift" n'étant pas dans `needsUpload`) : une
+    /// course pure, le message chat pouvait partir AVANT, PENDANT ou APRÈS la confirmation du
+    /// paiement, indépendamment de son issue. Vérifié précisément côté Android
+    /// (`MessageListAdapter.onBindViewHolder`, viewType 27, `:1062-1073`) : le débit ET l'émission
+    /// socket sont DEUX EFFETS DU MÊME MÉCANISME DE BIND, jamais déclenchés par la construction du
+    /// message elle-même — `sendMessageGift` (ici, le pendant de cette fonction) ne fait QUE
+    /// construire + insérer localement, exactement comme `sendMessageText`. Le débit et l'émission
+    /// conditionnelle sont désormais dans `requestGiftPayment`/`handleAppear` ci-dessous, appelés
+    /// au même point du cycle de vie qu'Android (affichage de la bulle), pas à la construction.
+    ///
+    /// Les gardes `!target.isGroup`/solde suffisant restent ICI (à la sélection, PAS à
+    /// l'affichage) — miroir de `btnSendGift.setEnabled(canAfford)` côté `GiftGalleryView`
+    /// (bloque l'action AVANT tout envoi, pas après) — `guard !target.isGroup` reste une DEUXIÈME
+    /// barrière logique en plus du bouton masqué de `ChatView.inputBar` (V6-F-010).
+    /// `giftSendError` publié sur chaque garde qui échoue — Android n'a AUCUN retour visuel pour
+    /// ces cas (voir doc de `giftSendError`), corrigé explicitement (item 4 de l'audit).
+    func sendGift(giftId: String) {
+        guard !target.isGroup else { return }
+        guard target.userId != nil else {
+            giftSendError = "Impossible d'envoyer ce cadeau : destinataire introuvable."
+            return
+        }
+        let price = GiftCatalog.price(for: giftId)
+        guard UserSession.shared.coinsAmount >= Double(price) else {
+            giftSendError = "Solde de pièces insuffisant pour ce cadeau."
+            return
+        }
+        var mlib = buildOutgoingBase(object: "gift")
+        mlib.giftId = giftId
+        appendOptimistic(mlib)
+        // Voir la doc de `sendText()` — même correctif roster (2026-09-04). Publié ICI (insertion
+        // locale), PAS après confirmation du paiement : Android crée/met à jour la ligne
+        // `wk_roster` dès `ChatManager.insertTextMessage` (`sendMessageGift`), avant tout débit.
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.messages.insertTextMessage(mlib)
+            self.chatRepository.chatEvents.send(.message(mlib))
+        }
+    }
+
+    /// Port de `MessageListAdapter.onBindViewHolder` (viewType 27, GIFT1 — bulle "cadeau" propre
+    /// PAS ENCORE payée) → `sendGift(position-1, message)` (adapter) → `messageActionListener.
+    /// onGiftSending` → `ChatFragmentTest.sendGift(MessageLib)` (`:2334-2361`) →
+    /// `ChatRepository.sendGift(Map, Consumer<Result>)` (`ChatRepository.java:1087-1118`,
+    /// inchangé, déjà porté fidèlement dans `WalletRepository.sendGift`). C'est cet appel — déclenché
+    /// par l'AFFICHAGE de la bulle, jamais par sa construction — qui débite réellement les pièces ;
+    /// sur succès Android fait `cv.put("isFileUploaded",1)` PUIS `notifyItemChanged(adaptPosition)`,
+    /// ce qui redéclenche `onBindViewHolder` : `isFileUploaded==1 && status==0` → `sendSimpleMessage`
+    /// → C'EST SEULEMENT LÀ que le message part sur le socket. Reproduit ici : succès → `messages.
+    /// markGiftPaid` (miroir exact du `ContentValues` Android) → mise à jour de `items` → `send(
+    /// updated)` (équivalent du rebind qui redéclenche `sendSimpleMessage`).
+    ///
+    /// `pendingGiftMessageIds` : Android lui-même n'a PAS de garde équivalente à ce niveau
+    /// (`MessageListAdapter.sendGift` ne vérifie que `isFileUploaded==0`, qui ne devient 1 QU'APRÈS
+    /// la réponse serveur — un rebind `RecyclerView` avant cette réponse, ex. scroll rapide,
+    /// re-déclenche réellement un second `POST message/gift` côté Android) — ajoutée ici pour
+    /// satisfaire l'exigence explicite "double tap → pas de double débit/double message" (TEST 9) :
+    /// SwiftUI n'a pas de mécanisme de "rebind" équivalent qui recréerait la même course dans les
+    /// mêmes conditions, cette garde locale est une sécurité minimale, pas un changement
+    /// d'architecture ni une divergence fonctionnelle avec l'intention d'Android.
+    private func requestGiftPayment(_ mlib: MessageLib) {
+        guard let messageId = mlib.messageId, let receiverId = target.userId else { return }
+        guard !pendingGiftMessageIds.contains(messageId) else { return }
+        pendingGiftMessageIds.insert(messageId)
+        let price = GiftCatalog.price(for: mlib.giftId)
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.pendingGiftMessageIds.remove(messageId) }
             do {
                 try await WalletRepository.shared.sendGift(sender: self.myId, receiver: receiverId, price: price, messageId: messageId)
                 UserSession.shared.coinsAmount -= Double(price)
+                try? await self.messages.markGiftPaid(messageId: messageId)
+                guard let index = self.items.firstIndex(where: { $0.messageId == messageId }),
+                      case .message(var updated) = self.items[index]
+                else { return }
+                updated.isFileUploaded = 1
+                self.items[index] = .message(updated)
+                self.send(updated)
             } catch {
-                // Port de `Result.ERROR` — Android ne retire pas non plus le message optimiste sur
-                // échec, seul `isFileUploaded` reste à 0 (jamais confirmé par le serveur).
+                // Port de `Result.ERROR` — Android ne retire pas le message optimiste sur échec, ni
+                // ne relance automatiquement (seul un futur rebind/réessai le ferait) ; `isFileUploaded`
+                // reste à 0, comme `requestUpload` en cas d'échec d'upload média. `giftSendError`
+                // publié (item 4 de l'audit, Android reste totalement silencieux sur ce cas précis).
+                self.giftSendError = "Échec de l'envoi du cadeau. Réessaie plus tard."
             }
         }
     }
@@ -472,7 +563,12 @@ final class ChatViewModel: ObservableObject {
         mlib.thumbnailUri = localThumbnailURI
         mlib.isFileUploaded = alreadyUploaded ? 1 : 0
         appendOptimistic(mlib)
-        Task { try? await messages.insertFileMessage(mlib) }
+        // Voir la doc de `sendText()` — même correctif roster (2026-09-04).
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.messages.insertFileMessage(mlib)
+            self.chatRepository.chatEvents.send(.message(mlib))
+        }
     }
 
     /// Port de la branche `pickMedia`/`onArticleSelected(2|4, bundle)` (`ChatFragmentTest.java`,
@@ -598,9 +694,25 @@ final class ChatViewModel: ObservableObject {
     /// Port consolidé des branches `if (message.getStatus()==0) sendSimpleMessage(message)` /
     /// `if (isFileUploaded==0) helper()` / `if (isFileDownloaded==0) downloadFile()` /
     /// `if (status<3) notifyBackMessageRead()` communes à TOUS les `onBindViewHolder` par type.
+    ///
+    /// **Corrigé (2026-09-04, audit forensique CHAT_GIFT_FORENSIC)** — branche `"gift"` séparée,
+    /// PAS ajoutée à `needsUpload` : contrairement à un média (upload = envoi du FICHIER, le
+    /// message chat part ensuite indépendamment), `isFileUploaded==0` pour un cadeau signifie
+    /// "paiement pas encore confirmé", et Android conditionne l'émission socket ELLE-MÊME à ce flag
+    /// pour ce type précis (`MessageListAdapter.onBindViewHolder`, viewType 27, `:1062-1073` —
+    /// `isFileUploaded==1 → sendSimpleMessage` ; SINON `→ sendGift` (débit), PAS de `send` du tout
+    /// tant que le débit n'a pas confirmé). Voir `requestGiftPayment` pour le détail complet.
     func handleAppear(of mlib: MessageLib) {
         guard mlib.object != "date", mlib.object != "header" else { return }
         if mlib.belongsToCurrentUser {
+            if mlib.object == "gift" {
+                if mlib.isFileUploaded == 0 {
+                    requestGiftPayment(mlib)
+                } else if mlib.status == 0 {
+                    send(mlib)
+                }
+                return
+            }
             let needsUpload = ["audio", "photo", "video", "sticker", "gif"].contains(mlib.object ?? "") && mlib.isFileUploaded == 0
             if needsUpload {
                 requestUpload(mlib)

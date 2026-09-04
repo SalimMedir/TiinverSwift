@@ -47,6 +47,17 @@ struct SocketDiagnosticsView: View {
                     row("URL socket", diagnostics.socketURL)
                 }
 
+                // **Ajouté (2026-09-04, diagnostic temporaire — audit "nikname vide")** — voir
+                // `UserSession.debugLastLoginNiknameRaw`/`AuthEndpoints.captureNiknameDiagnostic`.
+                Section("Dernier login — champ \"nikname\" reçu") {
+                    if let raw = UserSession.shared.debugLastLoginNiknameRaw {
+                        Text(raw).font(.footnote.monospaced())
+                    } else {
+                        Text("Pas encore de login effectué depuis l'installation de ce build.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+
                 Section {
                     Text("Cet écran est un outil de diagnostic temporaire, pas une fonctionnalité destinée à rester dans l'app.")
                         .font(.caption2).foregroundStyle(.secondary)

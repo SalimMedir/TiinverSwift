@@ -26,6 +26,7 @@ final class UserSession {
         static let pendingCoinsAmount = "pendingCoinsAmount"
         static let pendingGemsAmount = "pendingGemsAmount"
         static let debugLastLoginRawUserJSON = "debugLastLoginRawUserJSON"
+        static let debugLastLoginNiknameRaw = "debugLastLoginNiknameRaw"
         static let appleUserIdentifier = "appleUserIdentifier"
     }
 
@@ -41,6 +42,21 @@ final class UserSession {
     var debugLastLoginRawUserJSON: String? {
         get { defaults.string(forKey: Keys.debugLastLoginRawUserJSON) }
         set { defaults.set(newValue, forKey: Keys.debugLastLoginRawUserJSON) }
+    }
+
+    /// **Ajouté (2026-09-04, diagnostic temporaire — audit "nikname vide")** — contrairement à
+    /// `debugLastLoginRawUserJSON` ci-dessus (capturé UNIQUEMENT si `user.id` est resté `nil`),
+    /// celui-ci capture INCONDITIONNELLEMENT, à CHAQUE login réussi, ce que la clé JSON `"nikname"`
+    /// contenait RÉELLEMENT dans la réponse brute du backend — distingue précisément "la clé est
+    /// absente du JSON" de "la clé est présente mais vide" de "la clé contient une vraie valeur"
+    /// (les 3 cas produisent silencieusement `UserSession.shared.nikname == nil` ou `""` côté
+    /// client, indiscernables sans cette trace). Tranche la question laissée ouverte par l'audit
+    /// forensique du 2026-09-03 (nikname vide dans les paquets de chat sortants) : le pipeline
+    /// client (Android ET iOS) a été vérifié identique champ par champ — reste à savoir si le
+    /// backend envoie réellement une valeur pour ce compte. À retirer une fois la cause confirmée.
+    var debugLastLoginNiknameRaw: String? {
+        get { defaults.string(forKey: Keys.debugLastLoginNiknameRaw) }
+        set { defaults.set(newValue, forKey: Keys.debugLastLoginNiknameRaw) }
     }
 
     var apiKey: String? {

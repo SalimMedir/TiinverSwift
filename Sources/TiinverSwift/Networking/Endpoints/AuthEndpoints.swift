@@ -108,6 +108,26 @@ enum AuthEndpoints {
         }
     }
 
+    /// **Ajouté (2026-09-04, diagnostic temporaire — audit "nikname vide" dans les paquets de
+    /// chat)** — voir `UserSession.debugLastLoginNiknameRaw` pour le raisonnement complet. Capture
+    /// INCONDITIONNELLEMENT (contrairement à `captureRawUserJSONIfIdMissing` ci-dessus) ce que la
+    /// clé JSON `"nikname"` contenait dans la réponse BRUTE reçue à CE login précis — distingue
+    /// absence de clé / clé vide / vraie valeur, les 3 cas étant indiscernables une fois décodés
+    /// dans `UserSession.shared.nikname` (`String?`, `nil` ou `""` dans les 2 premiers cas).
+    private static func captureNiknameDiagnostic(_ meta: JSONValue) {
+        guard let dict = meta.toDictionary() else {
+            UserSession.shared.debugLastLoginNiknameRaw = "<réponse \"user\" non-objet>"
+            return
+        }
+        guard let raw = dict["nikname"] else {
+            UserSession.shared.debugLastLoginNiknameRaw = "<clé \"nikname\" ABSENTE du JSON reçu>"
+            return
+        }
+        let stringValue = raw as? String ?? "\(raw)"
+        UserSession.shared.debugLastLoginNiknameRaw =
+            stringValue.isEmpty ? "<clé \"nikname\" présente mais VIDE>" : "<clé \"nikname\" = \"\(stringValue)\">"
+    }
+
     /// **CAUSE RACINE RÉELLE ET DÉFINITIVEMENT CONFIRMÉE (2026-08-17)** — voir
     /// `JSONValue.errorFieldNormalized` : la réponse RÉELLE de `login` envoie `"error": false` en
     /// BOOLÉEN JSON natif, pas la chaîne `"false"` supposée ici jusqu'à présent. L'ancien
@@ -123,6 +143,7 @@ enum AuthEndpoints {
             applyBlockedUsers(from: meta)
             var user = try decodeUser(meta)
             captureRawUserJSONIfIdMissing(user, meta: meta)
+            captureNiknameDiagnostic(meta)
             user.etat = "Login Successful"
             return user
         } else if error == "true" {

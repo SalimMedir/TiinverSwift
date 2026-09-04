@@ -421,6 +421,21 @@ final class ChatViewModel: ObservableObject {
     /// `Roster.java` — l'équivalent Combine manquait pour le sens ENVOI. Publié ICI, APRÈS la fin de
     /// `insertTextMessage` (pas dans `appendOptimistic`, synchrone) pour ne pas faire courir
     /// `RosterListViewModel.refresh()` contre l'écriture Core Data pas encore validée.
+    ///
+    /// **Corrigé (2026-09-04, régression trouvée en test réel)** — la première version de ce
+    /// correctif capturait `[weak self]` dans cette tâche. `self` (`ChatViewModel`) est retenu par
+    /// `ChatView` via `@StateObject` : si l'utilisateur navigue en arrière IMMÉDIATEMENT après avoir
+    /// envoyé (geste naturel — vérifier que ça marche), `ChatView`/`ChatViewModel` peuvent être
+    /// désalloués AVANT que cette tâche asynchrone n'ait eu la main, auquel cas `self` devient `nil`
+    /// et `guard let self else { return }` annule silencieusement L'INSERTION CORE DATA ELLE-MÊME
+    /// (pas seulement la publication `chatEvents`) — alors que l'écho optimiste (`appendOptimistic`,
+    /// synchrone, juste au-dessus) s'est déjà affiché à l'écran : le message semble envoyé, mais
+    /// n'est jamais réellement persisté, donc jamais dans le roster. Le code originel (avant CE
+    /// correctif) capturait `self` FORTEMENT (implicitement, via `messages.insertTextMessage`),
+    /// garantissant que l'écriture se termine quelle que soit la navigation — exactement le
+    /// comportement attendu (l'insertion locale, còté Android, ne dépend d'aucun écran affiché).
+    /// Capture forte restaurée ici (pas de `[weak self]`) : la tâche garde `ChatViewModel` en vie le
+    /// temps de terminer l'écriture + la publication, point n'était perdu par la capture faible.
     func sendText() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
@@ -428,8 +443,7 @@ final class ChatViewModel: ObservableObject {
         var mlib = buildOutgoingBase(object: "text")
         mlib.message = text
         appendOptimistic(mlib)
-        Task { [weak self] in
-            guard let self else { return }
+        Task {
             try? await self.messages.insertTextMessage(mlib)
             self.chatRepository.chatEvents.send(.message(mlib))
         }
@@ -447,9 +461,8 @@ final class ChatViewModel: ObservableObject {
         var mlib = buildOutgoingBase(object: "graphic")
         mlib.message = payload
         appendOptimistic(mlib)
-        // Voir la doc de `sendText()` — même correctif roster (2026-09-04).
-        Task { [weak self] in
-            guard let self else { return }
+        // Voir la doc de `sendText()` — même correctif roster + capture forte (2026-09-04).
+        Task {
             try? await self.messages.insertTextMessage(mlib)
             self.chatRepository.chatEvents.send(.message(mlib))
         }
@@ -495,11 +508,10 @@ final class ChatViewModel: ObservableObject {
         var mlib = buildOutgoingBase(object: "gift")
         mlib.giftId = giftId
         appendOptimistic(mlib)
-        // Voir la doc de `sendText()` — même correctif roster (2026-09-04). Publié ICI (insertion
-        // locale), PAS après confirmation du paiement : Android crée/met à jour la ligne
-        // `wk_roster` dès `ChatManager.insertTextMessage` (`sendMessageGift`), avant tout débit.
-        Task { [weak self] in
-            guard let self else { return }
+        // Voir la doc de `sendText()` — même correctif roster + capture forte (2026-09-04). Publié
+        // ICI (insertion locale), PAS après confirmation du paiement : Android crée/met à jour la
+        // ligne `wk_roster` dès `ChatManager.insertTextMessage` (`sendMessageGift`), avant tout débit.
+        Task {
             try? await self.messages.insertTextMessage(mlib)
             self.chatRepository.chatEvents.send(.message(mlib))
         }
@@ -525,13 +537,21 @@ final class ChatViewModel: ObservableObject {
     /// SwiftUI n'a pas de mécanisme de "rebind" équivalent qui recréerait la même course dans les
     /// mêmes conditions, cette garde locale est une sécurité minimale, pas un changement
     /// d'architecture ni une divergence fonctionnelle avec l'intention d'Android.
+    ///
+    /// **Capture forte délibérée (2026-09-04, régression trouvée en test réel — voir doc de
+    /// `sendText()` pour le mécanisme complet)** — ENCORE PLUS critique ici qu'ailleurs : un
+    /// `[weak self]` qui s'annule après le `POST message/gift` (le débit a RÉELLEMENT eu lieu,
+    /// confirmé par le serveur) aurait laissé l'utilisateur débité SANS que `markGiftPaid`
+    /// (persistance) ni `send(updated)` (émission socket réelle du message vers le destinataire) ne
+    /// s'exécutent — pièces prélevées, cadeau jamais livré. `ChatViewModel` doit rester en vie
+    /// jusqu'à la fin de cette tâche quelle que soit la navigation, exactement comme Android confie
+    /// ce débit à un callback réseau indépendant de tout cycle de vie d'Activity/Fragment.
     private func requestGiftPayment(_ mlib: MessageLib) {
         guard let messageId = mlib.messageId, let receiverId = target.userId else { return }
         guard !pendingGiftMessageIds.contains(messageId) else { return }
         pendingGiftMessageIds.insert(messageId)
         let price = GiftCatalog.price(for: mlib.giftId)
-        Task { [weak self] in
-            guard let self else { return }
+        Task {
             defer { self.pendingGiftMessageIds.remove(messageId) }
             do {
                 try await WalletRepository.shared.sendGift(sender: self.myId, receiver: receiverId, price: price, messageId: messageId)
@@ -569,9 +589,8 @@ final class ChatViewModel: ObservableObject {
         mlib.thumbnailUri = localThumbnailURI
         mlib.isFileUploaded = alreadyUploaded ? 1 : 0
         appendOptimistic(mlib)
-        // Voir la doc de `sendText()` — même correctif roster (2026-09-04).
-        Task { [weak self] in
-            guard let self else { return }
+        // Voir la doc de `sendText()` — même correctif roster + capture forte (2026-09-04).
+        Task {
             try? await self.messages.insertFileMessage(mlib)
             self.chatRepository.chatEvents.send(.message(mlib))
         }

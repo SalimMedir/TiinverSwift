@@ -160,15 +160,21 @@ final class ChatViewModel: ObservableObject {
         switch state {
         case .active:
             break
-        case .expired:
+        // **Corrigé (2026-09-04, audit forensique groupes lucratifs)** — `target.price` (mise en
+        // cache locale, potentiellement périmée depuis la dernière synchro du roster) remplacé par
+        // le prix FRAIS que `checksubscription2` vient de renvoyer, miroir de `userData.
+        // setPrice(price)` (`ChatFragmentTest.java:744`) appliqué avant construction de la bannière
+        // côté Android — voir `GroupRepository.GroupSubscriptionState` pour le détail complet.
+        // Repli sur `target.price` UNIQUEMENT si le serveur n'a pas renvoyé de prix exploitable.
+        case .expired(let freshPrice):
             isComposerBlocked = true
-            items.append(.subscriptionRenewal(id: myId, groupId: groupId, creatorId: target.creator ?? "", price: target.price))
-        case .restricted:
+            items.append(.subscriptionRenewal(id: myId, groupId: groupId, creatorId: target.creator ?? "", price: freshPrice ?? target.price))
+        case .restricted(let freshPrice):
             isComposerBlocked = true
             items.append(
                 .subscriptionRequired(
                     id: myId, groupName: target.groupName ?? "", groupId: groupId,
-                    creatorId: target.creator ?? "", price: target.price))
+                    creatorId: target.creator ?? "", price: freshPrice ?? target.price))
         }
     }
 

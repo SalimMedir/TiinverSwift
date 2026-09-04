@@ -342,10 +342,23 @@ final class GroupRepository {
     /// à afficher) ou `error:"true"` avec `message` égal à l'une des 2 chaînes EXACTES vérifiées
     /// dans `infoContract.java:49-50` (`"subscription expires."`/`"Restricted access."` — fautes de
     /// frappe/casse Android reproduites telles quelles, ce sont les valeurs réellement comparées).
+    ///
+    /// **Corrigé (2026-09-04, audit forensique groupes lucratifs)** — `expired`/`restricted`
+    /// portent désormais le `price` FRAIS lu dans CETTE MÊME réponse (`object.getInt("price")`,
+    /// `ChatFragmentTest.java:742`). Vérifié précisément : Android ne se contente pas de lire ce
+    /// prix pour l'afficher — il réécrit `userData.setPrice(price)` (`:744`) AVANT de construire la
+    /// bannière (`renewSubscription()`/`displaySubscriptionInfo()`, `:1203`/`:1232`, lisent
+    /// `userData.getPrice()`, la valeur qui vient d'être réécrite) ET avant tout appel ultérieur
+    /// `group/subscribe`/`group/renewsubscription` (`quantity=price`, `MessageListAdapter.java:
+    /// 267-494`) — donc pas seulement un texte périmé si le prix change côté serveur, mais un
+    /// MONTANT DÉBITÉ potentiellement faux. `lucrative`/`description` sont aussi réécrits côté
+    /// Android (`:745-746`) mais ne sont lus par AUCUNE des deux méthodes de bannière ni par la
+    /// requête d'abonnement elle-même (vérifié en lisant `renewSubscription`/`displaySubscriptionInfo`
+    /// en entier) — pas ajoutés ici, aucun effet observable à reproduire.
     enum GroupSubscriptionState {
         case active
-        case expired
-        case restricted
+        case expired(price: Int?)
+        case restricted(price: Int?)
     }
 
     /// **Corrigé le 2026-08-25 (MIGRATION_PARITY_AUDIT_V5.md V5-F-016, Phase B P1-8)** — l'endpoint
@@ -358,9 +371,12 @@ final class GroupRepository {
         guard let value = try? await APIClient.shared.get("group/checksubscription2/\(userId)/\(groupId)")
         else { return .active }
         guard !value.isBackendSuccess, let message = value.backendErrorMessage else { return .active }
+        // `nil` si absent/mal formé plutôt qu'une valeur inventée — l'appelant retombe alors sur le
+        // `price` mis en cache localement (`RosterModel.price`), jamais sur 0.
+        let freshPrice = try? value.int("price")
         switch message {
-        case "subscription expires.": return .expired
-        case "Restricted access.": return .restricted
+        case "subscription expires.": return .expired(price: freshPrice)
+        case "Restricted access.": return .restricted(price: freshPrice)
         default: return .active
         }
     }

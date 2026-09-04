@@ -85,8 +85,24 @@ final class UserSession {
         set { defaults.set(newValue, forKey: Keys.username) }
     }
 
+    /// **Corrigé (2026-09-05, confirmé par l'utilisateur ET par le diagnostic
+    /// `debugLastLoginNiknameRaw`, capture réelle : `<clé "nikname" ABSENTE du JSON reçu>`)** — le
+    /// backend n'envoie RÉELLEMENT jamais ce champ au login. Décision produit explicite de
+    /// l'utilisateur : construire le nikname LOCALEMENT depuis `firstname + " " + lastname` quand
+    /// le backend n'en fournit pas, plutôt que de laisser le champ `nikname` des paquets de chat
+    /// vide indéfiniment. Repli calculé dynamiquement dans le GETTER (pas figé au login) : reste
+    /// à jour si `firstname`/`lastname` changent plus tard (édition de profil), sans dépendre d'un
+    /// second point d'écriture à synchroniser.
     var nikname: String? {
-        get { defaults.string(forKey: Keys.nikname) }
+        get {
+            let stored = defaults.string(forKey: Keys.nikname)
+            if let stored, !stored.trimmingCharacters(in: .whitespaces).isEmpty { return stored }
+            let constructed = [firstname, lastname]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            return constructed.isEmpty ? nil : constructed
+        }
         set { defaults.set(newValue, forKey: Keys.nikname) }
     }
 

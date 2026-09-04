@@ -349,5 +349,8 @@ final class RosterListViewModel: ObservableObject {
         .sorted { (Int64($0.stamp) ?? 0) > (Int64($1.stamp) ?? 0) }
 
         hasLoaded = true
+        // Diagnostic temporaire (2026-09-04, audit "historique de conversation absent après
+        // envoi") — voir `SocketDiagnostics` pour le raisonnement complet.
+        SocketDiagnostics.shared.recordRosterRefresh(rowCount: rows.count)
     }
 }

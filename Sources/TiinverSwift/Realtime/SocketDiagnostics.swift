@@ -31,6 +31,32 @@ final class SocketDiagnostics: ObservableObject {
 
     let socketURL = APIEnvironment.socketURL
 
+    // MARK: - Roster (2026-09-04, audit "historique de conversation absent après envoi")
+
+    /// `conversationId` du dernier appel à `RosterRepository.updateRoster` qui a RÉELLEMENT
+    /// dépassé son `guard let conversationId = message.conversationId else { return }` — `nil` ici
+    /// après un envoi confirmerait que le chemin d'écriture roster n'est jamais atteint (guard
+    /// jamais franchi), pas que l'écriture échoue silencieusement ensuite.
+    @Published private(set) var lastRosterWriteConversationId: String?
+    @Published private(set) var lastRosterWriteAt: Date?
+    @Published private(set) var lastRosterWriteWasInsert: Bool?
+    /// Nombre de lignes que `RosterListViewModel.refresh()` a RÉELLEMENT trouvées dans Core Data
+    /// au dernier appel — distingue "l'écriture n'a jamais eu lieu" de "l'écriture a eu lieu mais
+    /// la vue ne s'est jamais rafraîchie après".
+    @Published private(set) var lastRosterRefreshRowCount: Int?
+    @Published private(set) var lastRosterRefreshAt: Date?
+
+    func recordRosterWrite(conversationId: String, wasInsert: Bool) {
+        lastRosterWriteConversationId = conversationId
+        lastRosterWriteWasInsert = wasInsert
+        lastRosterWriteAt = Date()
+    }
+
+    func recordRosterRefresh(rowCount: Int) {
+        lastRosterRefreshRowCount = rowCount
+        lastRosterRefreshAt = Date()
+    }
+
     private init() {}
 
     func recordLiveServerEvent(_ name: String) {

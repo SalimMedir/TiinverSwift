@@ -95,6 +95,9 @@ final class RosterRepository {
                 Self.apply(message, userId: userId, isFromServer: isFromServer, to: entity)
             }
         }
+        // Diagnostic temporaire (2026-09-04, audit "historique de conversation absent après
+        // envoi") — voir `SocketDiagnostics` pour le raisonnement complet.
+        await SocketDiagnostics.shared.recordRosterWrite(conversationId: conversationId, wasInsert: !exists)
     }
 
     private static func apply(_ message: MessageLib, userId: String, isFromServer: Bool, to entity: RosterEntity) {

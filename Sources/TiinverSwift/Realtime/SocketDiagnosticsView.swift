@@ -41,6 +41,28 @@ struct SocketDiagnosticsView: View {
                     }
                 }
 
+                // **Ajouté (2026-09-04, audit "historique de conversation absent après envoi")**
+                Section("Roster — écriture (après un envoi/réception)") {
+                    if let conversationId = diagnostics.lastRosterWriteConversationId,
+                       let at = diagnostics.lastRosterWriteAt {
+                        row("conversationId écrit", conversationId)
+                        row("Type d'écriture", diagnostics.lastRosterWriteWasInsert == true ? "Création" : "Mise à jour")
+                        row("À", Self.formatter.string(from: at))
+                    } else {
+                        Text("Aucune écriture roster observée depuis le lancement de l'app — si vous venez d'envoyer un message, ceci indique que RosterRepository.updateRoster n'a jamais été atteint avec un conversationId valide.")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
+                }
+                Section("Roster — dernière lecture (RosterListView)") {
+                    if let count = diagnostics.lastRosterRefreshRowCount, let at = diagnostics.lastRosterRefreshAt {
+                        row("Lignes trouvées", "\(count)", color: count > 0 ? .green : .orange)
+                        row("À", Self.formatter.string(from: at))
+                    } else {
+                        Text("L'onglet Chat n'a pas encore rafraîchi sa liste depuis le lancement de l'app.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Session") {
                     row("Compte", UserSession.shared.username ?? "—")
                     row("apiKey présente", UserSession.shared.apiKey?.isEmpty == false ? "Oui" : "NON", color: UserSession.shared.apiKey?.isEmpty == false ? .green : .red)

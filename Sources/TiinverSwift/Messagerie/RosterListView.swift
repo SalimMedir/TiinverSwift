@@ -206,15 +206,31 @@ private struct RosterRowView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(row.title).font(.headline).lineLimit(1)
-                Text(row.subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                HStack(spacing: 4) {
+                    // Port de `acuser`/`ic_acuser_0..3` — accusé de réception du dernier message
+                    // ENVOYÉ, voir `RosterListViewModel.refresh()` pour le détail complet.
+                    if let statusIconName = row.statusIconName {
+                        Image(systemName: statusIconName)
+                            .font(.caption2)
+                            .foregroundStyle(statusIconName == "checkmark.circle.fill" ? Color.accentColor : Color.secondary)
+                    }
+                    Text(row.subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                }
             }
             Spacer()
-            if row.unreadCount > 0 {
-                Text("\(row.unreadCount)")
-                    .font(.caption2.bold())
-                    .padding(6)
-                    .background(Circle().fill(.red))
-                    .foregroundStyle(.white)
+            VStack(alignment: .trailing, spacing: 4) {
+                // Port de `stamp.setText(tps)` (`RosterListAdapter.java:279-282`) — heure du
+                // dernier message, toujours affichée (pas seulement quand non lu).
+                if !row.time.isEmpty {
+                    Text(row.time).font(.caption2).foregroundStyle(.secondary)
+                }
+                if row.unreadCount > 0 {
+                    Text("\(row.unreadCount)")
+                        .font(.caption2.bold())
+                        .padding(6)
+                        .background(Circle().fill(.red))
+                        .foregroundStyle(.white)
+                }
             }
         }
         .padding(.vertical, 4)
@@ -236,6 +252,10 @@ final class RosterListViewModel: ObservableObject {
         /// à `RechercheTiinver.java:666-668` qui filtre sur `title`/`message`/`subTitle` (3 champs,
         /// pas 2).
         let lastMessage: String?
+        /// **Ajouté (2026-09-04)** — voir `RosterListViewModel.refresh()` pour le raisonnement
+        /// complet (port de `StringUtils.getTime(long)`/`acuser`).
+        let time: String
+        let statusIconName: String?
     }
 
     @Published private(set) var rows: [Row] = []
@@ -281,23 +301,81 @@ final class RosterListViewModel: ObservableObject {
             // ne contient que le texte de développement anglais, `values-fr` le traduit
             // réellement) ; iOS affichait le texte de développement anglais brut à TOUS les
             // utilisateurs, jamais la traduction réelle.
-            // Port de `RosterListAdapter.display` (`case "gift": mediaTitle.setText(R.string.gift)`
-            // + `ic_gift`, `RosterListAdapter.java:348-353`) — **ajouté (2026-09-04, audit
-            // forensique CHAT_GIFT_FORENSIC, item 6)**. Chaîne FRANÇAISE réelle de `R.string.gift`
-            // (`values-fr/strings.xml:848` = "cadeau", PAS l'anglais de développement "gift") +
-            // équivalent emoji de `ic_gift` (pas d'icône composée disponible sur cette ligne, qui
-            // n'affiche qu'un `Text` simple — voir `RosterRowView` ci-dessous). SEUL le cas `"gift"`
-            // du switch Android (`text`/`audio`/`photo`/`gif`/`sticker`/`gift`) est reproduit ici :
-            // ce champ `subtitle` sert par ailleurs au nom d'utilisateur (pas au texte du dernier
-            // message, voir `Row.lastMessage`, un champ SÉPARÉ), portée volontairement limitée au
-            // point explicitement demandé par l'audit, pas une refonte de la ligne roster.
+            // Port de `RosterListAdapter.display` (`RosterListAdapter.java:315-393`, lu en entier
+            // le 2026-09-04) — **étendu au switch COMPLET** (texte/audio/photo/gif/cadeau/
+            // sticker/document/vidéo/graphique), au-delà du seul cas "gift" porté initialement
+            // (item 6 de l'audit forensique). Chaînes FRANÇAISES réelles de `values-fr/strings.xml`
+            // (`me`="moi", `photo`="photo", `document`="document", `audio`="audio",
+            // `sticker`="sticker", `graphic`="Graphique", `video`="Vidéo", `gift`="cadeau"), pas
+            // l'anglais de développement de `values/strings.xml`. Émojis en préfixe = substitut
+            // d'icône (`mediaTitle.setCompoundDrawablesRelativeWithIntrinsicBounds`, Android utilise
+            // un vrai drawable, cette ligne iOS n'affiche qu'un `Text` simple) — pas un ajout
+            // arbitraire, un remplacement visuel de plateforme pour la MÊME information.
+            //
+            // Le cas "text" reproduit fidèlement `String.format("%s: %s..", R.string.me, s)`
+            // (`RosterListAdapter.java:320-326`) : Android ajoute TOUJOURS ".." littéralement,
+            // même quand le message n'a pas été tronqué (25 caractères pile) — pas "corrigé"
+            // silencieusement ici.
+            //
+            // Branche `isGroup` INCHANGÉE (`R.string.groupinfo`, V3-F-006) — la ligne Android
+            // équivalente n'a pas été revérifiée dans cette passe (portée volontairement limitée
+            // aux conversations privées, seul contexte explicitement demandé), ne pas retoucher un
+            // comportement déjà validé sans preuve nouvelle contradictoire.
             let subtitle: String
             if isGroup {
                 subtitle = "onglet ici pour les informations sur le groupe"
-            } else if entity.object == "gift" {
-                subtitle = "🎁 cadeau"
-            } else {
+            } else if entity.verb != "post" {
+                // Port du `else` de `display()` (`:382-393`, `verb != "post"` → `getInformation`/
+                // `getInformation126`, textes système type "X a créé le groupe") — non porté au
+                // niveau de CETTE ligne (nécessiterait de dupliquer `ChatViewModel.systemInfoText`
+                // ici), conserve le repli existant plutôt que d'inventer un texte système.
                 subtitle = entity.username ?? ""
+            } else {
+                switch entity.object {
+                case "text":
+                    let raw = entity.lastMessage ?? ""
+                    let truncated = raw.count > 20 ? String(raw.prefix(20)) : raw
+                    subtitle = entity.belongsToCurrentUser == 1 ? "moi: \(truncated).." : "\(truncated).."
+                case "audio": subtitle = "🎤 audio"
+                case "photo": subtitle = "📷 photo"
+                case "gif": subtitle = "🎞️ gif"
+                case "gift": subtitle = "🎁 cadeau"
+                case "sticker": subtitle = "🏷️ sticker"
+                case "doc": subtitle = "📄 document"
+                case "video": subtitle = "🎥 Vidéo"
+                case "graphic": subtitle = "✏️ Graphique"
+                default: subtitle = entity.username ?? ""
+                }
+            }
+            // Port de `acuser`/`ic_acuser_0..3` (`RosterListAdapter.java:285-298`) — icône d'accusé
+            // de réception, UNIQUEMENT pour les messages ENVOYÉS par l'utilisateur courant
+            // (`isBelongsToCurrentUser() && verb=="post"`). `entity.status` suit l'échelle déjà
+            // établie côté iOS (`MessageDeliveryStatus`, `ChatEvent.swift`) plutôt que l'échelle
+            // Android 0-3 (elles ne correspondent pas terme à terme, voir doc de
+            // `Row.statusIconName` ci-dessous) — simplifié en 3 états visuels façon WhatsApp
+            // (horloge/un crochet/deux crochets) à la demande explicite de l'utilisateur pour ce
+            // point précis, faute d'équivalent SF Symbol natif à un double-crochet Android exact.
+            let statusIconName: String?
+            if entity.belongsToCurrentUser == 1, entity.verb == "post" {
+                switch entity.status {
+                case 0: statusIconName = "clock"
+                case 1: statusIconName = "checkmark"
+                case 2, 3, 4: statusIconName = "checkmark.circle.fill"
+                default: statusIconName = "checkmark"
+                }
+            } else {
+                statusIconName = nil
+            }
+            // Port de `StringUtils.getTime(long)` (`:94-104`, PAS la variante relative
+            // `getTime(Context,long)` — confirmé que `RosterListAdapter` utilise la variante SANS
+            // contexte) — heure exacte du dernier message, format 12h. `DateFormatter` localisé
+            // choisi plutôt qu'une reproduction octet-pour-octet du format "HH:mm, a. m." (détail
+            // cosmétique mineur, pas fonctionnel) — s'adapte à la locale de l'utilisateur.
+            let time: String
+            if let stampMs = Double(entity.stamp ?? ""), stampMs > 0 {
+                time = Self.timeFormatter.string(from: Date(timeIntervalSince1970: stampMs / 1000))
+            } else {
+                time = ""
             }
 
             var model = RosterModel()
@@ -343,7 +421,9 @@ final class RosterListViewModel: ObservableObject {
                 unreadCount: Int(entity.unreadCount),
                 stamp: entity.stamp ?? "0",
                 rosterModel: model,
-                lastMessage: model.message
+                lastMessage: model.message,
+                time: time,
+                statusIconName: statusIconName
             )
         }
         .sorted { (Int64($0.stamp) ?? 0) > (Int64($1.stamp) ?? 0) }
@@ -353,4 +433,12 @@ final class RosterListViewModel: ObservableObject {
         // envoi") — voir `SocketDiagnostics` pour le raisonnement complet.
         SocketDiagnostics.shared.recordRosterRefresh(rowCount: rows.count)
     }
+
+    /// Port de `StringUtils.getTime(long)` — voir la doc au site d'appel dans `refresh()`.
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter
+    }()
 }

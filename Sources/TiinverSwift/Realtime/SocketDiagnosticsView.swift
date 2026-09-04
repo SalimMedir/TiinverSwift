@@ -9,6 +9,13 @@ import SwiftUI
 struct SocketDiagnosticsView: View {
     @ObservedObject private var diagnostics = SocketDiagnostics.shared
     @Environment(\.dismiss) private var dismiss
+    /// **Ajouté (2026-09-05)** — lecture Core Data DIRECTE et IMMÉDIATE, déclenchée à la demande,
+    /// sans passer par `RosterListView`/son cycle de vie de vue (bascule d'onglet, premier/arrière
+    /// plan) — isole la question "la donnée est-elle vraiment en base MAINTENANT" de toute variable
+    /// liée à SwiftUI/la navigation. Répond directement à la contradiction observée en test réel :
+    /// écriture confirmée ("Mise à jour") puis, ~30s plus tard via `RosterListView`, 0 ligne trouvée.
+    @State private var manualCheckResult: String?
+    @State private var isCheckingManually = false
 
     var body: some View {
         NavigationStack {
@@ -60,6 +67,35 @@ struct SocketDiagnosticsView: View {
                     } else {
                         Text("L'onglet Chat n'a pas encore rafraîchi sa liste depuis le lancement de l'app.")
                             .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+
+                // **Ajouté (2026-09-05)** — voir la doc de `manualCheckResult` ci-dessus.
+                Section("Roster — vérification immédiate (indépendante de l'onglet Chat)") {
+                    Button {
+                        Task {
+                            isCheckingManually = true
+                            defer { isCheckingManually = false }
+                            let entities = (try? await RosterRepository().rosterAll()) ?? []
+                            if entities.isEmpty {
+                                manualCheckResult = "0 ligne en base — confirmé à l'instant."
+                            } else {
+                                let lines = entities.map { e in
+                                    "• \(e.conversationId ?? "?") · localId=\(e.localId) · stamp=\(e.stamp ?? "?")"
+                                }
+                                manualCheckResult = "\(entities.count) ligne(s) :\n" + lines.joined(separator: "\n")
+                            }
+                        }
+                    } label: {
+                        if isCheckingManually {
+                            ProgressView()
+                        } else {
+                            Text("Vérifier maintenant")
+                        }
+                    }
+                    .disabled(isCheckingManually)
+                    if let manualCheckResult {
+                        Text(manualCheckResult).font(.footnote.monospaced())
                     }
                 }
 

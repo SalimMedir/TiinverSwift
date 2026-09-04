@@ -47,6 +47,8 @@ struct RosterListView: View {
     @State private var showChatSearch = false
     /// Port de "+ Nouveau message" (`NewMessage.java`) — voir `NewMessageView.swift`.
     @State private var showNewMessage = false
+    /// **Ajouté (2026-09-04, diagnostic temporaire)** — voir `SocketDiagnosticsView`.
+    @State private var showSocketDiagnostics = false
 
     var body: some View {
         Group {
@@ -85,6 +87,15 @@ struct RosterListView: View {
                     Image(systemName: "magnifyingglass")
                 }
             }
+            // **Ajouté (2026-09-04, diagnostic temporaire — audit "conversation instantanée")** —
+            // voir `SocketDiagnosticsView`, à retirer une fois la cause confirmée/corrigée.
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    showSocketDiagnostics = true
+                } label: {
+                    Image(systemName: "stethoscope")
+                }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     Task { await viewModel.refresh() }
@@ -118,6 +129,9 @@ struct RosterListView: View {
         }
         .sheet(isPresented: $showNewMessage) {
             NewMessageView()
+        }
+        .sheet(isPresented: $showSocketDiagnostics) {
+            SocketDiagnosticsView()
         }
         .task { await viewModel.refresh() }
         // **Corrigé (2026-09-04, CHAT_CONSISTENCY_REVIEW.md)** — "mise à jour temps réel de la

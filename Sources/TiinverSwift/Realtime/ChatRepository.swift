@@ -81,7 +81,11 @@ final class ChatRepository {
             Task { @MainActor in self?.onDisconnected(reason: (data.first as? String) ?? "unknown") }
         }
         socket.on(clientEvent: .error) { data, _ in
-            print("❌ Erreur socket :", data.first ?? "?")
+            let message = "\(data.first ?? "?")"
+            print("❌ Erreur socket :", message)
+            // Diagnostic temporaire (2026-09-04, audit "conversation instantanée") — voir
+            // `SocketDiagnostics` pour le raisonnement complet.
+            Task { @MainActor in SocketDiagnostics.shared.recordError(message) }
         }
         socket.on(clientEvent: .reconnect) { [weak self] _, _ in Task { @MainActor in self?.onConnected() } }
 
@@ -96,9 +100,12 @@ final class ChatRepository {
         socket.off(SocketEvent.stopTyping)
 
         socket.on(SocketEvent.newMessage) { [weak self] data, _ in
+            // Diagnostic temporaire (2026-09-04, audit "conversation instantanée").
+            SocketDiagnostics.shared.recordLiveServerEvent(SocketEvent.newMessage)
             Task { @MainActor in await self?.handleNewMessage(data, isGroup: false) }
         }
         socket.on(SocketEvent.newGroupMessage) { [weak self] data, _ in
+            SocketDiagnostics.shared.recordLiveServerEvent(SocketEvent.newGroupMessage)
             Task { @MainActor in await self?.handleNewMessage(data, isGroup: true) }
         }
         socket.on(SocketEvent.onDeletePrivateMessage) { [weak self] data, _ in
@@ -124,6 +131,7 @@ final class ChatRepository {
             Task { @MainActor in await self?.handleOfflineStatus(data) }
         }
         socket.on(SocketEvent.presence) { [weak self] data, _ in
+            SocketDiagnostics.shared.recordLiveServerEvent(SocketEvent.presence)
             guard let dict = data.first as? [String: Any] else { return }
             let username = dict["username"] as? String ?? ""
             let online = (dict["online"] as? String) == "true"
@@ -189,6 +197,9 @@ final class ChatRepository {
 
     private func onConnected() {
         isReconnecting = false
+        // Diagnostic temporaire (2026-09-04, audit "conversation instantanée") — voir
+        // `SocketDiagnostics` pour le raisonnement complet.
+        SocketDiagnostics.shared.recordConnected()
         guard let socket, let username = UserSession.shared.username, !username.isEmpty else { return }
         isConnected = true
         let myId = UserSession.shared.myId ?? ""
@@ -285,6 +296,9 @@ final class ChatRepository {
 
     private func onDisconnected(reason: String) {
         isConnected = false
+        // Diagnostic temporaire (2026-09-04, audit "conversation instantanée") — voir
+        // `SocketDiagnostics` pour le raisonnement complet.
+        SocketDiagnostics.shared.recordDisconnected(reason: reason)
         if let socket, let username = UserSession.shared.username, !username.isEmpty {
             let myId = UserSession.shared.myId ?? ""
             socket.emit(SocketEvent.leaveRoom, ["id": myId, "username": username])

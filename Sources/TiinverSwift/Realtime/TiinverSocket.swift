@@ -86,6 +86,9 @@ final class TiinverSocket {
             return
         default:
             let payload: [String: Any]? = (apiKey?.isEmpty == false) ? ["token": apiKey!] : nil
+            // Diagnostic temporaire (2026-09-04, audit "conversation instantanée") — voir
+            // `SocketDiagnostics` pour le raisonnement complet.
+            Task { @MainActor in SocketDiagnostics.shared.recordConnectAttempt(hadPayload: payload != nil) }
             socket.connect(withPayload: payload, timeoutAfter: 10, withHandler: nil)
         }
     }

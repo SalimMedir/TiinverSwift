@@ -93,4 +93,36 @@ jobs:
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$GITHUB_WORKSPACE/DerivedData" \
             CODE_SIGNING_ALLOWED=NO
+
+      - name: Vérifier que les dossiers .lproj sont bien copiés dans le bundle .app (localisation)
+        # **Ajouté (2026-09-05, implémentation localisation)** — ce projet a un historique
+        # DOCUMENTÉ (voir project.yml) de fichiers/dossiers déclarés dans `resources:` mais
+        # absents du bundle .app construit (GoogleService-Info.plist, RemoteConfigDefaults.plist,
+        # Assets.xcassets — tous nécessité un contournement dédié). `-derivedDataPath` ajouté
+        # ci-dessus spécifiquement pour pouvoir vérifier ICI, empiriquement, que les 5 dossiers
+        # `*.lproj/Localizable.strings` (Resources/) atterrissent bien dans le bundle plutôt que
+        # d'être aplatis/omis par le système `resources:` de XcodeGen — même prudence que pour les
+        # 3 fichiers précédents, ne pas supposer que ça fonctionne sans preuve directe.
+        run: |
+          APP_PATH=$(find "$GITHUB_WORKSPACE/DerivedData/Build/Products" -maxdepth 2 -name "TiinverSwift.app" -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERREUR : TiinverSwift.app introuvable sous $GITHUB_WORKSPACE/DerivedData/Build/Products"
+            exit 1
+          fi
+          echo "Contenu du bundle .app (recherche des dossiers .lproj) :"
+          find "$APP_PATH" -maxdepth 1 -name "*.lproj" -print
+          MISSING=0
+          for lang in fr en es ar pt; do
+            if [ -f "$APP_PATH/$lang.lproj/Localizable.strings" ]; then
+              echo "OK — $lang.lproj/Localizable.strings présent."
+            else
+              echo "ERREUR — $lang.lproj/Localizable.strings ABSENT du bundle .app construit."
+              MISSING=1
+            fi
+          done
+          if [ "$MISSING" -eq 1 ]; then
+            echo "Au moins une langue manque dans le bundle — le système resources: de XcodeGen a probablement omis/aplati les dossiers .lproj, comme il l'a déjà fait pour d'autres fichiers sur ce projet (voir project.yml)."
+            exit 1
+          fi

@@ -35,9 +35,9 @@ struct EmailVerificationView: View {
         VStack(spacing: 16) {
             Text(usingEmail ? "Un code vous a été envoyé par email" : "Un code vous a été envoyé par SMS")
                 // R.string.code_msg_body_by_mail / R.string.codemsgbody
-            Text("Saisissez le code reçu") // R.string.code_msg_foot
+            Text(NSLocalizedString("auth_enter_received_code", comment: "Instruction saisie du code de vérification"))
 
-            TextField("Code", text: $code)
+            TextField(NSLocalizedString("auth_code", comment: "Champ code de vérification"), text: $code)
                 .keyboardType(.numberPad)
                 .multilineTextAlignment(.center)
                 .onChange(of: code) { newValue in
@@ -51,7 +51,7 @@ struct EmailVerificationView: View {
             if secondsRemaining > 0 {
                 Text(timeString(secondsRemaining))
             } else {
-                Button("Renvoyer le code") { // click_here
+                Button(NSLocalizedString("auth_resend_code", comment: "Bouton renvoyer le code")) { // click_here
                     Task { await sendCode() }
                 }
             }

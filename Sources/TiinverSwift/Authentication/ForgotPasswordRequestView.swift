@@ -13,23 +13,23 @@ struct ForgotPasswordRequestView: View {
     var body: some View {
         VStack(spacing: 16) {
             Picker("", selection: $usingEmail) {
-                Text("Email").tag(true)
-                Text("Téléphone").tag(false)
+                Text(NSLocalizedString("auth_email", comment: "Onglet email")).tag(true)
+                Text(NSLocalizedString("auth_phone", comment: "Onglet téléphone")).tag(false)
             }
             .pickerStyle(.segmented)
 
             if usingEmail {
-                TextField("Email", text: $mail)
+                TextField(NSLocalizedString("auth_email", comment: "Onglet email"), text: $mail)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
             } else {
-                TextField("Téléphone", text: $phone)
+                TextField(NSLocalizedString("auth_phone", comment: "Onglet téléphone"), text: $phone)
                     .textContentType(.telephoneNumber)
                     .keyboardType(.phonePad)
             }
 
-            Button("Envoyer") {
+            Button(NSLocalizedString("auth_send", comment: "Bouton envoyer")) {
                 // Port fidèle d'un comportement probablement non intentionnel de l'original :
                 // `clicOub` vérifie TOUJOURS `!mail.isEmpty()` (le champ email), même en mode
                 // téléphone (`usingEmail == false`), où ce champ est vide/masqué — la
@@ -43,7 +43,7 @@ struct ForgotPasswordRequestView: View {
                 onSubmit(usingEmail, mail, phone) // → position 7, action=forgotpassword
             }
 
-            Button("Retour", action: onBack) // suivantOub → position 4
+            Button(NSLocalizedString("auth_back", comment: "Bouton retour"), action: onBack) // suivantOub → position 4
         }
         .padding()
     }

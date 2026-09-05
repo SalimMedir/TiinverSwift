@@ -1,0 +1,34 @@
+/* Authentification — module 1 (Authentication/) — clés sourcées de values-fr/strings.xml quand une
+   correspondance exacte existait (sign_in/or/forgot_password/signup_linkto/loading/
+   sign_in_with_google/validate/terms/accept), texte iOS existant conservé pour les autres. */
+"auth_sign_in" = "Se connecter";
+"auth_or" = "OU";
+"auth_forgot_password" = "mot de passe oublié ?";
+"auth_signup_linkto" = "Nouvel utilisateur ? Inscrivez-vous maintenant";
+"auth_loading" = "Chargement";
+"auth_sign_in_with_google" = "Se connecter avec Google";
+"auth_resend_code" = "Renvoyer le code";
+"auth_enter_received_code" = "Saisissez le code reçu";
+"auth_email" = "Email";
+"auth_phone" = "Téléphone";
+"auth_send" = "Envoyer";
+"auth_back" = "Retour";
+"auth_validate" = "Valider";
+"auth_back_to_login" = "Retour à la connexion";
+"auth_previous" = "Précédent";
+"auth_skip" = "Passer";
+"auth_privacy_intro" = "En continuant, vous acceptez notre politique de confidentialité et nos conditions d'utilisation.";
+"auth_privacy_policy" = "Politique de confidentialité";
+"auth_terms_of_use" = "Conditions d'utilisation";
+"auth_accept" = "Accepter";
+"auth_register_title" = "Inscription";
+"auth_already_have_account" = "Déjà un compte ? Se connecter";
+"auth_continue_with_google" = "Continuer avec Google";
+"auth_continue_with_email" = "Continuer avec email";
+"auth_next" = "Suivant";
+"auth_finish" = "Terminer";
+"auth_password" = "Mot de passe";
+"auth_confirm_password" = "Confirmer le mot de passe";
+"auth_new_password" = "Nouveau mot de passe";
+"auth_code" = "Code";
+"auth_full_name" = "Nom complet";

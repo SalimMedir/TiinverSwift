@@ -15,20 +15,20 @@ struct PoliticaDemandView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("En continuant, vous acceptez notre politique de confidentialité et nos conditions d'utilisation.")
+            Text(NSLocalizedString("auth_privacy_intro", comment: "Texte d'introduction politique/conditions"))
                 .multilineTextAlignment(.center)
 
             HStack {
-                Button("Politique de confidentialité") { // R.string.privacypolicies
+                Button(NSLocalizedString("auth_privacy_policy", comment: "Lien politique de confidentialité")) { // R.string.privacypolicies
                     open("https://tiinver.com/privacy_policy.html")
                 }
-                Button("Conditions d'utilisation") { // R.string.termsofuse
+                Button(NSLocalizedString("auth_terms_of_use", comment: "Lien conditions d'utilisation")) { // R.string.termsofuse
                     open("https://tiinver.com/terms_conditions.html")
                 }
             }
             .font(.footnote)
 
-            Button("Accepter", action: onAccept) // butAcceptarPolitica → position 1 (Onboarding)
+            Button(NSLocalizedString("auth_accept", comment: "Bouton accepter"), action: onAccept) // butAcceptarPolitica → position 1 (Onboarding)
                 .buttonStyle(.borderedProminent)
         }
         .padding()

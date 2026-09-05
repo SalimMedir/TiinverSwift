@@ -85,7 +85,7 @@ struct LoginView: View {
                 // Port du titre (`TextView` à côté du logo — logo `visibility="gone"` dans le XML
                 // Android, jamais affiché en pratique, donc pas reproduit ici non plus) —
                 // `textAllCaps="true"`, gras, 25sp.
-                Text("Se connecter")
+                Text(NSLocalizedString("auth_sign_in", comment: "Titre écran de connexion"))
                     .font(.system(size: 25, weight: .bold))
                     .textCase(.uppercase)
                     .foregroundStyle(Self.textPrimary)
@@ -98,7 +98,7 @@ struct LoginView: View {
                 }
 
                 fieldBox(systemIcon: "envelope.fill") {
-                    TextField("e-mail", text: $mail)
+                    TextField(NSLocalizedString("auth_email", comment: "Champ email"), text: $mail)
                         .textContentType(.emailAddress)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
@@ -106,7 +106,7 @@ struct LoginView: View {
                 }
 
                 fieldBox(systemIcon: "lock.fill") {
-                    SecureField("mot de passe", text: $password)
+                    SecureField(NSLocalizedString("auth_password", comment: "Champ mot de passe"), text: $password)
                         .disabled(viewModel.isLoading)
                 }
 
@@ -114,7 +114,7 @@ struct LoginView: View {
 
                 HStack(spacing: 8) {
                     Rectangle().fill(Self.divider).frame(height: 1)
-                    Text("OU")
+                    Text(NSLocalizedString("auth_or", comment: "Séparateur entre connexion email et Google/Apple"))
                         .font(.system(size: 14))
                         .foregroundStyle(Self.divider)
                     Rectangle().fill(Self.divider).frame(height: 1)
@@ -125,7 +125,7 @@ struct LoginView: View {
                 appleButton
 
                 VStack(spacing: 6) {
-                    Button("mot de passe oublié ?", action: onForgotPassword)
+                    Button(NSLocalizedString("auth_forgot_password", comment: "Lien mot de passe oublié"), action: onForgotPassword)
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(Self.accent)
                         .disabled(viewModel.isLoading)
@@ -134,7 +134,7 @@ struct LoginView: View {
 
                 // Port du grand espacement Android (`layout_marginTop="200dp"` sur le conteneur du
                 // bouton d'inscription) — sépare volontairement ce lien du reste du formulaire.
-                Button("Nouvel utilisateur ? Inscrivez-vous maintenant", action: onRegister)
+                Button(NSLocalizedString("auth_signup_linkto", comment: "Lien vers l'inscription"), action: onRegister)
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Self.accent)
                     .disabled(viewModel.isLoading)
@@ -198,9 +198,9 @@ struct LoginView: View {
             HStack(spacing: 8) {
                 if viewModel.isLoading {
                     ProgressView().tint(.white)
-                    Text("Chargement")
+                    Text(NSLocalizedString("auth_loading", comment: "État de chargement du bouton de connexion"))
                 } else {
-                    Text("Se connecter")
+                    Text(NSLocalizedString("auth_sign_in", comment: "Bouton de connexion"))
                 }
             }
             .textCase(.uppercase)
@@ -223,7 +223,7 @@ struct LoginView: View {
                 Image(systemName: "globe")
                     .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(Self.googleText)
-                Text("Se connecter avec Google")
+                Text(NSLocalizedString("auth_sign_in_with_google", comment: "Bouton connexion Google"))
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(Self.googleText)
             }

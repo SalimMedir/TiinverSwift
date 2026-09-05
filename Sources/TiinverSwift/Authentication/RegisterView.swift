@@ -26,27 +26,27 @@ struct RegisterView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                TextField("Nom complet", text: $fullname) // R.id.fullname
+                TextField(NSLocalizedString("auth_full_name", comment: "Champ nom complet"), text: $fullname) // R.id.fullname
 
                 Picker("", selection: $usingEmail) {
-                    Text("Email").tag(true)
-                    Text("Téléphone").tag(false)
+                    Text(NSLocalizedString("auth_email", comment: "Onglet email")).tag(true)
+                    Text(NSLocalizedString("auth_phone", comment: "Onglet téléphone")).tag(false)
                 }
                 .pickerStyle(.segmented)
 
                 if usingEmail {
-                    TextField("Email", text: $mail)
+                    TextField(NSLocalizedString("auth_email", comment: "Onglet email"), text: $mail)
                         .textContentType(.emailAddress)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
                 } else {
-                    TextField("Téléphone", text: $phone)
+                    TextField(NSLocalizedString("auth_phone", comment: "Onglet téléphone"), text: $phone)
                         .textContentType(.telephoneNumber)
                         .keyboardType(.phonePad)
                 }
 
-                SecureField("Mot de passe", text: $password)
-                SecureField("Confirmer le mot de passe", text: $passwordConfirm)
+                SecureField(NSLocalizedString("auth_password", comment: "Champ mot de passe"), text: $password)
+                SecureField(NSLocalizedString("auth_confirm_password", comment: "Champ confirmer mot de passe"), text: $passwordConfirm)
 
                 // Même correctif que `SignUpWithGoogleView.swift` (2026-08-16, captures Appetize) :
                 // `viewModel.errorMessage` (réseau/transport, alimenté par `AuthViewModel.run`'s
@@ -65,12 +65,12 @@ struct RegisterView: View {
                     if viewModel.isLoading {
                         ProgressView()
                     } else {
-                        Text("Inscription") // R.string.inscription
+                        Text(NSLocalizedString("auth_register_title", comment: "Bouton s'inscrire")) // R.string.inscription
                     }
                 }
                 .disabled(viewModel.isLoading)
 
-                Button("Déjà un compte ? Se connecter", action: onLogin) // login.setOnClickListener → position 4
+                Button(NSLocalizedString("auth_already_have_account", comment: "Lien vers la connexion"), action: onLogin) // login.setOnClickListener → position 4
             }
             .padding()
         }

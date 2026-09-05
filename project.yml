@@ -6,6 +6,14 @@ options:
   createIntermediateGroups: true
   usesTabs: false
   indentWidth: 4
+  # **Ajouté (2026-09-05, implémentation localisation)** — Android supporte réellement 5 langues
+  # (values-ar/en/es/fr/pt/strings.xml) ; iOS n'avait AUCUNE infrastructure de localisation avant ce
+  # correctif (tout le texte codé en dur en français dans le source Swift, confirmé par recherche
+  # exhaustive : aucun `.lproj`/`Localizable.strings`/`NSLocalizedString` nulle part). `fr` choisi
+  # comme langue de développement (PAS `en` comme Android) car c'est la langue dans laquelle TOUT le
+  # texte iOS existant est déjà écrit — `fr.lproj` sert de référence de traduction fiable, pas
+  # besoin de re-traduire vers le français depuis une base anglaise qui n'a jamais existé ici.
+  developmentLanguage: fr
 
 # **Corrigé (2026-08-28)** — `xcodegen generate` échouait : "Spec validation error: Build setting
 # has invalid build configuration 'ReleaseBrowserStack'". Cause confirmée par la doc officielle

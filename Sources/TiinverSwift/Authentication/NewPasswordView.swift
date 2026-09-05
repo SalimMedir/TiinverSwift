@@ -19,8 +19,8 @@ struct NewPasswordView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            SecureField("Nouveau mot de passe", text: $newPassword) // mdpOub
-            SecureField("Confirmer le mot de passe", text: $confirmPassword) // mdpConfOub
+            SecureField(NSLocalizedString("auth_new_password", comment: "Champ nouveau mot de passe"), text: $newPassword) // mdpOub
+            SecureField(NSLocalizedString("auth_confirm_password", comment: "Champ confirmer mot de passe"), text: $confirmPassword) // mdpConfOub
 
             if let errorText {
                 Text(errorText).foregroundStyle(.red)
@@ -29,12 +29,12 @@ struct NewPasswordView: View {
                 Text(infoMessage) // infomdpOub
             }
 
-            Button("Valider") { // relativebutton
+            Button(NSLocalizedString("auth_validate", comment: "Bouton valider nouveau mot de passe")) { // relativebutton
                 Task { await submit() }
             }
             .disabled(viewModel.isLoading)
 
-            Button("Retour à la connexion", action: onBackToLogin) // suivantOub → position 4
+            Button(NSLocalizedString("auth_back_to_login", comment: "Bouton retour à la connexion"), action: onBackToLogin) // suivantOub → position 4
         }
         .padding()
         .onChange(of: viewModel.user) { newUser in

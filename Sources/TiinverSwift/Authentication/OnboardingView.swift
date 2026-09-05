@@ -58,12 +58,14 @@ struct OnboardingView: View {
 
             HStack {
                 if currentPage > 0 {
-                    Button("Précédent") { currentPage -= 1 } // backbtn
+                    Button(NSLocalizedString("auth_previous", comment: "Bouton précédent onboarding")) { currentPage -= 1 } // backbtn
                 }
                 Spacer()
-                Button("Passer", action: onFinished) // skipbtn → position 2
+                Button(NSLocalizedString("auth_skip", comment: "Bouton passer onboarding"), action: onFinished) // skipbtn → position 2
                 Spacer()
-                Button(currentPage < pages.count - 1 ? "Suivant" : "Terminer") { // nextbtn
+                Button(currentPage < pages.count - 1
+                    ? NSLocalizedString("auth_next", comment: "Bouton suivant onboarding")
+                    : NSLocalizedString("auth_finish", comment: "Bouton terminer onboarding")) { // nextbtn
                     if currentPage < pages.count - 1 {
                         currentPage += 1
                     } else {

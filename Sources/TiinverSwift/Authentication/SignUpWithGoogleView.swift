@@ -38,15 +38,15 @@ struct SignUpWithGoogleView: View {
                 Text(networkError).foregroundStyle(.red)
             }
 
-            Button("Continuer avec Google") { // signup1
+            Button(NSLocalizedString("auth_continue_with_google", comment: "Bouton continuer avec Google")) { // signup1
                 Task { await signInWithGoogle() }
             }
             .disabled(viewModel.isLoading)
 
-            Button("Continuer avec email") { onContinueWithEmail() } // signup2 → position 3
+            Button(NSLocalizedString("auth_continue_with_email", comment: "Bouton continuer avec email")) { onContinueWithEmail() } // signup2 → position 3
                 .disabled(viewModel.isLoading)
 
-            Button("Déjà un compte ? Se connecter", action: onLogin) // login → position 4
+            Button(NSLocalizedString("auth_already_have_account", comment: "Lien vers la connexion"), action: onLogin) // login → position 4
                 .disabled(viewModel.isLoading)
         }
         .padding()

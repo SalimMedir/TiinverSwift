@@ -356,48 +356,58 @@ final class ChatRepository {
             } else if !isGroup {
                 await processIncomingPrivateMessage(meta)
             } else {
-                do {
-                    // Port de `addGroupMessage` — voir `MessageRepository.swift` : écrit en réalité
-                    // dans `wk_messages`/`MessageEntity` (PAS `wk_gp_messages`, table confirmée
-                    // morte côté Android, voir l'en-tête de `MessageRepository.swift`).
-                    if let packet = try await messages.addGroupMessage(meta) {
-                        emitDelivered(packet)
-                    }
-                    chatEvents.send(.message(meta))
-                    notifyIfNeeded(meta)
-                    // Port de `ChatManager.addGroupMessage` (`verb.equals("deleteMember")`,
-                    // `ChatManager.java:1330-1343`) — **ajouté le 2026-08-24
-                    // (MIGRATION_PARITY_AUDIT_V4.md V4-F-039, Phase B P2)**. Placé ici (couche
-                    // Realtime, qui possède déjà l'accès socket) plutôt que dans
-                    // `MessageRepository.addGroupMessage` (couche Storage pure, cité par l'audit
-                    // mais qui n'a aucun accès socket — layering délibérément séparé dans ce
-                    // portage). `leaveRoom` est émis INCONDITIONNELLEMENT pour TOUT message
-                    // `deleteMember` de groupe — vérifié ligne par ligne : contrairement à ce que
-                    // suggère le texte de l'audit ("si l'utilisateur courant est retiré"), Android
-                    // n'entoure PAS cet appel précis d'un `if (meta.getTo().equals(myUsername))`
-                    // (ce `if` ne gate QUE le flag `USER_ROOM_MEMBER`, PAS l'émission `leaveRoom`
-                    // juste en dessous) — reproduit fidèlement tel quel, même si cela ressemble à
-                    // un bug Android (quitter la room socket même quand c'est un AUTRE membre qui a
-                    // été retiré), sans le "corriger" silencieusement.
-                    //
-                    // **Non reproduits, gap documenté** : (1) la suppression de la ligne "USER_URI"
-                    // en cache local (`ChatManager.java:1331-1332`) — pas d'équivalent dans ce
-                    // portage, la liste des membres est TOUJOURS relue en direct depuis le réseau
-                    // (`GroupRepository.fetchMembers`, voir tête de `GroupDetailView.swift`), aucune
-                    // ligne locale ne peut rester périmée à purger ; (2) le flag persistant
-                    // `USER_ROOM_MEMBER+token` (`Settings.setBooleanPreference`, `ChatManager.java:
-                    // 1334,1346`) — vérifié que son SEUL site de lecture (`ActivityMsg.java:200`,
-                    // `isGroupMember = Settings.getBooleanPreference(...)`) est IMMÉDIATEMENT
-                    // écrasé par `isGroupMember = data.isGroupMember()` à la ligne 209 suivante, sans
-                    // branche intermédiaire qui l'utiliserait — code mort à effet nul, non porté
-                    // (voir consigne Phase B : ne pas porter du code Android mort/inutilisé).
-                    if meta.verb == "deleteMember" {
-                        leaveRoom(["receiver": meta.token ?? "", "packet": ""], chatType: ChatType.group.wireValue)
-                    }
-                } catch {
-                    print("❌ ChatRepository.handleNewMessage (groupe):", error)
-                }
+                await processIncomingGroupMessage(meta)
             }
+        }
+    }
+
+    /// Port du corps de la branche `isGroup` de `handleNewMessage` — **factorisée (2026-09-05,
+    /// audit forensique "notifications push")** hors de `handleNewMessage`, exactement comme
+    /// `processIncomingPrivateMessage` l'a déjà été, pour être réutilisée à l'identique par
+    /// `fetchPendingGroupMessages()` ci-dessous (filet HTTPS `group/message/{myId}`, jusqu'ici
+    /// absent d'iOS) — même pipeline, deux déclencheurs (socket ET push), comme Android appelle
+    /// `chatManager.addGroupMessage`/`prepareGroupMessage` depuis les deux mêmes points.
+    private func processIncomingGroupMessage(_ meta: MessageLib) async {
+        do {
+            // Port de `addGroupMessage` — voir `MessageRepository.swift` : écrit en réalité
+            // dans `wk_messages`/`MessageEntity` (PAS `wk_gp_messages`, table confirmée
+            // morte côté Android, voir l'en-tête de `MessageRepository.swift`).
+            if let packet = try await messages.addGroupMessage(meta) {
+                emitDelivered(packet)
+            }
+            chatEvents.send(.message(meta))
+            notifyIfNeeded(meta)
+            // Port de `ChatManager.addGroupMessage` (`verb.equals("deleteMember")`,
+            // `ChatManager.java:1330-1343`) — **ajouté le 2026-08-24
+            // (MIGRATION_PARITY_AUDIT_V4.md V4-F-039, Phase B P2)**. Placé ici (couche
+            // Realtime, qui possède déjà l'accès socket) plutôt que dans
+            // `MessageRepository.addGroupMessage` (couche Storage pure, cité par l'audit
+            // mais qui n'a aucun accès socket — layering délibérément séparé dans ce
+            // portage). `leaveRoom` est émis INCONDITIONNELLEMENT pour TOUT message
+            // `deleteMember` de groupe — vérifié ligne par ligne : contrairement à ce que
+            // suggère le texte de l'audit ("si l'utilisateur courant est retiré"), Android
+            // n'entoure PAS cet appel précis d'un `if (meta.getTo().equals(myUsername))`
+            // (ce `if` ne gate QUE le flag `USER_ROOM_MEMBER`, PAS l'émission `leaveRoom`
+            // juste en dessous) — reproduit fidèlement tel quel, même si cela ressemble à
+            // un bug Android (quitter la room socket même quand c'est un AUTRE membre qui a
+            // été retiré), sans le "corriger" silencieusement.
+            //
+            // **Non reproduits, gap documenté** : (1) la suppression de la ligne "USER_URI"
+            // en cache local (`ChatManager.java:1331-1332`) — pas d'équivalent dans ce
+            // portage, la liste des membres est TOUJOURS relue en direct depuis le réseau
+            // (`GroupRepository.fetchMembers`, voir tête de `GroupDetailView.swift`), aucune
+            // ligne locale ne peut rester périmée à purger ; (2) le flag persistant
+            // `USER_ROOM_MEMBER+token` (`Settings.setBooleanPreference`, `ChatManager.java:
+            // 1334,1346`) — vérifié que son SEUL site de lecture (`ActivityMsg.java:200`,
+            // `isGroupMember = Settings.getBooleanPreference(...)`) est IMMÉDIATEMENT
+            // écrasé par `isGroupMember = data.isGroupMember()` à la ligne 209 suivante, sans
+            // branche intermédiaire qui l'utiliserait — code mort à effet nul, non porté
+            // (voir consigne Phase B : ne pas porter du code Android mort/inutilisé).
+            if meta.verb == "deleteMember" {
+                leaveRoom(["receiver": meta.token ?? "", "packet": ""], chatType: ChatType.group.wireValue)
+            }
+        } catch {
+            print("❌ ChatRepository.processIncomingGroupMessage:", error)
         }
     }
 
@@ -458,6 +468,46 @@ final class ChatRepository {
         for meta in metas {
             guard meta.object != "voicecall", meta.object != "missedvoicecall" else { continue }
             await processIncomingPrivateMessage(meta)
+        }
+    }
+
+    /// Port de `TiinverSyncWorker.getGroupMessage` (`:115-139`, `GET group/message/{myId}`) →
+    /// `ChatManager.prepareGroupMessage(JSONObject, false)` (`ChatManager.java:1023-...`) — même
+    /// filet HTTPS que `fetchPendingPrivateMessages()` ci-dessus, pour les messages de GROUPE en
+    /// attente. **Ajouté (2026-09-05, audit forensique "notifications push", item confirmé
+    /// manquant)** — même portée volontairement réduite que la version privée : `voicecall`/
+    /// `missedvoicecall` exclus (signalisation d'appel gardée sur son propre mécanisme
+    /// PushKit/VoIP, sans équivalent fonctionnel via ce filet différé).
+    func fetchPendingGroupMessages() async {
+        guard let myId = UserSession.shared.myId, !myId.isEmpty else { return }
+        guard let value = try? await APIClient.shared.get("group/message/\(myId)"),
+            let dict = value.toDictionary(),
+            let metas = Self.decodeMessages(from: dict)
+        else { return }
+        for meta in metas {
+            guard meta.object != "voicecall", meta.object != "missedvoicecall" else { continue }
+            await processIncomingGroupMessage(meta)
+        }
+    }
+
+    /// Port de `TiinverSyncWorker.getMessageStatus` (`:167-191`, `GET messagestatus/{username}`) →
+    /// `ChatManager.updateMessageStatus(JSONObject)` (`ChatManager.java:1239-1255`) — filet HTTPS
+    /// des accusés de réception (sent/delivered/displayed), déclenché à la réception d'un push,
+    /// EN PLUS de l'événement socket `offlineStatus` (`handleOfflineStatus` ci-dessous) : demande
+    /// explicite de l'utilisateur ("le socket peut être hors connexion"), la socket peut être
+    /// déconnectée au moment précis où le serveur voudrait relayer un accusé de réception, ce filet
+    /// REST comble ce trou exactement comme Android le fait. `MessageRepository.updateStatus` met
+    /// déjà à jour `wk_messages` ET `wk_roster` par `messageId` en un seul appel — miroir exact du
+    /// double `ContentResolver.update` d'Android (`ChatManager.java:1249-1250`).
+    func fetchMessageStatus() async {
+        guard let username = UserSession.shared.username, !username.isEmpty else { return }
+        guard let value = try? await APIClient.shared.get("messagestatus/\(username)"),
+            let dict = value.toDictionary(),
+            let metas = Self.decodeMessages(from: dict)
+        else { return }
+        for meta in metas {
+            guard let messageId = meta.messageId else { continue }
+            try? await messages.updateStatus(messageId: messageId, status: meta.status)
         }
     }
 

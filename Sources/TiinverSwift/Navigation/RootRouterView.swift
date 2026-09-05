@@ -63,6 +63,10 @@ struct RootRouterView: View {
         .task {
             await checkForceUpdate()
         }
+        // **Ajouté (2026-09-05)** — voir `PushTokenRegistrar.retryPendingTokenSendIfNeeded()`.
+        .task {
+            await PushTokenRegistrar.retryPendingTokenSendIfNeeded()
+        }
         // Port de la vérification recommandée par Apple pour "Sign in with Apple"
         // (`ASAuthorizationAppleIDProvider.getCredentialState`, voir `AppleSignInCoordinator.
         // checkCredentialStateAtLaunch()`) — au lancement, une fois, comme `checkForceUpdate()`
@@ -178,6 +182,8 @@ struct RootRouterView: View {
         NetworkMonitor.shared.start {
             if authenticatedUser != nil || UserSession.shared.cachedUser() != nil {
                 ChatRepository.shared.attachToCurrentSocket()
+                // **Ajouté (2026-09-05)** — voir `PushTokenRegistrar.retryPendingTokenSendIfNeeded()`.
+                Task { await PushTokenRegistrar.retryPendingTokenSendIfNeeded() }
             }
         }
     }

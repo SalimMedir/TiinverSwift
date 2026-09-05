@@ -102,19 +102,23 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         Task { await PushTokenRegistrar.pushTokenToServer() }
     }
 
-    /// Port de `MyFirebaseMessagingService.onMessageReceived` (branche `remoteMessage.getData()`
-    /// non vide) → `TiinverSyncWorker.visiteServeur` → (1) `MyBackgroundTask.notifyUser(id)` →
-    /// `NotificationRepository.fetchNotifications(id)` (déjà porté) ET (2) `getPrivateMessage`
-    /// (`GET message/{myId}`, filet de récupération des messages de chat privés en attente —
-    /// **ajouté le 2026-09-04, audit forensique CHAT_GIFT_FORENSIC, item "absence du fallback
-    /// HTTPS de réception"**, voir `ChatRepository.fetchPendingPrivateMessages` pour le
-    /// raisonnement complet). Le reste de `TiinverSyncWorker` (sync de groupe `group/message/
-    /// {myId}`, statuts de livraison `messagestatus/{username}` — déjà couvert par le socket
-    /// `offlineStatus`, voir `ChatRepository.handleOfflineStatus`) reste HORS PÉRIMÈTRE de ce
-    /// correctif ciblé. `MyBackgroundTask`/`Http/transportDataBackground.java`/`Activity/service/
-    /// ActivityService.java` (repérés au grep initial du module 4) lus et confirmés HORS SUJET :
-    /// logout/suppression de compte (module 17) et upload de média en premier plan (module 6/7),
-    /// pas des notifications push.
+    /// Port de `MyFirebaseMessagingService.onMessageReceived` → `TiinverSyncWorker.visiteServeur`
+    /// (`TiinverSyncWorker.java:75-113`) — **couverture désormais COMPLÈTE (2026-09-05, audit
+    /// forensique "notifications push")**, les 4 tâches réseau du worker sont toutes portées :
+    /// (1) `getGroupMessage` (`group/message/{myId}`) ; (2) `getPrivateMessage` (`message/{myId}`,
+    /// ajouté le 2026-09-04) ; (3) `getMessageStatus` (`messagestatus/{username}`) ; (4)
+    /// `MyBackgroundTask.notifyUser(id)` → notifications (déjà porté avant ce fichier). Déclenché
+    /// INCONDITIONNELLEMENT à CHAQUE push reçu — vérifié que la distinction `remoteMessage.
+    /// getData()`/`getNotification()` côté Android (`MyFirebaseMessagingService.java:83-120`) est
+    /// en réalité du CODE MORT (les deux branches sont vides/commentées), le worker s'exécute donc
+    /// sans condition de type, fidèlement reproduit ici par la même absence de condition.
+    ///
+    /// **Non reproduits, gaps documentés dès l'origine (pas ce correctif)** : le renvoi des
+    /// messages sortants non livrés (`sendMessageFromCursor`/`sendGroupMessageFromCursor`,
+    /// `TiinverSyncWorker.java:95-107`) — déjà couvert par `resumePendingUploads` sur reconnexion
+    /// socket (V5-F-078), scope volontairement limité à ce déclencheur-là, pas au push ; le check
+    /// "mise à jour requise" (`:80-88`) — déjà fait au lancement (`RootRouterView`/`UpdateAppView`),
+    /// redondant sur Android lui-même.
     func application(
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
@@ -128,6 +132,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             let viewModel = NotificationCenterViewModel()
             await viewModel.fetchNotifications(userId: userId)
             await ChatRepository.shared.fetchPendingPrivateMessages()
+            await ChatRepository.shared.fetchPendingGroupMessages()
+            await ChatRepository.shared.fetchMessageStatus()
             completionHandler(.newData)
         }
     }

@@ -42,6 +42,25 @@ enum PushTokenRegistrar {
         UserDefaults.standard.set(token, forKey: userDefaultsKey)
     }
 
+    /// **Ajouté (2026-09-05, audit forensique "notifications push")** — clé de repli distincte de
+    /// `userDefaultsKey` : le jeton en cache local (`userDefaultsKey`) reste valide même après un
+    /// échec d'envoi serveur, cette clé-ci ne contient QUE le jeton d'un envoi qui a échoué et doit
+    /// être réessayé.
+    ///
+    /// **Vérifié précisément avant d'ajouter ceci (pas deviné)** : Android possède un vrai
+    /// mécanisme de file d'attente/réessai pour ce jeton (`FCM_URI`, colonne `status` 0=en attente/
+    /// 1=envoyé, rechargé par `MyBackgroundTask.postFcmIdFromDb()`) — MAIS ce mécanisme est câblé
+    /// à un système de synchro périodique/changement de connectivité totalement DÉCOUPLÉ du
+    /// chemin login/register (`HttpConnectionService`, jamais appelé par `LoginFragment`/
+    /// `EmailVerificatiionCode`/`SignUpWithGoogle`). L'envoi RÉEL post-login/register
+    /// (`requestNewFCMToken` → `TransportData.Post(..., null)`) n'a lui-même AUCUNE retentative sur
+    /// Android — un échec y est silencieusement perdu. Demande explicite de l'utilisateur : "implement
+    /// comme sur Android [le méchanisme de réessai] Token FCM après login/register" — reproduit ici
+    /// l'ESPRIT du mécanisme de file d'attente réel d'Android (persister puis réessayer), appliqué
+    /// au chemin login/register où l'utilisateur le veut, plutôt que l'absence de réessai que ce
+    /// chemin précis a réellement côté Android.
+    private static let pendingRetryDefaultsKey = "fcmId_pendingRetry"
+
     /// Port de `MyFirebaseInstanceIdService.requestNewFCMToken(context)` — pousse le jeton
     /// stocké vers le serveur (`user` endpoint, colonne `fcmId`) UNIQUEMENT si une session est
     /// active, à l'identique de la vérification `userId != null && !userId.equals("rien")`.
@@ -54,8 +73,28 @@ enum PushTokenRegistrar {
         }
         guard let token else { return }
         guard let userId = UserSession.shared.myId else { return }
+        await send(token: token, userId: userId)
+    }
+
+    /// À appeler au lancement de l'app et à la reconnexion réseau (voir `RootRouterView.swift`) —
+    /// miroir de `MyBackgroundTask.postFcmIdFromDb()` (rejoué à chaque passage de la synchro
+    /// périodique/connectivité côté Android), adapté au déclencheur login/register demandé.
+    static func retryPendingTokenSendIfNeeded() async {
+        guard let pendingToken = UserDefaults.standard.string(forKey: pendingRetryDefaultsKey) else { return }
+        guard let userId = UserSession.shared.myId else { return }
+        await send(token: pendingToken, userId: userId)
+    }
+
+    private static func send(token: String, userId: String) async {
         let params = ["id": userId, "column": "fcmId", "value": token]
-        _ = try? await APIClient.shared.post(params, endpoint: "user")
+        guard let value = try? await APIClient.shared.post(params, endpoint: "user"), value.isBackendSuccess else {
+            // Port de la ligne `FCM_URI status=0` d'Android (`TransportData.java:489-507`) —
+            // persiste pour un prochain essai plutôt que de perdre l'échec silencieusement.
+            UserDefaults.standard.set(token, forKey: pendingRetryDefaultsKey)
+            return
+        }
+        // Port de la ligne `FCM_URI status=1` d'Android (`TransportData.java:434-439`).
+        UserDefaults.standard.removeObject(forKey: pendingRetryDefaultsKey)
     }
 
     /// `FirebaseMessaging` (SDK 10.x) n'expose `token` qu'en API à callback — pas de variante

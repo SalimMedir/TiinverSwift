@@ -37,6 +37,13 @@ final class ChatViewModel: ObservableObject {
     /// documenté comme insuffisant qui est corrigé, pas un comportement fonctionnel divergent.
     @Published var giftSendError: String?
 
+    /// **Ajouté (2026-09-05, retour utilisateur direct : "j'ai cliqué sur abonner mais rien ne se
+    /// passe")** — même constat que `giftSendError` ci-dessus (Android reste silencieux sur ces 2
+    /// cas précis, `resolveGroupSubscription` ci-dessous : garde de solde ET échec réseau), corrigé
+    /// explicitement pour la même raison : un bouton qui ne fait visiblement rien en cas d'échec
+    /// est un vrai défaut UX, pas une fidélité à préserver.
+    @Published var groupSubscriptionError: String?
+
     /// Port de `RosterModel` passé en argument de `ChatFragmentTest.newInstance` — identité de la
     /// conversation ouverte, fournie par l'appelant (écran de liste des conversations, PAS encore
     /// porté — voir `RosterModel.swift`).
@@ -207,10 +214,16 @@ final class ChatViewModel: ObservableObject {
     func resolveGroupSubscription(itemId: String, groupId: String, creatorId: String, price: Int, isRenewal: Bool) {
         let key = isRenewal ? "renew-\(itemId)" : "sub-\(itemId)"
         guard !pendingSubscriptionItemIds.contains(key) else { return }
-        guard UserSession.shared.coinsAmount > Double(price) else { return }
+        // **Corrigé (2026-09-05)** — cette garde retournait silencieusement (aucun indicateur de
+        // chargement n'a même le temps de s'afficher, `pendingSubscriptionItemIds.insert` n'étant
+        // atteint qu'après) : de l'extérieur, taper "S'abonner" ne produisait RIEN de visible.
+        // Voir la doc de `groupSubscriptionError` ci-dessus.
+        guard UserSession.shared.coinsAmount > Double(price) else {
+            groupSubscriptionError = "Solde de pièces insuffisant pour cet abonnement."
+            return
+        }
         pendingSubscriptionItemIds.insert(key)
-        Task { [weak self] in
-            guard let self else { return }
+        Task {
             defer { self.pendingSubscriptionItemIds.remove(key) }
             do {
                 if isRenewal {
@@ -219,15 +232,28 @@ final class ChatViewModel: ObservableObject {
                     try await GroupRepository.shared.subscribeToGroup(groupId: groupId, userId: self.myId, creatorId: creatorId, price: price)
                 }
             } catch {
-                return // Port de `onError` — ré-affiche simplement le bouton côté Android, aucun message d'erreur montré.
+                // Port de `onError` (Android ré-affiche simplement le bouton, aucun message) —
+                // corrigé explicitement ici, même raison que `groupSubscriptionError` ci-dessus.
+                self.groupSubscriptionError = "Échec de l'abonnement. Vérifie ta connexion et réessaie."
+                return
             }
+            // Retire la bannière ET débloque le composeur : "on donne l'accès du contenu de groupe
+            // à la personne" (demande explicite de l'utilisateur) — déjà le comportement existant,
+            // confirmé correct ici, pas modifié.
             self.items.removeAll { $0.id == key }
             self.isComposerBlocked = self.items.contains { if case .subscriptionRequired = $0 { return true }; if case .subscriptionRenewal = $0 { return true }; return false }
             UserSession.shared.coinsAmount -= Double(price)
             var joined = self.buildOutgoingBase(object: "information")
             joined.verb = "joinGroup"
             self.appendOptimistic(joined)
-            Task { try? await self.messages.insertTextMessage(joined) }
+            Task {
+                try? await self.messages.insertTextMessage(joined)
+                // **Ajouté (2026-09-05)** — "on recharge" (demande explicite de l'utilisateur) :
+                // publie l'événement roster déjà établi cette session (voir `sendText()`) pour que
+                // `RosterListView` reflète immédiatement le message système "a rejoint le groupe"
+                // comme dernier message, au lieu d'attendre un rafraîchissement manuel.
+                self.chatRepository.chatEvents.send(.message(joined))
+            }
         }
     }
 

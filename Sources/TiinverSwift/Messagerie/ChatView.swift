@@ -83,6 +83,16 @@ struct ChatView: View {
         } message: {
             Text(viewModel.giftSendError ?? "")
         }
+        // **Ajouté (2026-09-05)** — même correctif que l'alerte "Cadeau" ci-dessus, voir la doc de
+        // `ChatViewModel.groupSubscriptionError`.
+        .alert(
+            "Abonnement", isPresented: Binding(
+                get: { viewModel.groupSubscriptionError != nil }, set: { if !$0 { viewModel.groupSubscriptionError = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.groupSubscriptionError ?? "")
+        }
     }
 
     private var chatContent: some View {

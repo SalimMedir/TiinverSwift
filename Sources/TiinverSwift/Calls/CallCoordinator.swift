@@ -55,6 +55,10 @@ final class CallCoordinator: ObservableObject {
     private var isOutgoingCall = false
     private var isRinging = false
     private var cancellables = Set<AnyCancellable>()
+    /// Port de `CallService.outgoingCallRepeatRunnable` (`CallService.java:418-428`) — voir
+    /// `startOutgoingCallRetryNudge()` ci-dessous pour le détail complet. **Ajouté (2026-09-05,
+    /// audit forensique "notifications push" — item confirmé manquant sur iOS)**.
+    private var outgoingCallRetryTimer: Timer?
 
     private init() {
         webrtc.delegate = self
@@ -102,6 +106,10 @@ final class CallCoordinator: ObservableObject {
             chatRepository.onCallBusy(["receiver": incoming.username ?? "", "packet": data])
         case .ringing:
             isRinging = true
+            // Port de `outgoingCallRepeatRunnable`'s `if (!isRinging) {...} else { handler.
+            // removeCallbacks(this) }` (`CallService.java:421-426`) — la relance s'arrête dès que
+            // le destinataire a accusé réception (voir `startOutgoingCallRetryNudge()`).
+            stopOutgoingCallRetryNudge()
             if isOutgoingCall, let uuid = callUUID { callKit.reportOutgoingCallConnecting(uuid: uuid) }
         case .acceptCall:
             break // Port de `stopoutgoingSound()` — CallKit arrête déjà sa propre tonalité système.
@@ -350,6 +358,9 @@ final class CallCoordinator: ObservableObject {
         // `onDestroy` qui s'exécute quelle que soit la façon dont l'appel se termine.
         ChatRepository.isOnCall = false
         webrtc.disconnect()
+        // Port de `onDestroy()`'s `handler.removeCallbacks(outgoingCallRepeatRunnable)`
+        // (`CallService.java:656`) — voir `startOutgoingCallRetryNudge()` ci-dessous.
+        stopOutgoingCallRetryNudge()
         callUUID = nil
         profile = nil
         messageId = nil
@@ -359,6 +370,46 @@ final class CallCoordinator: ObservableObject {
             try? await Task.sleep(nanoseconds: 300_000_000)
             self?.state = .idle
         }
+    }
+
+    // MARK: - Relance push de l'appel sortant (port de `CallService.outgoingCallRepeatRunnable`/
+    // `notifyUser`, `CallService.java:418-440` — audit forensique "notifications push" du
+    // 2026-09-05, confirmé absent d'iOS)
+
+    /// Port de `handler.post(outgoingCallRepeatRunnable)` — tant que le destinataire n'a pas
+    /// accusé réception (`isRinging`), relance `POST push {"userId": receiver}` toutes les 5s pour
+    /// forcer un réveil de son appareil (app tuée/arrière-plan), en plus de la signalisation
+    /// normale (message socket "voicecall", déjà fidèlement portée). S'arrête sur `.ringing`
+    /// (`stopOutgoingCallRetryNudge()` dans `handle(_:)` ci-dessus) ou sur `teardown()` — mêmes 2
+    /// points d'arrêt que `handler.removeCallbacks` côté Android (ligne 425 et ligne 656).
+    private func startOutgoingCallRetryNudge() {
+        guard let receiver = profile?.receiver, !receiver.isEmpty else { return }
+        outgoingCallRetryTimer?.invalidate()
+        outgoingCallRetryTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                guard !self.isRinging else {
+                    self.stopOutgoingCallRetryNudge()
+                    return
+                }
+                await self.notifyReceiverPush(userId: receiver)
+            }
+        }
+    }
+
+    private func stopOutgoingCallRetryNudge() {
+        outgoingCallRetryTimer?.invalidate()
+        outgoingCallRetryTimer = nil
+    }
+
+    /// Port de `CallService.notifyUser(id, context)` (`CallService.java:430-440`) — `POST push
+    /// {"userId": id}`, fire-and-forget, aucun retour exploité côté Android (`data.Post(map,
+    /// "push", null)`). Même endpoint que `FeedRepository.notifyPostAuthor`/`WalletRepository.
+    /// notifyTransferReceived` — pas de méthode partagée côté Android non plus pour cet appel
+    /// précis (dupliqué 3 fois dans le code source Java), reproduit à l'identique plutôt
+    /// qu'unifié en une seule fonction commune inventée.
+    private func notifyReceiverPush(userId: String) async {
+        _ = try? await APIClient.shared.post(["userId": userId], endpoint: "push")
     }
 }
 
@@ -381,6 +432,10 @@ extension CallCoordinator: CallKitManagerDelegate {
         Task {
             await self.fetchTurnAndStart(isOutgoing: true)
             self.chatRepository.calling(profile: profile, chatType: self.chatType, messageId: profile.messageId ?? "")
+            // Port de `CallService.calling()`'s `handler.post(outgoingCallRepeatRunnable)`, lancé
+            // juste après `callViewModel.calling(...)` (`CallService.java:406-416`) — voir
+            // `startOutgoingCallRetryNudge()` ci-dessous.
+            self.startOutgoingCallRetryNudge()
         }
     }
 
